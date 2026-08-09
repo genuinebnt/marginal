@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<!--
+  Marginal — op trace (REAL OPS, REAL INVERSES)
+
+  A debugger for the operation log. Reached from History.
+
+  What IS real — this page implements the op model, not a picture of it:
+    · `apply(op, doc)` for InsertText, DeleteText, SetMark, InsertBlock,
+      DeleteBlock, MoveBlock and SetBlockKind                       → RFC-002 §2
+    · `invert(op)` for every one of them                            → RFC-002 §3
+    · **the law is CHECKED on every step**, not asserted:
+          apply(invert(op), apply(op, doc)) == doc
+      The badge turns amber the moment it fails. It has not failed, because the
+      ops carry their inverse data — DeleteText carries the removed text and
+      DeleteBlock carries the whole subtree
+    · stepping backwards applies the inverse rather than restoring a snapshot
+
+  What is faked: the document, the actors, and the op sequence.
+
+  What this asserts:
+    · **invertibility is a design constraint, not a later feature.** An op that
+      recorded only its destination could not be stepped backwards, and this page
+      would be impossible to build
+    · `MoveBlock` and `SetBlockKind` carry `from` as well as `to` — watch the
+      inverse column and it is obvious why
+    · actor colour is information: teal is you, violet a person, slate the
+      assistant. AI edits invert exactly like anyone else's       → ADR-009 §7
+
+  Out of scope per ADR-001 and intentionally absent: databases, tables, relations,
+  rollups, formula language, spatial canvas.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Marginal — Op trace</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,560&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="mockup.css">
+<style>
+  .tracebar {
+    flex: none; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 12px 24px; background: var(--bg-chrome); border-bottom: 1px solid var(--rule);
+  }
+  .split3 { flex: 1; display: grid; grid-template-columns: 1fr 340px; min-height: 0; }
+  @media (max-width: 1100px) { .split3 { grid-template-columns: 1fr; } }
+
+  .docpane { overflow-y: auto; padding: 30px 28px 40vh; }
+  .blk { position: relative; font-family: var(--serif); font-size: 16.5px; line-height: 1.62; margin: 0 0 14px; }
+  .blk.h2 { font-family: var(--display); font-size: 21px; font-weight: 560; letter-spacing: -.014em; margin: 26px 0 8px; }
+  .blk.code { font-family: var(--mono); font-size: 12.5px; background: var(--bg-sunken); border: 1px solid var(--rule); border-radius: var(--radius); padding: 12px 14px; white-space: pre-wrap; }
+  .blk.quote { border-left: 2px solid var(--rule-strong); padding-left: 14px; color: var(--ink-soft); font-style: italic; }
+  .blk .gut {
+    position: absolute; left: -26px; top: .35em; width: 16px; text-align: right;
+    font-family: var(--mono); font-size: 9.5px; color: var(--ink-faint);
+  }
+  .blk.touched { background: color-mix(in srgb, var(--violet) 9%, transparent); border-radius: 3px; }
+  .ins { background: color-mix(in srgb, var(--teal) 20%, transparent); border-radius: 2px; }
+  .mk-b { font-weight: 700; }
+  .mk-i { font-style: italic; }
+  .mk-c { font-family: var(--mono); font-size: .86em; background: var(--bg-sunken); padding: 0 3px; border-radius: 3px; }
+
+  .oplist { border-left: 1px solid var(--rule); overflow-y: auto; background: var(--bg); }
+  .oprow {
+    display: grid; grid-template-columns: 8px 1fr; gap: 9px; align-items: start;
+    padding: 9px 14px; border-bottom: 1px solid var(--rule); cursor: pointer;
+    font-size: 12px; color: var(--ink-soft);
+  }
+  .oprow:hover { background: var(--bg-raised); }
+  .oprow.here { background: var(--bg-raised); box-shadow: inset 2px 0 0 var(--violet); color: var(--ink); }
+  .oprow.future { opacity: .38; }
+  .oprow .who { width: 7px; height: 7px; border-radius: 50%; margin-top: 5px; }
+  .oprow .kind { font-family: var(--mono); font-size: 10.5px; color: var(--ink); }
+  .oprow .arg { font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint); word-break: break-word; }
+  .oprow .inv { margin-top: 5px; padding-top: 5px; border-top: 1px dashed var(--rule); }
+  .oprow .inv-l { font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-faint); }
+
+  .law {
+    display: inline-flex; align-items: center; gap: 7px; padding: 4px 11px;
+    border-radius: 999px; font-family: var(--mono); font-size: 11px;
+  }
+  .law.ok   { background: var(--teal-soft); color: var(--teal); }
+  .law.fail { background: var(--amber-soft); color: var(--amber); }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="topbar">
+    <a class="brand" href="home.html" style="text-decoration:none;color:inherit"><span class="mark"></span>Marginal</a>
+    <nav class="nav">
+      <a href="editor.html">Editor</a>
+      <a href="reader.html">Read</a>
+      <a href="search.html">Search</a>
+      <a href="graph.html">Graph</a>
+      <a href="discover.html">Discover</a>
+      <a href="history.html" aria-current="page">History</a>
+      <a href="admin.html">Admin</a>
+      <a href="settings.html">Settings</a>
+    </nav>
+    <div class="crumb">Product · <b>Op trace</b></div>
+    <div class="spacer"></div>
+    <span class="law ok" id="law">law holds</span>
+    <button class="icon-btn" id="themeBtn" title="Toggle theme" aria-label="Toggle theme">◐</button>
+    <a class="btn" href="history.html">Scrubber</a>
+  </header>
+
+  <div class="tracebar">
+    <button class="btn" id="back">◀ Invert</button>
+    <button class="btn" id="fwd">Apply ▶</button>
+    <button class="btn primary" id="play">Play</button>
+    <span style="width:8px"></span>
+    <span class="label">Op</span>
+    <span class="mono" id="pos">0 / 0</span>
+    <span class="spacer"></span>
+    <span class="muted" style="font-size:12px">
+      Backwards applies <b style="color:var(--ink)">invert(op)</b> — never a snapshot restore
+    </span>
+  </div>
+
+  <div class="split3">
+    <main class="docpane">
+      <div id="doc"></div>
+
+      <div class="note" style="max-width:36rem">
+        <b>Really real.</b> Every op above is applied and inverted by code in this page, and the
+        badge in the header re-checks
+        <code>apply(invert(op), apply(op, doc)) == doc</code> on every single step. Step backwards
+        and you are watching inverses run, not a saved copy being restored.
+        <br><br>
+        That only works because each op carries what its inverse needs:
+        <code>DeleteText</code> keeps the removed text, <code>DeleteBlock</code> keeps the whole
+        subtree, and <code>MoveBlock</code> keeps <code>from</code> as well as <code>to</code>.
+        An op recorded with only its destination would make this page impossible.
+      </div>
+    </main>
+
+    <aside class="oplist" id="oplist"></aside>
+  </div>
+</div>
+
+<script>
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim()
+
+/* ── the document model ───────────────────────────────────────────────────
+   A block list with spans. Not a rope — a rope earns its keep at scale, and
+   this page is about the op ISA, not the data structure underneath it. */
+const ACTORS = { you: '--teal', ada: '--violet', ai: '--ai' }
+
+function initialDoc() {
+  return {
+    title: 'Operation model',
+    blocks: [
+      { id: 'b1', kind: 'p',    text: 'Every change is an operation.', marks: [] },
+      { id: 'b2', kind: 'p',    text: 'Positions are anchors, never offsets.', marks: [] },
+      { id: 'b3', kind: 'code', text: 'enum Op { InsertText, DeleteText }', marks: [] },
+    ],
+  }
+}
+const clone = (d) => JSON.parse(JSON.stringify(d))
+const idx = (d, id) => d.blocks.findIndex(b => b.id === id)
+
+/* ── apply ──────────────────────────────────────────────────────────────── */
+function apply(op, doc) {
+  const d = clone(doc)
+  switch (op.kind) {
+    case 'InsertText': {
+      const b = d.blocks[idx(d, op.block)]
+      b.text = b.text.slice(0, op.at) + op.text + b.text.slice(op.at)
+      break
+    }
+    case 'DeleteText': {
+      const b = d.blocks[idx(d, op.block)]
+      b.text = b.text.slice(0, op.at) + b.text.slice(op.at + op.text.length)
+      break
+    }
+    case 'SetMark': {
+      const b = d.blocks[idx(d, op.block)]
+      if (op.on) b.marks.push({ from: op.from, to: op.to, mark: op.mark })
+      else b.marks = b.marks.filter(m => !(m.from === op.from && m.to === op.to && m.mark === op.mark))
+      break
+    }
+    case 'InsertBlock': {
+      d.blocks.splice(op.at, 0, clone(op.block))
+      break
+    }
+    case 'DeleteBlock': {
+      d.blocks.splice(op.at, 1)
+      break
+    }
+    case 'MoveBlock': {
+      const [b] = d.blocks.splice(op.from, 1)
+      d.blocks.splice(op.to, 0, b)
+      break
+    }
+    case 'SetBlockKind': {
+      d.blocks[idx(d, op.block)].kind = op.to
+      break
+    }
+    case 'SetTitle': {
+      d.title = op.to
+      break
+    }
+  }
+  return d
+}
+
+/* ── invert ─────────────────────────────────────────────────────────────────
+   Each case is one line because the forward op already carries what the inverse
+   needs. That is RFC-002 §3 doing its job, not a convenience. */
+function invert(op) {
+  switch (op.kind) {
+    case 'InsertText':   return { ...op, kind: 'DeleteText' }
+    case 'DeleteText':   return { ...op, kind: 'InsertText' }
+    case 'SetMark':      return { ...op, on: !op.on }
+    case 'InsertBlock':  return { ...op, kind: 'DeleteBlock' }
+    case 'DeleteBlock':  return { ...op, kind: 'InsertBlock' }
+    case 'MoveBlock':    return { ...op, from: op.to, to: op.from }
+    case 'SetBlockKind': return { ...op, from: op.to, to: op.from }
+    case 'SetTitle':     return { ...op, from: op.to, to: op.from }
+  }
+}
+
+/* ── the log ────────────────────────────────────────────────────────────── */
+const LOG = [
+  { actor: 'you', kind: 'InsertText', block: 'b1', at: 29, text: ' Not a mutation.', at_label: '29' },
+  { actor: 'ada', kind: 'SetMark', block: 'b1', from: 19, to: 28, mark: 'code', on: true },
+  { actor: 'you', kind: 'DeleteText', block: 'b2', at: 21, text: ', never offsets' },
+  { actor: 'ai',  kind: 'InsertBlock', at: 2,
+    block: { id: 'b4', kind: 'quote', text: 'An op that records only its destination cannot be inverted.', marks: [] } },
+  { actor: 'you', kind: 'MoveBlock', from: 2, to: 0, block: 'b4' },
+  { actor: 'ada', kind: 'SetBlockKind', block: 'b2', from: 'p', to: 'h2' },
+  { actor: 'you', kind: 'InsertText', block: 'b3', at: 33, text: ', SetMark, MoveBlock' },
+  { actor: 'ai',  kind: 'DeleteBlock', at: 4, block: { id: 'b3x', kind: 'p', text: 'TODO: decide span stability.', marks: [] } },
+  { actor: 'you', kind: 'SetTitle', from: 'Operation model', to: 'Operation model — the ISA' },
+]
+
+/* DeleteBlock needs the block it removed in order to invert. Seed it so the
+   sequence is honest: the op carries its own tombstone. */
+LOG[7].block = { id: 'b5', kind: 'p', text: 'TODO: decide span stability.', marks: [] }
+
+let cursor = 0                  // ops applied so far
+let doc = initialDoc()
+// The pre-op state so InsertBlock at index 4 has something to remove later.
+doc.blocks.push({ id: 'b5', kind: 'p', text: 'TODO: decide span stability.', marks: [] })
+const START = clone(doc)
+
+/* ── the law, checked rather than claimed ───────────────────────────────── */
+let lawHolds = true
+function checkLaw(op, before) {
+  const roundTrip = apply(invert(op), apply(op, before))
+  return JSON.stringify(roundTrip) === JSON.stringify(before)
+}
+
+/* ── rendering ──────────────────────────────────────────────────────────── */
+function renderMarks(block) {
+  if (!block.marks.length) return escapeHtml(block.text)
+  // One pass, non-overlapping — enough for a mockup; the real thing coalesces.
+  const sorted = [...block.marks].sort((a, b) => a.from - b.from)
+  let out = '', at = 0
+  for (const m of sorted) {
+    if (m.from < at) continue
+    out += escapeHtml(block.text.slice(at, m.from))
+    const cls = m.mark === 'bold' ? 'mk-b' : m.mark === 'italic' ? 'mk-i' : 'mk-c'
+    out += `<span class="${cls}">${escapeHtml(block.text.slice(m.from, m.to))}</span>`
+    at = m.to
+  }
+  out += escapeHtml(block.text.slice(at))
+  return out
+}
+const escapeHtml = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;')
+
+function touchedBlockId() {
+  if (cursor === 0) return null
+  const op = LOG[cursor - 1]
+  return typeof op.block === 'string' ? op.block : (op.block?.id ?? null)
+}
+
+function render() {
+  const host = document.getElementById('doc')
+  const touched = touchedBlockId()
+  host.innerHTML =
+    `<h1 style="font-family:var(--display);font-weight:560;font-size:30px;letter-spacing:-.02em;margin:0 0 22px">${escapeHtml(doc.title)}</h1>` +
+    doc.blocks.map((b, i) =>
+      `<div class="blk ${b.kind === 'p' ? '' : b.kind} ${b.id === touched ? 'touched' : ''}">
+         <span class="gut">${i}</span>${renderMarks(b)}
+       </div>`).join('')
+
+  document.getElementById('pos').textContent = `${cursor} / ${LOG.length}`
+  document.getElementById('back').disabled = cursor === 0
+  document.getElementById('fwd').disabled = cursor === LOG.length
+
+  const law = document.getElementById('law')
+  law.className = 'law ' + (lawHolds ? 'ok' : 'fail')
+  law.textContent = lawHolds
+    ? 'apply(invert(op), apply(op, doc)) == doc'
+    : 'LAW BROKEN — an op is not invertible'
+
+  renderLog()
+}
+
+function renderLog() {
+  const host = document.getElementById('oplist')
+  host.innerHTML = LOG.map((op, i) => {
+    const inv = invert(op)
+    const state = i < cursor ? 'here-past' : i === cursor ? 'next' : 'future'
+    return `<div class="oprow ${i === cursor - 1 ? 'here' : ''} ${i >= cursor ? 'future' : ''}" data-i="${i}">
+      <span class="who" style="background:var(${ACTORS[op.actor]})"></span>
+      <div>
+        <div><span class="kind">${op.kind}</span></div>
+        <div class="arg">${describe(op)}</div>
+        <div class="inv">
+          <div class="inv-l">inverse</div>
+          <div class="arg"><span class="kind">${inv.kind}</span> ${describe(inv)}</div>
+        </div>
+      </div>
+    </div>`
+  }).join('')
+
+  host.querySelectorAll('.oprow').forEach(row => {
+    row.addEventListener('click', () => seek(Number(row.dataset.i) + 1))
+  })
+}
+
+function describe(op) {
+  switch (op.kind) {
+    case 'InsertText':
+    case 'DeleteText':   return `${op.block} at ${op.at} “${op.text}”`
+    case 'SetMark':      return `${op.block} ${op.from}‥${op.to} ${op.mark} = ${op.on}`
+    case 'InsertBlock':  return `at ${op.at} kind ${op.block.kind}`
+    case 'DeleteBlock':  return `at ${op.at} — tombstone carried`
+    case 'MoveBlock':    return `${op.from} → ${op.to}`
+    case 'SetBlockKind': return `${op.block} ${op.from} → ${op.to}`
+    case 'SetTitle':     return `“${op.from}” → “${op.to}”`
+  }
+}
+
+/* ── stepping ───────────────────────────────────────────────────────────── */
+function forward() {
+  if (cursor === LOG.length) return
+  const op = LOG[cursor]
+  if (!checkLaw(op, doc)) lawHolds = false
+  doc = apply(op, doc)
+  cursor++
+  render()
+}
+function backward() {
+  if (cursor === 0) return
+  // The whole point: undo is an inverse applied forward, not a restore.
+  doc = apply(invert(LOG[cursor - 1]), doc)
+  cursor--
+  render()
+}
+function seek(target) {
+  while (cursor < target) forward()
+  while (cursor > target) backward()
+}
+
+document.getElementById('fwd').addEventListener('click', forward)
+document.getElementById('back').addEventListener('click', backward)
+
+let playing = null
+document.getElementById('play').addEventListener('click', () => {
+  const btn = document.getElementById('play')
+  if (playing) { clearInterval(playing); playing = null; btn.textContent = 'Play'; return }
+  if (cursor === LOG.length) seek(0)
+  btn.textContent = 'Pause'
+  playing = setInterval(() => {
+    if (cursor === LOG.length) { clearInterval(playing); playing = null; btn.textContent = 'Play' }
+    else forward()
+  }, 780)
+})
+
+document.getElementById('themeBtn').addEventListener('click', () => {
+  const root = document.documentElement
+  root.setAttribute('data-theme', css('--bg').toLowerCase() === '#16151a' ? 'light' : 'dark')
+})
+
+/* Verify the law across the whole log before anyone touches a button — if an op
+   were non-invertible the badge should say so on load, not on step nine. */
+;(() => {
+  let probe = clone(START)
+  for (const op of LOG) {
+    if (!checkLaw(op, probe)) lawHolds = false
+    probe = apply(op, probe)
+  }
+})()
+
+render()
+</script>
+</body>
+</html>

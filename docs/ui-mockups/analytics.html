@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<!--
+  Marginal — workspace analytics (NON-FUNCTIONAL DATA, REAL SKETCHES)
+
+  Reached from Admin. Three probabilistic data structures are built and queried live
+  in this page, each shown next to the exact answer it approximates.
+
+  What IS real:
+    · **HyperLogLog** — distinct collaborators from a 64-register array   → Phase 17
+    · **Count-Min Sketch** — top pages and search terms from a 4×24 table
+    · **t-digest** — latency percentiles from ~24 adaptive centroids
+    · every "estimate vs exact vs error" readout is computed, not written
+    · range and compare controls recompute the deltas
+
+  What is faked: the event stream, the users, and the page titles.
+
+  THE THESIS — the sketches are not a flex, they are the privacy mechanism:
+
+    A conventional dashboard answers "how many distinct collaborators" by storing a
+    row per person per session, and "top pages" by storing a row per view. Both
+    answers require keeping who-did-what.
+
+    HyperLogLog answers the first from 64 bytes that contain no identities. Count-Min
+    answers the second from a fixed table that never stores an item, only counters
+    hashed items collided into. **You cannot leak what you never stored** — and the
+    memory is constant regardless of workspace size.
+
+    That is what makes ADR-009 §5's "first-party, privacy-preserving" claim structural
+    rather than a policy promise. Bounded error is the price, and it is shown.
+
+  What this asserts:
+    · every approximate number is displayed WITH its exact counterpart and error.
+      A sketch that hides its error is indistinguishable from a wrong number
+    · `perf.html` measures latency with **log-bucket HDR histograms**; this uses
+      **t-digest**. Two answers to one problem — see § Two percentile structures
+    · the heatmap is edit *activity*, not per-person tracking
+
+  Out of scope per ADR-001 and intentionally absent: databases, tables, relations,
+  rollups, formula language, spatial canvas.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Marginal — Analytics</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,560&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="mockup.css">
+<style>
+  .an { padding: 24px 0 60px; }
+  .an-head { display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap; margin-bottom: 20px; }
+  .an-head h1 { font-family: var(--display); font-weight: 560; font-size: 26px; letter-spacing: -.02em; margin: 0 0 3px; }
+
+  .seg3 { display: flex; gap: 2px; background: var(--bg-sunken); padding: 3px; border-radius: 8px; }
+  .seg3 button {
+    border: 0; background: transparent; cursor: pointer;
+    font-family: var(--sans); font-size: 11.5px; font-weight: 500;
+    color: var(--ink-faint); padding: 5px 10px; border-radius: 6px;
+  }
+  .seg3 button[aria-pressed="true"] { background: var(--bg-raised); color: var(--ink); box-shadow: var(--shadow-1); }
+
+  select.pick2 {
+    padding: 6px 9px; border: 1px solid var(--rule); border-radius: var(--radius);
+    background: var(--bg-raised); color: var(--ink-soft); font-family: var(--sans); font-size: 11.5px;
+  }
+
+  .kpi { padding: 14px 16px; }
+  .kpi-top { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; }
+  .kpi-label { font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-faint); }
+  .kpi-badge {
+    margin-left: auto; font-family: var(--mono); font-size: 9.5px;
+    padding: 1px 6px; border-radius: 999px;
+    background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink-soft);
+  }
+  .kpi-value { font-family: var(--display); font-weight: 560; font-size: 27px; letter-spacing: -.02em; line-height: 1; }
+  .kpi-sub { font-size: 11.5px; color: var(--ink-faint); margin-top: 6px; display: flex; align-items: center; gap: 6px; }
+  .delta { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .delta.up { color: var(--teal); }
+  .delta.down { color: var(--amber); }
+  .spark2 { display: block; width: 100%; height: 30px; margin-top: 9px; }
+
+  .heat-grid { display: flex; gap: 3px; align-items: flex-start; }
+  .heat-labels { display: flex; flex-direction: column; gap: 3px; margin-right: 4px; }
+  .heat-labels span { height: 13px; font-size: 9px; color: var(--ink-faint); line-height: 13px; }
+  .heat-col { display: flex; flex-direction: column; gap: 3px; }
+  .heat-cell { width: 13px; height: 13px; border-radius: 3px; }
+  .heat-cell.today { outline: 1.5px solid var(--ink); outline-offset: 1px; }
+
+  .ticker-list { display: flex; flex-direction: column; gap: 2px; }
+  .tick-item {
+    display: flex; align-items: center; gap: 9px; padding: 7px 4px;
+    font-size: 12.5px; color: var(--ink-soft); border-bottom: 1px solid var(--rule);
+    animation: reveal-in var(--dur-3) var(--ease-out) both;
+  }
+  .tick-av { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font-size: 9px; font-weight: 600; color: #fff; flex: none; }
+  .tick-item .tt { margin-left: auto; font-size: 10.5px; color: var(--ink-faint); font-family: var(--mono); }
+
+  .toplist-item { display: flex; align-items: center; gap: 10px; padding: 7px 0; }
+  .toplist-rank { font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint); width: 14px; }
+  .toplist-body { flex: 1; min-width: 0; }
+  .toplist-name { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .toplist-bar { height: 3px; border-radius: 2px; background: var(--bg-sunken); margin-top: 5px; overflow: hidden; }
+  .toplist-bar .fill { height: 100%; border-radius: 2px; }
+  .toplist-count { font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint); white-space: nowrap; }
+
+  .sketch { padding: 16px 18px; }
+  .sketch h3 { font-family: var(--display); font-weight: 560; font-size: 15px; margin: 0 0 4px; display: flex; align-items: center; gap: 7px; }
+  .sketch p.d { font-size: 12px; color: var(--ink-faint); line-height: 1.55; margin: 0 0 12px; }
+  .readout { display: flex; gap: 16px; margin-top: 11px; flex-wrap: wrap; }
+  .readout .lbl { font-size: 9.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-faint); }
+  .readout .val { font-family: var(--mono); font-size: 14px; margin-top: 2px; }
+  .readout .val.err { color: var(--amber); }
+
+  .hll-bars { display: flex; gap: 1px; align-items: flex-end; height: 46px; }
+  .hll-bars .bar { flex: 1; background: var(--violet); border-radius: 1px 1px 0 0; transition: height var(--dur-2) var(--ease-out); }
+
+  .cms-grid { display: grid; gap: 2px; }
+  .cms-cell { aspect-ratio: 1; border-radius: 2px; transition: background var(--dur-2); }
+  .cms-cell.hit { outline: 1.5px solid var(--ink); outline-offset: -1px; }
+
+  #digestCanvas { display: block; width: 100%; height: 92px; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="topbar">
+    <a class="brand" href="home.html" style="text-decoration:none;color:inherit"><span class="mark"></span>Marginal</a>
+    <nav class="nav">
+      <a href="editor.html">Editor</a>
+      <a href="reader.html">Read</a>
+      <a href="search.html">Search</a>
+      <a href="graph.html">Graph</a>
+      <a href="discover.html">Discover</a>
+      <a href="history.html">History</a>
+      <a href="admin.html" aria-current="page">Admin</a>
+      <a href="settings.html">Settings</a>
+    </nav>
+    <div class="spacer"></div>
+    <span class="pill teal" id="liveBadge">live · <b id="eventCount">0</b> events</span>
+    <button class="icon-btn" id="themeBtn" title="Toggle theme" aria-label="Toggle theme">◐</button>
+    <button class="btn" id="pauseBtn">Pause</button>
+  </header>
+
+  <main class="page">
+    <div class="wrap an">
+
+      <div class="an-head">
+        <div>
+          <h1>Workspace analytics</h1>
+          <div class="muted" style="font-size:12.5px">Your own instance. No third-party tracker, and no per-person activity log.</div>
+        </div>
+        <div class="spacer"></div>
+        <div class="seg3" id="rangeSeg" role="group" aria-label="Range">
+          <button data-r="1h">1h</button>
+          <button data-r="6h">6h</button>
+          <button data-r="1d" aria-pressed="true">1d</button>
+          <button data-r="7d">7d</button>
+          <button data-r="30d">30d</button>
+          <button data-r="90d">90d</button>
+        </div>
+        <select class="pick2" id="compareSel" aria-label="Compare">
+          <option value="prev_period">compare: previous period</option>
+          <option value="prev_week">compare: previous week</option>
+          <option value="prev_month">compare: previous month</option>
+          <option value="yoy">compare: year over year</option>
+          <option value="none">compare: none</option>
+        </select>
+      </div>
+
+      <div class="grid c4" id="kpiGrid"></div>
+
+      <div class="grid c2" style="margin-top:14px;align-items:start">
+        <div class="card">
+          <div class="box-h" style="display:flex;align-items:baseline;gap:9px;margin-bottom:12px">
+            <div class="card-h" style="margin:0">Edit activity — last 12 weeks</div>
+            <span class="muted" style="font-size:11.5px;margin-left:auto">activity, not people</span>
+          </div>
+          <div class="heat-grid">
+            <div class="heat-labels"><span>M</span><span></span><span>W</span><span></span><span>F</span><span></span><span>S</span></div>
+            <div id="heatCols" style="display:flex;gap:3px"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-h" style="margin:0 0 10px">Live stream</div>
+          <div class="ticker-list" id="tickerList"></div>
+        </div>
+      </div>
+
+      <div class="grid c2" style="margin-top:14px;align-items:start">
+        <div class="card">
+          <div style="display:flex;align-items:baseline;gap:9px;margin-bottom:6px">
+            <div class="card-h" style="margin:0">Most-edited pages</div>
+            <span class="pill amber" style="margin-left:auto">Count-Min</span>
+          </div>
+          <div id="topPagesList"></div>
+        </div>
+        <div class="card">
+          <div style="display:flex;align-items:baseline;gap:9px;margin-bottom:6px">
+            <div class="card-h" style="margin:0">Top search terms</div>
+            <span class="pill violet" style="margin-left:auto">Count-Min</span>
+          </div>
+          <div id="topSearchList"></div>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:baseline;gap:10px;margin:34px 0 6px">
+        <h2 style="font-family:var(--display);font-weight:560;font-size:19px;letter-spacing:-.015em;margin:0">How the sketches work</h2>
+        <span class="muted" style="font-size:12.5px">three structures, running live, each beside the exact answer</span>
+      </div>
+
+      <div class="card" style="border-left:2px solid var(--violet);margin-bottom:14px">
+        <p style="margin:0">
+          <b style="color:var(--ink)">The sketches are the privacy mechanism, not a flourish.</b>
+          A conventional dashboard answers <i>“how many distinct collaborators”</i> by storing a row
+          per person per session. HyperLogLog answers it from 64 bytes containing no identities, and
+          Count-Min counts page edits without ever storing a page. <b style="color:var(--ink)">You
+          cannot leak what you never stored</b> — and memory stays constant however large the
+          workspace grows. Bounded error is the price, and it is shown below rather than hidden.
+        </p>
+      </div>
+
+      <div class="grid c3">
+        <div class="card sketch">
+          <h3><span style="color:var(--violet)">●</span>HyperLogLog</h3>
+          <p class="d">Counts <b>distinct</b> collaborators in 64 registers. Each register keeps the longest run of leading zeros seen in a hashed id — a rare run implies many distinct items. Identity is never retained.</p>
+          <div class="hll-bars" id="hllBars"></div>
+          <div class="readout">
+            <div><div class="lbl">HLL estimate</div><div class="val" id="hllEst">–</div></div>
+            <div><div class="lbl">Exact</div><div class="val" id="hllExact">–</div></div>
+            <div><div class="lbl">Error</div><div class="val err" id="hllErr">–</div></div>
+          </div>
+        </div>
+
+        <div class="card sketch">
+          <h3><span style="color:var(--amber)">●</span>Count-Min Sketch</h3>
+          <p class="d">Frequencies in a fixed 4×24 table. Each item increments one cell per row; the estimate is the <b>minimum</b> across rows, because collisions can only inflate. Never under-counts, sometimes over-counts.</p>
+          <div class="cms-grid" id="cmsGrid" style="grid-template-columns:repeat(24,1fr)"></div>
+          <div class="readout">
+            <div><div class="lbl">Sampled</div><div class="val" id="cmsItem" style="font-size:11px">–</div></div>
+            <div><div class="lbl">Estimate</div><div class="val" id="cmsEst">–</div></div>
+            <div><div class="lbl">Exact</div><div class="val err" id="cmsExact">–</div></div>
+          </div>
+        </div>
+
+        <div class="card sketch">
+          <h3><span style="color:var(--teal)">●</span>t-digest</h3>
+          <p class="d">Percentiles from ~24 adaptive centroids. Clusters stay fine-grained at the tails and coarse in the middle, which is the opposite of a fixed-bucket histogram and better where the tail matters.</p>
+          <canvas id="digestCanvas"></canvas>
+          <div class="readout">
+            <div><div class="lbl">p50</div><div class="val" id="p50Est">–</div></div>
+            <div><div class="lbl">p90</div><div class="val" id="p90Est">–</div></div>
+            <div><div class="lbl">p99</div><div class="val err" id="p99Est">–</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:14px;border-left:2px solid var(--teal)">
+        <div class="card-h" style="margin-top:0">Two percentile structures, deliberately</div>
+        <p>
+          <code>perf.html</code> measures op latency with <b style="color:var(--ink)">log-bucket HDR
+          histograms</b>; this page uses <b style="color:var(--ink)">t-digest</b>. Same problem,
+          different trade: HDR has fixed buckets and a hard error bound at any percentile, trivial
+          merging, and a memory cost you pick up front. t-digest adapts its centroids so accuracy
+          concentrates at the extremes, which is better for p99.9 and worse for reasoning about the
+          worst case. Implementing both and knowing which to reach for is the point.
+        </p>
+      </div>
+
+      <div class="note" style="max-width:none">
+        <b>Half real.</b> The event stream is synthetic and seeded, so the same run happens every
+        load. The three sketches are genuine implementations consuming that stream, and every
+        estimate is shown next to the exact answer — a sketch that hides its error is
+        indistinguishable from a wrong number.
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+/* Seeded — the same run on every load. */
+let seed = 20260807;
+const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const pick = a => a[Math.floor(rnd() * a.length)];
+const gauss = () => { let u = 0, v = 0; while (!u) u = rnd(); while (!v) v = rnd(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
+
+function hashStr(str, seed) {
+  let h = 2166136261 ^ seed;
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+
+/* ── HyperLogLog ──────────────────────────────────────────────────────── */
+class HyperLogLog {
+  constructor(bBits = 6) {
+    this.b = bBits; this.m = 1 << bBits;
+    this.registers = new Uint8Array(this.m);
+    this.alpha = 0.7213 / (1 + 1.079 / this.m);
+    this.exactSet = new Set();
+  }
+  add(item) {
+    this.exactSet.add(item);
+    const h = hashStr(item, 0x9e3779b9);
+    const idx = h & (this.m - 1);
+    let w = h >>> this.b, rank;
+    if (w === 0) rank = 32 - this.b + 1;
+    else { rank = 1; while ((w & 1) === 0) { rank++; w >>>= 1; } }
+    if (rank > this.registers[idx]) this.registers[idx] = rank;
+  }
+  estimate() {
+    let sum = 0, zeros = 0;
+    for (let i = 0; i < this.m; i++) { sum += 2 ** -this.registers[i]; if (!this.registers[i]) zeros++; }
+    let E = this.alpha * this.m * this.m / sum;
+    if (E <= 2.5 * this.m && zeros > 0) E = this.m * Math.log(this.m / zeros);
+    return Math.max(1, Math.round(E));
+  }
+}
+
+/* ── Count-Min Sketch ─────────────────────────────────────────────────── */
+class CountMinSketch {
+  constructor(width = 24, depth = 4) {
+    this.w = width; this.d = depth;
+    this.table = Array.from({ length: depth }, () => new Uint32Array(width));
+    this.seeds = Array.from({ length: depth }, (_, i) => 0x1000193 * (i + 11) + i * 97);
+    this.exact = {};
+  }
+  cols(item) { return this.seeds.map(s => hashStr(item, s) % this.w); }
+  add(item) {
+    this.exact[item] = (this.exact[item] || 0) + 1;
+    const cols = this.cols(item);
+    cols.forEach((c, i) => this.table[i][c]++);
+    return cols;
+  }
+  /* min across rows — a collision can only inflate a counter, never deflate it,
+     so the minimum is the tightest upper bound available. Never under-counts. */
+  estimate(item) { return Math.min(...this.cols(item).map((c, i) => this.table[i][c])); }
+}
+
+/* ── simplified t-digest ──────────────────────────────────────────────── */
+class SimpleDigest {
+  constructor(max = 24) { this.max = max; this.centroids = []; this.count = 0; this.recent = []; }
+  add(x) {
+    this.count++;
+    this.recent.push(x); if (this.recent.length > 400) this.recent.shift();
+    let best = null, bestD = Infinity;
+    for (const c of this.centroids) { const d = Math.abs(c.mean - x); if (d < bestD) { bestD = d; best = c; } }
+    if (best && (this.centroids.length >= this.max || bestD < 4)) {
+      best.mean = (best.mean * best.count + x) / (best.count + 1); best.count++;
+    } else this.centroids.push({ mean: x, count: 1 });
+    if (this.centroids.length > this.max) {
+      this.centroids.sort((a, b) => a.mean - b.mean);
+      let gap = Infinity, idx = 0;
+      for (let i = 0; i < this.centroids.length - 1; i++) {
+        const g = this.centroids[i + 1].mean - this.centroids[i].mean;
+        if (g < gap) { gap = g; idx = i; }
+      }
+      const a = this.centroids[idx], b = this.centroids[idx + 1];
+      this.centroids.splice(idx, 2, { mean: (a.mean * a.count + b.mean * b.count) / (a.count + b.count), count: a.count + b.count });
+    }
+  }
+  percentile(p) {
+    if (!this.centroids.length) return 0;
+    const s = [...this.centroids].sort((a, b) => a.mean - b.mean);
+    let cum = 0, target = p * this.count;
+    for (const c of s) { cum += c.count; if (cum >= target) return c.mean; }
+    return s[s.length - 1].mean;
+  }
+}
+
+/* ── data ─────────────────────────────────────────────────────────────── */
+const USERS = [
+  { name: 'GN', token: '--teal' }, { name: 'Ada', token: '--violet' }, { name: 'Priya', token: '--amber' },
+  { name: 'Kenji', token: '--cat-3' }, { name: 'Mara', token: '--cat-4' }, { name: 'Théo', token: '--cat-5' },
+  { name: 'Sam', token: '--teal' }, { name: 'Lior', token: '--violet' },
+];
+const PAGES = ['Sync protocol notes','Rope buffer design','SwissTable index notes','Ring buffer: SPSC','Why CRDT over OT','RGA node layout','Collaborative editing spec','Diagnostics rules','Pricing tiers','Rollout plan','Formula VM notes','Graph view spec','Discover feature brief','Meeting notes: Aug 4','Roadmap Q3','CRDT reading list','Barnes-Hut summary','HNSW paper notes','Myers diff algorithm','Consistent hashing','Bloom filter primer','Fractional indexing writeup','Version vectors','Merkle-DAG anti-entropy','Onboarding flow'];
+const SEARCHES = ['crdt merge','hnsw','diagnostics rules','sync latency','rope buffer','ring buffer spsc','pricing','graph view','levenshtein','consistent hashing','barnes-hut','myers diff','lamport clock','arena allocator','simd validation','memory ordering'];
+
+const hll = new HyperLogLog(6);
+const cmsPages = new CountMinSketch(24, 4);
+const cmsSearch = new CountMinSketch(24, 4);
+const digest = new SimpleDigest(24);
+
+let eventTotal = 0, editsToday = 0, diagResolved = 214, paused = false;
+const hist = { collab: [], edits: [], diag: [], latency: [] };
+
+/* ── heatmap ──────────────────────────────────────────────────────────── */
+const DAYS = 84, heatData = [];
+for (let i = 0; i < DAYS; i++) {
+  const dow = i % 7;
+  heatData.push(Math.round((dow === 5 || dow === 6) ? rnd() * 3 : 2 + rnd() * 7));
+}
+function heatColor(v) {
+  if (v <= 0) return css('--rule');
+  const t = Math.min(1, v / 10);
+  return `color-mix(in srgb, ${css('--teal')} ${(18 + t * 78).toFixed(0)}%, ${css('--bg')})`;
+}
+function renderHeat() {
+  const wrap = document.getElementById('heatCols');
+  wrap.innerHTML = '';
+  for (let c = 0; c < 12; c++) {
+    const col = document.createElement('div');
+    col.className = 'heat-col';
+    for (let r = 0; r < 7; r++) {
+      const idx = c * 7 + r;
+      const cell = document.createElement('div');
+      cell.className = 'heat-cell' + (idx === DAYS - 1 ? ' today' : '');
+      cell.style.background = heatColor(heatData[idx] || 0);
+      cell.title = `${heatData[idx] || 0} edits${idx === DAYS - 1 ? ' · today' : ''}`;
+      col.appendChild(cell);
+    }
+    wrap.appendChild(col);
+  }
+}
+
+/* ── KPI cards, with compare deltas ───────────────────────────────────── */
+const KPI = [
+  { id: 'collab',  label: 'Active collaborators', badge: 'HyperLogLog', token: '--violet' },
+  { id: 'edits',   label: 'Edits today',          badge: 'exact',       token: '--teal' },
+  { id: 'diag',    label: 'Diagnostics resolved', badge: 'exact',       token: '--amber' },
+  { id: 'latency', label: 'Median sync latency',  badge: 't-digest',    token: '--cat-3' },
+];
+for (const k of KPI) {
+  const el = document.createElement('div');
+  el.className = 'card kpi';
+  el.innerHTML =
+    `<div class="kpi-top"><span class="kpi-label">${k.label}</span><span class="kpi-badge">${k.badge}</span></div>` +
+    `<div class="kpi-value" id="kv-${k.id}">–</div>` +
+    `<div class="kpi-sub" id="ks-${k.id}">&nbsp;</div>` +
+    `<svg class="spark2" id="sp-${k.id}" viewBox="0 0 200 30" preserveAspectRatio="none"></svg>`;
+  kpiGrid.appendChild(el);
+}
+
+/* Compare baselines — a number without a comparison is not information. */
+const COMPARE_FACTOR = { prev_period: .88, prev_week: .81, prev_month: .72, yoy: .46, none: null };
+function deltaHtml(id, value) {
+  const mode = compareSel.value;
+  const f = COMPARE_FACTOR[mode];
+  if (f === null) return '';
+  const before = value * f * (0.94 + (hashStr(id, 7) % 120) / 1000);
+  if (before <= 0) return '';
+  const pct = ((value - before) / before) * 100;
+  const up = pct >= 0;
+  return `<span class="delta ${up ? 'up' : 'down'}">${up ? '↑' : '↓'}${Math.abs(pct).toFixed(0)}%</span>`;
+}
+
+function spark(id, arr, token) {
+  const svg = document.getElementById('sp-' + id);
+  if (arr.length < 2) { svg.innerHTML = ''; return; }
+  const max = Math.max(...arr, 1), min = Math.min(...arr, 0), range = (max - min) || 1;
+  const pts = arr.map((v, i) => `${(i / (arr.length - 1) * 200).toFixed(1)},${(28 - (v - min) / range * 26).toFixed(1)}`).join(' ');
+  const col = css(token);
+  svg.innerHTML =
+    `<polygon points="0,30 ${pts} 200,30" fill="${col}" opacity=".12"/>` +
+    `<polyline points="${pts}" fill="none" stroke="${col}" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>`;
+}
+
+/* ── ticker ───────────────────────────────────────────────────────────── */
+function pushTick(html) {
+  const el = document.createElement('div');
+  el.className = 'tick-item';
+  el.innerHTML = html;
+  tickerList.prepend(el);
+  while (tickerList.children.length > 7) tickerList.removeChild(tickerList.lastChild);
+}
+
+/* ── top lists ────────────────────────────────────────────────────────── */
+function renderTop(containerId, cms, keys, token) {
+  const c = document.getElementById(containerId);
+  const items = keys.map(k => ({ key: k, est: cms.estimate(k), exact: cms.exact[k] || 0 }))
+    .filter(i => i.exact > 0).sort((a, b) => b.est - a.est).slice(0, 6);
+  const max = Math.max(...items.map(i => i.est), 1);
+  c.innerHTML = items.length ? '' : '<div class="muted" style="font-size:12px;padding:10px 0">Waiting for events…</div>';
+  items.forEach((it, i) => {
+    const row = document.createElement('div');
+    row.className = 'toplist-item';
+    const over = it.est > it.exact;
+    row.innerHTML =
+      `<span class="toplist-rank">${i + 1}</span>` +
+      `<div class="toplist-body"><div class="toplist-name">${it.key}</div>` +
+      `<div class="toplist-bar"><div class="fill" style="width:${(it.est / max * 100).toFixed(0)}%;background:${css(token)}"></div></div></div>` +
+      `<div class="toplist-count">~<b>${it.est}</b> · exact ${it.exact}${over ? ' <span style="color:var(--amber)">▲</span>' : ''}</div>`;
+    c.appendChild(row);
+  });
+}
+
+/* ── HLL registers ────────────────────────────────────────────────────── */
+for (let i = 0; i < hll.m; i++) { const b = document.createElement('div'); b.className = 'bar'; b.style.height = '2px'; hllBars.appendChild(b); }
+function renderHLL() {
+  for (let i = 0; i < hll.m; i++) hllBars.children[i].style.height = Math.max(2, hll.registers[i] * 4) + 'px';
+  const est = hll.estimate(), exact = hll.exactSet.size;
+  hllEst.textContent = est; hllExact.textContent = exact;
+  hllErr.textContent = (exact > 0 ? Math.abs(est - exact) / exact * 100 : 0).toFixed(1) + '%';
+}
+
+/* ── CMS table ────────────────────────────────────────────────────────── */
+const ROWS = 4, COLS = 24, cells = [];
+for (let i = 0; i < ROWS * COLS; i++) { const c = document.createElement('div'); c.className = 'cms-cell'; cmsGrid.appendChild(c); cells.push(c); }
+function renderCMS(hit) {
+  let max = 1;
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) max = Math.max(max, cmsPages.table[r][c]);
+  const amber = css('--amber'), rule = css('--rule');
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+    const v = cmsPages.table[r][c], t = Math.log(1 + v) / Math.log(1 + max);
+    const cell = cells[r * COLS + c];
+    cell.style.background = v <= 0 ? rule : `color-mix(in srgb, ${amber} ${(12 + t * 76).toFixed(0)}%, transparent)`;
+    cell.classList.toggle('hit', !!hit && hit.some(([rr, cc]) => rr === r && cc === c));
+  }
+}
+
+/* ── t-digest canvas ──────────────────────────────────────────────────── */
+const dc = document.getElementById('digestCanvas'), dctx = dc.getContext('2d');
+function resizeDigest() {
+  const r = dc.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+  dc.width = r.width * dpr; dc.height = r.height * dpr;
+  dctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+addEventListener('resize', () => { resizeDigest(); renderDigest(); });
+
+function renderDigest() {
+  const r = dc.getBoundingClientRect(), W = r.width, H = r.height;
+  dctx.clearRect(0, 0, W, H);
+  const MIN = 20, MAX = 260, mapX = v => 14 + ((v - MIN) / (MAX - MIN)) * (W - 28), baseY = H * .62;
+
+  dctx.strokeStyle = css('--rule-strong'); dctx.lineWidth = 1;
+  dctx.beginPath(); dctx.moveTo(10, baseY); dctx.lineTo(W - 10, baseY); dctx.stroke();
+
+  const maxC = Math.max(...digest.centroids.map(c => c.count), 1);
+  dctx.fillStyle = css('--teal');
+  for (const c of digest.centroids) {
+    dctx.globalAlpha = .5;
+    dctx.beginPath(); dctx.arc(mapX(c.mean), baseY, 2 + Math.sqrt(c.count / maxC) * 9, 0, 6.284); dctx.fill();
+  }
+  dctx.globalAlpha = 1;
+
+  for (const m of [{ p: .5, l: 'p50', t: '--teal' }, { p: .9, l: 'p90', t: '--amber' }, { p: .99, l: 'p99', t: '--cat-4' }]) {
+    const val = digest.percentile(m.p), x = mapX(val), col = css(m.t);
+    dctx.strokeStyle = col; dctx.lineWidth = 1.4; dctx.setLineDash([3, 3]);
+    dctx.beginPath(); dctx.moveTo(x, 12); dctx.lineTo(x, baseY + 14); dctx.stroke(); dctx.setLineDash([]);
+    dctx.fillStyle = col; dctx.font = '600 10px Inter, sans-serif'; dctx.textAlign = 'center';
+    dctx.fillText(`${m.l} ${val.toFixed(0)}ms`, x, 9);
+  }
+  p50Est.textContent = digest.percentile(.5).toFixed(0) + 'ms';
+  p90Est.textContent = digest.percentile(.9).toFixed(0) + 'ms';
+  p99Est.textContent = digest.percentile(.99).toFixed(0) + 'ms';
+}
+
+/* ── the stream ───────────────────────────────────────────────────────── */
+const latency = () => Math.round(45 + Math.abs(gauss()) * 22 + (rnd() < .05 ? 90 + rnd() * 80 : 0));
+
+function tickEvent() {
+  if (paused) return;
+  eventTotal++;
+  eventCount.textContent = eventTotal;
+  const roll = rnd();
+  if (roll < .58) {
+    const u = pick(USERS), page = pick(PAGES);
+    hll.add(u.name);
+    const cols = cmsPages.add(page);
+    digest.add(latency());
+    editsToday++; heatData[DAYS - 1] = (heatData[DAYS - 1] || 0) + 1;
+    pushTick(`<span class="tick-av" style="background:${css(u.token)}">${u.name.slice(0, 2).toUpperCase()}</span><span><b>${u.name}</b> edited <b>${page}</b></span><span class="tt">now</span>`);
+    cmsItem.textContent = page.length > 26 ? page.slice(0, 24) + '…' : page;
+    cmsEst.textContent = '~' + cmsPages.estimate(page);
+    cmsExact.textContent = cmsPages.exact[page];
+    renderCMS(cols.map((c, i) => [i, c]));
+    renderHeat();
+  } else if (roll < .75) {
+    const u = pick(USERS);
+    hll.add(u.name);
+    pushTick(`<span class="tick-av" style="background:${css(u.token)}">${u.name.slice(0, 2).toUpperCase()}</span><span><b>${u.name}</b> joined the workspace</span><span class="tt">now</span>`);
+  } else {
+    const u = pick(USERS), term = pick(SEARCHES);
+    cmsSearch.add(term);
+    pushTick(`<span class="tick-av" style="background:${css(u.token)}">${u.name.slice(0, 2).toUpperCase()}</span><span><b>${u.name}</b> searched “<b>${term}</b>”</span><span class="tt">now</span>`);
+  }
+
+  renderHLL();
+  renderTop('topPagesList', cmsPages, PAGES, '--amber');
+  renderTop('topSearchList', cmsSearch, SEARCHES, '--violet');
+  renderDigest();
+
+  if (rnd() < .04) diagResolved++;
+  const p50 = digest.percentile(.5), p99 = digest.percentile(.99);
+  const vals = { collab: hll.estimate(), edits: editsToday, diag: diagResolved, latency: p50 };
+
+  document.getElementById('kv-collab').textContent = vals.collab;
+  document.getElementById('ks-collab').innerHTML = `exact <b>${hll.exactSet.size}</b> ${deltaHtml('collab', vals.collab)}`;
+  document.getElementById('kv-edits').textContent = vals.edits;
+  document.getElementById('ks-edits').innerHTML = `${eventTotal} events ${deltaHtml('edits', vals.edits)}`;
+  document.getElementById('kv-diag').textContent = vals.diag;
+  document.getElementById('ks-diag').innerHTML = `this week ${deltaHtml('diag', vals.diag)}`;
+  document.getElementById('kv-latency').textContent = p50.toFixed(0) + 'ms';
+  document.getElementById('ks-latency').innerHTML = `p99 <b>${p99.toFixed(0)}ms</b> ${deltaHtml('latency', p50)}`;
+}
+
+function tickHistory() {
+  if (paused) return;
+  const push = (k, v) => { hist[k].push(v); if (hist[k].length > 24) hist[k].shift(); };
+  push('collab', hll.estimate()); push('edits', editsToday);
+  push('diag', diagResolved); push('latency', digest.percentile(.5));
+  KPI.forEach(k => spark(k.id, hist[k.id], k.token));
+}
+
+rangeSeg.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  rangeSeg.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+});
+compareSel.addEventListener('change', tickEvent);
+pauseBtn.addEventListener('click', () => {
+  paused = !paused;
+  pauseBtn.textContent = paused ? 'Resume' : 'Pause';
+  liveBadge.className = paused ? 'pill amber' : 'pill teal';
+});
+themeBtn.addEventListener('click', () => {
+  const root = document.documentElement;
+  const dark = css('--bg').toLowerCase() === '#16151a';
+  root.setAttribute('data-theme', dark ? 'light' : 'dark');
+  requestAnimationFrame(() => { renderHeat(); renderCMS(null); renderDigest(); tickHistory(); });
+});
+
+resizeDigest(); renderHeat(); renderHLL(); renderCMS(null); renderDigest();
+for (let i = 0; i < 18; i++) tickEvent();
+tickHistory();
+setInterval(tickEvent, 320);
+setInterval(tickHistory, 1000);
+</script>
+</body>
+</html>

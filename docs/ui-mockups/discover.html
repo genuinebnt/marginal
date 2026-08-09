@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<!--
+  Marginal — Discover (NON-FUNCTIONAL DATA, REAL HNSW)
+
+  What IS real — this page builds and queries an actual index:
+    · a from-scratch **HNSW**: layer assignment via randomLevel() with mL = 1/ln(M),
+      greedy descent through upper layers at ef=1, expansion at layer 0, bidirectional
+      neighbour linking with Mmax pruning, entry-point promotion    → Phase 19
+    · the search **trace** — every step play/steppable, with the nodes it touched
+    · **recall@5**, computed by brute-force comparison against the exact answer
+    · the layered diagram is drawn from the index's real neighbour sets
+
+  What is faked: the pages, and the "embedding" — a 2-D synthetic space rather than a
+  real vector. Which matters, see below.
+
+  What this asserts:
+    · **"compared N of M"** is the point of an ANN index. If it visited everything it
+      would be a linear scan with extra steps
+    · **recall is the other half.** Speed without recall is not a result — `ef` is a
+      dial between them, and an honest UI shows both      → Phase 21
+    · Discover is one of three signals. SimHash finds near-*duplicates* lexically,
+      HNSW finds pages *about* the same thing, PageRank ranks by importance. Reciprocal
+      rank fusion combines them                            → Phase 21
+    · degradable — a missed suggestion costs nothing, so this never blocks typing
+
+  Known simplifications, deliberately left for the Rust implementation:
+    · `searchLayer` re-sorts its result set on every expansion. Correct, but the real
+      thing uses two heaps — a min-heap frontier and a max-heap result set — and the
+      whole reason HNSW exists is complexity
+    · distance is 2-D Euclidean. The real index is cosine over normalised embeddings,
+      where this page's geometric intuition breaks down — which is *why* HNSW exists
+      rather than a k-d tree
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Marginal — Discover</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,560&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="mockup.css">
+<style>
+  .split { flex: 1; display: grid; grid-template-columns: 380px 1fr; min-height: 0; }
+  @media (max-width: 1000px) { .split { grid-template-columns: 1fr; } }
+
+  .doc-panel { border-right: 1px solid var(--rule); overflow-y: auto; padding: 26px 24px 40px; }
+  .doc-title { font-family: var(--display); font-weight: 560; font-size: 24px; letter-spacing: -.02em; margin: 6px 0 10px; }
+  .doc-snippet { font-family: var(--serif); font-size: 15px; line-height: 1.6; color: var(--ink-soft); margin: 0 0 14px; }
+
+  .related-head { display: flex; align-items: baseline; gap: 9px; margin: 26px 0 12px; }
+  .related-head h3 { font-family: var(--display); font-weight: 560; font-size: 16px; margin: 0; }
+  .related-head .note2 { font-size: 11.5px; color: var(--ink-faint); }
+
+  .rcard {
+    border: 1px solid var(--rule); border-radius: var(--radius-lg);
+    background: var(--bg-raised); padding: 12px 13px; margin-bottom: 9px; cursor: pointer;
+    transition: transform var(--dur-2) var(--ease-out), border-color var(--dur-2);
+  }
+  .rcard:hover { transform: translateY(-2px); border-color: var(--rule-strong); }
+  .rcard-top { display: flex; align-items: baseline; gap: 10px; }
+  .rcard-title { font-size: 13.5px; font-weight: 500; flex: 1; }
+  .rcard-score { font-family: var(--mono); font-size: 11.5px; color: var(--ink-faint); }
+  .rcard-bar { height: 3px; border-radius: 2px; background: var(--bg-sunken); margin: 8px 0 8px; overflow: hidden; }
+  .rcard-bar .fill { height: 100%; border-radius: 2px; }
+  .rcard-why { font-size: 11.5px; color: var(--ink-faint); line-height: 1.5; }
+  .rcard-tag { display: inline-block; margin-top: 8px; font-size: 10.5px; font-weight: 500; padding: 2px 8px; border-radius: 999px; }
+
+  .internals { display: flex; flex-direction: column; min-width: 0; background: var(--bg-chrome); }
+  .ih { display: flex; align-items: center; gap: 12px; padding: 15px 22px; border-bottom: 1px solid var(--rule); flex-wrap: wrap; }
+  .ih h2 { font-family: var(--display); font-weight: 560; font-size: 16px; margin: 0; }
+  .ih p { margin: 2px 0 0; font-size: 12px; color: var(--ink-faint); }
+
+  .internals-body { flex: 1; display: grid; grid-template-columns: 1fr 268px; min-height: 0; }
+  @media (max-width: 1240px) { .internals-body { grid-template-columns: 1fr; } }
+  .diagram-wrap { position: relative; min-height: 320px; }
+  .diagram-wrap canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+  .narration { border-left: 1px solid var(--rule); padding: 14px 16px; overflow-y: auto; background: var(--bg); }
+  .nline { display: flex; gap: 8px; font-size: 12px; line-height: 1.5; color: var(--ink-soft); padding: 7px 0; border-bottom: 1px solid var(--rule); }
+  .nline.final { color: var(--ink); }
+  .badge2 { font-family: var(--mono); font-size: 9.5px; padding: 1px 5px; border-radius: 4px; background: var(--violet-soft); color: var(--violet); height: fit-content; flex: none; }
+
+  .legend-mini { display: flex; gap: 16px; flex-wrap: wrap; padding: 10px 22px; border-top: 1px solid var(--rule); font-size: 11px; color: var(--ink-faint); }
+  .legend-mini .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 5px; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="topbar">
+    <a class="brand" href="home.html" style="text-decoration:none;color:inherit"><span class="mark"></span>Marginal</a>
+    <nav class="nav">
+      <a href="editor.html">Editor</a>
+      <a href="reader.html">Read</a>
+      <a href="search.html">Search</a>
+      <a href="graph.html">Graph</a>
+      <a href="discover.html" aria-current="page">Discover</a>
+      <a href="history.html">History</a>
+      <a href="admin.html">Admin</a>
+      <a href="settings.html">Settings</a>
+    </nav>
+    <div class="spacer"></div>
+    <button class="icon-btn" id="themeBtn" title="Toggle theme" aria-label="Toggle theme">◐</button>
+    <div class="avatar you">GN</div>
+  </header>
+
+  <div class="split">
+    <aside class="doc-panel">
+      <span class="eyebrow">Currently viewing</span>
+      <h1 class="doc-title">Sync protocol notes</h1>
+      <p class="doc-snippet">Every op carries a stable block id, so peers merge concurrent edits without a conflict dialog. Ordering resolves by comparing Lamport timestamps, then actor id as a tiebreak…</p>
+      <span class="pill violet">Collaboration</span>
+
+      <div class="related-head">
+        <h3>Discover</h3>
+        <span class="note2">by meaning, not links</span>
+      </div>
+      <div id="relatedList"></div>
+
+      <div class="note" style="max-width:none">
+        These are <b>semantic</b> neighbours — pages about the same thing in different words.
+        Lexical near-duplicates come from SimHash and importance from PageRank; all three are
+        fused before display.
+      </div>
+    </aside>
+
+    <section class="internals">
+      <div class="ih">
+        <div>
+          <h2>How Discover found these</h2>
+          <p>A live HNSW index over <span id="statTotal">–</span> pages, built in this page</p>
+        </div>
+        <div class="spacer"></div>
+        <span class="pill" id="pillVisited">compared <b id="statVisited">0</b> pages</span>
+        <span class="pill teal" id="pillRecall">recall@5 —</span>
+        <button class="btn" id="btnReset">Restart</button>
+        <button class="btn" id="btnStep">Step</button>
+        <button class="btn primary" id="btnPlay">Play search</button>
+      </div>
+
+      <div class="internals-body">
+        <div class="diagram-wrap"><canvas id="cv"></canvas></div>
+        <div class="narration">
+          <div class="label" style="margin-bottom:8px">Search trace</div>
+          <div id="narrationList"></div>
+          <div class="note" style="max-width:none;margin-top:14px">
+            <b>Both numbers matter.</b> Visiting few pages is the speed claim; recall is what it
+            cost. <code>ef</code> is the dial between them.
+          </div>
+        </div>
+      </div>
+
+      <div class="legend-mini">
+        <span><span class="dot" style="background:var(--violet)"></span>Visited</span>
+        <span><span class="dot" style="background:var(--teal)"></span>Final top-5</span>
+        <span><span class="dot" style="background:var(--rule-strong)"></span>Not visited</span>
+        <span>★ query page</span>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+/* Seeded — the same index and the same trace on every load. */
+let seed = 20260807;
+const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+/* ── 1. a synthetic embedding space ───────────────────────────────────── */
+const CLUSTER_DEFS = [
+  { key:'systems', token:'--cat-1', label:'Systems & Rust', cx:170, cy:150,
+    titles:['Rope buffer design','SwissTable index notes','Arena allocator patterns','Ring buffer: SPSC','Memory ordering cheatsheet','MaybeUninit patterns','Cache line alignment','Lock-free registry sketch','Generational arena notes','UTF-8 validation via SIMD','Zero-copy buffer forwarding','False sharing case study','Bytes refcounting internals'] },
+  { key:'crdt', token:'--cat-2', label:'Collaboration', cx:520, cy:120,
+    titles:['Sync protocol notes','Why CRDT over OT','RGA node layout','Lamport clocks','Tombstone GC strategy','Causal ordering','Version vectors','Merkle-DAG anti-entropy','Op log compaction','Peer reconciliation flow'] },
+  { key:'product', token:'--cat-3', label:'Product & specs', cx:640, cy:340,
+    titles:['Collaborative editing spec','Diagnostics rules','Pricing tiers','Rollout plan','Formula VM notes','Onboarding flow','Graph view spec','Discover feature brief','Self-host packaging notes','Feature flag policy'] },
+  { key:'team', token:'--cat-4', label:'Team & meetings', cx:300, cy:420,
+    titles:['Meeting notes: Aug 4','Meeting notes: Jul 22','Team Setup','Roadmap Q3','Design review notes','Hiring plan draft','Support rotation','Retro: sync bugs','Standup notes archive'] },
+  { key:'research', token:'--cat-5', label:'Research notes', cx:130, cy:340,
+    titles:['CRDT reading list','Barnes-Hut summary','HNSW paper notes','Myers diff algorithm','Consistent hashing','Bloom filter primer','Fractional indexing writeup','TextRank summary'] },
+];
+const gauss = () => { let u = 0, v = 0; while (!u) u = rnd(); while (!v) v = rnd(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
+
+const allNodes = []; let idc = 0;
+for (const c of CLUSTER_DEFS)
+  for (const title of c.titles)
+    allNodes.push({ id: 'p' + idc++, label: title, cluster: c.key, token: c.token, x: c.cx + gauss() * 46, y: c.cy + gauss() * 40 });
+
+/* Two nudges so cross-cluster discovery is plausible rather than lucky. */
+const nudge = (l, dx, dy) => { const n = allNodes.find(x => x.label === l); n.x += dx; n.y += dy; };
+nudge('Collaborative editing spec', -70, -40);
+nudge('HNSW paper notes', 60, -30);
+
+const nodeById = {}; allNodes.forEach(n => nodeById[n.id] = n);
+const QUERY_ID = allNodes.find(n => n.label === 'Sync protocol notes').id;
+
+/* ── 2. a from-scratch, simplified HNSW ───────────────────────────────── */
+class HNSW {
+  constructor(M = 4, Mmax0 = 6, efC = 12) {
+    this.M = M; this.Mmax0 = Mmax0; this.efC = efC; this.mL = 1 / Math.log(M);
+    this.nodes = {}; this.entryPoint = null; this.maxLevel = -1;
+  }
+  dist(a, b) { const dx = a.x - b.x, dy = a.y - b.y; return Math.sqrt(dx * dx + dy * dy); }
+  randomLevel() { return Math.floor(-Math.log(rnd() || 1e-9) * this.mL); }
+  searchLayer(q, entryIds, ef, layer) {
+    const visited = new Set(entryIds);
+    let frontier = entryIds.map(id => ({ id, d: this.dist(q, this.nodes[id].point) }));
+    let result = frontier.slice();
+    while (frontier.length) {
+      frontier.sort((a, b) => a.d - b.d);
+      const cur = frontier.shift();
+      if (result.length >= ef) {
+        result.sort((a, b) => a.d - b.d);
+        if (cur.d > result[result.length - 1].d) continue;
+      }
+      for (const nid of this.nodes[cur.id].neighbors[layer] || new Set()) {
+        if (visited.has(nid)) continue;
+        visited.add(nid);
+        const d = this.dist(q, this.nodes[nid].point);
+        result.push({ id: nid, d }); frontier.push({ id: nid, d });
+      }
+      result.sort((a, b) => a.d - b.d);
+      if (result.length > ef) result = result.slice(0, ef);
+    }
+    result.sort((a, b) => a.d - b.d);
+    return { result, visited };
+  }
+  insert(id, point) {
+    const level = this.randomLevel();
+    this.nodes[id] = { point, level, neighbors: Array.from({ length: level + 1 }, () => new Set()) };
+    if (this.entryPoint === null) { this.entryPoint = id; this.maxLevel = level; return; }
+    let ep = this.entryPoint;
+    for (let lc = this.maxLevel; lc > level; lc--) {
+      const { result } = this.searchLayer(point, [ep], 1, lc);
+      if (result.length) ep = result[0].id;
+    }
+    for (let lc = Math.min(level, this.maxLevel); lc >= 0; lc--) {
+      const { result } = this.searchLayer(point, [ep], this.efC, lc);
+      const Mm = lc === 0 ? this.Mmax0 : this.M;
+      for (const n of result.slice(0, Mm)) {
+        this.nodes[id].neighbors[lc].add(n.id);
+        this.nodes[n.id].neighbors[lc].add(id);
+        const nl = this.nodes[n.id].neighbors[lc];
+        if (nl.size > Mm) {
+          const arr = [...nl].map(x => ({ id: x, d: this.dist(this.nodes[n.id].point, this.nodes[x].point) }));
+          arr.sort((a, b) => a.d - b.d);
+          this.nodes[n.id].neighbors[lc] = new Set(arr.slice(0, Mm).map(x => x.id));
+        }
+      }
+      if (result.length) ep = result[0].id;
+    }
+    if (level > this.maxLevel) { this.maxLevel = level; this.entryPoint = id; }
+  }
+  query(qId, k) {
+    const q = this.nodes[qId].point;
+    let ep = this.entryPoint;
+    const trace = [], seen = new Set([ep]);
+    for (let lc = this.maxLevel; lc >= 1; lc--) {
+      const { result, visited } = this.searchLayer(q, [ep], 1, lc);
+      visited.forEach(v => seen.add(v));
+      const next = result.length ? result[0].id : ep;
+      trace.push({ layer: lc, type: 'descend', from: ep, to: next, visited: [...visited] });
+      ep = next;
+    }
+    const { result, visited } = this.searchLayer(q, [ep], Math.max(k + 1, 12), 0);
+    visited.forEach(v => seen.add(v));
+    trace.push({ layer: 0, type: 'expand', visited: [...visited], result });
+    seen.delete(qId);
+    return { trace, topResults: result.filter(r => r.id !== qId).slice(0, k), visitedCount: seen.size };
+  }
+}
+
+const index = new HNSW(4, 6, 12);
+const order = [...allNodes];
+for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
+order.forEach(n => index.insert(n.id, { x: n.x, y: n.y }));
+
+const K = 5;
+const { trace, topResults } = index.query(QUERY_ID, K);
+statTotal.textContent = allNodes.length;
+
+/* Recall@k — brute force the exact answer and see how much the index missed.
+   Speed without this number is only half a result. */
+const qp = nodeById[QUERY_ID];
+const exact = allNodes
+  .filter(n => n.id !== QUERY_ID)
+  .map(n => ({ id: n.id, d: Math.hypot(n.x - qp.x, n.y - qp.y) }))
+  .sort((a, b) => a.d - b.d).slice(0, K);
+const exactIds = new Set(exact.map(e => e.id));
+const recall = topResults.filter(r => exactIds.has(r.id)).length / K;
+pillRecall.innerHTML = `recall@${K} <b>${(recall * 100).toFixed(0)}%</b>`;
+pillRecall.className = recall === 1 ? 'pill teal' : 'pill amber';
+
+/* ── 3. the related list ──────────────────────────────────────────────── */
+const score = d => Math.max(6, Math.round(100 / (1 + d / 55)));
+const defOf = k => CLUSTER_DEFS.find(c => c.key === k);
+for (const r of topResults) {
+  const n = nodeById[r.id];
+  const same = n.cluster === nodeById[QUERY_ID].cluster;
+  const s = score(r.d), col = css(n.token);
+  const card = document.createElement('div');
+  card.className = 'rcard';
+  card.innerHTML =
+    `<div class="rcard-top"><div class="rcard-title">${n.label}</div><div class="rcard-score">${s}%</div></div>` +
+    `<div class="rcard-bar"><div class="fill" style="width:${s}%;background:${col}"></div></div>` +
+    `<div class="rcard-why">${same ? 'Close in meaning-space — similar vocabulary and structure.' : 'No direct link, but the embedding places it near this topic.'}</div>` +
+    `<span class="rcard-tag" style="background:color-mix(in srgb, ${col} 16%, transparent);color:${col}">${defOf(n.cluster).label}</span>`;
+  card.addEventListener('mouseenter', () => { manual = r.id; render(); });
+  card.addEventListener('mouseleave', () => { manual = null; render(); });
+  relatedList.appendChild(card);
+}
+
+/* ── 4. the layered diagram ───────────────────────────────────────────── */
+const wrap = document.querySelector('.diagram-wrap');
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+let W, H, bands = [];
+const maxLevel = index.maxLevel;
+const existsAt = (id, l) => index.nodes[id].level >= l;
+
+function layoutBands() {
+  const bh = H / (maxLevel + 1);
+  bands = [];
+  for (let l = maxLevel; l >= 0; l--) bands.push({ layer: l, y: (maxLevel - l) * bh, h: bh });
+}
+function resize() {
+  const dpr = devicePixelRatio || 1;
+  W = wrap.clientWidth; H = wrap.clientHeight;
+  cv.width = W * dpr; cv.height = H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  layoutBands(); render();
+}
+addEventListener('resize', resize);
+const mapX = x => 40 + ((x - 60) / 640) * (W - 80);
+const yIn = (n, b) => b.y + b.h / 2 + ((n.y % 80) - 40) * 0.35;
+
+let step = -1, playing = false, manual = null;
+let revealed = new Set(), pathEdges = [];
+const finalIds = new Set(topResults.map(r => r.id));
+
+function reset() {
+  step = -1; playing = false; revealed = new Set(); pathEdges = [];
+  narrationList.innerHTML = '';
+  statVisited.textContent = '0';
+  btnPlay.textContent = 'Play search';
+  render();
+}
+
+function doStep() {
+  if (step >= trace.length - 1) { playing = false; btnPlay.textContent = 'Play search'; return; }
+  const s = trace[++step];
+  s.visited.forEach(v => revealed.add(v));
+  statVisited.textContent = revealed.size;
+
+  const line = document.createElement('div');
+  line.className = 'nline' + (s.type === 'expand' ? ' final' : '');
+  if (s.type === 'descend') {
+    pathEdges.push({ from: s.from, to: s.to, layer: s.layer });
+    const moved = s.from !== s.to;
+    line.innerHTML = `<span class="badge2">L${s.layer}</span><span>Checked <b>${s.visited.length}</b> neighbour${s.visited.length === 1 ? '' : 's'} of <b>${nodeById[s.from].label}</b>.${moved ? ` Closer: <b>${nodeById[s.to].label}</b>. Descend.` : ' Nothing closer. Descend.'}</span>`;
+  } else {
+    line.innerHTML = `<span class="badge2">L0</span><span>Expanded at layer 0 — checked <b>${s.visited.length}</b> pages, kept the closest ${K}.</span>`;
+  }
+  narrationList.appendChild(line);
+  narrationList.scrollTop = narrationList.scrollHeight;
+  render();
+}
+
+btnStep.addEventListener('click', () => { playing = false; btnPlay.textContent = 'Play search'; doStep(); });
+btnReset.addEventListener('click', reset);
+btnPlay.addEventListener('click', () => {
+  playing = !playing;
+  btnPlay.textContent = playing ? 'Pause' : 'Play search';
+  if (playing) tickPlay();
+});
+function tickPlay() {
+  if (!playing) return;
+  doStep();
+  if (step >= trace.length - 1) { playing = false; btnPlay.textContent = 'Play search'; return; }
+  setTimeout(tickPlay, 900);
+}
+
+function render() {
+  ctx.clearRect(0, 0, W, H);
+  const started = step >= 0;
+  const rule = css('--rule-strong'), ink = css('--ink'), faint = css('--ink-faint');
+  const violet = css('--violet'), teal = css('--teal');
+
+  bands.forEach((band, bi) => {
+    ctx.strokeStyle = rule; ctx.globalAlpha = .5; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, band.y); ctx.lineTo(W, band.y); ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    const here = allNodes.filter(n => existsAt(n.id, band.layer));
+    ctx.font = '600 10px Inter, sans-serif'; ctx.fillStyle = faint; ctx.textAlign = 'left';
+    ctx.fillText(`LAYER ${band.layer}  ·  ${here.length} pages`, 14, band.y + 16);
+
+    ctx.strokeStyle = ink; ctx.globalAlpha = .07; ctx.lineWidth = 1;
+    for (const n of here)
+      for (const mid of index.nodes[n.id].neighbors[band.layer] || new Set()) {
+        if (!existsAt(mid, band.layer) || n.id > mid) continue;
+        const m = nodeById[mid];
+        ctx.beginPath(); ctx.moveTo(mapX(n.x), yIn(n, band)); ctx.lineTo(mapX(m.x), yIn(m, band)); ctx.stroke();
+      }
+    ctx.globalAlpha = 1;
+
+    ctx.strokeStyle = violet; ctx.globalAlpha = .78; ctx.lineWidth = 2;
+    for (const e of pathEdges.filter(e => e.layer === band.layer)) {
+      const a = nodeById[e.from], b = nodeById[e.to];
+      ctx.beginPath(); ctx.moveTo(mapX(a.x), yIn(a, band)); ctx.lineTo(mapX(b.x), yIn(b, band)); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
+    if (bi > 0) {
+      const prev = bands[bi - 1];
+      ctx.strokeStyle = ink; ctx.globalAlpha = .1; ctx.setLineDash([2, 3]);
+      for (const n of here) {
+        if (!existsAt(n.id, prev.layer)) continue;
+        ctx.beginPath(); ctx.moveTo(mapX(n.x), prev.y + prev.h); ctx.lineTo(mapX(n.x), yIn(n, band)); ctx.stroke();
+      }
+      ctx.setLineDash([]); ctx.globalAlpha = 1;
+    }
+
+    for (const n of here) {
+      const x = mapX(n.x), y = yIn(n, band);
+      const isQ = n.id === QUERY_ID, vis = revealed.has(n.id);
+      const fin = finalIds.has(n.id) && band.layer === 0, man = manual === n.id;
+      let r = isQ ? 6.5 : 4.2;
+      if (man) r += 2;
+      ctx.globalAlpha = started ? (vis || isQ || fin ? 1 : .16) : .55;
+      ctx.beginPath(); ctx.arc(x, y, r, 0, 6.284);
+      ctx.fillStyle = fin ? teal : css(n.token); ctx.fill();
+      if (vis && !isQ && !fin) { ctx.lineWidth = 1.5; ctx.strokeStyle = violet; ctx.stroke(); }
+      if (fin) { ctx.lineWidth = 2; ctx.strokeStyle = teal; ctx.stroke(); }
+      if (man) { ctx.lineWidth = 2.5; ctx.strokeStyle = ink; ctx.stroke(); }
+      if (isQ) {
+        ctx.globalAlpha = 1; ctx.fillStyle = ink;
+        ctx.font = '700 11px Inter, sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText('★', x, y - r - 6);
+      }
+      if (man || fin) {
+        ctx.fillStyle = ink; ctx.font = '600 10.5px Inter, sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText(n.label, x, y - r - (isQ ? 18 : 6));
+      }
+      ctx.globalAlpha = 1;
+    }
+  });
+}
+
+themeBtn.addEventListener('click', () => {
+  const root = document.documentElement;
+  const dark = css('--bg').toLowerCase() === '#16151a';
+  root.setAttribute('data-theme', dark ? 'light' : 'dark');
+  requestAnimationFrame(render);
+});
+
+resize();
+reset();
+</script>
+</body>
+</html>

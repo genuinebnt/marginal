@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<!--
+  Marginal — the link graph (NON-FUNCTIONAL DATA, REAL ALGORITHMS)
+
+  Pages plus their [[links]] form a directed graph. ROADMAP § Graphs calls it the
+  richest untapped DSA surface in the product; this page is what it looks like.
+
+  What IS real — every algorithm below runs on the graph in this file:
+    · force layout, seeded and run to convergence once, then frozen
+    · BFS shortest path between two selected pages          → Phase 7
+    · connected components by flood fill                    → Phase 4, OrphanPage
+    · cycle detection by three-colour DFS                   → Phase 4, LinkCycle
+    · forward reachability — the delete saga's blast radius  → Phase 8
+    · in/out degree, graph diameter by all-pairs BFS
+    · BFS **as a wavefront** — the frontier animated level by level, with the real
+      level sizes, because "BFS expands in rings" is a fact you should see once
+    · **Betti numbers** — β₀ from flood fill, β₁ as the cycle rank E − V + β₀, β₁ of
+      the clique complex from the GF(2) rank of the triangle boundary map, and β₂
+      from the Euler characteristic, which needs no third elimination pass
+
+  What is faked: the page titles and edges. There is no index behind this.
+
+  What this asserts:
+    · a three-colour DFS, not a visited set — a visited set finds "seen before",
+      which is not the same as "on the current path"          → ROADMAP § Graphs
+    · orphan detection is a CONNECTED COMPONENTS problem, not "backlinks == 0":
+      a mutually-linked pair with nothing pointing in is still orphaned
+    · the blast radius of a delete is forward reachability, which is why the
+      saga needs it before it starts                          → ARCHITECTURE §5
+    · this is the SAME reverse index the diagnostics engine maintains
+      incrementally — one structure, several readers          → RFC-003 §4
+    · **β₀ and β₁ are properties of the graph; β₂ is a property of a CHOSEN complex.**
+      Filling every triangle is a decision — it declares that three pages citing each
+      other is a local fact rather than a hole. State the choice and the numbers mean
+      something; hide it and they are decoration. This graph really does contain a
+      hollow tetrahedron, which is the only reason β₂ is worth printing
+-->
+
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Marginal — Graph algorithms</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,560&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="mockup.css">
+<style>
+  .stage { flex: 1; position: relative; overflow: hidden; background:
+    radial-gradient(circle at 50% 45%, color-mix(in srgb, var(--violet) 5%, transparent), transparent 62%); }
+  #cv { display: block; width: 100%; height: 100%; cursor: crosshair; }
+
+  .modes { position: absolute; top: 14px; left: 14px; display: flex; gap: 4px; z-index: 5; }
+  .mode {
+    padding: 5px 11px; border-radius: 999px;
+    border: 1px solid var(--rule); background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur));
+    color: var(--ink-soft); font-family: var(--sans); font-size: 11.5px; cursor: pointer;
+  }
+  .mode:hover { color: var(--ink); border-color: var(--rule-strong); }
+  .mode[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+
+  .readout {
+    position: absolute; bottom: 14px; left: 14px; z-index: 5;
+    max-width: 380px; padding: 12px 14px;
+    background: var(--glass-bg); backdrop-filter: blur(var(--glass-blur));
+    border: 1px solid var(--rule-strong); border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-2), var(--glass-edge);
+    font-size: 12.5px; line-height: 1.55; color: var(--ink-soft);
+  }
+  .readout b { color: var(--ink); }
+  .readout .algo { font-family: var(--mono); font-size: 10.5px; color: var(--violet); display: block; margin-bottom: 5px; }
+  .readout .cost { font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint); margin-top: 7px; display: block; }
+
+  .tip {
+    position: absolute; z-index: 6; pointer-events: none; display: none;
+    padding: 6px 9px; border-radius: var(--radius);
+    background: var(--ink); color: var(--bg);
+    font-size: 11.5px; font-weight: 500; white-space: nowrap;
+    box-shadow: var(--shadow-2);
+  }
+  .tip.on { display: block; }
+
+  .metric { display: flex; align-items: baseline; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--rule); }
+  .metric:last-child { border-bottom: 0; }
+  .metric .k { font-size: 12px; color: var(--ink-soft); }
+  .metric .v { margin-left: auto; font-family: var(--mono); font-size: 12.5px; color: var(--ink); }
+  .metric .v.warn { color: var(--amber); }
+
+  /* BFS frontier sizes — the shape of the wavefront, not decoration */
+  .levels {
+    position: absolute; top: 14px; right: 14px; z-index: 5;
+    display: flex; align-items: flex-end; gap: 5px; height: 74px;
+    padding: 10px 12px 8px;
+    background: var(--glass-bg); backdrop-filter: blur(var(--glass-blur));
+    border: 1px solid var(--rule); border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-1), var(--glass-edge);
+  }
+  .levels .lv { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .levels .bar {
+    width: 12px; border-radius: 2px 2px 0 0;
+    background: color-mix(in srgb, var(--violet) 30%, transparent);
+    transition: background var(--dur-1) var(--ease-out);
+  }
+  .levels .lv.on .bar { background: var(--violet); }
+  .levels .lv .n { font-family: var(--mono); font-size: 9px; color: var(--ink-faint); }
+
+  #sigil { display: block; width: 100%; height: 132px; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="topbar">
+    <a class="brand" href="home.html" style="text-decoration:none;color:inherit"><span class="mark"></span>Marginal</a>
+    <nav class="nav">
+      <a href="editor.html">Editor</a>
+      <a href="reader.html">Read</a>
+      <a href="search.html">Search</a>
+      <a href="graph.html" aria-current="page">Graph</a>
+      <a href="discover.html">Discover</a>
+      <a href="history.html">History</a>
+      <a href="admin.html">Admin</a>
+      <a href="settings.html">Settings</a>
+    </nav>
+    <div class="spacer"></div>
+    <span class="muted mono" id="scale">34 pages · 61 links</span>
+    <button class="icon-btn" id="themeBtn" title="Toggle theme" aria-label="Toggle theme">◐</button>
+    <div class="avatar you">GN</div>
+  </header>
+
+  <div class="body-row">
+    <div class="stage">
+      <canvas id="cv"></canvas>
+      <div class="tip" id="tip"></div>
+
+      <div class="modes" role="group" aria-label="Overlay">
+        <button class="mode" aria-pressed="true"  data-mode="plain">Structure</button>
+        <button class="mode" aria-pressed="false" data-mode="components">Components</button>
+        <button class="mode" aria-pressed="false" data-mode="cycles">Cycles</button>
+        <button class="mode" aria-pressed="false" data-mode="path">Shortest path</button>
+        <button class="mode" aria-pressed="false" data-mode="blast">Blast radius</button>
+        <button class="mode" aria-pressed="false" data-mode="wave">Wavefront</button>
+        <button class="mode" aria-pressed="false" data-mode="topology">Topology</button>
+      </div>
+
+      <div class="levels" id="levels" hidden></div>
+
+      <div class="readout" id="readout"></div>
+    </div>
+
+    <aside class="rail right">
+      <div class="rail-head"><span class="label">Graph</span></div>
+      <div class="panel-body">
+        <div class="panel-h">Shape</div>
+        <div class="metric"><span class="k">Pages</span><span class="v" id="mN">—</span></div>
+        <div class="metric"><span class="k">Links</span><span class="v" id="mE">—</span></div>
+        <div class="metric"><span class="k">Components</span><span class="v" id="mC">—</span></div>
+        <div class="metric"><span class="k">Cycles</span><span class="v" id="mCy">—</span></div>
+        <div class="metric"><span class="k">Orphaned</span><span class="v" id="mO">—</span></div>
+        <div class="metric"><span class="k">Diameter</span><span class="v" id="mD">—</span></div>
+
+        <div class="panel-section">
+          <div class="panel-h">Topology</div>
+          <div class="metric"><span class="k">β₀ &middot; components</span><span class="v" id="mB0">—</span></div>
+          <div class="metric"><span class="k">β₁ &middot; cycle rank</span><span class="v" id="mB1">—</span></div>
+          <div class="metric"><span class="k">β₁ &middot; clique complex</span><span class="v" id="mB1c">—</span></div>
+          <div class="metric"><span class="k">β₂ &middot; voids</span><span class="v" id="mB2">—</span></div>
+          <div class="metric"><span class="k">Triangles filled</span><span class="v" id="mTri">—</span></div>
+          <canvas id="sigil" aria-label="Workspace sigil"></canvas>
+          <div class="note" style="margin:2px 0 0;max-width:none">
+            The sigil is <b>drawn from those four numbers and nothing else</b> — β₀ rings,
+            β₁ lobes, edge density as the stroke. Two workspaces with the same shape get the
+            same mark, which is the only reason it is worth showing.
+          </div>
+        </div>
+
+        <div class="panel-section">
+          <div class="panel-h">Why β₁ twice</div>
+          <div class="note" style="margin:0;max-width:none">
+            <b>E − V + β₀</b> counts every independent loop, so a triangle of three pages that
+            all cite each other scores as a hole. Fill the triangles and those vanish, leaving
+            the loops that survive a local explanation. The second number is the interesting
+            one; the gap between them is how much of the graph is just mutual linking.
+          </div>
+        </div>
+
+        <div class="panel-section">
+          <div class="panel-h">Most linked to</div>
+          <div id="topIn"></div>
+        </div>
+
+        <div class="panel-section">
+          <div class="panel-h">Diagnostics this graph produces</div>
+          <div class="check hint"><span class="stripe"></span><div>
+            <div class="msg"><b id="orphanCount">0</b> pages unreachable from any root</div>
+            <div class="meta">OrphanPage · connected components</div>
+          </div></div>
+          <div class="check hint"><span class="stripe"></span><div>
+            <div class="msg"><b id="cycleCount">0</b> link cycles</div>
+            <div class="meta">LinkCycle · three-colour DFS</div>
+          </div></div>
+        </div>
+
+        <div class="panel-section">
+          <div class="panel-h">Why not a visited set</div>
+          <div class="note" style="margin:0;max-width:none">
+            A visited set answers <b>“seen before”</b>. Cycle detection needs
+            <b>“on the current path”</b>, which is a different question — hence grey,
+            amber, black rather than a boolean.
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script>
+/* ── the graph ─────────────────────────────────────────────────────────── */
+const TITLES = [
+  'Collaborative editing spec','Anchors vs offsets','Operation model','Document model',
+  'Diagnostics rules','Symbol table','Reverse index','Incrementality',
+  'CRDT reading list','Peritext','Rope internals','WAL format',
+  'Fractional indexing','Sort key rebalance','LTREE paths','Cascade delete',
+  'Search design','Inverted index','BK-tree','Levenshtein',
+  'Saga — page delete','Compensation','Outbox','NATS subjects',
+  'Session routing','Consistent hashing','Failure detector','Instance registry',
+  'Cloud track','Terraform layout','Backups','Restore drills',
+  'Old meeting notes','Q2 planning'
+];
+
+/* Edges are hand-built so the structure means something: one dense core, a
+   detached cluster, a deliberate 3-cycle, and two isolated pages. */
+const EDGES = [
+  [0,1],[0,2],[0,3],[1,2],[2,3],[3,0],            /* 3→0 closes a cycle */
+  [0,4],[4,5],[5,6],[6,7],[7,4],                  /* diagnostics cycle */
+  [4,6],[5,2],
+  [8,9],[8,10],[9,10],[10,11],[11,2],[8,2],
+  [12,13],[12,14],[14,15],[13,12],                /* 2-cycle */
+  [0,12],[15,20],
+  [16,17],[16,18],[18,19],[17,19],[16,4],[19,18],
+  [20,21],[20,22],[22,23],[21,20],[23,16],[20,15],
+  [24,25],[25,26],[26,27],[27,24],[24,23],
+  [28,29],[28,30],[30,31],[29,28],[31,30],
+  [2,10],[6,17],[13,0],[22,20],[26,24],[3,11],
+  [1,3],[5,4],[7,6],[9,8],[11,10],[17,16],[19,16],[21,22],[25,24],[29,30],[31,28]
+];
+
+const N = TITLES.length;
+const out = Array.from({ length: N }, () => []);
+const inn = Array.from({ length: N }, () => []);
+for (const [a, b] of EDGES) { out[a].push(b); inn[b].push(a); }
+
+/* ── real algorithms ───────────────────────────────────────────────────── */
+
+/* Connected components on the UNDIRECTED projection. Orphan detection is a
+   components question: a mutually-linked pair nothing points into is still
+   orphaned, which "backlinks == 0" would miss. */
+function components() {
+  const comp = new Array(N).fill(-1);
+  let c = 0;
+  for (let s = 0; s < N; s++) {
+    if (comp[s] !== -1) continue;
+    const q = [s]; comp[s] = c;
+    while (q.length) {
+      const v = q.pop();
+      for (const w of out[v].concat(inn[v])) if (comp[w] === -1) { comp[w] = c; q.push(w); }
+    }
+    c++;
+  }
+  return { comp, count: c };
+}
+
+/* Three-colour DFS: white unvisited, grey on the current path, black finished.
+   A grey hit is a back edge — a real cycle. A black hit is merely seen before. */
+function cycles() {
+  const WHITE = 0, GREY = 1, BLACK = 2;
+  const colour = new Array(N).fill(WHITE);
+  const stack = [];
+  const found = [];
+  const onCycle = new Set(), cycleEdges = new Set();
+
+  function dfs(v) {
+    colour[v] = GREY; stack.push(v);
+    for (const w of out[v]) {
+      if (colour[w] === GREY) {
+        const at = stack.indexOf(w);
+        const ring = stack.slice(at);
+        found.push(ring);
+        ring.forEach(x => onCycle.add(x));
+        for (let i = 0; i < ring.length; i++) cycleEdges.add(ring[i] + '>' + ring[(i + 1) % ring.length]);
+      } else if (colour[w] === WHITE) dfs(w);
+    }
+    stack.pop(); colour[v] = BLACK;
+  }
+  for (let v = 0; v < N; v++) if (colour[v] === WHITE) dfs(v);
+  return { found, onCycle, cycleEdges };
+}
+
+/* BFS shortest path — unweighted, so BFS is optimal and Dijkstra is overkill. */
+function shortestPath(src, dst) {
+  const prev = new Array(N).fill(-1);
+  const seen = new Array(N).fill(false);
+  const q = [src]; seen[src] = true;
+  let visited = 0;
+  while (q.length) {
+    const v = q.shift(); visited++;
+    if (v === dst) break;
+    for (const w of out[v]) if (!seen[w]) { seen[w] = true; prev[w] = v; q.push(w); }
+  }
+  if (!seen[dst]) return { path: null, visited };
+  const path = [dst];
+  while (path[0] !== src) path.unshift(prev[path[0]]);
+  return { path, visited };
+}
+
+/* Forward reachability — everything a delete would touch, before it starts. */
+function reachable(src) {
+  const seen = new Set([src]);
+  const q = [src];
+  while (q.length) {
+    const v = q.shift();
+    for (const w of out[v]) if (!seen.has(w)) { seen.add(w); q.push(w); }
+  }
+  return seen;
+}
+
+/* BFS as a WAVEFRONT. Same algorithm as shortestPath, but keeping the level of
+   every node and the tree edge that reached it — which is what makes "BFS expands
+   in rings" visible instead of merely true. */
+function bfsLevels(src) {
+  const dist = new Array(N).fill(-1), parent = new Array(N).fill(-1);
+  dist[src] = 0;
+  const q = [src], levels = [[src]];
+  while (q.length) {
+    const v = q.shift();
+    for (const w of out[v]) if (dist[w] === -1) {
+      dist[w] = dist[v] + 1; parent[w] = v;
+      (levels[dist[w]] ??= []).push(w);
+      q.push(w);
+    }
+  }
+  return { dist, parent, levels, reached: dist.filter(d => d >= 0).length };
+}
+
+/* ── topology ───────────────────────────────────────────────────────────────
+   β₀ is the component count. β₁ is the cycle rank of the undirected projection,
+   E − V + β₀ — an exact count of independent loops, no approximation involved. */
+const UND = (() => {
+  const set = new Set();
+  for (const [a, b] of EDGES) { if (a !== b) set.add(Math.min(a, b) + ':' + Math.max(a, b)); }
+  return [...set].map(s => s.split(':').map(Number));
+})();
+const UADJ = Array.from({ length: N }, () => new Set());
+for (const [a, b] of UND) { UADJ[a].add(b); UADJ[b].add(a); }
+
+/* Every 3-clique. Filling these is a modelling choice, stated rather than hidden:
+   it declares that three pages citing each other is a local fact, not a hole. */
+const TRIANGLES = (() => {
+  const t = [];
+  for (let a = 0; a < N; a++)
+    for (const b of UADJ[a]) if (b > a)
+      for (const c of UADJ[b]) if (c > b && UADJ[a].has(c)) t.push([a, b, c]);
+  return t;
+})();
+
+/* Rank of the triangle boundary map ∂₂ over GF(2), by Gaussian elimination on
+   bitmask rows. β₁(clique complex) = cycleRank − rank(∂₂). */
+function gf2Rank(rows) {
+  const rs = rows.map(r => r);
+  let rank = 0;
+  for (let col = 0; col < UND.length && rank < rs.length; col++) {
+    const bit = 1n << BigInt(col);
+    let p = -1;
+    for (let i = rank; i < rs.length; i++) if (rs[i] & bit) { p = i; break; }
+    if (p === -1) continue;
+    [rs[rank], rs[p]] = [rs[p], rs[rank]];
+    for (let i = 0; i < rs.length; i++) if (i !== rank && (rs[i] & bit)) rs[i] ^= rs[rank];
+    rank++;
+  }
+  return rank;
+}
+
+const D2_ROWS = (() => {
+  const eidx = new Map();
+  UND.forEach(([a, b], i) => eidx.set(a + ':' + b, i));
+  const key = (a, b) => Math.min(a, b) + ':' + Math.max(a, b);
+  return TRIANGLES.map(([a, b, c]) =>
+    (1n << BigInt(eidx.get(key(a, b)))) ^ (1n << BigInt(eidx.get(key(b, c)))) ^ (1n << BigInt(eidx.get(key(a, c)))));
+})();
+
+/* Diameter by all-pairs BFS. O(V·E) — fine at this size, and honest about it. */
+function diameter() {
+  let best = 0;
+  for (let s = 0; s < N; s++) {
+    const d = new Array(N).fill(-1); d[s] = 0;
+    const q = [s];
+    while (q.length) {
+      const v = q.shift();
+      for (const w of out[v]) if (d[w] === -1) { d[w] = d[v] + 1; q.push(w); if (d[w] > best) best = d[w]; }
+    }
+  }
+  return best;
+}
+
+const COMP = components();
+const CYC = cycles();
+const DIAM = diameter();
+
+/* β₀ = components. β₁ = E − V + β₀ on the undirected projection. β₁ of the clique
+   complex subtracts the rank of ∂₂, which is exactly the loops that triangles kill. */
+const BETTI = (() => {
+  const b0 = COMP.count;
+  const cycleRank = UND.length - N + b0;
+  const rank2 = gf2Rank(D2_ROWS);
+  const b1c = cycleRank - rank2;
+  /* χ = V − E + F for the complex, and χ = β₀ − β₁ + β₂ always. So β₂ is free —
+     no third elimination. A non-zero β₂ means a hollow tetrahedron: four pages
+     whose every triangle is filled but whose interior is not. */
+  const chi = N - UND.length + TRIANGLES.length;
+  return { b0, b1: cycleRank, b1c, b2: chi - b0 + b1c, chi, tri: TRIANGLES.length, rank2 };
+})();
+const rootish = new Set([0, 8, 16, 20, 24, 28]);
+const orphanComps = new Set();
+for (let v = 0; v < N; v++) if (rootish.has(v)) orphanComps.add(COMP.comp[v]);
+const orphans = new Set();
+for (let v = 0; v < N; v++) if (!orphanComps.has(COMP.comp[v])) orphans.add(v);
+
+/* ── layout: seeded force sim, run to convergence once, then frozen ────── */
+let seed = 20260807;
+const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+
+const P = Array.from({ length: N }, () => ({ x: rnd() * 800 + 100, y: rnd() * 500 + 60, vx: 0, vy: 0 }));
+(function layout() {
+  const K = 116;
+  for (let iter = 0; iter < 620; iter++) {
+    const cool = 1 - iter / 620;
+    for (let i = 0; i < N; i++) {
+      let fx = 0, fy = 0;
+      for (let j = 0; j < N; j++) {
+        if (i === j) continue;
+        let dx = P[i].x - P[j].x, dy = P[i].y - P[j].y;
+        let d2 = dx * dx + dy * dy || 0.01;
+        const rep = (K * K) / d2;
+        fx += dx * rep; fy += dy * rep;
+      }
+      fx += (500 - P[i].x) * 0.012; fy += (300 - P[i].y) * 0.012;
+      P[i].vx = fx; P[i].vy = fy;
+    }
+    for (const [a, b] of EDGES) {
+      let dx = P[b].x - P[a].x, dy = P[b].y - P[a].y;
+      const d = Math.hypot(dx, dy) || 0.01;
+      const att = (d - K) * 0.06;
+      const ux = dx / d * att, uy = dy / d * att;
+      P[a].vx += ux; P[a].vy += uy; P[b].vx -= ux; P[b].vy -= uy;
+    }
+    for (const p of P) {
+      p.x += Math.max(-14, Math.min(14, p.vx)) * cool;
+      p.y += Math.max(-14, Math.min(14, p.vy)) * cool;
+    }
+  }
+})();
+
+/* ── rendering ─────────────────────────────────────────────────────────── */
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const tip = document.getElementById('tip');
+let mode = 'plain', hover = -1, pick = [], view = { s: 1, ox: 0, oy: 0 };
+let wave = null, waveT = 0, raf = 0;
+const MS_PER_LEVEL = 420;
+
+function css(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+
+function fit() {
+  const r = cv.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+  cv.width = r.width * dpr; cv.height = r.height * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const xs = P.map(p => p.x), ys = P.map(p => p.y);
+  const w = Math.max(...xs) - Math.min(...xs), h = Math.max(...ys) - Math.min(...ys);
+  view.s = Math.min((r.width - 150) / w, (r.height - 130) / h);
+  view.ox = (r.width - w * view.s) / 2 - Math.min(...xs) * view.s;
+  view.oy = (r.height - h * view.s) / 2 - Math.min(...ys) * view.s;
+  draw();
+}
+const sx = i => P[i].x * view.s + view.ox;
+const sy = i => P[i].y * view.s + view.oy;
+
+const PALETTE = () => [css('--violet'), css('--teal'), css('--ai'), css('--amber'), css('--ink-soft'), css('--ink-faint')];
+
+function activeSets() {
+  if (mode === 'path' && pick.length === 2) {
+    const r = shortestPath(pick[0], pick[1]);
+    return { nodes: new Set(r.path || []), edges: edgeSetFromPath(r.path), meta: r };
+  }
+  if (mode === 'blast' && pick.length >= 1) {
+    const s = reachable(pick[0]);
+    return { nodes: s, edges: null };
+  }
+  return { nodes: null, edges: null };
+}
+function edgeSetFromPath(path) {
+  const s = new Set();
+  if (!path) return s;
+  for (let i = 0; i + 1 < path.length; i++) s.add(path[i] + '>' + path[i + 1]);
+  return s;
+}
+
+function draw() {
+  const r = cv.getBoundingClientRect();
+  ctx.clearRect(0, 0, r.width, r.height);
+  const pal = PALETTE(), faint = css('--ink-faint'), ink = css('--ink'), amber = css('--amber');
+  const act = activeSets();
+
+  /* filled triangles — the clique complex, drawn because β₁ changes when they exist */
+  if (mode === 'topology') {
+    for (const [a, b, c] of TRIANGLES) {
+      ctx.globalAlpha = .13;
+      ctx.fillStyle = pal[COMP.comp[a] % pal.length];
+      ctx.beginPath();
+      ctx.moveTo(sx(a), sy(a)); ctx.lineTo(sx(b), sy(b)); ctx.lineTo(sx(c), sy(c)); ctx.closePath();
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  /* edges */
+  for (const [a, b] of EDGES) {
+    const key = a + '>' + b;
+    let stroke = faint, alpha = .28, width = 1;
+    if (mode === 'cycles' && CYC.cycleEdges.has(key)) { stroke = amber; alpha = .95; width = 2; }
+    if (mode === 'components' || mode === 'topology') { stroke = pal[COMP.comp[a] % pal.length]; alpha = mode === 'topology' ? .22 : .3; }
+    if (mode === 'wave') {
+      if (!wave) { alpha = .12; }
+      else {
+        const tree = wave.parent[b] === a, arrived = wave.dist[b] >= 0 && wave.dist[b] <= waveT;
+        stroke = tree && arrived ? css('--violet') : faint;
+        alpha = tree && arrived ? .95 : arrived ? .16 : .05;
+        width = tree && arrived ? 2 : 1;
+      }
+    }
+    if (act.edges && act.edges.has(key)) { stroke = css('--violet'); alpha = 1; width = 2.4; }
+    else if (act.edges) { alpha = .1; }
+    if (act.nodes && !act.edges) { alpha = act.nodes.has(a) && act.nodes.has(b) ? .8 : .08; stroke = act.nodes.has(a) && act.nodes.has(b) ? css('--amber') : faint; }
+    if (hover >= 0 && (a === hover || b === hover)) { stroke = css('--violet'); alpha = 1; width = 2; }
+
+    ctx.globalAlpha = alpha; ctx.strokeStyle = stroke; ctx.lineWidth = width;
+    ctx.beginPath();
+    const x1 = sx(a), y1 = sy(a), x2 = sx(b), y2 = sy(b);
+    const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+    const nx = -(y2 - y1) * .09, ny = (x2 - x1) * .09;
+    ctx.moveTo(x1, y1); ctx.quadraticCurveTo(mx + nx, my + ny, x2, y2); ctx.stroke();
+
+    /* arrowhead — direction matters in a link graph */
+    if (alpha > .5) {
+      const ang = Math.atan2(y2 - (my + ny), x2 - (mx + nx));
+      const rr = nodeR(b) + 3;
+      const ax = x2 - Math.cos(ang) * rr, ay = y2 - Math.sin(ang) * rr;
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.lineTo(ax - Math.cos(ang - .38) * 6, ay - Math.sin(ang - .38) * 6);
+      ctx.lineTo(ax - Math.cos(ang + .38) * 6, ay - Math.sin(ang + .38) * 6);
+      ctx.fillStyle = stroke; ctx.fill();
+    }
+  }
+  ctx.globalAlpha = 1;
+
+  /* nodes */
+  for (let i = 0; i < N; i++) {
+    let fill = css('--ink-soft'), ring = null, alpha = 1;
+    if (mode === 'components' || mode === 'topology') fill = pal[COMP.comp[i] % pal.length];
+    if (mode === 'cycles') { fill = CYC.onCycle.has(i) ? amber : faint; alpha = CYC.onCycle.has(i) ? 1 : .35; }
+    if (mode === 'wave') {
+      const d = wave ? wave.dist[i] : -2;
+      if (d === -2) { fill = faint; alpha = .32; }
+      else if (d < 0) { fill = faint; alpha = .12; }          /* unreachable: never arrives */
+      else if (d <= waveT) { fill = d === 0 ? css('--teal') : css('--violet'); alpha = 1; }
+      else { fill = faint; alpha = .18; }
+    }
+    if (orphans.has(i) && mode !== 'cycles' && mode !== 'wave') { fill = amber; ring = amber; }
+    if (act.nodes) { alpha = act.nodes.has(i) ? 1 : .16; if (act.nodes.has(i)) fill = mode === 'blast' ? amber : css('--violet'); }
+    if (pick.includes(i)) { fill = css('--teal'); ring = css('--teal'); alpha = 1; }
+    if (i === hover) { fill = css('--violet'); alpha = 1; }
+
+    ctx.globalAlpha = alpha;
+    const rr = nodeR(i);
+    if (ring) { ctx.beginPath(); ctx.arc(sx(i), sy(i), rr + 4, 0, 6.284); ctx.strokeStyle = ring; ctx.globalAlpha = alpha * .35; ctx.lineWidth = 2; ctx.stroke(); ctx.globalAlpha = alpha; }
+    ctx.beginPath(); ctx.arc(sx(i), sy(i), rr, 0, 6.284); ctx.fillStyle = fill; ctx.fill();
+
+    if (rr > 7 || i === hover || pick.includes(i)) {
+      ctx.globalAlpha = alpha * .95;
+      ctx.fillStyle = ink; ctx.font = '500 10.5px Inter, sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText(TITLES[i].length > 22 ? TITLES[i].slice(0, 21) + '…' : TITLES[i], sx(i), sy(i) - rr - 6);
+    }
+  }
+  ctx.globalAlpha = 1;
+
+  /* the ripple — one expanding ring per node, at the moment its level arrives.
+     The ring is the frontier; everything inside it already has its final distance. */
+  if (mode === 'wave' && wave) {
+    for (let i = 0; i < N; i++) {
+      const d = wave.dist[i];
+      if (d < 0) continue;
+      const age = waveT - d;
+      if (age < 0 || age >= 1) continue;
+      ctx.globalAlpha = (1 - age) * .5;
+      ctx.strokeStyle = css('--violet');
+      ctx.lineWidth = 2 * (1 - age);
+      ctx.beginPath(); ctx.arc(sx(i), sy(i), nodeR(i) + 4 + age * 26, 0, 6.284); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  renderLevels();
+  readout(act);
+}
+function nodeR(i) { return 4 + Math.min(9, inn[i].length * 1.5); }
+
+/* Frontier size per level — the actual numbers, which is what makes the point:
+   BFS is not "visit everything", it is a queue whose width is the graph's own shape. */
+function renderLevels() {
+  const el = document.getElementById('levels');
+  if (mode !== 'wave' || !wave) { el.hidden = true; return; }
+  el.hidden = false;
+  const max = Math.max(...wave.levels.map(l => l.length));
+  el.innerHTML = wave.levels.map((l, d) =>
+    `<div class="lv ${d <= waveT ? 'on' : ''}">
+       <span class="n">${l.length}</span>
+       <span class="bar" style="height:${6 + (l.length / max) * 42}px"></span>
+       <span class="n">${d}</span>
+     </div>`).join('');
+}
+
+function readout(act) {
+  const el = document.getElementById('readout');
+  if (mode === 'path') {
+    if (pick.length < 2) { el.innerHTML = '<span class="algo">BFS · unweighted</span>Click <b>two pages</b> to find the shortest link path between them.'; return; }
+    const r = shortestPath(pick[0], pick[1]);
+    el.innerHTML = r.path
+      ? `<span class="algo">BFS · unweighted shortest path</span><b>${r.path.length - 1} hop${r.path.length === 2 ? '' : 's'}</b> — ${r.path.map(i => TITLES[i]).join(' → ')}<span class="cost">visited ${r.visited} of ${N} nodes · BFS is optimal here because every edge costs the same, so Dijkstra would only add a heap</span>`
+      : `<span class="algo">BFS · unweighted shortest path</span><b>No path.</b> ${TITLES[pick[1]]} is not reachable from ${TITLES[pick[0]]} by following links.<span class="cost">visited ${r.visited} nodes before exhausting the frontier</span>`;
+  } else if (mode === 'blast') {
+    if (!pick.length) { el.innerHTML = '<span class="algo">forward reachability</span>Click a page to see everything a delete would touch.'; return; }
+    const s = reachable(pick[0]);
+    el.innerHTML = `<span class="algo">forward reachability · BFS closure</span>Deleting <b>${TITLES[pick[0]]}</b> reaches <b>${s.size - 1} other page${s.size === 2 ? '' : 's'}</b>.<span class="cost">the saga computes this before it starts, so compensation knows what it must undo — ARCHITECTURE §5</span>`;
+  } else if (mode === 'wave') {
+    if (!wave) { el.innerHTML = '<span class="algo">BFS · frontier by level</span>Click a page to <b>watch BFS expand</b>. Each ring is one level of the queue.'; return; }
+    const done = waveT >= wave.levels.length;
+    el.innerHTML = `<span class="algo">BFS · frontier by level</span>From <b>${TITLES[pick[0]]}</b>: ${wave.levels.length} level${wave.levels.length === 1 ? '' : 's'}, <b>${wave.reached} of ${N}</b> pages reached${done ? '' : ` — level <b>${Math.min(wave.levels.length - 1, Math.floor(waveT))}</b> arriving`}.<span class="cost">frontier widths ${wave.levels.map(l => l.length).join(' → ')} · the ${N - wave.reached} unreached pages are unreachable by following links, not merely far</span>`;
+  } else if (mode === 'topology') {
+    el.innerHTML = `<span class="algo">Betti numbers · β₀ flood fill, β₁ = E − V + β₀</span><b>β₀ = ${BETTI.b0}</b> pieces, <b>β₁ = ${BETTI.b1}</b> independent loops. Fill the ${BETTI.tri} triangles and <b>${BETTI.b1c}</b> survive${BETTI.b2 ? `, leaving <b>β₂ = ${BETTI.b2}</b> void${BETTI.b2 === 1 ? '' : 's'} — four pages whose every triangle is filled but whose middle is not` : ''}.<span class="cost">the ${BETTI.b1 - BETTI.b1c} loops that vanished were mutual-linking triangles · rank(∂₂) = ${BETTI.rank2} over GF(2) · β₂ comes from χ = ${BETTI.chi} for free, but only means something because filling triangles was a stated choice</span>`;
+  } else if (mode === 'cycles') {
+    el.innerHTML = `<span class="algo">three-colour DFS</span>Found <b>${CYC.found.length} cycle${CYC.found.length === 1 ? '' : 's'}</b>. A grey hit is a back edge — a page that links, eventually, back to itself.<span class="cost">a visited set would flag every re-encounter, including the harmless ones</span>`;
+  } else if (mode === 'components') {
+    el.innerHTML = `<span class="algo">connected components · flood fill</span><b>${COMP.count} components.</b> Anything in a component with no root page is orphaned — <b>${orphans.size} pages</b> here.<span class="cost">this is why OrphanPage is not "backlinks == 0": a mutually-linked pair with nothing pointing in still has backlinks</span>`;
+  } else {
+    el.innerHTML = `<span class="algo">the [[link]] graph</span>Node size is <b>in-degree</b> — how many pages link here. Amber rings mark orphans. Hover a page to isolate its neighbourhood, or pick an overlay above.<span class="cost">${N} pages · ${EDGES.length} links · diameter ${DIAM}</span>`;
+  }
+}
+
+/* ── interaction ───────────────────────────────────────────────────────── */
+function hit(mx, my) {
+  for (let i = 0; i < N; i++) if (Math.hypot(mx - sx(i), my - sy(i)) < nodeR(i) + 6) return i;
+  return -1;
+}
+cv.addEventListener('mousemove', e => {
+  const r = cv.getBoundingClientRect();
+  const mx = e.clientX - r.left, my = e.clientY - r.top;
+  const h = hit(mx, my);
+  if (h !== hover) { hover = h; draw(); }
+  if (h >= 0) {
+    tip.classList.add('on');
+    tip.textContent = `${TITLES[h]} · ${inn[h].length} in · ${out[h].length} out`;
+    tip.style.left = (mx + 14) + 'px'; tip.style.top = (my + 14) + 'px';
+  } else tip.classList.remove('on');
+});
+cv.addEventListener('mouseleave', () => { hover = -1; tip.classList.remove('on'); draw(); });
+cv.addEventListener('click', e => {
+  const r = cv.getBoundingClientRect();
+  const h = hit(e.clientX - r.left, e.clientY - r.top);
+  if (h < 0) return;
+  if (mode === 'blast') pick = [h];
+  else if (mode === 'path') { pick.push(h); if (pick.length > 2) pick = [h]; }
+  else pick = [h];
+  if (mode === 'wave') startWave(h);
+  else draw();
+});
+
+function startWave(src) {
+  wave = bfsLevels(src); wave.t0 = 0; waveT = 0;
+  if (raf) cancelAnimationFrame(raf);
+  raf = requestAnimationFrame(tick);
+}
+function tick(ts) {
+  raf = 0;
+  if (mode !== 'wave' || !wave) return;
+  if (!wave.t0) wave.t0 = ts;
+  waveT = (ts - wave.t0) / MS_PER_LEVEL;
+  if (waveT >= wave.levels.length) waveT = wave.levels.length;
+  draw();
+  if (waveT < wave.levels.length) raf = requestAnimationFrame(tick);
+}
+
+document.querySelectorAll('.mode').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('.mode').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+    mode = b.dataset.mode; pick = [];
+    if (raf) { cancelAnimationFrame(raf); raf = 0; }
+    wave = null; waveT = 0;
+    draw();
+  });
+});
+
+document.getElementById('themeBtn').addEventListener('click', () => {
+  const root = document.documentElement;
+  const dark = getComputedStyle(root).getPropertyValue('--bg').trim().toLowerCase() === '#16151a';
+  root.setAttribute('data-theme', dark ? 'light' : 'dark');
+  draw(); drawSigil();
+});
+
+/* ── the sigil ──────────────────────────────────────────────────────────────
+   A deterministic mark derived from (β₀, β₁ of the clique complex, V, E) and
+   nothing else. β₀ concentric rings, β₁ lobes on a rose curve, edge density as
+   the stroke weight. It identifies a workspace's SHAPE — same shape, same mark. */
+function drawSigil() {
+  const c = document.getElementById('sigil');
+  const g = c.getContext('2d');
+  const r = c.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+  c.width = r.width * dpr; c.height = 132 * dpr;
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, r.width, 132);
+
+  const cx = r.width / 2, cy = 60, R = 44;
+  const density = UND.length / N;
+  g.lineWidth = 0.7 + Math.min(2.1, density * 0.55);
+  g.lineJoin = 'round';
+
+  for (let k = 0; k < BETTI.b0; k++) {
+    g.globalAlpha = 0.9 - k * (0.55 / Math.max(1, BETTI.b0));
+    g.strokeStyle = k === 0 ? css('--violet') : css('--ink-faint');
+    g.beginPath(); g.arc(cx, cy, 13 + k * (R - 13) / Math.max(1, BETTI.b0 - 1 || 1), 0, 6.284); g.stroke();
+  }
+
+  const lobes = Math.max(1, BETTI.b1c);
+  g.globalAlpha = 1; g.strokeStyle = css('--teal');
+  g.beginPath();
+  for (let i = 0; i <= 720; i++) {
+    const th = i / 720 * 6.283185, rr = R * (0.60 + 0.30 * Math.cos(lobes * th));
+    const x = cx + Math.cos(th) * rr, y = cy + Math.sin(th) * rr;
+    i ? g.lineTo(x, y) : g.moveTo(x, y);
+  }
+  g.closePath(); g.stroke();
+
+  g.globalAlpha = .85;
+  g.fillStyle = css('--ink-faint');
+  g.font = '500 9.5px ui-monospace, monospace'; g.textAlign = 'center';
+  g.fillText(`β₀ ${BETTI.b0} · β₁ ${BETTI.b1c} · ${N}V ${UND.length}E`, cx, 124);
+}
+
+/* panel numbers, from the real results */
+document.getElementById('mN').textContent = N;
+document.getElementById('mE').textContent = EDGES.length;
+document.getElementById('mC').textContent = COMP.count;
+document.getElementById('mCy').textContent = CYC.found.length;
+document.getElementById('mD').textContent = DIAM;
+document.getElementById('mB0').textContent = BETTI.b0;
+document.getElementById('mB1').textContent = BETTI.b1;
+document.getElementById('mB1c').textContent = BETTI.b1c;
+document.getElementById('mB2').textContent = BETTI.b2;
+document.getElementById('mTri').textContent = BETTI.tri;
+const mo = document.getElementById('mO'); mo.textContent = orphans.size; if (orphans.size) mo.classList.add('warn');
+document.getElementById('orphanCount').textContent = orphans.size;
+document.getElementById('cycleCount').textContent = CYC.found.length;
+document.getElementById('scale').textContent = `${N} pages · ${EDGES.length} links`;
+
+const ranked = [...Array(N).keys()].sort((a, b) => inn[b].length - inn[a].length).slice(0, 5);
+document.getElementById('topIn').innerHTML = ranked.map(i =>
+  `<div class="row"><span class="lead">${String(inn[i].length).padStart(2)}</span>${TITLES[i]}</div>`).join('');
+
+addEventListener('resize', () => { fit(); drawSigil(); });
+fit();
+drawSigil();
+</script>
+</body>
+</html>

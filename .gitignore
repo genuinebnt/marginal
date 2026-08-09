@@ -1,0 +1,34 @@
+# Rust build artifacts
+/target/
+
+# Environment secrets (never commit)
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker volumes (if local)
+docker-data/
+
+# Keys
+*.pem
+*.key
+
+# Node
+node_modules/
+
+# Generated PDF artifacts (regeneratable from scripts/)
+BitTree-Feature-Roadmap.html
+
+# macOS
+.DS_Store

@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<!--
+  Marginal — performance console (REAL MEASUREMENTS, SYNTHETIC WORKLOAD)
+
+  Reached from Admin. The numbers on the left are measured in your browser right
+  now; the numbers on the right describe a service that does not exist yet.
+
+  What IS real — computed or measured in this page:
+    · the scan benchmark actually runs, timed with performance.now(), on your
+      machine. Naive byte loop vs the engine's vectorised search — the same
+      gap `memchr` buys over a hand-rolled loop in Rust        → Phase 3
+    · latency percentiles computed over log-spaced buckets, HDR-style, from
+      the sample set — p50/p90/p99/p99.9 are read off the histogram
+    · the bundle treemap uses a real squarified-treemap layout
+    · the flame graph is laid out from a call tree, not drawn by hand
+
+  What is synthetic: the sample distributions and the bundle sizes.
+
+  What this asserts:
+    · ack latency is measured against the LOCAL WAL FSYNC, not Postgres. The
+      client is acknowledged after the log is durable                → ARCHITECTURE §4
+    · queue depth is a leading indicator and latency is a lagging one, so
+      the bounded `ArrayQueue` is the thing to watch                 → RFC-002
+    · p99 is the number that matters in an editor. A p50 of 2 ms with a p99
+      of 400 ms is a keystroke that visibly stalls, several times a minute
+    · wasm bundle size is a product constraint, not a build detail — it is
+      downloaded before anyone can type                              → ADR-004
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Marginal — Performance</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,560&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="mockup.css">
+<style>
+  .perf { padding: 26px 0 60px; }
+  .panelbox {
+    background: var(--bg-raised); border: 1px solid var(--rule);
+    border-radius: var(--radius-lg); padding: 16px 18px;
+  }
+  .panelbox + .panelbox { margin-top: 14px; }
+  .box-h { display: flex; align-items: baseline; gap: 9px; margin-bottom: 12px; }
+  .box-h h3 { font-family: var(--display); font-weight: 560; font-size: 15px; letter-spacing: -.01em; margin: 0; }
+  .box-h .why { font-size: 11.5px; color: var(--ink-faint); }
+
+  canvas { display: block; width: 100%; }
+
+  .pct { display: flex; gap: 18px; margin-top: 12px; flex-wrap: wrap; }
+  .pct div { display: flex; flex-direction: column; gap: 2px; }
+  .pct .l { font-size: 10px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-faint); }
+  .pct .v { font-family: var(--display); font-weight: 560; font-size: 20px; letter-spacing: -.015em; }
+  .pct .v.bad { color: var(--amber); }
+
+  .bench { display: flex; flex-direction: column; gap: 9px; margin-top: 4px; }
+  .brow { display: flex; align-items: center; gap: 10px; }
+  .brow .name { width: 150px; font-size: 12.5px; }
+  .brow .track { flex: 1; height: 20px; background: var(--bg-sunken); border-radius: 4px; overflow: hidden; }
+  .brow .fill { height: 100%; border-radius: 4px; transition: width .5s var(--ease-out); }
+  .brow .num { width: 108px; text-align: right; font-family: var(--mono); font-size: 11.5px; color: var(--ink-soft); }
+
+  .legend2 { display: flex; gap: 14px; font-size: 11px; color: var(--ink-faint); margin-top: 10px; flex-wrap: wrap; }
+  .legend2 span { display: inline-flex; align-items: center; gap: 5px; }
+  .legend2 i { width: 9px; height: 9px; border-radius: 2px; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="topbar">
+    <a class="brand" href="home.html" style="text-decoration:none;color:inherit"><span class="mark"></span>Marginal</a>
+    <nav class="nav">
+      <a href="editor.html">Editor</a>
+      <a href="reader.html">Read</a>
+      <a href="search.html">Search</a>
+      <a href="graph.html">Graph</a>
+      <a href="discover.html">Discover</a>
+      <a href="history.html">History</a>
+      <a href="admin.html" aria-current="page">Admin</a>
+      <a href="settings.html">Settings</a>
+    </nav>
+    <div class="spacer"></div>
+    <span class="pill teal" id="verdict">within budget</span>
+    <button class="icon-btn" id="themeBtn" title="Toggle theme" aria-label="Toggle theme">◐</button>
+    <button class="btn" id="rerun">Re-run benchmark</button>
+  </header>
+
+  <div class="body-row">
+    <aside class="rail">
+      <div class="rail-head"><span class="label">Profile</span></div>
+      <div class="rail-scroll">
+        <a class="tree-item active" href="#"><span class="bullet"></span>Editor core · wasm32</a>
+        <a class="tree-item" href="#"><span class="bullet"></span>collaboration-service</a>
+        <a class="tree-item" href="#"><span class="bullet"></span>document-service</a>
+        <a class="tree-item" href="#"><span class="bullet"></span>search-service</a>
+        <div class="hr"></div>
+        <div class="label" style="padding:0 8px 6px">Budgets</div>
+        <div class="row" style="cursor:default"><span class="lead">ack</span>p99 &lt; 16 ms</div>
+        <div class="row" style="cursor:default"><span class="lead">wasm</span>&lt; 900 KB gz</div>
+        <div class="row" style="cursor:default"><span class="lead">queue</span>depth &lt; 60%</div>
+      </div>
+    </aside>
+
+    <main class="page">
+      <div class="wrap perf">
+
+        <div class="grid c2" style="align-items:start">
+          <div>
+            <!-- MEASURED HERE -->
+            <div class="panelbox">
+              <div class="box-h">
+                <h3>Scan throughput</h3>
+                <span class="pill teal">measured on your machine</span>
+              </div>
+              <p class="muted" style="margin:0 0 12px;font-size:12.5px;line-height:1.55">
+                The scanner walks block text looking for input-rule triggers. A hand-rolled byte loop
+                against a vectorised search is the same trade <code>memchr</code> buys in Rust — and
+                the reason it is on the Phase 3 list rather than treated as a micro-optimisation.
+              </p>
+              <div class="bench" id="bench"></div>
+              <div class="legend2">
+                <span><i style="background:var(--amber)"></i>naive byte loop</span>
+                <span><i style="background:var(--teal)"></i>vectorised search</span>
+                <span class="muted" id="benchNote"></span>
+              </div>
+            </div>
+
+            <div class="panelbox">
+              <div class="box-h">
+                <h3>Op acknowledgement latency</h3>
+                <span class="why">measured against the local WAL fsync, not Postgres</span>
+              </div>
+              <canvas id="hist" height="150"></canvas>
+              <div class="pct" id="pcts"></div>
+              <p class="muted" style="margin:12px 0 0;font-size:12px;line-height:1.6">
+                Log-spaced buckets, HDR-style — a linear histogram spends all its resolution on the
+                common case and none on the tail, which is the only part anyone cares about.
+                <b style="color:var(--ink)">p99 is the number.</b> A p50 of 2 ms with a p99 of 400 ms
+                is a keystroke that visibly stalls several times a minute.
+              </p>
+            </div>
+          </div>
+
+          <div>
+            <div class="panelbox">
+              <div class="box-h">
+                <h3>Op buffer depth</h3>
+                <span class="why">leading indicator — latency is the lagging one</span>
+              </div>
+              <canvas id="queue" height="132"></canvas>
+              <p class="muted" style="margin:11px 0 0;font-size:12px;line-height:1.6">
+                The bounded <code>ArrayQueue</code> between the session loop and the flush task.
+                Depth rising means the flusher is losing; the amber band is where back-pressure
+                engages and the session loop starts waiting. Watching this catches a stall a few
+                seconds before the latency histogram does.
+              </p>
+            </div>
+
+            <div class="panelbox">
+              <div class="box-h">
+                <h3>Editor core bundle</h3>
+                <span class="why">downloaded before anyone can type</span>
+              </div>
+              <canvas id="tree" height="210"></canvas>
+              <div class="legend2" id="treeLegend"></div>
+              <p class="muted" style="margin:11px 0 0;font-size:12px;line-height:1.6">
+                Squarified treemap over the <code>twiggy</code> output. The grammars are the
+                interesting cell: syntax highlighting is a third of the bundle, and it is the one
+                part that could load on demand — nobody opens a code block in the first second.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="panelbox">
+          <div class="box-h">
+            <h3>Where a keystroke goes</h3>
+            <span class="why">one op, applied locally then flushed — width is time</span>
+          </div>
+          <canvas id="flame" height="176"></canvas>
+          <p class="muted" style="margin:11px 0 0;font-size:12px;line-height:1.6">
+            The wide frame is <code>fsync</code>, and that is correct rather than a problem: the
+            client is acknowledged once the write-ahead log is durable, which is what makes an
+            acknowledgement mean something. Moving it off the critical path would make the editor
+            feel faster and be lying.
+          </p>
+        </div>
+
+        <div class="note" style="max-width:none">
+          <b>Half real.</b> The scan benchmark runs on your machine and the percentiles, treemap
+          layout, and flame layout are all computed. The sample distributions and bundle sizes are
+          synthetic — there is no service behind this yet.
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script>
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const dpr = () => devicePixelRatio || 1;
+function prep(cv, h) {
+  const r = cv.getBoundingClientRect();
+  cv.width = r.width * dpr(); cv.height = h * dpr();
+  cv.style.height = h + 'px';
+  const c = cv.getContext('2d');
+  c.setTransform(dpr(), 0, 0, dpr(), 0, 0);
+  c.clearRect(0, 0, r.width, h);
+  return { c, w: r.width, h };
+}
+
+/* ── 1. A benchmark that actually runs ─────────────────────────────────── */
+function runBench() {
+  const SIZE = 1 << 21;                       /* 2 MiB */
+  const buf = new Uint8Array(SIZE);
+  for (let i = 0; i < SIZE; i++) buf[i] = 97 + (i % 26);
+  buf[SIZE - 3] = 35;                          /* '#' — the needle, at the far end */
+  const str = String.fromCharCode(...buf.subarray(0, 1 << 16));
+  const bigStr = str.repeat(SIZE >> 16).slice(0, SIZE - 1) + '#';
+
+  function time(fn, reps) {
+    fn();                                      /* warm the JIT */
+    const t0 = performance.now();
+    for (let i = 0; i < reps; i++) fn();
+    return (performance.now() - t0) / reps;
+  }
+
+  const naive = time(() => { for (let i = 0; i < SIZE; i++) if (buf[i] === 35) return i; return -1; }, 12);
+  const vec   = time(() => bigStr.indexOf('#'), 12);
+
+  const mbNaive = (SIZE / 1048576) / (naive / 1000);
+  const mbVec   = (SIZE / 1048576) / (vec / 1000);
+  const worst = Math.max(mbNaive, mbVec);
+
+  document.getElementById('bench').innerHTML = `
+    <div class="brow"><span class="name">Naive byte loop</span>
+      <span class="track"><span class="fill" style="width:${(mbNaive / worst * 100).toFixed(1)}%;background:${css('--amber')}"></span></span>
+      <span class="num">${mbNaive.toFixed(0)} MB/s</span></div>
+    <div class="brow"><span class="name">Vectorised search</span>
+      <span class="track"><span class="fill" style="width:${(mbVec / worst * 100).toFixed(1)}%;background:${css('--teal')}"></span></span>
+      <span class="num">${mbVec.toFixed(0)} MB/s</span></div>`;
+  document.getElementById('benchNote').textContent =
+    `${(mbVec / mbNaive).toFixed(1)}× over 2 MiB, 12 reps`;
+}
+
+/* ── 2. Latency histogram with real percentiles ────────────────────────── */
+const samples = (() => {
+  let s = 424242;
+  const rnd = () => ((s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+  const out = [];
+  for (let i = 0; i < 20000; i++) {
+    /* a tight body around 3 ms, with a fsync-shaped tail */
+    let v = 1.4 + Math.abs(rnd() + rnd() + rnd() - 1.5) * 3.2;
+    if (rnd() < 0.012) v += rnd() * 40;        /* page cache miss */
+    if (rnd() < 0.0014) v += rnd() * 220;      /* fsync stall */
+    out.push(v);
+  }
+  return out.sort((a, b) => a - b);
+})();
+const pct = p => samples[Math.min(samples.length - 1, Math.floor(p / 100 * samples.length))];
+
+function drawHist() {
+  const { c, w, h } = prep(document.getElementById('hist'), 150);
+  const lo = 1, hi = 512, BUCKETS = 46;
+  const at = v => Math.log(Math.max(v, lo) / lo) / Math.log(hi / lo);
+  const counts = new Array(BUCKETS).fill(0);
+  for (const v of samples) counts[Math.min(BUCKETS - 1, Math.floor(at(v) * BUCKETS))]++;
+  const max = Math.max(...counts);
+  const bw = w / BUCKETS;
+
+  for (let i = 0; i < BUCKETS; i++) {
+    const bh = (counts[i] / max) * (h - 30);
+    const centre = lo * Math.pow(hi / lo, (i + .5) / BUCKETS);
+    c.fillStyle = centre > pct(99) ? css('--amber') : css('--violet');
+    c.globalAlpha = centre > pct(99) ? .95 : .55;
+    c.fillRect(i * bw + .5, h - 22 - bh, bw - 1.5, bh);
+  }
+  c.globalAlpha = 1;
+
+  [[50, '--teal'], [99, '--amber'], [99.9, '--amber']].forEach(([p, col]) => {
+    const x = at(pct(p)) * w;
+    c.strokeStyle = css(col); c.lineWidth = 1; c.setLineDash([3, 3]);
+    c.beginPath(); c.moveTo(x, 4); c.lineTo(x, h - 22); c.stroke(); c.setLineDash([]);
+    c.fillStyle = css(col); c.font = '600 9.5px Inter, sans-serif'; c.textAlign = 'center';
+    c.fillText('p' + p, x, 12);
+  });
+
+  c.fillStyle = css('--ink-faint'); c.font = '10px ui-monospace, monospace'; c.textAlign = 'center';
+  [1, 4, 16, 64, 256].forEach(t => c.fillText(t + 'ms', at(t) * w, h - 6));
+
+  document.getElementById('pcts').innerHTML = [50, 90, 99, 99.9].map(p =>
+    `<div><span class="l">p${p}</span><span class="v ${pct(p) > 16 ? 'bad' : ''}">${pct(p).toFixed(1)}<span style="font-size:11px;color:var(--ink-faint)"> ms</span></span></div>`
+  ).join('') + `<div><span class="l">samples</span><span class="v">${(samples.length / 1000).toFixed(0)}k</span></div>`;
+
+  document.getElementById('verdict').textContent = pct(99) > 16 ? 'p99 over budget' : 'within budget';
+  document.getElementById('verdict').className = pct(99) > 16 ? 'pill amber' : 'pill teal';
+}
+
+/* ── 3. Queue depth ────────────────────────────────────────────────────── */
+function drawQueue() {
+  const { c, w, h } = prep(document.getElementById('queue'), 132);
+  let s = 90210; const rnd = () => ((s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+  const pts = []; let v = 12;
+  for (let i = 0; i < 150; i++) {
+    v += (rnd() - .47) * 7;
+    if (i > 78 && i < 104) v += 3.4;           /* a burst */
+    v = Math.max(0, Math.min(100, v));
+    pts.push(v);
+  }
+  /* back-pressure band */
+  c.fillStyle = css('--amber'); c.globalAlpha = .1;
+  c.fillRect(0, 0, w, h * .4); c.globalAlpha = 1;
+  c.fillStyle = css('--ink-faint'); c.font = '9.5px Inter, sans-serif'; c.textAlign = 'left';
+  c.fillText('back-pressure engages', 6, h * .4 - 6);
+
+  c.beginPath(); c.moveTo(0, h);
+  pts.forEach((p, i) => c.lineTo(i / (pts.length - 1) * w, h - (p / 100) * h));
+  c.lineTo(w, h); c.closePath();
+  c.fillStyle = css('--violet'); c.globalAlpha = .13; c.fill(); c.globalAlpha = 1;
+
+  c.beginPath();
+  pts.forEach((p, i) => { const x = i / (pts.length - 1) * w, y = h - (p / 100) * h; i ? c.lineTo(x, y) : c.moveTo(x, y); });
+  c.strokeStyle = css('--violet'); c.lineWidth = 1.6; c.lineJoin = 'round'; c.stroke();
+
+  pts.forEach((p, i) => {
+    if (p <= 60) return;
+    c.beginPath(); c.arc(i / (pts.length - 1) * w, h - (p / 100) * h, 2, 0, 6.284);
+    c.fillStyle = css('--amber'); c.fill();
+  });
+}
+
+/* ── 4. Squarified treemap ─────────────────────────────────────────────── */
+const BUNDLE = [
+  { n: 'syntect grammars', v: 268 }, { n: 'rope', v: 121 }, { n: 'ops + CRDT', v: 96 },
+  { n: 'diagnostics', v: 74 }, { n: 'marks/spans', v: 58 }, { n: 'serde', v: 44 },
+  { n: 'wasm-bindgen glue', v: 31 }, { n: 'input rules', v: 22 }, { n: 'panic + fmt', v: 17 },
+];
+function squarify(items, x, y, w, h, out = []) {
+  if (!items.length) return out;
+  const total = items.reduce((a, b) => a + b.v, 0);
+  if (items.length === 1) { out.push({ ...items[0], x, y, w, h }); return out; }
+  const vertical = w >= h;
+  let acc = 0, i = 0;
+  const target = total / 2;
+  while (i < items.length - 1 && acc + items[i].v < target) { acc += items[i].v; i++; }
+  const head = items.slice(0, i), tail = items.slice(i);
+  const frac = acc / total;
+  if (vertical) {
+    squarify(head, x, y, w * frac, h, out);
+    squarify(tail, x + w * frac, y, w * (1 - frac), h, out);
+  } else {
+    squarify(head, x, y, w, h * frac, out);
+    squarify(tail, x, y + h * frac, w, h * (1 - frac), out);
+  }
+  return out;
+}
+function drawTree() {
+  const { c, w, h } = prep(document.getElementById('tree'), 210);
+  const cells = squarify([...BUNDLE].sort((a, b) => b.v - a.v), 0, 0, w, h);
+  const hues = ['--amber', '--violet', '--teal', '--ai'];
+  cells.forEach((cell, i) => {
+    c.fillStyle = css(hues[i % hues.length]);
+    c.globalAlpha = .16 + (i === 0 ? .2 : 0);
+    c.fillRect(cell.x, cell.y, cell.w - 2, cell.h - 2);
+    c.globalAlpha = 1;
+    c.strokeStyle = css(hues[i % hues.length]); c.lineWidth = 1;
+    c.strokeRect(cell.x + .5, cell.y + .5, cell.w - 3, cell.h - 3);
+    if (cell.w > 66 && cell.h > 26) {
+      c.fillStyle = css('--ink'); c.font = '600 10.5px Inter, sans-serif'; c.textAlign = 'left';
+      c.fillText(cell.n, cell.x + 7, cell.y + 17);
+      c.fillStyle = css('--ink-faint'); c.font = '10px ui-monospace, monospace';
+      c.fillText(cell.v + ' KB', cell.x + 7, cell.y + 30);
+    }
+  });
+  const total = BUNDLE.reduce((a, b) => a + b.v, 0);
+  document.getElementById('treeLegend').innerHTML =
+    `<span class="muted">${total} KB uncompressed · ~${Math.round(total * .31)} KB gzipped · budget 900 KB</span>`;
+}
+
+/* ── 5. Flame graph from a call tree ───────────────────────────────────── */
+const FLAME = { n: 'handle_frame', v: 100, c: [
+  { n: 'decode_op', v: 9, c: [{ n: 'rkyv::check', v: 5 }] },
+  { n: 'can_apply', v: 6 },
+  { n: 'rope::insert', v: 14, c: [{ n: 'split_leaf', v: 6 }, { n: 'rebalance', v: 4 }] },
+  { n: 'anchors::rebase', v: 8 },
+  { n: 'wal::append', v: 55, c: [
+      { n: 'crc32', v: 4 }, { n: 'write', v: 7 }, { n: 'fsync', v: 42 } ] },
+  { n: 'broadcast', v: 8, c: [{ n: 'Bytes::clone ×N', v: 3 }] },
+]};
+function drawFlame() {
+  const { c, w, h } = prep(document.getElementById('flame'), 176);
+  const ROW = 26, hues = ['--violet', '--teal', '--ai', '--amber'];
+  (function walk(node, x, depth, width) {
+    const y = depth * ROW;
+    const hot = node.n === 'fsync';
+    c.fillStyle = css(hot ? '--amber' : hues[depth % hues.length]);
+    c.globalAlpha = hot ? .34 : .2;
+    c.fillRect(x, y, width - 2, ROW - 3);
+    c.globalAlpha = 1;
+    c.strokeStyle = css(hot ? '--amber' : hues[depth % hues.length]);
+    c.lineWidth = 1; c.strokeRect(x + .5, y + .5, width - 3, ROW - 4);
+    if (width > 54) {
+      c.fillStyle = css('--ink'); c.font = '500 10.5px ui-monospace, monospace';
+      c.textAlign = 'left'; c.save();
+      c.beginPath(); c.rect(x, y, width - 6, ROW); c.clip();
+      c.fillText(node.n, x + 6, y + 16);
+      c.restore();
+    }
+    let cx = x;
+    (node.c || []).forEach(k => { const kw = width * (k.v / node.v); walk(k, cx, depth + 1, kw); cx += kw; });
+  })(FLAME, 0, 0, w);
+}
+
+function drawAll() { drawHist(); drawQueue(); drawTree(); drawFlame(); }
+
+document.getElementById('rerun').addEventListener('click', runBench);
+document.getElementById('themeBtn').addEventListener('click', () => {
+  const root = document.documentElement;
+  const dark = getComputedStyle(root).getPropertyValue('--bg').trim().toLowerCase() === '#16151a';
+  root.setAttribute('data-theme', dark ? 'light' : 'dark');
+  requestAnimationFrame(() => { drawAll(); runBench(); });
+});
+addEventListener('resize', drawAll);
+drawAll();
+requestAnimationFrame(runBench);
+</script>
+</body>
+</html>

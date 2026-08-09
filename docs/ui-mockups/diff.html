@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<!--
+  Marginal — revision diff (NON-FUNCTIONAL DATA, REAL ALGORITHMS)
+
+  Reached from History. Everything below is computed in the page, including the
+  DP table you can see.
+
+  What IS real:
+    · LCS by the full O(n·m) dynamic-programming table                → Phase 6
+    · the traceback that turns that table into an edit script
+    · the DP matrix visualisation — every cell is the computed value
+    · token granularity switching (word ↔ character), recomputed live
+    · block-level MOVE detection, which a flat text diff cannot express
+
+  What this asserts:
+    · a diff in Marginal is not the source of truth — the OP LOG is. The
+      diff is a rendering of what the ops already say                  → DATA_MODEL §1
+    · a moved block must read as MOVED, not as delete + insert. `MoveBlock`
+      carries `from` as well as `to`, so the log already knows           → RFC-002 §3
+    · the DP table is O(n·m) memory, which is fine for a paragraph and
+      absurd for a document — Myers walks the same edit graph in O(nd)
+      and that is why history uses it                                   → ROADMAP § DP
+
+  Out of scope per ADR-001 and intentionally absent: databases, tables,
+  relations, rollups, formula language, spatial canvas.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Marginal — Diff</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,560&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="mockup.css">
+<style>
+  .diffbar {
+    flex: none; display: flex; align-items: center; gap: 10px;
+    padding: 11px 24px; background: var(--bg-chrome); border-bottom: 1px solid var(--rule);
+  }
+  .seg2 { display: flex; gap: 3px; }
+  .seg2 button {
+    padding: 4px 10px; border: 1px solid var(--rule); border-radius: var(--radius);
+    background: var(--bg-raised); color: var(--ink-soft);
+    font-family: var(--sans); font-size: 11.5px; cursor: pointer;
+  }
+  .seg2 button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+  .col { padding: 22px 24px; }
+  .col + .col { border-left: 1px solid var(--rule); }
+  .col-h { display: flex; align-items: baseline; gap: 8px; margin-bottom: 12px; }
+  .col-h .t { font-family: var(--display); font-weight: 560; font-size: 15px; }
+
+  .prose-d { font-family: var(--serif); font-size: 16px; line-height: 1.68; }
+  .ins { background: color-mix(in srgb, var(--teal) 18%, transparent); border-radius: 3px; padding: 0 2px;
+         box-shadow: inset 0 -1.5px 0 var(--teal); }
+  .del { background: color-mix(in srgb, var(--amber) 18%, transparent); border-radius: 3px; padding: 0 2px;
+         text-decoration: line-through; text-decoration-color: var(--amber); color: var(--ink-soft); }
+  .mov { background: color-mix(in srgb, var(--violet) 16%, transparent); border-radius: 3px; padding: 0 2px;
+         box-shadow: inset 0 -1.5px 0 var(--violet); }
+
+  /* The DP table, drawn from the computed values. */
+  .matrix { overflow: auto; padding: 4px 0 10px; }
+  table.dp { border-collapse: collapse; font-family: var(--mono); font-size: 9.5px; }
+  table.dp th {
+    color: var(--ink-faint); font-weight: 500; padding: 2px 4px; white-space: nowrap;
+    font-size: 9px; text-align: center;
+  }
+  table.dp td {
+    width: 19px; height: 17px; text-align: center; color: var(--ink-faint);
+    border: 1px solid color-mix(in srgb, var(--rule) 60%, transparent);
+  }
+  table.dp td.on { color: var(--ink); font-weight: 600; outline: 1.5px solid var(--violet); outline-offset: -1.5px; }
+  table.dp td.match { color: var(--teal); }
+
+  .blocks { display: flex; flex-direction: column; gap: 7px; }
+  .bl {
+    display: flex; align-items: center; gap: 9px;
+    border: 1px solid var(--rule); border-left: 2px solid var(--rule-strong);
+    border-radius: var(--radius); background: var(--bg-raised); padding: 9px 11px; font-size: 13px;
+  }
+  .bl.moved { border-left-color: var(--violet); }
+  .bl.added { border-left-color: var(--teal); }
+  .bl.removed { border-left-color: var(--amber); opacity: .62; }
+  .bl .op { font-family: var(--mono); font-size: 10px; color: var(--ink-faint); margin-left: auto; white-space: nowrap; }
+  .bl .arrow { font-family: var(--mono); font-size: 11px; color: var(--violet); }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="topbar">
+    <a class="brand" href="home.html" style="text-decoration:none;color:inherit"><span class="mark"></span>Marginal</a>
+    <nav class="nav">
+      <a href="editor.html">Editor</a>
+      <a href="reader.html">Read</a>
+      <a href="search.html">Search</a>
+      <a href="graph.html">Graph</a>
+      <a href="discover.html">Discover</a>
+      <a href="history.html" aria-current="page">History</a>
+      <a href="admin.html">Admin</a>
+      <a href="settings.html">Settings</a>
+    </nav>
+    <div class="crumb">Product · <b>Collaborative editing spec</b></div>
+    <div class="spacer"></div>
+    <button class="icon-btn" id="themeBtn" title="Toggle theme" aria-label="Toggle theme">◐</button>
+    <a class="btn" href="history.html">Back to scrubber</a>
+    <button class="btn primary">Restore left side</button>
+  </header>
+
+  <div class="diffbar">
+    <span class="label">Granularity</span>
+    <div class="seg2" id="grain">
+      <button aria-pressed="false" data-g="char">Character</button>
+      <button aria-pressed="true"  data-g="word">Word</button>
+    </div>
+    <span style="width:10px"></span>
+    <span class="label">Show</span>
+    <div class="seg2" id="viewSeg">
+      <button aria-pressed="true"  data-v="text">Text</button>
+      <button aria-pressed="false" data-v="matrix">DP table</button>
+      <button aria-pressed="false" data-v="ops">Operations</button>
+    </div>
+    <span class="spacer"></span>
+    <span class="muted mono" id="cost">—</span>
+  </div>
+
+  <div class="body-row">
+    <main class="canvas">
+      <div id="viewText">
+        <div class="cols">
+          <div class="col">
+            <div class="col-h"><span class="t">op 1,240</span><span class="pill">today 13:52</span><span class="muted">Ada</span></div>
+            <div class="prose-d" id="left"></div>
+          </div>
+          <div class="col">
+            <div class="col-h"><span class="t">op 1,284</span><span class="pill teal">current</span><span class="muted">You</span></div>
+            <div class="prose-d" id="right"></div>
+          </div>
+        </div>
+
+        <div style="padding:0 24px 26px">
+          <div class="panel-h" style="margin-top:22px">Block structure</div>
+          <div class="blocks">
+            <div class="bl"><span>The editor never mutates the block tree directly…</span><span class="op">unchanged</span></div>
+            <div class="bl moved"><span class="arrow">↑</span><span>Positions are anchors, never integer offsets…</span><span class="op">MoveBlock { from: 4, to: 2 }</span></div>
+            <div class="bl"><span>A markdown document is parsed on every render…</span><span class="op">InsertText, DeleteText</span></div>
+            <div class="bl added"><span>Callout — a block kind, not a style…</span><span class="op">InsertBlock { kind: callout }</span></div>
+            <div class="bl removed"><span>TODO: decide whether spans are stable…</span><span class="op">DeleteBlock { tombstone }</span></div>
+          </div>
+
+          <div class="note" style="max-width:none">
+            <b>The moved block is the point.</b> A flat text diff sees the third paragraph vanish and
+            reappear — a delete plus an insert, and the reader has to work out they are the same
+            words. The op log already knows it was a move, because <code>MoveBlock</code> carries
+            <code>from</code> as well as <code>to</code> so that it can be inverted. The diff is a
+            rendering of what the ops say, not a reconstruction of what might have happened.
+          </div>
+        </div>
+      </div>
+
+      <div id="viewMatrix" hidden style="padding:22px 24px 30px">
+        <div class="panel-h">LCS table — every cell computed, traceback outlined</div>
+        <div class="matrix" id="matrix"></div>
+        <div class="note" style="max-width:none">
+          <b>This is the algorithm, not a picture of it.</b> Each cell is
+          <code>max(up, left)</code>, or <code>diagonal + 1</code> where the tokens match — those are
+          the teal cells. The outlined path is the traceback that becomes the edit script.
+          <br><br>
+          It is also the argument against using it: the table is <b>O(n·m)</b> cells. Fine for the
+          sentence above, ruinous for a document, which is why Myers walks the same edit graph in
+          <b>O(nd)</b> where <i>d</i> is the number of differences — small whenever two revisions are
+          actually similar, which consecutive revisions always are.
+        </div>
+      </div>
+
+      <div id="viewOps" hidden style="padding:22px 24px 30px">
+        <div class="panel-h">The edit script, as operations</div>
+        <div id="opsOut" class="blocks"></div>
+        <div class="note" style="max-width:none">
+          Derived from the traceback above. In the real system these are read from the log rather
+          than inferred — the diff view exists so a human can read a range of ops, not so the system
+          can work out what changed.
+        </div>
+      </div>
+    </main>
+
+    <aside class="rail right">
+      <div class="rail-head"><span class="label">This diff</span></div>
+      <div class="panel-body">
+        <div class="metric" style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid var(--rule)">
+          <span style="font-size:12px;color:var(--ink-soft)">Tokens compared</span>
+          <span class="mono" style="margin-left:auto" id="sTok">—</span>
+        </div>
+        <div class="metric" style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid var(--rule)">
+          <span style="font-size:12px;color:var(--ink-soft)">Common subsequence</span>
+          <span class="mono" style="margin-left:auto" id="sLcs">—</span>
+        </div>
+        <div class="metric" style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid var(--rule)">
+          <span style="font-size:12px;color:var(--ink-soft)">Insertions</span>
+          <span class="mono" style="margin-left:auto;color:var(--teal)" id="sIns">—</span>
+        </div>
+        <div class="metric" style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid var(--rule)">
+          <span style="font-size:12px;color:var(--ink-soft)">Deletions</span>
+          <span class="mono" style="margin-left:auto;color:var(--amber)" id="sDel">—</span>
+        </div>
+        <div class="metric" style="display:flex;gap:8px;padding:6px 0">
+          <span style="font-size:12px;color:var(--ink-soft)">DP cells filled</span>
+          <span class="mono" style="margin-left:auto" id="sCells">—</span>
+        </div>
+
+        <div class="panel-section">
+          <div class="panel-h">Complexity</div>
+          <div class="check hint"><span class="stripe"></span><div>
+            <div class="msg">Full table — <b>O(n·m)</b> time and memory</div>
+            <div class="meta">what this page runs, for the visual</div>
+          </div></div>
+          <div class="check ok"><span class="stripe"></span><div>
+            <div class="msg">Myers — <b>O(n·d)</b>, <i>d</i> = differences</div>
+            <div class="meta">what history should use</div>
+          </div></div>
+          <div class="check ok"><span class="stripe"></span><div>
+            <div class="msg">Reading the log — <b>O(d)</b></div>
+            <div class="meta">the ops already say what changed</div>
+          </div></div>
+        </div>
+
+        <div class="panel-section">
+          <div class="panel-h">Where else this DP shows up</div>
+          <div class="row"><span class="lead">7</span>Levenshtein — the BK-tree metric</div>
+          <div class="row"><span class="lead">1</span>Interval DP — sort-key rebalance</div>
+          <div class="row"><span class="lead">1</span>Memoised subtree render</div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script>
+const A = "A markdown document is parsed on every render, so two people editing it must reconcile the text itself.";
+const B = "A markdown document is parsed on every render, so two people editing it must reconcile text, which is where conflicts come from.";
+
+let grain = 'word';
+
+const tok = (s, g) => g === 'word' ? s.match(/\S+\s*/g) || [] : [...s];
+
+/* Classic LCS DP table — filled in full so it can be shown. */
+function lcsTable(a, b) {
+  const n = a.length, m = b.length;
+  const t = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+  for (let i = 1; i <= n; i++)
+    for (let j = 1; j <= m; j++)
+      t[i][j] = a[i - 1] === b[j - 1] ? t[i - 1][j - 1] + 1 : Math.max(t[i - 1][j], t[i][j - 1]);
+  return t;
+}
+
+/* Traceback: the table's contents become an edit script. */
+function script(a, b, t) {
+  const out = [], path = [];
+  let i = a.length, j = b.length;
+  while (i > 0 || j > 0) {
+    path.push([i, j]);
+    if (i > 0 && j > 0 && a[i - 1] === b[j - 1]) { out.push(['=', a[i - 1]]); i--; j--; }
+    else if (j > 0 && (i === 0 || t[i][j - 1] >= t[i - 1][j])) { out.push(['+', b[j - 1]]); j--; }
+    else { out.push(['-', a[i - 1]]); i--; }
+  }
+  path.push([0, 0]);
+  return { script: out.reverse(), path: new Set(path.map(p => p[0] + ',' + p[1])) };
+}
+
+function render() {
+  const a = tok(A, grain), b = tok(B, grain);
+  const t = lcsTable(a, b);
+  const { script: sc, path } = script(a, b, t);
+
+  const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  document.getElementById('left').innerHTML =
+    sc.filter(([k]) => k !== '+').map(([k, v]) => k === '-' ? `<span class="del">${esc(v)}</span>` : esc(v)).join('');
+  document.getElementById('right').innerHTML =
+    sc.filter(([k]) => k !== '-').map(([k, v]) => k === '+' ? `<span class="ins">${esc(v)}</span>` : esc(v)).join('');
+
+  const ins = sc.filter(([k]) => k === '+').length;
+  const del = sc.filter(([k]) => k === '-').length;
+  const cells = (a.length + 1) * (b.length + 1);
+  document.getElementById('sTok').textContent = a.length + ' → ' + b.length;
+  document.getElementById('sLcs').textContent = t[a.length][b.length];
+  document.getElementById('sIns').textContent = '+' + ins;
+  document.getElementById('sDel').textContent = '−' + del;
+  document.getElementById('sCells').textContent = cells.toLocaleString();
+  document.getElementById('cost').textContent =
+    `${a.length}×${b.length} = ${cells.toLocaleString()} cells · LCS ${t[a.length][b.length]} · ${ins + del} edits`;
+
+  /* DP matrix — capped so the page stays readable at character granularity. */
+  const CAP = 34;
+  const ai = a.slice(0, CAP), bj = b.slice(0, CAP);
+  let html = '<table class="dp"><tr><th></th><th></th>';
+  bj.forEach(x => html += `<th>${esc(x.trim().slice(0, 3) || '␣')}</th>`);
+  html += '</tr>';
+  for (let i = 0; i <= ai.length; i++) {
+    html += '<tr><th>' + (i === 0 ? '' : esc(ai[i - 1].trim().slice(0, 3) || '␣')) + '</th>';
+    for (let j = 0; j <= bj.length; j++) {
+      const on = path.has(i + ',' + j) ? ' on' : '';
+      const match = i > 0 && j > 0 && a[i - 1] === b[j - 1] ? ' match' : '';
+      html += `<td class="${on}${match}">${t[i][j]}</td>`;
+    }
+    html += '</tr>';
+  }
+  html += '</table>';
+  document.getElementById('matrix').innerHTML = html;
+
+  /* Runs of the edit script, expressed as the ops they compile to. */
+  const runs = [];
+  for (const [k, v] of sc) {
+    const last = runs[runs.length - 1];
+    if (last && last[0] === k) last[1] += v; else runs.push([k, v]);
+  }
+  document.getElementById('opsOut').innerHTML = runs.filter(([k]) => k !== '=').map(([k, v]) => {
+    const kind = k === '+' ? 'added' : 'removed';
+    const op = k === '+' ? 'InsertText { at: Anchor, text }' : 'DeleteText { range, text }';
+    return `<div class="bl ${kind}"><span style="font-family:var(--serif)">${esc(v.trim())}</span><span class="op">${op}</span></div>`;
+  }).join('') || '<div class="bl"><span>No changes at this granularity.</span></div>';
+}
+
+document.getElementById('grain').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  document.querySelectorAll('#grain button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  grain = b.dataset.g; render();
+});
+
+document.getElementById('viewSeg').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  document.querySelectorAll('#viewSeg button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  document.getElementById('viewText').hidden = b.dataset.v !== 'text';
+  document.getElementById('viewMatrix').hidden = b.dataset.v !== 'matrix';
+  document.getElementById('viewOps').hidden = b.dataset.v !== 'ops';
+});
+
+document.getElementById('themeBtn').addEventListener('click', () => {
+  const root = document.documentElement;
+  const dark = getComputedStyle(root).getPropertyValue('--bg').trim().toLowerCase() === '#16151a';
+  root.setAttribute('data-theme', dark ? 'light' : 'dark');
+});
+
+render();
+</script>
+</body>
+</html>
