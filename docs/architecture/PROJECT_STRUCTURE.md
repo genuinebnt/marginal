@@ -26,106 +26,183 @@ The fix is not to abandon Clean Architecture. It is to **organise directories by
 
 ---
 
-## 2. The Rule in One Picture
+## 2. The Whole Repository
 
-Dependencies point inward — that never changes. What changes is that a **slice** is the unit of organisation.
+Four Rust buckets and one TypeScript one, split by **deployment target**.
 
 ```
-                    ╔══════════════════════════════════════════════╗
-                    ║      libs/domain  (shared, zero deps)         ║
-                    ║  ids · BlockKind · Op · events · errors       ║
-                    ║        wasm32-compatible — required           ║
-                    ╚═══════════════════════▲══════════════════════╝
-                                            │  depends on
-        ┌───────────────────────────────────┼───────────────────────────────┐
-        │                                   │                               │
-┌───────┴────────┐                ┌─────────┴──────┐              ┌────────┴───────┐
-│  pages/        │                │  blocks/       │              │  tree/         │
-│  mod.rs        │                │  mod.rs        │              │  mod.rs        │
-│  model.rs      │                │  model.rs      │              │  service.rs    │
-│  repo.rs       │                │  repo.rs       │              │  (LTREE walk,  │
-│  handlers.rs   │                │  handlers.rs   │              │   cascade)     │
-│  service.rs?   │                │                │              │                │
-└───────┬────────┘                └────────┬───────┘              └────────┬───────┘
-        └───────────────────────────────────┼───────────────────────────────┘
-                                            │  wired in
-                                  ┌─────────▼──────────┐
-                                  │  routes.rs         │
-                                  │  state.rs          │
-                                  │  error.rs          │
-                                  │  main.rs           │
-                                  └────────────────────┘
-
-   A slice owns its whole vertical: HTTP in → logic → SQL out.
-   Slices never import each other's internals. Shared behaviour
-   lives in a slice of its own (tree/) or in libs/.
+marginal/
+├── Cargo.toml            workspace: libs/* services/* wasm/editor
+│                         default-members excludes wasm/ (cdylib for host is useless)
+│
+├── libs/                 shared Rust — the only crates more than one thing links
+│   ├── domain/           vocabulary: ids · BlockKind · Op · events · errors
+│   │                     zero infra · wasm32-clean · linked by EVERYTHING
+│   ├── doc/              document model: block tree · rope · anchors · marks · ops
+│   │                     wasm32-clean · browser + document + collaboration
+│   └── proto/            .proto files + generated tonic/prost. NOT wasm32
+│
+├── services/             one binary crate per service
+│   ├── api-gateway/      THE ONLY REST + WebSocket SURFACE
+│   └── document-service/ gRPC only, plus HTTP probes
+│
+├── wasm/editor/          cdylib+rlib — the wasm-bindgen boundary,
+│                         the editor front end, and syntect rendering
+│
+├── web/                  React + TypeScript SPA — NOT in the Cargo workspace
+├── deploy/               Terraform, docker-compose, prometheus.yml
+└── docs/
 ```
+
+**Start with three `libs/`.** `infra`, `macros`, and `test-utils` get created when something
+actually needs them — §6.
+
+### The transport rule, in three lines
+
+```
+   browser  ──REST + WSS──▶  api-gateway  ──gRPC──▶  every other service
+                                  │
+                                  └── the ONLY translator. Nothing else speaks REST.
+```
+
+- **Every service speaks gRPC.** That is the east-west default (ADR-007).
+- **Only the gateway speaks REST and WebSocket**, because browsers cannot speak gRPC.
+- **Every service also serves HTTP on a second port** — but only `/health` and `/health/ready`,
+  because Kubernetes needs them. That is the entire HTTP surface outside the gateway.
+
+So a service binds **two listeners**: gRPC for real traffic, HTTP for probes. Both are three lines
+in `lib.rs` and then never change.
 
 ---
 
-## 3. The Service Template
+## 3. Inside a Service
 
-**Every service has this shape.** Uniformity is the point — you should be able to open `search-service` having only read `document-service` and know where everything is.
+**Every service has this shape.** Uniformity is the point: you should be able to open
+`search-service` having only read `document-service` and know where everything is.
 
 ```
 services/<name>/
 ├── Cargo.toml
-├── config.yaml                  safe local defaults; secrets via env only
-├── migrations/                  this service's schema only
-│   └── 0001_init.sql
-├── tests/                       real Postgres via #[sqlx::test]
-│   ├── pages.rs
-│   └── blocks.rs
+├── config.yaml           safe local defaults · NO secrets, ever
+├── migrations/           this service's schema only
 └── src/
-    ├── main.rs                  config → telemetry → state → router → serve
-    ├── config.rs                Settings struct — the definitive schema
-    ├── state.rs                 AppState { pg, nats, redis, repos }
-    ├── error.rs                 AppError (internal) → ApiError (HTTP boundary)
-    ├── routes.rs                every route in one place, readable at a glance
+    ├── main.rs           thin: parse config, init telemetry, call run()
+    ├── lib.rs            run(): state → both listeners → serve → drain on SIGTERM
+    ├── config.rs         Settings — the definitive schema; missing var = refuse to start
+    ├── telemetry.rs      tracing subscriber
+    ├── state.rs          AppState { pool, repos, clients }  — Clone, cheap
+    ├── error.rs          AppError → axum Response AND → tonic::Status
     │
-    ├── pages/                   ← a vertical slice
-    │   ├── mod.rs               pub use — the slice's public surface
-    │   ├── model.rs             Page + request/response types
-    │   ├── repo.rs              trait PageRepo + PostgresPageRepo (SAME file)
-    │   ├── handlers.rs          axum handlers — thin, no business logic
-    │   └── service.rs           ONLY when real logic exists (§5.3)
-    │
-    ├── blocks/                  ← identical shape
-    │   ├── mod.rs  model.rs  repo.rs  handlers.rs
-    │
-    └── tree/                    ← cross-aggregate slice
-        ├── mod.rs
-        └── service.rs           LTREE traversal, cascade delete
+    └── pages/            ← a FEATURE SLICE. Owns its whole vertical.
+        ├── mod.rs        pub use — the slice's public surface
+        ├── model.rs      one struct with stacked derives (§5.1)
+        ├── repo.rs       trait PageRepo + PostgresPageRepo — SAME FILE
+        └── api.rs        the transport impl: extract → delegate → map
 ```
 
-### Request flow
+**Six root files and N slices.** That is the whole template.
+
+**A slice can be one file.** `api-gateway` owns no data, so its slices have no `model.rs` and no
+`repo.rs` — just translation, plus two files the other services do not need:
 
 ```
-   HTTP POST /pages
-        │
-        ▼
-  ┌──────────────┐   route table only — no logic
-  │  routes.rs   │
-  └──────┬───────┘
-         ▼
-  ┌──────────────┐   extract, validate, map errors.
-  │pages/handlers│   NEVER business rules.
-  └──────┬───────┘
-         │
-         ├─── plain CRUD? ────────────────────────┐
-         │                                         │
-         ▼ real logic exists                       ▼
-  ┌──────────────┐                        ┌──────────────┐
-  │pages/service │  transactions,         │  pages/repo  │
-  │              │  events, can_apply ───▶│ Arc<dyn Repo>│
-  └──────────────┘                        └──────┬───────┘
-                                                 ▼
-                                          ┌──────────────┐
-                                          │  PostgreSQL  │
-                                          └──────────────┘
+services/api-gateway/src/
+├── main.rs  lib.rs  config.rs  telemetry.rs  state.rs  error.rs
+├── auth.rs               JWT verify against cached JWKS — NO call to auth-service
+├── clients.rs            one generated gRPC client per upstream
+└── pages/api.rs          REST in → gRPC out → REST back
+```
 
-  Handlers may call repo directly for plain CRUD.
-  Skipping an empty service layer is not a violation — it is the point.
+### One name for transport: `api.rs`
+
+Not `handlers.rs`, not `grpc.rs`, not `controller.rs`. **A slice has one transport file** and the
+transport it speaks is whatever the service speaks.
+
+Split it only when a slice genuinely serves two — which today is only the gateway:
+
+```
+    api/
+    ├── rest.rs      axum handler
+    └── grpc.rs      tonic client call
+```
+
+That is §5.5 — *split on pain, not on principle*.
+
+### No `service.rs` unless logic exists
+
+```
+   request ──▶ api.rs ──┬── plain CRUD ────────────▶ repo.rs ──▶ Postgres
+                        │
+                        └── real logic ──▶ service.rs ──▶ repo.rs
+                                           (transactions spanning aggregates,
+                                            cycle checks, can_apply, sagas)
+```
+
+**`api.rs` calling `repo.rs` directly is the normal case, not a shortcut.** An empty service layer
+that forwards one call is the thing §5.3 forbids.
+
+### Not everything is a request: `consumer.rs` and `poller.rs`
+
+Three things in this project run without anyone calling them, and they belong **in the slice that
+owns them** — not in a `workers/` bucket, which is layer-first thinking wearing a different hat.
+
+```
+    blocks/
+    ├── mod.rs  model.rs  repo.rs
+    └── consumer.rs      ← subscribes to op events, materialises blocks. THE CQRS READ SIDE
+
+    outbox/
+    ├── mod.rs  repo.rs
+    └── poller.rs        ← FOR UPDATE SKIP LOCKED, publishes to NATS
+```
+
+| Kind | What it is | Example |
+|---|---|---|
+| **`consumer.rs`** | A NATS subscriber. **Idempotent, dedupes on `OpId`** — delivery is at-least-once | `blocks/consumer.rs` replaying ops into the projection |
+| **`poller.rs`** | A loop over a table | `outbox/poller.rs` |
+| **`worker.rs`** | A periodic task | snapshot writer, tombstone GC |
+
+**`lib.rs` spawns them beside the listeners, and the drain must stop them too.** A `SIGTERM` that
+closes the sockets but leaves a poller mid-transaction is a half-shutdown:
+
+```rust
+let grpc     = tokio::spawn(serve_grpc(..));
+let probes   = tokio::spawn(serve_http(..));
+let consumer = tokio::spawn(blocks::consumer::run(state.clone(), shutdown.clone()));
+let poller   = tokio::spawn(outbox::poller::run(state.clone(), shutdown.clone()));
+// SIGTERM → signal `shutdown` → join all four with a timeout → close the pool
+```
+
+### CQRS is between services, not inside one
+
+Worth stating because the instinct is to build it inside a service — separate read and write models
+behind one API — and here that would be pure ceremony.
+
+```
+   collaboration-service          document-service          search-service
+   ────────────────────          ────────────────          ──────────────
+   WRITE: ops (the truth)  ──NATS──▶  READ: blocks     ──NATS──▶  READ: index
+                                      (consumer.rs)              (consumer.rs)
+```
+
+The write side and the read sides are **different services with different databases**. So a slice
+keeps one `repo.rs` doing both reads and writes of *its own* data — splitting that would be
+inventing a boundary the architecture already draws somewhere else.
+
+**The saga (Phase 8) uses exactly this mechanism**: choreographed, no coordinator, each service a
+`consumer.rs` that subscribes and publishes. No new structure.
+
+### Where a transaction begins
+
+**In `api.rs`, not in `repo.rs`.** A repo method takes `&mut Transaction`, never `&PgPool`,
+because two writes have to commit together — the row and its outbox event. The handler owns the
+boundary because only the handler knows how many writes the request implies.
+
+```rust
+let mut tx = state.pool.begin().await?;
+let page = state.pages.insert(&mut tx, new).await?;
+state.outbox.enqueue(&mut tx, Event::PageCreated { .. }).await?;
+tx.commit().await?;
 ```
 
 ---
@@ -136,11 +213,11 @@ services/<name>/
 |---|---|
 | **A trait for every external dependency** — DB, cache, broker, object store | `CLOUD_PORTABILITY.md`: Cloud SQL↔Postgres, GCS↔MinIO, Memorystore↔Redis swap behind one trait. Also what makes `#[sqlx::test]` viable |
 | **Trait and impl in the same `repo.rs`** | A trait in a separate file from its only implementation is ceremony |
-| **`libs/domain` has zero external deps** | `libs/diagnostics` and the editor core compile to `wasm32` |
+| **`libs/domain` has near-zero deps** | It and `libs/doc` compile to `wasm32` — CI-enforced |
 | **No cross-service database access** | ADR-001. Data crosses as NATS events, never as a join |
-| **`AppError` internal, `ApiError` at the boundary** | One-way `From`. Internal errors never leak to HTTP |
+| **`AppError` internal; mapped at the boundary** | One-way `From` to `tonic::Status` and to an axum response. **A database message never reaches a client** |
 | **One `config.yaml` per service, secrets via env only** | Missing variable ⇒ fail to start, loudly |
-| **Handlers contain no business logic** | The single structural rule that reliably prevents rot |
+| **`api.rs` contains no business logic** — extract, delegate, map | The single structural rule that reliably prevents rot |
 | **Every mutation passes `can_apply(op, actor)`** | ADR-001 seam. One auditable authorization chokepoint |
 
 ---
@@ -285,54 +362,44 @@ than as a Rust type. So there is no `page.rs` in `libs/domain`, and there should
 
 ---
 
-## 7. Repository Root
+## 7. The Expansion Path
 
-**Three Rust buckets, split by deployment target — not by layer.**
+The structure in §2 is deliberately small. Everything below is what you add **when something needs
+it**, never before — `ROADMAP.md` § Phase 0: *foundation work is pulled in by the first service
+that needs it.*
 
-```
-marginal/
-├── libs/               shared Rust · imported by BOTH services and wasm
-│   ├── domain/         ids, BlockKind, Op, events, errors    zero deps · wasm32-clean
-│   ├── doc/            block tree, rope, anchors, marks, ops           · wasm32-clean
-│   ├── diagnostics/    analyzers, symbol table, incremental            · wasm32-clean
-│   ├── infra/          telemetry, config, AppError/ApiError, define_id!  native only
-│   ├── proto/          protobuf definitions (tonic + prost)             native only
-│   ├── macros/         #[derive(...)] proc macros (syn + quote)         native only
-│   └── test-utils/     Testcontainers wrappers, TestContext             native, dev-dep
-│
-├── services/           native binaries · one crate per service (11, ADR-009)
-│
-├── wasm/               browser binaries
-│   └── editor/         cdylib+rlib · #[wasm_bindgen] exports · serde_wasm_bindgen
-│                       AND the editor front end: lex · parse · lower ·
-│                       normalise · sanitise — one consumer, so it lives here
-│                       AND rendering: syntect + two-face
-│
-├── web/                React + TypeScript SPA — NOT in the Cargo workspace (ADR-004)
-├── reference/          Go reference implementations — NOT in the workspace (ADR-005)
-├── deploy/             Terraform IaC (ADR-008), prometheus.yml
-├── docker-compose.yml
-└── docs/
-```
+| Trigger | Add |
+|---|---|
+| **Second service** | Nothing shared. **Copy** the six root files. Copying twice is cheaper than a wrong abstraction |
+| **Third service** | *Now* extract `libs/infra` — telemetry, config, `AppError`. Three consumers is the rule (§6) |
+| A service needs another's data | An **event** and local materialisation. Never a call on a hot path, never a cross-database join (`DATA_MODEL.md` §1) |
+| A slice's `api.rs` serves two transports | Split to `api/rest.rs` + `api/grpc.rs`. Only the gateway has needed this |
+| Logic spans two aggregates | `service.rs` in the slice that owns the operation — §5.3 |
+| A proc macro would remove real duplication | `libs/macros`. Not before: `macro_rules!` covers most of it |
+| Integration tests repeat container setup three times | `libs/test-utils` |
+| A diagnostic analyzer exists | `libs/diagnostics` — wasm32-clean, pure, no infra |
+
+**What never gets added**: a `usecases/` directory (§5.4), a trait that abstracts another trait
+(§5.2), or a `libs/` crate with one consumer (§6).
 
 ### `wasm/editor` is the `wasm-bindgen` boundary, made into a file
 
-ADR-004 requires that the boundary be **designed, not discovered**. Without a crate to hold it, it
-gets discovered — one `#[wasm_bindgen]` at a time, scattered across whichever module needed it.
+ADR-004 requires the boundary be **designed, not discovered**. Without a crate to hold it, it gets
+discovered — one `#[wasm_bindgen]` at a time, scattered wherever one was needed.
 
 | It owns | Why here and not in `libs/doc` |
 |---|---|
 | Every `#[wasm_bindgen]` export | The TypeScript-facing API is one reviewable surface |
 | `serde_wasm_bindgen` marshalling | The crossing cost lives at the crossing |
-| **The editor front end** — `lex`, `parse`, `ast`, `lower`, `normalise`, `sanitise` | **Exactly one consumer.** A module in a shared crate that only one crate uses is mislabelled — and it would make two backend services link an XSS-boundary HTML parser they never invoke |
-| **`syntect` + `two-face`** | Highlighting is *rendering*, not modelling, and the project's largest dependency (`lld/libs-doc.md` §2) |
+| **The editor front end** — lex, parse, lower, normalise, sanitise | **Exactly one consumer.** A module in a shared crate that only one crate uses is mislabelled — and it would make two backend services link an XSS-boundary HTML parser they never invoke |
+| **`syntect` + `two-face`** | Highlighting is *rendering*, not modelling, and the project's largest dependency |
 
 `crate-type = ["cdylib", "rlib"]`, so **all of it tests natively** — `cargo test` needs no wasm
-toolchain. If a server-side consumer for the parser ever appears, extract `libs/editor` **then**;
-that is the third-use rule working rather than being ignored.
+toolchain. If a server-side consumer for the parser ever appears, extract `libs/editor` **then**.
 
-**One crate under `wasm/`, not several.** The browser loads one module; a second crate means a
-second module and a second boundary to keep consistent.
+> **The boundary is a syscall, not a function call.** Cross it rarely with large payloads, never
+> often with small ones. A per-keystroke round trip to fetch a token list is the shape that kills
+> wasm performance.
 
 ### Workspace mechanics
 
@@ -342,61 +409,35 @@ default-members = ["libs/*", "services/*"]     # root `cargo test` skips the cdy
 ```
 
 Without `default-members`, a root build compiles a `cdylib` for the host target — useless at best.
-With it, `cargo check -p editor-wasm --target wasm32-unknown-unknown` still works, which is what the
-CI gate needs.
-
-### What exists, and what is deliberately absent
-
-`ROADMAP.md` § Phase 0 is binding: **foundation work is *pulled in* by the first service that needs
-it, never built up front.** So the tree above is the target, not the current state.
-
-| Crate | Created | Why |
-|---|---|---|
-| `libs/domain` | **yes** | Phase 1 step 1, and `libs/doc` + `document-service` must agree on `BlockKind` and the ids **exactly** — a duplicated type that crosses a wire is a bug, not a duplication, so the *extract on the third use* rule does not apply to shared vocabulary |
-| `libs/doc` | **yes** | Phase 1 — `tree.rs` first. **Model only**; the front end is in `wasm/editor` |
-| `libs/proto` | **yes** | Phase 1 step 3 |
-| `wasm/editor` | **yes** | The boundary needs a home before the first `#[wasm_bindgen]`, or it gets discovered instead of designed |
-| `libs/diagnostics` | **no** | Phase 4. Creating it now is the speculative abstraction §5 forbids |
-| `libs/infra` | **no** | Extract on the **third** consumer. `auth-service` is the second and copies (`lld/auth-service.md` §1) |
-| `libs/macros`, `libs/test-utils` | **no** | Pulled when something needs them |
+With it, `cargo check -p editor-wasm --target wasm32-unknown-unknown` still works, which is what
+the CI gate needs.
 
 ### The wasm line
 
-`libs/domain`, `libs/doc`, and `libs/diagnostics` must stay `wasm32`-clean and
-infrastructure-free — they are the editor core, they run in the browser, and that purity is what
-keeps them Miri-reachable and fuzzable.
+`libs/domain` and `libs/doc` must stay `wasm32`-clean and infrastructure-free — they run in the
+browser, and that purity is what keeps them Miri-reachable and fuzzable.
 
 > **Adding a crate to `libs/` means stating which side of that line it is on.** If it is clean, add
 > it to the gate in the same commit:
-> `cargo check -p domain -p doc -p diagnostics --target wasm32-unknown-unknown`
+> `cargo check -p domain -p doc --target wasm32-unknown-unknown`
 >
-> A rule enforced only in this document is a rule that gets broken by an innocent import.
-
-**The gate earned its place on its first run.** `uuid` does not compile for `wasm32` without an
-explicit randomness source — the browser has no `getrandom` syscall — so `libs/domain` carries a
-target-scoped dependency:
-
-```toml
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-uuid = { workspace = true, features = ["js"] }
-```
-
-Target-scoped, so native builds never link `js-sys`/`wasm-bindgen`; Cargo does not unify features
-across targets, which is what makes that safe. **This is the class of failure the gate exists to
-catch, and it caught it on day one rather than in Phase 16.**
+> A rule enforced only in this document is a rule that gets broken by an innocent import. Expect
+> the gate to catch something on its first run — `uuid` alone does not compile for `wasm32` without
+> an explicit randomness source, which needs a target-scoped dependency so native builds never
+> link `js-sys`.
 
 ---
 
 ## 8. Checklist for a New Slice
 
 ```
-  □ Migration written first (the schema is the contract)
-  □ utoipa annotation on every handler — docs/api/ is generated, not written
+  □ Failing tests first — agents.md § stage 1
+  □ Migration written before the code (the schema is the contract)
   □ model.rs — one struct, stacked derives
-  □ repo.rs  — trait + Postgres impl, same file
-  □ handlers.rs — thin: extract, call, map error
-  □ routes.rs — wired in
-  □ #[sqlx::test] integration test against real Postgres
+  □ repo.rs  — trait + Postgres impl, SAME file, takes &mut Transaction
+  □ api.rs   — thin: extract → delegate → map. No business rules
+  □ Registered in lib.rs — including any consumer/poller, and in the drain
+  □ Integration test against real Postgres (#[sqlx::test]) — never a mock
   □ Mutation paths pass can_apply
   □ NO service.rs unless §5.3 says so
   □ NO new trait unless a second impl or a test needs it

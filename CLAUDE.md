@@ -93,17 +93,18 @@ A service exists only if it differs in **scaling profile, state, failure mode, o
 ## Crate Layout
 
 ```
-libs/domain/       ids, BlockKind, Op, events, errors — ZERO deps, wasm32
-libs/infra/        telemetry, config, AppError/ApiError, define_id!
-libs/doc/          block tree, rope, anchors, marks, ops — wasm32 (model only)
-libs/diagnostics/  analyzers, symbol table, incremental engine — wasm32
-libs/proto/        protobuf (tonic + prost)
-libs/macros/       #[derive(...)] proc macros (syn + quote)
-libs/test-utils/   Testcontainers wrappers, TestContext
-services/          one binary crate per service (11)
-wasm/editor/       cdylib+rlib — wasm boundary, editor front end (lex/parse/lower/
-                   normalise/sanitise: one consumer), syntect rendering
+libs/domain/       vocabulary: ids, BlockKind, Op, events, errors — wasm32-clean
+libs/doc/          document model: block tree, rope, anchors, marks, ops — wasm32-clean
+libs/proto/        .proto + generated tonic/prost — NOT wasm32
+services/          one binary per service. api-gateway is the ONLY REST/WS surface;
+                   every other service is gRPC + HTTP probes only
+wasm/editor/       cdylib+rlib — the wasm boundary, the editor front end
+                   (lex/parse/lower/normalise/sanitise: one consumer), syntect
 web/               React + TypeScript SPA — NOT in the workspace (ADR-004)
+deploy/            Terraform, docker-compose, prometheus.yml
+
+Start with those three libs. infra / macros / test-utils / diagnostics are pulled
+in by the first thing that needs them — PROJECT_STRUCTURE §7.
 reference/         Go reference implementations — NOT in the workspace (ADR-005)
 ```
 
@@ -148,7 +149,8 @@ reference/         Go reference implementations — NOT in the workspace (ADR-00
 
 ## Architecture Rules (summary)
 
-- **Feature-first slices, not layer-first directories** — `pages/`, `blocks/`, `tree/`, each owning `model.rs` + `repo.rs` + `handlers.rs` (+ `service.rs` **only** when logic exists). Never `application/usecases/<entity>/`
+- **Feature-first slices, not layer-first directories** — `pages/`, `blocks/`, `tree/`, each owning `model.rs` + `repo.rs` + `api.rs` (+ `service.rs` **only** when logic exists). Never `application/usecases/<entity>/`
+- **gRPC internally, REST only at the gateway.** Every service binds two listeners: gRPC for traffic, HTTP for `/health` probes. The gateway is the sole translator
 - **The UI never mutates the tree — every change is an `Op`** (RFC-002 §1)
 - **Every op is invertible**, designed in from the start, not discovered in the undo phase
 - **The op log is the source of truth**; block rows are a projection that replay must reproduce
