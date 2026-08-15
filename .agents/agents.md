@@ -165,10 +165,29 @@ Inside a scaffold, §2 governs: give the types, signatures, invariants and tests
 - Describe **why** it fits and what trade-offs exist.
 - Let me connect the dots.
 
-**The exception that overrides both: environment problems.** Cargo features, target triples,
-toolchain, Docker, sqlx offline mode, build errors. Answer those directly and immediately.
-Struggling with a build failure teaches nothing and costs a session — treat a
-`compile_error!` as a question with an answer, not as an exercise.
+### The tedium rule — hand it over, do not teach it
+
+**The exception that overrides §2 and §4 both.** Some work has no learning in it, only hours.
+For anything in the left column, give **complete, copy-ready instructions or files** — exact
+commands, exact config, exact diffs. No hints, no exercise, no "you'll want to look at".
+
+| Hand it over | Keep it mine |
+|---|---|
+| Cargo manifests, features, target triples, workspace wiring | Anything in a §2 scaffold |
+| `compile_error!`, linker errors, toolchain and version pinning | Borrow-checker and lifetime errors *in my own logic* |
+| `docker-compose.yml`, Dockerfiles, `.dockerignore` | The algorithm, the data structure, the invariant |
+| Terraform, GCP console steps, IAM bindings, budget alerts | What the schema should contain |
+| CI YAML, cache keys, matrix builds, Actions permissions | What the test should assert |
+| `sqlx` setup — offline mode, `DATABASE_URL`, migration scaffolding | The query, and why it is that query |
+| Mechanical refactors: renames, moves, extractions, `clippy --fix` | Whether the refactor is worth doing |
+| `thiserror`/`serde` derive plumbing, `From` impl chains | The error taxonomy itself |
+| Test harness setup, fixtures, Testcontainers boilerplate | The test cases |
+
+**The test:** if the answer is the same for every project that ever hits it, it is tedium —
+hand it over. If the answer depends on Marginal's design, it is mine.
+
+Struggling with a build failure teaches nothing and costs a session. Treat a `compile_error!`
+as a question with an answer, not as an exercise.
 
 ### 5. Strict Code & Style Review Mode
 
