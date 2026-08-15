@@ -1,276 +1,349 @@
-# Task Breakdown — Track 1
+# Task Queue — Track 1
 
-Subtasks for each story in `USER_STORIES.md`, with an owner on every line.
+**A numbered queue. Do them in order.** Each step is what comes next when the previous one is
+green — the thing you would otherwise have to ask for.
 
-**Scope: Track 1 only** (Phases 1 → 2 → 3, up to the 🏁). Tracks 2–6 are deliberately not
-broken down — they are months out, the breakdown would be guesswork, and guesswork in a task
-list reads as a commitment. Extend this file one track at a time, when the track starts.
+Steps marked **[me]** are tests written *after* your implementation. If you are working alone,
+they become yours: implement first, then ask *"what would prove this wrong?"*, then write that.
+Steps marked **[spa]** can be skipped entirely — the frontend is off the critical path
+(`TIMELINE.md` §3) and no Rust waits on it.
 
----
-
-## Who owns what
-
-The line was agreed 2026-08-07 and recorded in ADR-005. It is not renegotiated
-per task.
-
-| | Owner |
-|---|---|
-| All Rust — services, `crates/`, **and the `wasm32` editor core** | **You** |
-| Design: data model, API contracts, ADRs and RFCs | **You** |
-| The TypeScript SPA in `web/` — shell, routing, panels, DOM plumbing, API client | **Me** |
-| Verification: Rust test suites, written **after** your implementation | **Me** |
-| Go orchestration references — saga sequencing, NATS choreography, retry/backoff | **Me** |
-| Go answer keys for DSA items — **only after you have attempted them** | **Me** |
-| Mockups, and keeping `docs/` true as the code moves | **Me** |
-
-**The line does not move.** Where the SPA needs a document operation and the `wasm-bindgen`
-binding does not exist, the call is **stubbed** — never reimplemented in TypeScript. Crossing
-that line once quietly deletes Phase 3.
-
-Two consequences worth internalising:
-
-- **My tests come after your code, not before.** The loop: you decide a module is done → I name what to build next **and the reading
-  for it**, never how → you design and implement it alone → **only then** do I write tests,
-  which may or may not pass.
-  Written first, a test silently chooses the invariant for you, and choosing what is worth
-  asserting is the most valuable judgment in this project. Written after, a red bar is a
-  surprise you have to reconcile against a design you already own. **Red bars are yours.** I
-  do not explain a failure unless you attach a hypothesis to the question.
-- **Frontend is off the critical path.** It runs in parallel and finishes ahead of the backend
-  it talks to, which is only true if the two handoffs below land on time.
-
-⚠ marks a **handoff** — work of mine that stalls completely until yours lands.
+**Scope: Track 1 only** (Phases 1 → 2 → 3, to the 🏁). Track 2 gets broken down when Track 2
+starts, not before.
 
 ---
 
-## Phase 1 — Documents
+## Where you are
 
-### D-01 · Create a page
+**Updated 2026-08-15. → Step 1.**
 
-| Subtask | Owner |
-|---|---|
-| `pages` schema + migration; `DATA_MODEL.md` updated first | You |
-| `PageId`, `Title` newtypes — validate on construction | You |
-| Repository trait + sqlx impl, trait declared in the same file | You |
-| `#[sqlx::test]` suite: create, fetch, not-found, duplicate title | Me |
-| gRPC `PageService.Create`, and its REST shape in `docs/api/pages.md` | You |
-| SPA: page list, create action, empty state | Me |
+`crates/document-core` exists and is the only crate. `Page`, `Block`, `Op` with `invert()`,
+`History` with undo/redo and atomic rollback. **18 tests green.** `inline.rs`'s `Span` is
+provisional — Step 3 deletes it.
 
-### D-02 · Type into a block and it saves itself
+### Why the queue is not in story order
 
-The keystone story. Everything in `document-core` is currently underneath it.
-
-| Subtask | Owner |
-|---|---|
-| Replace `Vec<Span>` with flat text + marks over byte ranges (RFC-001 §2) | You |
-| `InsertText` / `DeleteText` ops at an offset | You |
-| Delete's inverse carries the destroyed text *and* its marks | You |
-| Failing tests: offsets, non-ASCII, empty block, out-of-range | Me |
-| `proptest` law — random op sequence, inverted in reverse, returns to start | Me |
-| Op log + replay; a test that replay reproduces the live page | Me |
-| Persist ops; the block row becomes a projection, not the truth | You |
-| SPA: per-block `contenteditable`, no save button anywhere in the UI | Me |
-
-### D-03 · Enter splits, Backspace removes
-
-| Subtask | Owner |
-|---|---|
-| `SplitBlock` / `MergeBlock` ops, both invertible | You |
-| Caret placement rules — where a writer expects it, written down first | You |
-| Failing tests: split at start / middle / end, merge across kinds | Me |
-| SPA: key handling, caret restoration after a re-render | Me |
-
-### D-04 · Block prefixes become block kinds
-
-| Subtask | Owner |
-|---|---|
-| Input-rule scanner — bounded backward scan, borrowing `&'src str` | You |
-| One undo step per rule firing (RFC-001 §3) | You |
-| Failing tests: each prefix, the escape case, the undo-step case | Me |
-| `compiler.html` already runs a reference scanner — read it, don't port it | Me ✔ |
-
-### D-05 · Inline marks
-
-| Subtask | Owner |
-|---|---|
-| Inline rules: `**`, `_`, `` ` ``, `~~`, `[]()`  — delimiters removed | You |
-| Mark maintenance under text edits: grow, shrink, split, merge, normalise | You |
-| Never re-parse stored content — the asterisks are gone once stored | You |
-| Failing tests + fuzz seeds for mark boundaries and non-ASCII | Me |
-| SPA: bubble menu, keyboard shortcuts | Me |
-
-### D-06 · Drag to reorder
-
-| Subtask | Owner |
-|---|---|
-| `SortKey` newtype; `Ord` must agree with Postgres `COLLATE "C"` | You |
-| `key_between` fractional index — **attempt before asking for the Go key** | You |
-| Failing tests: midpoint, exhaustion, ordering vs the DB's collation | Me |
-| Go answer key for `key_between` — after your attempt, not before | Me |
-| ⚠ `wasm-bindgen` export for `key_between` | You |
-| SPA: drag-and-drop calling across the wasm boundary | Me |
-
-### D-07 · Nested page tree
-
-| Subtask | Owner |
-|---|---|
-| LTREE column + recursive CTE for subtree queries | You |
-| Move semantics: reparent, cycle rejection | You |
-| Failing tests: deep nesting, move into own descendant, orphan detection | Me |
-| SPA: sidebar tree, expand/collapse, drag to reparent | Me |
-
-### D-08 · Paste from anywhere
-
-| Subtask | Owner |
-|---|---|
-| Sanitiser — **an XSS boundary**, treat input as adversarial | You |
-| HTML → block tree → normalise; unknown structure degrades to paragraph | You |
-| Failing tests: Google Docs span soup, Word `<o:p>`, script payloads | Me |
-| `cargo-fuzz` target for paste — never panics on any byte string | Me |
-| Security review of the boundary before it merges | Me |
-
-### D-09 · Drop an image
-
-| Subtask | Owner |
-|---|---|
-| Presigned PUT; the browser uploads directly, bypassing the service | You |
-| `image` block kind; the page holds a reference, never bytes | You |
-| Failing tests: presign, expiry, oversize rejection | Me |
-| SPA: drop target, upload progress, broken-reference state | Me |
-
-### D-10 · Delete a page
-
-| Subtask | Owner |
-|---|---|
-| Soft vs hard delete decision, recorded in `DATA_MODEL.md` | You |
-| **The outbox** — event row written in the same transaction as the delete | You |
-| Poller: `FOR UPDATE SKIP LOCKED`, at-least-once, idempotent consumers | You |
-| Failing tests: commit-succeeds-publish-fails leaves no lost event | Me |
-| Go reference for the outbox poller loop and its backoff | Me |
-| SPA: delete affordance, confirmation, optimistic removal | Me |
-
-### Phase 1, not attached to one story
-
-| Subtask | Owner |
-|---|---|
-| Verify `document-core` builds for `wasm32-unknown-unknown` — **do this now** | You |
-| Terraform: Cloud SQL, Cloud Storage, Secret Manager, one Cloud Run deploy | You |
-| ⚠ **Handoff, ~week 4:** the thin gateway — ~150-line proxy + JWT verification | You |
-| SPA runs against mocks generated from `docs/api/pages.md` until that lands | Me |
-| `utoipa` annotations on every endpoint → OpenAPI → `openapi-typescript` | You |
+`document-core` is `wasm32`-clean and needs no infrastructure — pure `cargo test`, per
+`CLAUDE.md`. So **every pure-logic step comes first** (Steps 1–17), and Postgres is stood up once,
+at Step 18, when something finally needs it. Story D-01 is "create a page" and would normally be
+first; it is at Step 19 because it is the first thing that cannot run without a database.
 
 ---
 
-## Phase 2 — Auth
+## Open decisions
 
-### A-01 · First-run setup
+Yours — ADR-005 puts design on your side of the line. Each blocks a step below.
 
-| Subtask | Owner |
-|---|---|
-| Detect "no users exist" and expose setup instead of login | You |
-| Failing tests: setup available once, and exactly once | Me |
-| SPA: the setup screen — a fresh instance's first screen is not a login | Me |
-
-### A-02 · Register, log in, stay logged in
-
-| Subtask | Owner |
-|---|---|
-| `argon2` PHC strings — parameters upgradable without a migration | You |
-| RS256 signing; the gateway verifies locally, no per-request RPC | You |
-| Refresh rotation with a parent chain | You |
-| Failing tests: rotation, expiry, clock skew, wrong signature | Me |
-| SPA: forms, token storage, silent refresh | Me |
-
-### A-03 · Log out, and the session dies
-
-| Subtask | Owner |
-|---|---|
-| Redis blocklist keyed by `jti`, TTL to natural expiry | You |
-| Reuse of a revoked refresh token revokes the whole chain | You |
-| Failing tests: revoked token refused before expiry; reuse detection | Me |
-| Security review — timing, `subtle` comparisons, error uniformity | Me |
-
-### A-04 · Only I can read my pages
-
-| Subtask | Owner |
-|---|---|
-| Ownership check at the gateway, enforced server-side | You |
-| Refusals do not leak existence — same response either way | You |
-| Failing tests: cross-account read, write, and enumeration | Me |
-| SPA: 403/404 handling that does not leak either | Me |
+| # | Decision | Blocks |
+|---|---|---|
+| **1** | **Where UUIDs are generated.** `PageId::new()` calls `Uuid::new_v4()` inside `document-core`, so the crate needs randomness — which `wasm32-unknown-unknown` has none of. Either add uuid's `js` feature and accept a JS-shaped dependency in the "infrastructure-free" crate, or stop generating ids in the model and let the caller pass them in (`Page::new` already takes one). | Step 1 |
+| **2** | **v4 or v7.** Code generates v4; `ADR-008` and `DATA_MODEL.md` §7 specify **uuidv7** — time-ordered, so ids cluster in an index rather than scattering. | Step 1 |
+| **3** | **`BlockId(u64)` against `PageId(Uuid)`.** Two identity strategies in one crate, and `RFC-001` §9 wants Yjs-style `ItemId` for anchors, which a `u64` counter cannot become. `BlockId` is already in all four `Op` variants. | Step 3 |
+| **4** | **`Op::DeleteBlock`'s `after`.** `apply` ignores it, `invert` depends on it, nothing checks they agree — so a wrong `after` applies cleanly and restores the block to the wrong place on undo. | Step 9 |
+| **5** | **Soft or hard delete for pages.** | Step 30 |
+| **6** | **Anchor representation** (`RFC-001` §9) — appears in op payloads, which are append-only forever. | Step 36 |
 
 ---
 
-## Phase 3 — Collaboration
+# Phase 1 — Documents
 
-### C-01 · See changes as they are typed
-
-| Subtask | Owner |
-|---|---|
-| `collaboration-service`: rope per document, one owner per page | You |
-| WebSocket session handling, join/leave, snapshot on join | You |
-| Failing tests: two clients converge; late joiner catches up | Me |
-| ⚠ **Handoff, ~week 14:** `wasm-bindgen` signatures — *signatures only* | You |
-| SPA: transport, reconnect, applying remote ops through wasm stubs | Me |
-
-The handoff is the one to protect. It is the exported surface — build a document, apply a
-keystroke and get ops back, apply a remote op, query selection, produce render state. Deciding
-that shape determines what is Rust and what is DOM, so it is design work and it is yours.
-
-### C-02 · No merge conflict UI, ever
-
-| Subtask | Owner |
-|---|---|
-| Transform on both sides; sequencer rebases each arrival onto its `basedOn` | You |
-| **Attempt the transform before asking for any reference** | You |
-| Failing tests: all four op kinds against each other | Me |
-| Go reference for sequencer *choreography* only — never `xform` itself | Me |
-| Audit that no conflict UI exists anywhere in `web/` | Me |
-
-### C-03 · Presence
-
-| Subtask | Owner |
-|---|---|
-| Redis presence with TTL; caret and selection broadcast | You |
-| Caret rides the transform — it must not drift on a remote edit | You |
-| Failing tests: caret position after concurrent insert before/after it | Me |
-| SPA: presence stack, remote carets, actor colours | Me |
-
-### C-04 · Responsive on a bad connection
-
-| Subtask | Owner |
-|---|---|
-| Local prediction; rollback by real inverses, never snapshot restore | You |
-| One op in flight; pending queue transformed in place while waiting | You |
-| Failing tests: rollback correctness under loss, jitter, reordering | Me |
-| `netcode.html` runs all of this already — read it before you start | Me ✔ |
-
-### C-05 · Disconnect, reconnect, keep the work
-
-| Subtask | Owner |
-|---|---|
-| Sequence gaps, replay requests, idempotency by `(site, n)` | You |
-| Retransmit sends the **frozen wire form**, not the locally transformed op | You |
-| Failing tests: gap replay, duplicate delivery, long offline | Me |
-| The long-offline half has no mockup — it needs a design note from you first | You |
-
-### C-06 · Intention survives the merge
-
-| Subtask | Owner |
-|---|---|
-| Decide what instrument proves it — convergence alone does not | You |
-| Failing tests: two editors in one paragraph produce the intended text | Me |
-| GKE arrives here — `collaboration-service` is what makes it necessary | You |
+**Read once before Step 3:** `docs/learning/01-track1-mvp.md` § Phase 1 § *Before you build*, the
+mandatory rows. Then `lld/document-core.md` for the editor core and `lld/document-service.md` for
+the service — Phase 1 is both.
 
 ---
 
-## Extending this file
+## Part A — `document-core`, no infrastructure (Steps 1–17)
 
-When Track 2 starts, break down its stories the same way and append. Do not do it sooner.
+Nothing here needs Postgres, Docker, or a network. Pure `cargo test`.
 
-Two rules that keep the split honest:
+### Step 1 · Make `wasm32` build
 
-- **If a subtask of mine has no failing test in it, look again** — my job on the Rust side is
-  the spec, and a subtask that is not a spec is probably one I should not be doing.
-- **If a subtask of yours is a DOM detail, it is mine.** If one of mine is a document
-  operation, it is yours, and the correct move is a stub plus a note here.
+Resolve Open decisions #1 and #2, then:
+
+```
+rustup target add wasm32-unknown-unknown
+cargo build -p document-core --target wasm32-unknown-unknown
+```
+
+**Done when:** the target compiles clean.
+**Why first:** `CLAUDE.md` requires this crate stay `wasm32`-clean. Finding out otherwise after
+marks are built on top is expensive, and the failure is already waiting for you.
+
+### Step 2 · Clean the lints, commit
+
+`cargo clippy --fix` — two mechanical warnings. Then commit; Step 3 deletes a file and you want a
+baseline to diff against.
+
+**Done when:** `cargo clippy` silent, working tree clean.
+**Then stop.** The rest of the refactor list is deferred until friction demands it
+(`PROJECT_STRUCTURE.md` §5).
+
+### Step 3 · Flat text + marks over byte ranges
+
+**Spec:** RFC-001 §2 — read the whole section. Then `lld/document-core.md` §3 (`inline.rs`) and
+**§9 (byte vs char vs grapheme)**, which is the one that bites.
+
+Delete `Span`. A block holds a `String` and a list of marks over **byte** ranges.
+
+**Done when:** `Span` is gone, `Block` holds flat text, and existing tests compile again.
+
+### Step 4 · **[me]** Tests for the mark model
+
+Boundaries, non-ASCII, empty block, out-of-range.
+
+### Step 5 · `InsertText` / `DeleteText` at an offset
+
+Two new `Op` variants. Both apply, both invert, both refuse an out-of-range or
+non-char-boundary offset.
+
+**Done when:** the existing round-trip law passes for both new variants.
+
+### Step 6 · **[me]** Tests for text ops
+
+### Step 7 · Delete's inverse carries the destroyed text **and** its marks
+
+**Spec:** RFC-002 §3 — invertibility is a design constraint, not a later feature.
+
+**Done when:** undoing a delete restores formatting, not just characters.
+
+### Step 8 · **[me]** `proptest` law
+
+Random op sequence, inverted in reverse order, returns to the starting document. 1000 cases.
+
+### Step 9 · Fix `Op::DeleteBlock`'s `after` (Open decision #4)
+
+The invariant hole. Write the test that exposes it first, then whichever fix the test argues for.
+
+### Step 10 · `SplitBlock` / `MergeBlock`
+
+**Story:** D-03. Write the **caret placement rules in prose first** — a rule a test can check —
+then implement.
+
+**Done when:** both ops invert; the prose rule exists.
+
+### Step 11 · **[me]** Tests: split at start / middle / end, merge across kinds
+
+### Step 12 · The input-rule scanner
+
+**Story:** D-04. **Spec:** RFC-001 §3, and `lld/document-core.md` §3 `scan.rs`.
+**New Rust:** a lifetime on a type — the scanner borrows `&'src str` rather than allocating per
+token. `ROADMAP.md` calls this the one place in Phase 1 that forces a lifetime.
+
+Bounded backward scan. No grammar, no recursion, a fixed lookbehind.
+
+**Done when:** no per-token allocation, and you can name the bound.
+**Read first, don't port:** `ui-mockups/compiler.html` runs a reference scanner.
+
+### Step 13 · One undo step per rule firing
+
+**Done when:** Cmd+Z restores the literal `## `, and a second Cmd+Z undoes the typing.
+
+### Step 14 · **[me]** Tests: each prefix, the escape case, the undo-step case
+
+### Step 15 · Inline marks — rules and delimiter removal
+
+**Story:** D-05. `**`, `_`, `` ` ``, `~~`, `[]()`.
+
+**Done when:** the mark applies and the delimiters are **not in the stored text**.
+
+### Step 16 · Mark maintenance under edits
+
+Grow, shrink, split, merge, normalise. **Never re-parse stored content** — the asterisks are gone.
+
+**Done when:** typing inside a bold run stays bold; typing at its edge is decided and tested.
+
+### Step 17 · **[me]** Mark-boundary tests, fuzz seeds, idempotence proptest
+
+> **`document-core` is now feature-complete for the MVP.** Re-run the `wasm32` build before moving
+> on — Steps 3–16 are exactly where an accidental dependency creeps in.
+
+---
+
+## Part B — `document-service` and infrastructure (Steps 18–26)
+
+The first steps that need something running.
+
+### Step 18 · Postgres, migration, `Settings`
+
+**Spec:** `DATA_MODEL.md`, `lld/document-service.md`. **Docs before code** — update
+`DATA_MODEL.md` first if the schema differs from what is written.
+
+`docker compose up` with Postgres 18. One migration. A `Settings` struct that refuses to start on
+a missing variable.
+
+**Done when:** `sqlx migrate run` is clean and the service starts.
+
+### Step 19 · `pages` schema + `PageId` / `Title` newtypes
+
+**Story:** D-01. Validate on construction — an invalid title cannot be constructed, only rejected.
+
+### Step 20 · `PageRepo` trait + sqlx impl, **same file**
+
+`PROJECT_STRUCTURE.md` §4: every external dependency sits behind a trait declared in the same file
+as its impl.
+
+### Step 21 · **[me]** `#[sqlx::test]` suite
+
+Create, fetch, not-found, duplicate title. Real Postgres, isolated database per test — never a mock.
+
+### Step 22 · gRPC `PageService.Create` + the REST shape
+
+Write `docs/api/pages.md` §2 as you go. `utoipa` annotations are mandatory (`docs/api/README.md`).
+
+**Done when:** `grpcurl` creates a page and the REST mapping is written down.
+
+### Step 23 · Persist ops; make `blocks` a projection
+
+**The central rule** (`DATA_MODEL.md` §1): the op log is the source of truth, block rows are a
+projection.
+
+**Done when:** deleting every `blocks` row and replaying `ops` rebuilds the page exactly.
+
+### Step 24 · **[me]** Replay test
+
+Proves Step 23's claim, and it is the test that must never be deleted.
+
+### Step 25 · ⚠ **Handoff — the thin gateway**
+
+~150-line proxy plus JWT verification. **The SPA is blocked until this lands** (`TIMELINE.md` §6).
+
+### Step 26 · Terraform — first cloud deploy
+
+Serverless Postgres, Cloud Storage, Secret Manager, one Cloud Run deploy, budget alert.
+**`min = 0`** (ADR-010 §1).
+
+**Done when:** `terraform apply` then `terraform destroy`, both clean.
+
+---
+
+## Part C — the rest of Phase 1 (Steps 27–31)
+
+> **Not in the MVP gate.** The 🏁 is D-01…D-05, A-01…A-04, C-01…C-04. Steps 27–31 are real work
+> that moves first if time compresses. Know that before spending three days on drag-and-drop.
+
+### Step 27 · `SortKey` + `key_between` — fractional indexing
+
+**Story:** D-06. **Spec:** [Greenspan's notebook](https://observablehq.com/@dgreensp/implementing-fractional-indexing),
+then Figma's post. `TIMELINE.md` assumption 3 budgets **~16h, not 8** — it is the first genuinely
+subtle thing in this project.
+
+**The trap:** `SortKey`'s `Ord` must agree with Postgres `COLLATE "C"`, and the default collation
+is not byte order.
+
+**Attempt it before asking for the Go answer key.**
+
+### Step 28 · **[me]** Tests: midpoint, exhaustion, ordering vs the DB collation
+
+### Step 29 · LTREE page tree + cycle rejection
+
+**Story:** D-07. Moving a page into its own descendant is refused. Orphan detection is a
+**connected-components** problem, not `backlinks == 0`.
+
+### Step 30 · Paste sanitiser — **an XSS boundary**
+
+**Story:** D-08. Allowlist, not denylist. Treat every input as adversarial. `cargo-fuzz` it; it
+must never panic on any byte string. Security review before it merges.
+
+### Step 31 · Image upload + page delete with the outbox
+
+**Stories:** D-09, D-10. Presigned PUT so bytes never pass through Rust. Then the **outbox** —
+event row in the same transaction as the delete, poller with `FOR UPDATE SKIP LOCKED`,
+at-least-once, idempotent consumers. Resolve Open decision #5 first.
+
+---
+
+# Phase 2 — Auth (Steps 32–35)
+
+**Reading:** `docs/learning/01-track1-mvp.md` § Phase 2. **Do not reach for a managed identity
+provider** — building this is the point, and it would break self-hosting (ADR-001).
+
+### Step 32 · First-run setup
+
+**Story:** A-01. A fresh instance's first screen is not a login. Available once, and exactly once.
+
+### Step 33 · Register, log in, stay logged in
+
+**Story:** A-02. `argon2` PHC strings so parameters upgrade without a migration. RS256 signing,
+**verified locally at the gateway with no per-request RPC** — that decoupling is why
+`auth-service` being down does not break authenticated requests. Refresh rotation with a parent
+chain.
+
+### Step 34 · Log out and mean it
+
+**Story:** A-03. Redis blocklist keyed by `jti`, TTL to natural expiry. Reuse of a revoked refresh
+revokes the **whole chain**. Security review: timing, `subtle` comparisons, error uniformity.
+
+### Step 35 · Ownership enforcement
+
+**Story:** A-04. Enforced server-side. **Refusals must not reveal existence** — 404 and 403
+indistinguishable to a prober, timing included.
+
+---
+
+# Phase 3 — Collaboration (Steps 36–41)
+
+**The hardest phase.** `TIMELINE.md` assumption 5 puts it at **~130h of Rust and calls that a
+floor**. Read `lld/collaboration-service.md` **completely** before Step 36 — this is the one
+service you cannot build bottom-up one slice at a time.
+
+### Step 36 · Confirm the anchor representation (Open decision #6)
+
+**Spec:** RFC-001 §9. Yjs/Peritext-style item ids, not offset-plus-origin.
+
+**Do this before any op ships.** Anchors appear in op payloads and op payloads are append-only
+forever — getting it wrong is not a refactor.
+
+### Step 37 · The rope and the doc-actor
+
+**Story:** C-01. One rope per document, **one owner per page** — an actor, not `Arc<RwLock<Rope>>`.
+The rope is owned, not contended, and an actor makes that structural rather than a discipline.
+
+Read [Zed's Rope & SumTree post](https://zed.dev/blog/zed-decoded-rope-sumtree) first.
+
+### Step 38 · ⚠ **Handoff — `wasm-bindgen` signatures only**
+
+The exported surface: build a document, apply a keystroke and get ops back, apply a remote op,
+query selection, produce render state. **Signatures, not implementations.** That shape decides
+what is Rust and what is DOM, so it is design work and it is yours.
+
+### Step 39 · Transform on both sides
+
+**Story:** C-02. The sequencer rebases each arrival onto its `basedOn`. **Attempt the transform
+before asking for any reference** — the Go reference covers choreography only, never `xform`.
+
+`ui-mockups/netcode.html` runs all of this already. Read it.
+
+### Step 40 · Presence, and the caret that rides the transform
+
+**Story:** C-03. Redis presence with TTL so a crashed client disappears without a leave message.
+The caret must not drift when a remote edit lands before it.
+
+### Step 41 · Local prediction and rollback
+
+**Story:** C-04. Rollback by **real inverses** — the same `Op::invert` undo uses — never snapshot
+restore. One op in flight; the pending queue transformed in place.
+
+> 🏁 **The MVP gate closes here.** D-01…D-05, A-01…A-04, C-01…C-04 all true at once.
+> Log in, write a page, edit live with someone.
+
+---
+
+## After the 🏁
+
+C-05 (reconnect and keep the work) and C-06 (intention survives the merge) finish Phase 3.
+Then Track 2 — Diagnostics, Undo/Redo, History — and `ADR-009` § Guard Rails becomes binding:
+nothing from Tracks 4–5 starts before this gate.
+
+Break Track 2 into steps when Track 2 starts. Not before.
+
+---
+
+## Standing rules
+
+- **Commit at every green bar.** A clean baseline is what makes a red bar mean something.
+- **Docs before code** when the schema, an endpoint, the op set, or an analyzer changes —
+  `CLAUDE.md` § Documentation Rules names the four files to check.
+- **Never mock infrastructure.** `#[sqlx::test]` and Testcontainers hit the real thing.
+- **`document-core` stays `wasm32`-clean.** Verify the target build; do not assume it.
+- **A *done when* that could not fail is not a *done when*.** Rewrite it until it could.
