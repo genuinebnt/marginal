@@ -3,10 +3,25 @@
 **A numbered queue. Do them in order.** Each step is what comes next when the previous one is
 green — the thing you would otherwise have to ask for.
 
-Steps marked **[me]** are tests written *after* your implementation. If you are working alone,
-they become yours: implement first, then ask *"what would prove this wrong?"*, then write that.
-Steps marked **[spa]** can be skipped entirely — the frontend is off the critical path
+**How a step runs** (`.agents/agents.md` §2 is the authority, changed 2026-08-15 for the
+January deadline):
+
+1. I give the **scaffold** — type definitions, function signatures, numbered invariants, the
+   algorithm in pseudocode, and the test list.
+2. **You write the Rust.** All of it.
+3. When it compiles, I turn the test list into real tests against your actual signatures.
+4. **After the part is done** — strict review, then resources on *other ways it could have been
+   built*. That is where the design judgment a scaffold skips gets paid back.
+
+Build and tooling errors are answered directly, never turned into exercises.
+
+Steps marked **[me]** are that test-writing pass. If you are working alone they become yours,
+and the scaffold's test list is already the spec — writing it as Rust is mechanical. Steps
+marked **[spa]** can be skipped entirely; the frontend is off the critical path
 (`TIMELINE.md` §3) and no Rust waits on it.
+
+**Target: end of January 2027.** ~24 weeks, which lands roughly on the 🏁. Steps 27–31
+(D-06…D-10) are outside the gate and are what gets cut if anything does.
 
 **Scope: Track 1 only** (Phases 1 → 2 → 3, to the 🏁). Track 2 gets broken down when Track 2
 starts, not before.

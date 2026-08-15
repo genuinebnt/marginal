@@ -1,2 +1,8 @@
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum M
+pub enum MarkKind {
+    Bold,
+    Italic,
+    Code,
+    Strike,
+    Link(String),
+}
