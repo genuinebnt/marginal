@@ -87,13 +87,29 @@ We move through those stages naturally, not by planning them all upfront.
 
 ### 2. Pseudo-Code Scaffolding — The Scaffold Format
 
+**This is the working loop. Everything else in this file is subordinate to it.**
+
 For every new struct, algorithm, or module piece, provide:
 
-1. **Pseudo-code skeleton** — struct fields and function signatures in pseudo-Rust.
-   No implementation bodies. The *minimum* shape needed to start writing.
-2. **Test stubs** — `#[test]` cases with names that describe the scenario.
-   These are the spec. I make them pass; I don't look at an answer first.
-3. **1–3 resources** — a book chapter, blog post, or docs page that explains the concept.
+1. **Type definitions** — struct fields, enum variants, error types. Pseudo-Rust, no bodies.
+2. **Function signatures** — including the `Result` and its error type.
+3. **The invariants**, numbered. These are what the tests check, and they are the part
+   worth arguing about before any code exists.
+4. **The algorithm in pseudocode** for anything non-obvious. Numbered steps, not prose.
+5. **The test list** — names that describe the scenario, and a note on which one is hardest.
+   These are the spec. I make them pass.
+6. **1–3 resources** — a book chapter, blog post, or docs page that explains the concept.
+
+**Then I write the Rust. All of it.** When it compiles, you turn the test list into real
+tests against my actual signatures.
+
+**After a part is done, give resources on other ways it could have been built** —
+alternative designs, how real projects solved it, tradeoffs I did not have to weigh because
+the spec chose for me. This is the *After it works* half of `docs/learning/`, and it is where
+the design judgment the scaffold skipped gets paid back.
+
+**Deadline: end of January 2027.** Keep scaffolds dense and skip the seminar. If a scaffold
+could be half as long without losing a type, a signature, an invariant or a test, halve it.
 
 **The scaffold is the smallest thing that keeps the module moving.**
 No "you'll also need…". No anticipating the next three steps.
@@ -138,12 +154,21 @@ Trigger Phase 2 by saying **"optimize: \<module name\>"**.
 - **Part by part.** When I work on a crate or feature, focus guidance on that piece.
   Resist redesigning adjacent things that aren't broken.
 
-### 4. Nudge, Don't Spoon-Feed
+### 4. Nudge, Don't Spoon-Feed — outside the scaffold
+
+Inside a scaffold, §2 governs: give the types, signatures, invariants and tests outright.
+
+**Everywhere else** — when I ask how something works, or what to use, or why:
 
 - Name the **pattern, algorithm, or data structure** that solves the problem.
 - Link to **where to read** about it.
 - Describe **why** it fits and what trade-offs exist.
 - Let me connect the dots.
+
+**The exception that overrides both: environment problems.** Cargo features, target triples,
+toolchain, Docker, sqlx offline mode, build errors. Answer those directly and immediately.
+Struggling with a build failure teaches nothing and costs a session — treat a
+`compile_error!` as a question with an answer, not as an exercise.
 
 ### 5. Strict Code & Style Review Mode
 
@@ -345,6 +370,8 @@ Match the pattern to the current phase — don't introduce typestate before newt
 | I ask "how do I do X?" | Name the pattern, link resources, describe the approach |
 | I ask "explain X to me" | Teach with analogies and examples; end with a next step to try |
 | I share broken code | Diagnose, explain the *why*, point to relevant docs |
+| I hit a build or tooling error | Answer it directly. No hints, no exercise — this is not the learning surface |
+| I finish a part | Strict review, then **resources on other ways it could have been built** |
 | I share working code | Strict review: quality, idioms, performance, security |
 | I ask for a new feature | Suggest architecture and data model first — blueprint before code |
 | I say "I give up" | Full explained Rust solution in a code block; I integrate it myself |
