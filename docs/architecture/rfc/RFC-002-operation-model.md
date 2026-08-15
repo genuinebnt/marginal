@@ -52,6 +52,9 @@ enum Op {
     MoveBlock   { id: BlockId, from: Location, to: Location },
     SetBlockKind{ id: BlockId, from: BlockKind, to: BlockKind },
 
+    // ── the Phase 1 coarse tier — §2.1 ──────────────────────────
+    SetBlockContent { block: BlockId, content: Content, prev: Content },
+
     // ── page level ──────────────────────────────────────────────
     SetTitle    { page: PageId, from: String, to: String },
 }
@@ -60,7 +63,8 @@ enum Op {
 Two things to notice, both consequences of §3:
 
 - `DeleteText` carries the **removed text**, and `DeleteBlock` carries the **entire subtree**. Deletes are the expensive ops precisely because they must be invertible.
-- `MoveBlock` and `SetBlockKind` carry `from` as well as `to`. An op that only records its destination is not invertible.
+- `MoveBlock`, `SetBlockKind` and `SetBlockContent` carry the prior value as well as the new one. An op that only records its destination is not invertible.
+- **`SetBlockContent` is the Phase 1 tier** and it is listed here rather than in a separate enum, because §2.1's point is that both tiers are one instruction set and one log.
 
 Positions are **anchors**, never integer offsets — offsets are invalidated by concurrent remote edits. Same mechanism as RFC-001 §2's marks.
 
@@ -73,12 +77,15 @@ stylistic: `InsertText { at: Anchor }` needs a rope to resolve the anchor, and t
 
 | Tier | Ops | Needs | Phase |
 |---|---|---|---|
-| **Block-granular** | `InsertBlock` · `RemoveBlock` · `MoveBlock` · `SetBlockKind` · **`SetBlockContent { block, spans, prev_spans }`** | Nothing beyond the block tree. **No rope, no anchors** | **1** |
+| **Block-granular** | `InsertBlock` · `DeleteBlock` · `MoveBlock` · `SetBlockKind` · **`SetBlockContent { block, content, prev }`** | Nothing beyond the block tree. **No rope, no anchors** | **1** |
 | **Character-granular** | `InsertText` · `DeleteText` · `SetMark` | Rope + anchors (RFC-001 §9) | **3** |
 
 `SetBlockContent` is what makes Phase 1 work: the browser holds the block tree, edits locally, and
-sends the whole block's spans on debounce. Coarse, but **an op like any other** — it carries
-`prev_spans`, so it is invertible, and it passes `can_apply` like everything else.
+sends the whole block's content on debounce. Coarse, but **an op like any other** — it carries
+`prev`, so it is invertible, and it passes `can_apply` like everything else.
+
+> `Content` is flat text plus marks over byte ranges (RFC-001 §2) — **not** the span array an
+> earlier draft of this RFC assumed. The op shape is unchanged by that; only what `Content` means.
 
 **Both tiers are the same log.** `encoding_version` (§4) is what lets Phase 3 add op kinds without
 rewriting history, and replay must decode every tier ever written, forever.
