@@ -1,6 +1,6 @@
 # Marginal — Cloud Portability (Ports & Adapters)
 
-**Google Cloud is the primary deployment target** (ADR-008 § Amendment). Marginal must also run under **`docker compose up`** — for local development, for the integration tests, and because self-hosting is a product capability (ADR-001).
+**Google Cloud is the primary deployment target** (ADR-008). Marginal must also run under **`docker compose up`** — for local development, for the integration tests, and because self-hosting is a product capability (ADR-001).
 
 Both run identical application code, which is only true if every external dependency sits behind a trait and the concrete implementation is chosen by configuration at startup.
 
@@ -10,15 +10,20 @@ Both run identical application code, which is only true if every external depend
 
 ## 1. Local vs Cloud
 
-| Concern | Local (compose) | Google Cloud | Notes |
-|---|---|---|---|
-| Database | `pgvector/pgvector:pg18`, **one container per service** | Cloud SQL for PostgreSQL, **one instance per service** (ADR-003 § Amendment) | **Version skew is real** — managed Postgres lags upstream. LTREE and `pgvector` are available; `uuidv7()` may not be. See § The `uuidv7()` trap |
-| Cache / presence | `redis:7-alpine` | Memorystore for Redis | |
-| Event bus | `nats:2` JetStream | **NATS on GKE**, not Pub/Sub | Not a capability gap — see § Pub/Sub, evaluated |
-| Object storage | `minio/minio` | Cloud Storage | One `object_store` adapter covers both; the difference is a URL and a credential source |
-| Search index | Tantivy on a local volume | Tantivy on a Persistent Disk | In-process; no managed equivalent, and none needed at this scope |
-| Static client | `vite dev` / nginx | Cloud Storage + Cloud CDN | Static bundle, no server (ADR-004) |
-| Ingress | exposed ports | Cloud Load Balancing via the GKE Gateway API | Managed TLS termination |
+> **Two cloud columns, not one (ADR-010).** *Tier S* is the architecture at full size, rented by
+> the hour — `CLOUD_ROADMAP.md` §2 is its syllabus. *Tier R* is what stays running under the cost
+> ceiling. Where they differ it is the same trait with a different implementation, which is what
+> this document exists to make possible.
+
+| Concern | Local (compose) | Google Cloud — Tier S (session) | Google Cloud — Tier R (resident) | Notes |
+|---|---|---|---|---|
+| Database | `pgvector/pgvector:pg18`, **one container per service** | Cloud SQL for PostgreSQL, **one instance per service** (ADR-003) | **one serverless Postgres (Neon), schema + role per service** | **Version skew is real** — managed Postgres lags upstream. LTREE and `pgvector` are available; `uuidv7()` may not be. See § The `uuidv7()` trap. Neither managed option idles at zero except Neon |
+| Cache / presence | `redis:7-alpine` | Memorystore for Redis | in-process behind the same trait, or the free `e2-micro` | Memorystore is provisioned and always billing |
+| Event bus | `nats:2` JetStream (`NatsBus`) | **Pub/Sub** (`PubSubBus`) | **Pub/Sub** (`PubSubBus`) | Pub/Sub in the cloud, NATS locally and self-hosted. Why both, and what it costs: § Pub/Sub and NATS — why both |
+| Object storage | `minio/minio` | Cloud Storage | Cloud Storage | One `object_store` adapter covers both; the difference is a URL and a credential source |
+| Search index | Tantivy on a local volume | Tantivy on a Persistent Disk | Tantivy on the Cloud Run instance, rebuilt from events on cold start | In-process; no managed equivalent, and none needed at this scope |
+| Static client | `vite dev` / nginx | Cloud Storage + Cloud CDN | Firebase Hosting | Static bundle, no server (ADR-004). Cloud CDN needs a load balancer, which is never free |
+| Ingress | exposed ports | Cloud Load Balancing via the GKE Gateway API | the Cloud Run service URL | Managed TLS either way; a forwarding rule bills continuously |
 | Secrets | git-ignored `.env` | Secret Manager, injected as env | Never in `config.yaml` |
 | Traces | Jaeger container | Cloud Trace via OTel Collector | Same OTLP exporter |
 | Metrics | Prometheus container | Managed Service for Prometheus | Same `/metrics` endpoint |
@@ -36,8 +41,8 @@ Every trait is declared in the **same file** as its primary implementation (`PRO
 | `PageRepo`, `BlockRepo` (`document-service`) | `PostgresPageRepo` | same — Cloud SQL is Postgres | real Postgres via `#[sqlx::test]` |
 | `OpLog` (**`collaboration-service`**, its own instance) | `PostgresOpLog` | same, separate instance | real Postgres via `#[sqlx::test]` |
 | `ObjectStore` | `BlobStore` → MinIO endpoint | `BlobStore` → GCS + Workload Identity | MinIO in Testcontainers |
-| `EventBus` | `NatsBus` | `NatsBus` → in-cluster NATS | real NATS in Testcontainers |
-| `CacheStore` | `RedisCache` | `RedisCache` → Memorystore | real Redis in Testcontainers |
+| `EventBus` | `NatsBus` | **`PubSubBus`** | real NATS in Testcontainers **and** the Pub/Sub emulator — both, per ADR-010 §2 |
+| `CacheStore` | `RedisCache` | `RedisCache` → Memorystore (Tier S) or in-process (Tier R) | real Redis in Testcontainers |
 | `SearchIndex` | `TantivyIndex` | `TantivyIndex` | temp-dir index |
 | `AnalyticsSink` | `ParquetSink` → local files | `BigQuerySink` | in-memory sink |
 | `Clock` | `SystemClock` | `SystemClock` | `FixedClock` — the one legitimate fake |
@@ -52,37 +57,41 @@ The client library's default credential chain handles this if you let it. The fa
 
 Do **not** reach GCS through its S3-compatible XML API. It works, but it requires static HMAC keys, which defeats Workload Identity entirely — that is the anti-pattern, not the shortcut.
 
-### Pub/Sub, evaluated
+### Pub/Sub and NATS — why both
 
-An earlier version of this document claimed JetStream's replay had "no managed equivalent."
-**That was wrong**, and the correction matters because it changes which argument is doing
-the work.
+`EventBus` is the one trait with two genuinely different implementations, and it is worth being
+precise about why, because "we support both" is usually a smell.
 
-Pub/Sub has `seek()` to a timestamp or snapshot, retention configurable to 31 days, ordering
-keys, dead-letter topics, and exactly-once delivery per subscription. On capability it is
-adequate. It is also cheaper — this project's event volume sits inside the free tier
-permanently, against a NATS pod that must be run.
+**On capability, Pub/Sub is adequate.** `seek()` to a timestamp or snapshot, retention
+configurable to 31 days, ordering keys, dead-letter topics, exactly-once delivery per
+subscription. Nothing in this project's use of the bus exceeds it.
 
-The justification weakens further on inspection: **the op log is the source of truth and it
+Unbounded replay is not the differentiator either: **the op log is the source of truth and it
 lives in Postgres** (`DATA_MODEL.md` §1). The bus carries derived events for indexing, cache
-invalidation, and saga steps. A full rebuild replays `docs.ops`, not the bus, so unbounded
-bus replay was never load-bearing.
+invalidation and saga steps. A full rebuild replays `docs.ops`, not the bus.
 
-**Two arguments survive, and neither is about features:**
+**Neither can do the other's job.**
 
-1. **Self-hosting.** Pub/Sub has no local production equivalent — the emulator is for tests.
-   Keeping it would mean an `EventBus` trait with two implementations, which is legal under
-   §2 but far costlier here than for a write-only sink: the bus is the core messaging
-   substrate, so every delivery guarantee, ordering model, and redelivery behaviour exists
-   twice, and every consumer must be correct under both. Ordering is where that bites —
-   JetStream gives stream sequence numbers, Pub/Sub gives ordering keys that interact
-   differently with retries and dead-lettering.
-2. **Learning.** Running the broker teaches streams, consumers, ack policies, and
-   replay-from-sequence as mechanics. Configuring a managed one teaches configuration.
+1. **Pub/Sub cannot self-host.** There is no local production equivalent — the emulator is for
+   tests — and self-hosting is an ADR-001 product capability. `NatsBus` is the self-host and
+   local-development path, and it is what the integration tests run against.
+2. **NATS cannot idle at zero.** JetStream is stateful: it needs a disk, therefore a machine.
+   Under the Cloud Run posture (ADR-010) it would be the only always-on component in an estate
+   that otherwise costs nothing at rest — the single largest line on the bill.
 
-**Decision: NATS stays primary.** Recorded here rather than dropped, because "we evaluated
-Pub/Sub and chose otherwise for these reasons" is a stronger position than never having
-looked.
+So there are two adapters, and the cost is paid rather than argued away: **every delivery
+guarantee, ordering model and redelivery behaviour exists twice, and every consumer must be
+correct under both.** Ordering is where it bites — JetStream gives stream sequence numbers,
+Pub/Sub gives ordering keys that interact differently with retries and dead-lettering.
+`DATA_MODEL.md` §10 tabulates exactly where they diverge, and the integration suite runs each
+consumer against both.
+
+**`NatsBus` is primary in the sense that matters:** it is the self-host path, and it defines the
+delivery semantics `PubSubBus` must satisfy.
+
+> **Running a broker is also the better teacher.** Streams, consumers, ack policies and
+> replay-from-sequence are mechanics you learn by operating them; configuring a managed queue
+> teaches configuration. Local NATS keeps that, which is part of why it stays.
 
 ### Extensions are dependencies too
 
@@ -111,7 +120,7 @@ The design already survives this: `PageId::new()` generates UUIDv7 in Rust, so i
 No `local.yaml`, no `production.yaml`. One file with **safe local defaults**, overridden by environment variables.
 
 ```yaml
-# services/document-service/config.yaml
+# crates/document-service/config.yaml
 application:
   port: 8001
   host: 0.0.0.0
@@ -166,7 +175,7 @@ Never in `config.yaml`, never committed. Local: git-ignored `.env`. Cloud: Secre
 
 Mocking a database means testing your understanding of Postgres rather than Postgres. LTREE queries, `FOR UPDATE SKIP LOCKED` semantics, JSONB operators, and transaction isolation behaviour are exactly the things a mock gets wrong.
 
-Ports are assigned dynamically so tests run in parallel. `libs/test-utils` provides the `TestContext` that wires a full stack per test module.
+Ports are assigned dynamically so tests run in parallel. `crates/test-utils` provides the `TestContext` that wires a full stack per test module.
 
 ---
 

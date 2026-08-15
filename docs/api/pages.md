@@ -11,7 +11,7 @@ Pages have **two contracts**, and they are not the same document:
             §2 below                      §1 below
 ```
 
-§1 is the real service contract — protobuf in `libs/proto/proto/document.proto`, the
+§1 is the real service contract — protobuf in `crates/proto/proto/document.proto`, the
 schema `document-service` is built and tested against. §2 is the gateway's REST
 projection of it, and it is what the generated TypeScript client is built from
 (`README.md` in this directory).
@@ -41,7 +41,7 @@ make the op compiler guess.
 
 ### The complete file
 
-`libs/proto/proto/document.proto` — the whole Phase 1 surface:
+`crates/proto/proto/document.proto` — the whole Phase 1 surface:
 
 ```protobuf
 syntax = "proto3";

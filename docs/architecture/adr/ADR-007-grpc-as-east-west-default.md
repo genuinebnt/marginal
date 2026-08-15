@@ -2,20 +2,19 @@
 
 **Date:** 2026-08-07
 **Status:** Accepted
-**Supersedes:** ADR-006 (gRPC for Selected Service Pairs)
-**Related:** ADR-001 (service boundaries), ADR-004 (SPA)
+**Related:** ADR-001 (service boundaries) · ADR-002 (Rust depth) · ADR-004 (SPA)
 **Deciders:** @genuinebasilnt
 
 ---
 
 ## Context
 
-ADR-006 confined gRPC to four service pairs chosen because they exercise all four RPC
-modes, leaving `api-gateway → document-service`, `→ search-service`, and
-`→ history-service` on plain HTTP. Its stated reason was proportionality: simple
+The obvious economy is to confine gRPC to the pairs that need streaming — four of them
+exercise all four RPC modes — and leave `api-gateway → document-service`,
+`→ search-service` and `→ history-service` on plain HTTP, on the grounds that simple
 request/response is idiomatic over HTTP and trivially `curl`-able.
 
-That reasoning optimises for the smallest amount of transport machinery. This project's
+That optimises for the smallest amount of transport machinery. This project's
 primary objectives are Rust depth and a **genuinely scalable microservice architecture**
 (ADR-002, ADR-001), and under those objectives a mixed east-west transport is a liability
 rather than an economy:
@@ -59,8 +58,8 @@ client is built from. The gateway is the translation boundary in both directions
 
 ### RPC modes still map to real needs
 
-Making gRPC the default does not lose ADR-006's pedagogical property — the four modes are
-still each demanded by a real pair, and now there are more unary examples:
+A uniform transport does not cost the pedagogical spread — each of the four modes is still
+demanded by a real pair, and there are simply more unary examples:
 
 | Pair | Mode |
 |---|---|
@@ -74,8 +73,7 @@ still each demanded by a real pair, and now there are more unary examples:
 
 ### JWT verification stays local
 
-Unchanged from ADR-006, and worth restating because it is the largest latency decision in
-the system: tokens are RS256, the gateway holds the public key and verifies **with no
+Worth stating here because it is the largest latency decision in the system: tokens are RS256, the gateway holds the public key and verifies **with no
 network call**, checking a Redis blocklist for revocation. The unary RPC to `auth-service`
 is for introspection and key rotation only.
 
@@ -86,11 +84,11 @@ is for introspection and key rotation only.
 
 ## Consequences
 
-### `libs/proto` becomes a dependency of every service
+### `crates/proto` becomes a dependency of every service
 
-`.proto` files live in `libs/proto` with `tonic-build` codegen in `build.rs`. Under
-ADR-006 only participating services depended on it; now all seven do. Proto files are
-organised per owning service (`document.proto`, `auth.proto`, …), not one god file.
+`.proto` files live in `crates/proto` with `tonic-build` codegen in `build.rs`, and all seven
+services depend on it. Proto files are organised per owning service (`document.proto`,
+`auth.proto`, …), not one god file.
 
 Protobuf field numbering discipline now matters everywhere: fields are never renumbered
 and never reused, and every message is extended additively. Same rule as
@@ -134,9 +132,9 @@ duplicated per service in two transport flavours.
 
 ## Alternatives considered
 
-**Keep ADR-006.** Cheapest in machinery, and the four-mode coverage is elegant. Rejected
-because the mixed transport is not what a scalable microservice architecture looks like,
-and the project exists to build one.
+**gRPC only for the pairs that need streaming**, HTTP for the rest. Cheapest in machinery,
+and the four-mode coverage is just as elegant. Rejected because a mixed transport is not what
+a scalable microservice architecture looks like, and the project exists to build one.
 
 **gRPC everywhere including the browser, via gRPC-Web.** Rejected: needs a translating
 proxy, cannot do bidirectional streaming, and would force the editor's op stream onto a

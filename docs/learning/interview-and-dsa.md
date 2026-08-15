@@ -148,7 +148,7 @@ to remove friction, then read the papers — do not expect the drills to substit
 |---|---|
 | **Per phase** | 4–8 problems, ~3 hours, in the week before the phase starts |
 | **Whole project** | ~35 problems total across six phases |
-| **Red flag** | If you have done 300 problems and written no `libs/domain`, the drills have become procrastination. **The list is a warm-up, not the workout** |
+| **Red flag** | If you have done 300 problems and written no `crates/domain`, the drills have become procrastination. **The list is a warm-up, not the workout** |
 
 ---
 

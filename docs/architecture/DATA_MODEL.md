@@ -2,7 +2,7 @@
 
 **Database:** PostgreSQL 18 · **Access:** sqlx with compile-time checked queries (ADR-003)
 
-**One database per service** (ADR-003 § Amendment). No cross-database joins — data needed elsewhere travels as NATS events and is materialised locally, or is composed at the gateway. See §1.
+**One database per service** (ADR-003) — realised in the resident deployment as **one instance with a schema and role per service** (ADR-010 §3). No cross-schema joins — data needed elsewhere travels as events and is materialised locally, or is composed at the gateway. See §1.
 
 ---
 
@@ -22,7 +22,7 @@ A test must prove the projection can be rebuilt by replay. Snapshots exist for p
 ### Who owns which schema, and the one exception
 
 **Database per service — one PostgreSQL instance each**, not schemas in a shared one
-(**ADR-003 § Amendment**). Isolation is enforced by the network, so one service's database failing
+(**ADR-003**). Isolation is enforced by the network, so one service's database failing
 degrades only that service.
 
 > The schema names below (`auth`, `docs`, `history`) remain as *namespaces within* each service's
@@ -54,10 +54,18 @@ design exists to provide (`CLOUD_PORTABILITY.md` §1).
 
 ### The isolation must be a grant, not a convention
 
-With one instance per service the network enforces the boundary, so this is now **defence in
-depth** rather than the primary mechanism. It still earns its place: it scopes what a compromised
-service can reach *inside its own database*, and it makes the ownership exception below visible as a
-grant rather than a paragraph.
+> **ADR-010 — in the deployed estate, the grant is the *primary* mechanism, not defence in depth.**
+> Eleven Postgres instances do not fit the cost ceiling, so the resident deployment is **one
+> serverless Postgres with a schema and a login role per service**. Everything below is unchanged
+> except which layer enforces it: there is no network boundary between schemas, so the grant *is*
+> the boundary. Local development and Tier S sessions still run an instance per service, and a
+> service that respects its grant is extractable to its own instance by changing a connection
+> string.
+
+With one instance per service the network enforces the boundary, so this would be **defence in
+depth** rather than the primary mechanism. It still earns its place either way: it scopes what a
+compromised service can reach *inside its own database*, and it makes the ownership exception below
+visible as a grant rather than a paragraph.
 
 **One Postgres role per service, granted only on its own schema:**
 
@@ -108,7 +116,7 @@ one slow dependency into a slow dependency for everybody (`ROADMAP.md` § Tail l
 
 ### The exception: `collaboration-service` writes `document-service`'s tables
 
-> **Resolved by ADR-003 § Amendment — the op log moved.** `collaboration-service` now owns `ops`
+> **Resolved by ADR-003 — the op log moved.** `collaboration-service` now owns `ops`
 > and its own outbox in its own database; `document-service` owns `pages`, `blocks`, and
 > `page_links`, materialising `blocks` by replaying op events. **No service writes another's
 > tables.** The reasoning below is retained because it explains why the shared-table version was
@@ -143,7 +151,7 @@ The alternatives were worse:
 
 > **This diagram spans three databases.** Relationships crossing a service boundary —
 > `users → pages`, `users → ops`, `pages → ops`, `ops → snapshots` — are **application-level
-> references, not foreign keys**, and cannot be enforced or joined (ADR-003 § Amendment). Only
+> references, not foreign keys**, and cannot be enforced or joined (ADR-003). Only
 > edges within one service's database are real constraints.
 
 ```mermaid
@@ -259,7 +267,7 @@ CREATE TABLE auth.refresh_tokens (
 CREATE INDEX ON auth.refresh_tokens (user_id) WHERE revoked_at IS NULL;
 ```
 
-Access tokens are **not** stored — they are RS256-signed JWTs verified locally by the gateway (ADR-006). Revocation is a Redis blocklist keyed by `jti` with a TTL matching token lifetime.
+Access tokens are **not** stored — they are RS256-signed JWTs verified locally by the gateway (ADR-007). Revocation is a Redis blocklist keyed by `jti` with a TTL matching token lifetime.
 
 ---
 
@@ -343,7 +351,7 @@ Mark keys are serialised in a fixed order and absent means false — never `"bol
 
 ### The op log — `document-service` in Phase 1, `collaboration-service` from Phase 3
 
-> **Ownership moves once** (ADR-003 § Amendment). Phase 1 ships a single-user editor that saves, so
+> **Ownership moves once** (ADR-003). Phase 1 ships a single-user editor that saves, so
 > `document-service` writes **block-granular ops** (RFC-002 §2.1) and applies them to `blocks`
 > itself. At Phase 3 the table moves to `collaboration-service`, character-granular ops arrive with
 > the rope, and `document-service` switches to materialising `blocks` from op events.
@@ -356,7 +364,7 @@ CREATE TABLE docs.ops (
     id               UUID PRIMARY KEY,      -- UUIDv7 from the client; the dedup key
     -- NO foreign key: `pages` lives in document-service's database and this table
     -- lives in collaboration-service's. Cross-database references are plain UUID,
-    -- validated at the application layer (ADR-003 § Amendment).
+    -- validated at the application layer (ADR-003).
     page_id          UUID NOT NULL,
 
     -- NO foreign key, deliberately. Once the assistant and plugins are actors
@@ -537,7 +545,7 @@ release that wrote them, so a self-describing format earns its cost.
 ## 7. Type Mapping
 
 ```
-PostgreSQL              Rust (libs/domain)
+PostgreSQL              Rust (crates/domain)
 ──────────              ──────────────────
 UUID                ↔   PageId, BlockId, OpId, UserId, FileId  (newtypes)
 TEXT                ↔   String / &str
@@ -590,3 +598,65 @@ A model streams tokens; ops are discrete. One `InsertText` per token would flood
 make undo useless. The assistant's output is **buffered client-side and emitted as one op batch
 sharing one `undo_group`** when the proposal is accepted. This is not only a volume argument —
 it is what makes a proposal reviewable before it lands, which ADR-009 §7 requires anyway.
+
+---
+
+## 10. Event Topics and Subscriptions
+
+The bus inventory, in one place. `ARCHITECTURE.md` §2 draws the graph; this is the table the
+Terraform `pubsub` module and the `NatsBus` stream config are both generated from, so a topic
+that is not here does not exist.
+
+**One topic per event type, not one per service.** A subscriber that wants two event types takes
+two subscriptions rather than filtering a firehose — the cost is a Terraform block and the gain
+is that redelivery and dead-lettering are scoped to the thing that actually failed.
+
+### Topics
+
+| Topic | Publisher | Ordering key | Consumed by |
+|---|---|---|---|
+| `docs.page_created` | `document-service` | `page_id` | search · diagnostics · history |
+| `docs.page_renamed` | `document-service` | `page_id` | search · **diagnostics** · publishing |
+| `docs.page_deleted` | `document-service` | `page_id` | search · diagnostics · history · notification |
+| `docs.block_updated` | `document-service` | `page_id` | search · diagnostics |
+| `docs.block_deleted` | `document-service` | `page_id` | search · diagnostics |
+| `docs.page_shared` | `document-service` | `page_id` | notification |
+| `docs.page_published` | `document-service` | `page_id` | publishing · search |
+| `collab.ops_flushed` | `collaboration-service` | `page_id` | **document-service** · history · search · diagnostics · analytics |
+| `auth.user_registered` | `auth-service` | `user_id` | notification |
+| `auth.user_updated` | `auth-service` | `user_id` | every service holding a `users` projection (§1) |
+| `auth.user_deactivated` | `auth-service` | `user_id` | document · notification · search |
+| `auth.role_granted` | `auth-service` | `user_id` | document (local permission read-model) |
+| `auth.role_revoked` | `auth-service` | `user_id` | document · search (refilter results) |
+
+> **`docs.page_renamed` is the expensive one.** It invalidates diagnostics on every page that
+> links to the renamed page (RFC-003 §4), so it is the topic most likely to need its own
+> backpressure story before any other.
+
+> **`collab.ops_flushed` is the load-bearing one.** `document-service` materialises `blocks` by
+> replaying it (ADR-003). A gap here is not a stale index, it is a wrong page — so
+> this is the one subscription where a dead-letter must page someone rather than be swept up
+> later.
+
+### Subscription naming
+
+`<consumer>-<topic-suffix>-sub` — `search-page-renamed-sub`, `history-ops-flushed-sub`. The
+consumer leads because the failure question is always *"which service is behind?"*, and a name
+sorted by consumer answers it without a lookup.
+
+### The two adapters must agree on these, and they do not agree for free
+
+ADR-010 §2 puts `NatsBus` on local and self-host, `PubSubBus` on cloud. The columns above are the
+contract both satisfy, and the places they differ are exactly where consumers break:
+
+| | NATS JetStream | Pub/Sub |
+|---|---|---|
+| Ordering | stream sequence number, total per stream | **ordering key**, per key only |
+| Redelivery | `AckWait` expiry, `max_deliver` | `ackDeadline`, exponential backoff |
+| Dead letter | max-deliver → DLQ subject | dead-letter topic after `maxDeliveryAttempts` |
+| Replay | `seek` to sequence or timestamp | `seek()` to timestamp or snapshot, retention ≤ 31 days |
+
+**Every consumer is idempotent regardless** — dedupe on `OpId` or event id (RFC-002 §4) — which
+is what makes the difference survivable. The integration suite runs each consumer against both
+adapters; a consumer that passes on only one is a consumer that is relying on ordering it was
+never promised.

@@ -40,7 +40,7 @@
 > deepest phase, so shipping early costs no depth.
 
 > **Phase 0 is not a step.** Foundation work is pulled in on demand by the service that
-> first needs it — see § Phase 0 below. Building `libs/` before a consumer exists is the
+> first needs it — see § Phase 0 below. Building `crates/` before a consumer exists is the
 > speculative abstraction `PROJECT_STRUCTURE.md` §5 forbids ("extract on the third use").
 
 ### Track 2 — The differentiators
@@ -87,7 +87,7 @@
 ### Track 6 — Cloud hardening
 
 > **Cloud is not a track at the end, and it is not optional.** Google Cloud is the primary
-> deployment target (ADR-008 § Amendment), so **a phase is not done until its increment in
+> deployment target (ADR-008), so **a phase is not done until its increment in
 > `CLOUD_ROADMAP.md` §2 is deployed.** Phase 1 already includes Terraform, Cloud SQL, Cloud
 > Storage, Secret Manager, and a first deploy. What remains here is the work that only makes
 > sense once all eleven services exist.
@@ -97,7 +97,7 @@
 | 6a | **11 — Containers & CI** | ○○○ | Multi-stage builds, `cargo-chef`, keyless GitHub Actions via Workload Identity Federation |
 | 6b | **12 — Observability & hardening** | ○○○ | Cloud Trace, Managed Prometheus, Grafana, SLOs, DR drill, cost review |
 
-**Interleavable at any time:** `libs/doc` and `libs/diagnostics` need no infrastructure — pure `cargo test`. Pick them up whenever momentum stalls elsewhere.
+**Interleavable at any time:** `crates/document-core` and `crates/diagnostics` need no infrastructure — pure `cargo test`. Pick them up whenever momentum stalls elsewhere.
 
 > **This document has no dates.** Order is a dependency question and belongs here; *when* is
 > an estimate and belongs in `TIMELINE.md`, which is explicitly not binding. A slip moves
@@ -152,6 +152,11 @@ list is short or the mockup is wrong, and **the doc wins**.
 | **graph** — BFS as a wavefront, frontier widths per level | 7 |
 | **graph** — Betti numbers, clique complex, workspace sigil | 21 |
 | **graph** — Voronoi territory, Delaunay dual vs link adjacency | 21 |
+| **netcode** — prediction, rollback, transform, the two instruments | 3 |
+| **netcode** — loss, retransmit, gap replay, idempotency | 3 |
+| **netcode** — block tree as a Merkle comparison, subtree divergence | 3, 6 |
+| **netcode** — op DAG, longest causal chain | 3 |
+| **netcode** — the op log stored LSM-style: memtable, levels, compaction | 3, 6 |
 | **diff** — LCS / Myers, edit script, block moves | 6 |
 | **perf** — latency percentiles, queue depth, flame graph | 12 |
 | **perf** — SIMD scan, wasm bundle treemap | 3 (`memchr`, `twiggy`) |
@@ -183,15 +188,16 @@ needs its own ADR first. The mockup's prices are illustrative either way.
 
 ### The algorithm pages run the algorithm
 
-Nine of the seventeen execute what they draw, so the picture cannot drift from the thing it
+Eleven of the eighteen execute what they draw, so the picture cannot drift from the thing it
 describes:
 
 | Page | What actually runs |
 |---|---|
 | `graph.html` | force simulation with alpha decay; **exact Voronoi** by half-plane intersection, and the Delaunay dual read back off the cells |
 | `graph-algorithms.html` | BFS shortest path, flood fill, three-colour DFS, forward reachability, all-pairs diameter, **BFS as an animated wavefront**, and Betti numbers — β₁ from the GF(2) rank of the triangle boundary map, β₂ from the Euler characteristic |
-| `compiler.html` | the whole editor front end — block lexer, inline parser producing marks over **byte** ranges, recursive-descent AST, lowering to a block tree, op emission, and then a **projection check** that replays the ops and compares |
-| `facts.html` | a dependency DAG with topological dirty propagation, cycle rejection by three-colour DFS, duplicate-definition detection |
+| `compiler.html` | the whole editor front end — block lexer, inline parser producing marks over **byte** ranges, recursive-descent AST, lowering to a block tree, op emission, and then a **projection check** that replays the ops and compares. Plus a **bounded input-rule scanner** — no grammar, no recursion, a fixed lookbehind — shown against the pipeline it is deliberately not, because the cost gap between them is why typing is cheap |
+| `netcode.html` | **operational transform, both sides**, over text *and* block ops — a sequencer rebasing each arrival onto its `basedOn`, clients rolling back with real inverses and replaying. Then three more algorithms on the same live state: **AHU/Merkle** subtree comparison to locate a divergence without walking the leaves, **DP over the op DAG** for the longest causal chain, and the log **stored the way an LSM engine would** — memtable flushing into immutable levels that compact as they age. Two instruments — a structural digest and an **intent ledger** — and the rebase toggle moves only the second |
+| `facts.html` | a dependency DAG with topological dirty propagation, cycle rejection by three-colour DFS, duplicate-definition detection, and **edge insertion** — editing a page's prose changes the graph's shape, and only the page that gained the edge is seeded |
 | `history.html` | one paragraph backed by a **tombstoned persistent sequence** — every version is the filter `ins ≤ v < del` over a single array |
 | `trace.html` | op apply and invert, with the invertibility law checked live |
 | `diff.html` | the LCS table and its traceback |
@@ -199,7 +205,7 @@ describes:
 | `analytics.html` | HyperLogLog, Count-Min Sketch, t-digest |
 | `perf.html` | real percentile maths, a squarified treemap, a benchmark timed on the machine that opens the page |
 
-Three are worth reading before their phase starts. `graph.html` demonstrates why `OrphanPage`
+Four are worth reading before their phase starts. `graph.html` demonstrates why `OrphanPage`
 is a **connected-components** problem rather than `backlinks == 0` — a mutually-linked pair
 with nothing pointing in still has backlinks — and why cycle detection needs three colours
 rather than a visited set: a visited set answers *seen before*, not *on the current path*.
@@ -207,13 +213,20 @@ rather than a visited set: a visited set answers *seen before*, not *on the curr
 decision. `compiler.html` is the one to read before Phase 3: its projection check is the
 executable form of *the op log is the source of truth and block rows are a projection replay
 must reproduce* — a claim that can go red, which is the only kind worth making.
+`netcode.html` is the other Phase 3 prerequisite, and the uncomfortable one: it shows that
+every client agreeing is **not** evidence the document is right, so a session needs two
+instruments and not one.
 
 ### Not drawn yet
 
 Specced with an owning phase but no mockup: notifications inbox (15), media library (1),
-plugin directory (18), space and role editor (13), offline and reconnect state (3), and the
-rest of Phase 21 — the similar-block hint, related-pages panel, merge assistant, reading
-order, and the minimum reading set.
+plugin directory (18), space and role editor (13), long-offline editing and reconnect (3),
+and the rest of Phase 21 — the similar-block hint, related-pages panel, merge assistant,
+reading order, and the minimum reading set.
+
+`netcode.html` draws the *lossy-wire* half of reconnect — drops, retransmits, sequence gaps
+— but not the hours-disconnected half, where the divergence is large enough that transform
+chains stop being the right tool.
 
 ---
 
@@ -229,14 +242,14 @@ Not optional for the phases listed.
 | **[`syn`](https://docs.rs/syn) + [`quote`](https://docs.rs/quote)** | 0 | Proc macros are a distinct skill from `macro_rules!` |
 | **Hand-written `Future`/`Stream`** | 3 | `poll`, `Pin`, `Waker` by hand — the op-buffer flush |
 | **`proptest`** | 1, 3, 4, 5 | Invertibility, convergence, normalisation, incremental equivalence |
-| **Doctests** | 1+ | Every public item in `libs/domain` and `libs/doc` carries an example that compiles as part of `cargo test`. Documentation that cannot rot, and it forces you to use your own API before shipping it |
+| **Doctests** | 1+ | Every public item in `crates/domain` and `crates/document-core` carries an example that compiles as part of `cargo test`. Documentation that cannot rot, and it forces you to use your own API before shipping it |
 | **[`cargo-mutants`](https://mutants.rs/)** | after 1 | You write tests before the code (`agents.md` § stage 1). This answers the question that follows — *are they any good?* It mutates the source and reports which mutants survive |
 | **[`criterion`](https://docs.rs/criterion)** | 1, 3, 7 | Statistically sound benchmarks. "It got faster" without a confidence interval is a guess |
 | **`cargo-flamegraph` / `dhat`** | 3, 12 | Where the time and the allocations actually go. `perf.html` *draws* these; something has to produce them |
 | **[`turmoil`](https://github.com/tokio-rs/turmoil)** | 3, 10 | Deterministic network simulation. Partition, delay, and drop messages against the real code, reproducibly — the only way a split-brain test is worth writing |
 | **Linearizability checker** | 3 | You claim CP. Prove it against recorded histories rather than asserting it in a table |
 | **`cargo-deny` / `cargo-audit`** | 11 | Licences, advisories, and duplicate dependencies. The cheapest real security work available |
-| **[`cargo-semver-checks`](https://github.com/obi1kenobi/cargo-semver-checks)** | 11 | `libs/proto` is a contract eleven services depend on. A silent breaking change there is a runtime failure in four of them |
+| **[`cargo-semver-checks`](https://github.com/obi1kenobi/cargo-semver-checks)** | 11 | `crates/proto` is a contract eleven services depend on. A silent breaking change there is a runtime failure in four of them |
 
 > **Two of these are cheap and almost nobody does them.** Doctests cost one CI line and make
 > every example provably compile. `cargo-mutants` is the only tool that grades a test suite
@@ -505,7 +518,7 @@ Two rules in this project collide and the collision has not been decided:
 
 | Rule | Source |
 |---|---|
-| `libs/diagnostics` must stay **`wasm32`-clean** — it runs in the browser | `CLAUDE.md` § Crate Layout |
+| `crates/diagnostics` must stay **`wasm32`-clean** — it runs in the browser | `CLAUDE.md` § Crate Layout |
 | Analyzers use **`rayon`** — the one genuinely parallel workload | § Threads, parallelism & async, Phase 4 |
 
 **Rayon does not work in wasm without `wasm-bindgen-rayon`**, which requires `SharedArrayBuffer`,
@@ -589,7 +602,7 @@ project.
 ### Phase 0 — Foundation ●●○ · *pulled, not pushed*
 
 **Phase 0 is a backlog, not a step.** Nothing here is built up front. Each item is pulled in
-by the first service that genuinely needs it, and `libs/` extraction follows
+by the first service that genuinely needs it, and `crates/` extraction follows
 `PROJECT_STRUCTURE.md` §5: inline it, duplicate on the second use, extract on the third.
 
 **Build immediately** (the floor — deferring these costs more than doing them):
@@ -598,7 +611,7 @@ by the first service that genuinely needs it, and `libs/` extraction follows
 |---|---|
 | Workspace root `Cargo.toml` (`resolver = "3"`) | Retrofitting `[workspace]` means moving `Cargo.lock` and re-resolving every path dep |
 | `migrations/0001_init.sql` | The schema is the contract (§8 checklist) — and `sqlx::query_as!` will not compile without it |
-| **`libs/proto` feature split** | One feature per service — `document`, `auth`, `collab`. `search-service` has no business compiling the auth protobufs, and designing an *additive* feature set is a different skill from consuming one |
+| **`crates/proto` feature split** | One feature per service — `document`, `auth`, `collab`. `search-service` has no business compiling the auth protobufs, and designing an *additive* feature set is a different skill from consuming one |
 | `docker-compose.yml` — **Postgres only** | Redis, NATS, MinIO, Jaeger, Prometheus, Grafana each arrive with the feature that needs them |
 | `config.rs` + `Settings` | "Missing required variable ⇒ fail to start" is a design property; retrofitting it means auditing every field |
 
@@ -606,11 +619,11 @@ by the first service that genuinely needs it, and `libs/` extraction follows
 
 | Item | Trigger |
 |---|---|
-| `libs/domain` | Third consumer of the id newtypes / `Op`. Until then: `src/domain.rs` inside the owning service |
-| `libs/infra` | Second service needing telemetry or the `AppError`→`ApiError` chain |
-| `libs/macros` — proc macro (`syn`+`quote`) | The third hand-written id newtype. Write the expansion by hand first — that is the point, and it stays on ADR-002's required-tooling list regardless of when it lands |
-| `libs/test-utils` — Testcontainers | A test needs NATS or Redis. `#[sqlx::test]` alone covers Phase 1 |
-| `libs/proto` | Phase 6 or 9, at the first gRPC pair (ADR-006) |
+| `crates/domain` | Third consumer of the id newtypes / `Op`. Until then: `src/domain.rs` inside the owning service |
+| `crates/infra` | Second service needing telemetry or the `AppError`→`ApiError` chain |
+| `crates/macros` — proc macro (`syn`+`quote`) | The third hand-written id newtype. Write the expansion by hand first — that is the point, and it stays on ADR-002's required-tooling list regardless of when it lands |
+| `crates/test-utils` — Testcontainers | A test needs NATS or Redis. `#[sqlx::test]` alone covers Phase 1 |
+| `crates/proto` | Phase 6 or 9, at the first gRPC pair (ADR-007) |
 | Minimal `api-gateway` | The SPA needs one origin — i.e. when `web/` starts calling more than one service |
 | CI — fmt, clippy, test, `cargo sqlx prepare --check` | First green test suite worth protecting |
 | `cargo-fuzz` + `cargo-miri`, advisory in CI | Phase 1 paste sanitiser / Phase 3 WAL |
@@ -621,20 +634,20 @@ them while they live inside a service turns the later extraction from a file mov
 unpicking three dependencies that cannot follow them to `wasm32`. Keep the ids
 dependency-honest from the start; map at the repo boundary with `#[sqlx(transparent)]`.
 
-**Still true:** `libs/doc` and `libs/diagnostics` need no infrastructure and are
+**Still true:** `crates/document-core` and `crates/diagnostics` need no infrastructure and are
 interleavable at any time.
 
 **Study first:** [Zero To Production](https://www.zero2prod.com/) Ch. 1–3 · [The Little Book of Rust Macros](https://veykril.github.io/tlborm/) · [12factor](https://12factor.net/)
 
 | Concept | Where |
 |---|---|
-| Cargo workspace, `resolver = "3"`, path deps | Linking `libs/` into services |
+| Cargo workspace, `resolver = "3"`, path deps | Linking `crates/` into services |
 | `tracing` + `tracing-subscriber` + bunyan | `infra::telemetry` |
 | `config` crate + `APP__` env override | `infra::config::get_configuration::<T>()` |
 | `thiserror` — `AppError` vs `ApiError` | `infra::error`, one-way `From` |
-| `macro_rules!` — `define_id!` | Id newtypes in `libs/domain` |
-| **Proc macros — `syn` + `quote`** | `libs/macros`; write the expansion by hand before generating it |
-| `#[cfg(target_arch = "wasm32")]` gating | `libs/doc`, `libs/diagnostics` must build for both targets |
+| `macro_rules!` — `define_id!` | Id newtypes in `crates/domain` |
+| **Proc macros — `syn` + `quote`** | `crates/macros`; write the expansion by hand before generating it |
+| `#[cfg(target_arch = "wasm32")]` gating | `crates/document-core`, `crates/diagnostics` must build for both targets |
 
 **Minimal gateway now, not Phase 9.** The SPA needs one origin from its first request, and downstream services expect `X-Actor-Id` injected. Build a thin reverse proxy plus JWT verification (~150 lines); the full Tower stack lands in Phase 9 behind the same public contract.
 
@@ -788,7 +801,7 @@ Prior art worth knowing: Roam and Obsidian both have block transclusion. **Neith
 invalidates.** The dirty propagation is the novel half, and explicit edges are what make it
 possible at all.
 | Dependency graph | `resolve()` depends on all titles; a rename fans out widely |
-| tonic **server streaming** | Results pushed as computed (ADR-006) |
+| tonic **server streaming** | Results pushed as computed (ADR-007) |
 | Graceful degradation | Service dies ⇒ stream fails to open ⇒ editing unaffected |
 | Quick fixes as ops | Undoable, synced, in history for free |
 | **`rayon` parallel analyzers** | Analyzers over blocks are independent and CPU-bound — the one genuinely data-parallel workload in the project |
@@ -1026,7 +1039,7 @@ makes the promise true. Ported in shape from `genuine-folio`, which already solv
 | `server-setup.sh` | Firewall, swapfile, unattended upgrades, non-root deploy user. Idempotent |
 | **Backups + verified restore** | The one that matters most. See below |
 | `cargo-deny`, `cargo-audit` | Licence policy, advisory database, duplicate-dependency budget |
-| `cargo-semver-checks` on `libs/proto` | Eleven services share that contract; a silent break there fails at runtime, not compile time |
+| `cargo-semver-checks` on `crates/proto` | Eleven services share that contract; a silent break there fails at runtime, not compile time |
 | `cargo-mutants` in a nightly job | Too slow for every push, too useful to skip |
 | **`cargo hack --feature-powerset`** | Compiles every feature combination. Almost nobody runs it, and it is how you find that `--no-default-features` has not built in six months |
 | **Deploy ordering: consumers first** | During a rollout, old and new code read the same op log and the same protobuf. A consumer that cannot yet decode a new producer's output loses events silently — so consumers always ship first, and the rule belongs in the pipeline rather than in someone's memory |
@@ -1474,15 +1487,20 @@ noise. Surface it as a hint, never a block on typing, and never with a modal.
 
 ## Status — Phase 1, `document-service`
 
-**There is no code.** The repository is documentation only: this roadmap, the RFCs and ADRs, the
-LLDs in `docs/architecture/lld/`, the reading lists in `docs/learning/`, and the mockups. Every
-line of Rust is yours to write, in whatever layout you decide.
+**One crate exists: `crates/document-core`.** `Page`, `Block`, `Op` with `invert`, and `History`
+with undo/redo — 18 tests green, including the invertibility round-trip on every op variant and
+atomicity when an inverse fails to apply. **Next: replace `Vec<Span>` with flat text + marks over
+byte ranges** (RFC-001 §2, `TASKS.md` D-02).
+
+**Everything else is still documentation**: this roadmap, the RFCs and ADRs, the LLDs in
+`docs/architecture/lld/`, the reading lists in `docs/learning/`, and the mockups. Every other line
+of Rust is yours to write, in whatever layout you decide.
 
 That includes the startup path — config, telemetry, routing, graceful drain — and the test suite.
 Earlier drafts of this document described a scaffold that has since been deleted deliberately, so
 that the structure is derived rather than inherited.
 
-**The order everything else assumes** (`lld/document-service.md` §11 and `lld/libs-doc.md` §8 are
+**The order everything else assumes** (`lld/document-service.md` §11 and `lld/document-core.md` §8 are
 the detail):
 
 | | |
@@ -1507,7 +1525,7 @@ later — the op log is append-only, so its schema cannot be rewritten:
 
 ### The wasm32 rule needs a gate
 
-`libs/domain`, `libs/doc`, and `libs/diagnostics` must stay `wasm32`-clean and
+`crates/domain`, `crates/document-core`, and `crates/diagnostics` must stay `wasm32`-clean and
 infrastructure-free — they run in the browser (ADR-004), which is also what keeps them
 Miri-reachable and fuzzable. Right now that rule lives in prose, and prose does not fail a
 build. It will be broken by an innocent `tokio` import and discovered months later when the

@@ -107,7 +107,8 @@
     </nav>
     <div class="crumb">Product · <b>Collaborative editing spec</b></div>
     <div class="spacer"></div>
-    <div class="state"><span class="dot"></span>Synced</div>
+    <a class="state" href="netcode.html" style="text-decoration:none"
+       title="Open the live session — prediction, rollback, and the transform"><span class="dot"></span>Synced</a>
     <div class="avatars">
       <div class="avatar you" title="You">GN</div>
       <div class="avatar peer" title="Ada — editing now">AD</div>
@@ -115,6 +116,7 @@
     </div>
     <button class="icon-btn" id="themeBtn" title="Toggle theme" aria-label="Toggle theme">◐</button>
     <a class="btn" href="compiler.html" title="Lexer → AST → block tree → ops">Compiler view</a>
+    <a class="btn" href="netcode.html" title="Prediction, rollback, the transform, and the block tree">Live session</a>
     <a class="btn" href="facts.html" title="Named definitions and what goes stale">Facts</a>
     <button class="btn" id="paletteBtn">Search <span class="kbd">⌘K</span></button>
     <button class="btn primary">Share</button>
@@ -217,7 +219,7 @@
           </div>
           <div class="field">
             <label for="fname">Filename</label>
-            <input id="fname" value="libs/domain/src/op.rs">
+            <input id="fname" value="crates/domain/src/op.rs">
           </div>
           <div class="field">
             <label><input type="checkbox" checked style="width:auto"> Show line numbers</label>

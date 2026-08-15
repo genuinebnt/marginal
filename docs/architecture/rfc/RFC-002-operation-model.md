@@ -298,7 +298,7 @@ A Bloom filter has **no false negatives**, which is the property that makes this
 This is the most `unsafe` and most concurrent code in the project, and tests alone validate neither.
 
 - **`loom`** — model-check the `ArrayQueue` usage, the op-sequence CAS loop, and epoch reclamation. Behind `#[cfg(loom)]` in a dedicated CI job. Rule of thumb: if you chose an `Ordering` by reasoning rather than copying, it needs a loom test
-- **Miri** — `cargo +nightly miri test` over rope internals using `MaybeUninit`, `#[repr(align(64))]` structs, and epoch reclamation. Keep these in `libs/` with pure unit tests so they stay Miri-reachable
+- **Miri** — `cargo +nightly miri test` over rope internals using `MaybeUninit`, `#[repr(align(64))]` structs, and epoch reclamation. Keep these in `crates/` with pure unit tests so they stay Miri-reachable
 - **`proptest`** — the invertibility law (§3), convergence under arbitrary interleavings, and log round-trip
 - **`cargo-fuzz`** — the WAL reader **and the `rkyv` archive validator** over arbitrary bytes: never panic, never accept a corrupt record. The wire decoder is attacker-controlled input, so this is security work
 - **`criterion`** — `rkyv` vs `bincode` decode, and `Bytes` vs `Vec<u8>` fan-out at 5/20/100 subscribers. Publish the numbers; the point is that you measured

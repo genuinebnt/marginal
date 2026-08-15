@@ -2,8 +2,7 @@
 
 **Date:** 2026-08-07
 **Status:** Accepted
-**Supersedes:** the implicit AWS + Pulumi choice in `AWS_ROADMAP.md` and `CLOUD_PORTABILITY.md`
-**Related:** ADR-002 (Rust depth), ADR-001 (scope)
+**Related:** ADR-001 (scope) · ADR-002 (Rust depth) · ADR-010 (cost-bounded cloud posture)
 **Deciders:** @genuinebasilnt
 
 ---
@@ -39,15 +38,15 @@ makes this a documentation change rather than a rewrite.
 
 | Concern | GCP |
 |---|---|
-| Kubernetes | GKE — one zonal cluster, Standard mode |
-| Database | Cloud SQL for PostgreSQL |
-| Cache / presence | Memorystore for Redis |
-| Event bus | NATS JetStream on GKE — Pub/Sub evaluated and declined, see `CLOUD_PORTABILITY.md` |
+| Kubernetes | GKE — one zonal cluster, Standard mode. **Tier S only** (ADR-010): rented per session, never resident |
+| Database | **Serverless Postgres** resident; Cloud SQL is a **Tier S** rental for replicas and `pgvector` (ADR-010 §3) |
+| Cache / presence | In-process behind the trait, or the free `e2-micro`. Memorystore is **Tier S** — provisioned and always billing |
+| Event bus | **Pub/Sub**. JetStream is stateful and cannot idle at zero, so `NatsBus` is the local and self-host adapter and `PubSubBus` is the cloud one (ADR-010 §2) |
 | Object storage | Cloud Storage |
 | Secrets | Secret Manager |
 | Container registry | Artifact Registry |
-| Ingress | Cloud Load Balancing via the GKE Gateway API |
-| Static client | Cloud Storage + Cloud CDN |
+| Ingress | The **Cloud Run service URL**. Cloud Load Balancing is **Tier S** — a forwarding rule bills continuously and is never free |
+| Static client | **Firebase Hosting**. Cloud CDN needs a load balancer, so it is **Tier S** |
 | Traces | Cloud Trace via the OTel Collector |
 | Metrics | Google Cloud Managed Service for Prometheus |
 | Logs | Cloud Logging |
@@ -116,16 +115,14 @@ $20–40 rather than a monthly bill.
 
 ---
 
-## Amendment — GCP is the primary deployment target
+## Google Cloud is the primary deployment target
 
-**Added 2026-08-07.** This ADR originally framed Google Cloud as *"the cloud learning
-track"* — optional, alongside a self-hosted product. That is reversed.
-
-**Google Cloud is the primary hosting target and a project requirement.** The reference
+**Google Cloud is the primary hosting target and a project requirement**, not an optional
+learning track alongside a self-hosted product. The reference
 deployment is GKE and Cloud Run in a real project; `docker compose up` remains supported
 for self-hosting and for local development, but it is no longer the definition of "running".
 
-### What this changes
+### What that means
 
 - **A phase is not done until it is deployed.** `CLOUD_ROADMAP.md` §2 already attaches a
   cloud increment to every phase; that increment is now part of the phase's definition of
@@ -137,7 +134,7 @@ for self-hosting and for local development, but it is no longer the definition o
   sessions and a $10 budget alert are the mechanism that makes a required cloud target
   affordable on a learning budget.
 
-### What this does not change
+### What it does not change
 
 **Ports and adapters stay** (`CLOUD_PORTABILITY.md` §2). The trait indirection is not
 scaffolding for self-hosting that can now be deleted — it is what makes integration tests
@@ -145,16 +142,19 @@ run against real local infrastructure instead of mocks, and what keeps a single 
 becoming an untestable dependency. Self-hosting remains a supported path and a product
 capability (ADR-001).
 
-### The decision this re-opens
+### The event bus takes two adapters
 
-The Pub/Sub evaluation (`CLOUD_PORTABILITY.md` § Pub/Sub, evaluated) rested partly on
-*"self-hosting would degrade"*. That argument weakens if self-hosting is secondary.
+Pub/Sub is capable — `seek()` to a timestamp or snapshot, retention to 31 days, ordering keys,
+dead-letter topics — and it idles at zero. JetStream is stateful, so in the cloud it would be the
+only always-on component in the estate.
 
-**It does not change the outcome yet**, because the second argument stands on its own: the
-event bus is the core messaging substrate, and two implementations means every delivery
-guarantee, ordering model, and redelivery behaviour exists twice with every consumer correct
-under both. If self-hosting ever drops to best-effort, revisit — with that reasoning, not
-with "it is managed so it is better".
+It cannot simply replace NATS, because Pub/Sub has no local production equivalent and self-hosting
+is an ADR-001 requirement. So `EventBus` carries both: `NatsBus` locally and self-hosted,
+`PubSubBus` in the cloud (ADR-010 §2).
+
+The price is paid knowingly — every delivery guarantee, ordering model and redelivery behaviour
+exists twice, with every consumer correct under both. `DATA_MODEL.md` §10 is the contract they
+share, and the integration suite runs each consumer against both.
 
 ---
 
@@ -166,9 +166,12 @@ more. Rejected on the EKS control-plane fee under a spin-up/tear-down usage patt
 **GCP with Pulumi (TypeScript or Go).** Rejected: if IaC cannot be Rust, HCL's ecosystem
 and job-market presence beat a second general-purpose language in the stack.
 
-**Cloud Run instead of GKE.** Cheaper still and scales to zero, but `collaboration-service`
-is stateful with sticky consistent-hash routing (ADR-001), which Cloud Run cannot express.
-Kubernetes is load-bearing for this architecture, not incidental.
+**GKE as the resident runtime.** Kubernetes is load-bearing for `collaboration-service`'s sticky
+consistent-hash routing (ADR-001), and Cloud Run cannot express it. But a cluster bills whether or
+not anything runs, so GKE is **rented per session** and Cloud Run is the resident runtime
+(ADR-010 §1). The stateful justification is not withdrawn, it is unloaded: with no second
+concurrent editor, sticky routing has nothing to be sticky about. GKE becomes resident when the
+load exists.
 
 ---
 

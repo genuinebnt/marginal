@@ -13,6 +13,11 @@
     · duplicate-definition detection — a hash collision, not a satisfiability problem
     · the propagation counter shows how many nodes were *visited* versus how many
       exist, which is the entire argument for incremental over full recompute
+    · **page bodies are editable**, so the graph's SHAPE can change and not just a
+      node's value. Adding `{{name}}` to a page adds an edge, and an added edge
+      dirties only the page that gained it — never every other reader of that fact.
+      Editing prose that contains no reference walks nothing at all. Three edits,
+      three costs, and telling them apart is what a query engine is *for*
 
   What is faked: the pages and the prose.
 
@@ -72,7 +77,19 @@
   .doc-card.stale { border-left-color: var(--amber); background: var(--amber-soft); }
   .doc-card.cyclic { border-left-color: var(--amber); border-style: dashed; }
   .doc-card .dtitle { font-family: var(--display); font-size: 15px; font-weight: 560; letter-spacing: -.01em; }
-  .doc-card .dbody { font-family: var(--serif); font-size: 14.5px; line-height: 1.6; color: var(--ink-soft); margin-top: 6px; }
+  .doc-card .dbody { font-family: var(--serif); font-size: 14.5px; line-height: 1.6; color: var(--ink-soft); margin-top: 6px; cursor: text; border-radius: 4px; }
+  .doc-card .dbody:hover { background: var(--hover); box-shadow: 0 0 0 4px var(--hover); }
+
+  /* Editing shows the SOURCE — `{{name}}` rather than its value. The rendered
+     view is a projection of it, so the two cannot both be the editing surface. */
+  .doc-card .dsrc {
+    display: block; width: 100%; margin-top: 6px; resize: vertical; min-height: 62px;
+    font-family: var(--mono); font-size: 12.5px; line-height: 1.65; color: var(--ink);
+    background: var(--bg-sunken); border: 1px solid var(--teal); border-radius: var(--radius);
+    padding: 8px 10px; outline: none; box-shadow: 0 0 0 3px var(--teal-soft);
+  }
+  .doc-card .dhint { margin-top: 6px; font-size: 11px; color: var(--ink-faint); }
+  .doc-card .dhint code { font-family: var(--mono); color: var(--teal); }
   .doc-card .dfoot { display: flex; align-items: center; gap: 8px; margin-top: 9px; }
 
   .ref {
@@ -118,7 +135,9 @@
   <div class="fbar">
     <span class="label">Try it</span>
     <span class="muted" style="font-size:12px">
-      Edit any value on the left — every page downstream of it goes amber, transitively.
+      Edit any <b>value</b> and every page downstream goes amber, transitively. Click a
+      <b>page</b> to edit its prose and add a <code>{{reference}}</code> — that builds an edge
+      rather than dirtying one.
     </span>
     <span class="spacer"></span>
     <button class="btn" id="addCycle">Introduce a cycle</button>
@@ -156,6 +175,16 @@
         <div class="metric2"><span>Nodes in graph</span><span class="v" id="mNodes">—</span></div>
         <div class="metric2"><span>Cycles</span><span class="v" id="mCycles">—</span></div>
         <div class="metric2"><span>Duplicate names</span><span class="v" id="mDupes">—</span></div>
+
+        <div class="panel-section">
+          <div class="panel-h">Last change</div>
+          <div class="note" style="margin:0;max-width:none" id="mCause">nothing yet</div>
+          <div class="note" style="margin:8px 0 0;max-width:none">
+            Three edits, three different costs: changing a <b>value</b> walks its downstream,
+            adding a <b>reference</b> seeds one page, and editing <b>prose</b> walks nothing at
+            all. A recompute-everything build system cannot tell these apart.
+          </div>
+        </div>
 
         <div class="panel-section">
           <div class="panel-h">Dependency DAG</div>
@@ -204,7 +233,10 @@ const SEED = {
 }
 
 let facts, docs, stale, lastVisited = 0, cycles = [], dupes = []
+let editingDoc = null, lastCause = 'nothing yet'
 const REF = /\{\{([a-z0-9-]+)\}\}/g
+const escText = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+const refsIn = s => new Set([...s.matchAll(REF)].map(m => m[1]))
 
 function load() {
   facts = JSON.parse(JSON.stringify(SEED.facts))
@@ -279,7 +311,10 @@ function propagate(dirtyNames) {
     }
   }
   lastVisited = visited
-  for (const id of seen) if (docs.some(d => d.id === id)) stale.add(id)
+  /* A seed that is itself a page goes stale too. Editing a *value* seeds fact
+     names, which are never pages; adding a *reference* seeds the page that gained
+     the edge, and that page is the thing which just became out of date. */
+  for (const id of [...dirtyNames, ...seen]) if (docs.some(d => d.id === id)) stale.add(id)
   return seen
 }
 
@@ -310,9 +345,14 @@ function docHtml(d) {
     const f = facts.find(x => x.name === name)
     return `<span class="ref" title="{{${name}}}">${f ? f.value : '?? ' + name}</span>`
   })
+  const known = facts.map(f => f.name).join(' · ')
+  const surface = editingDoc === d.id
+    ? `<textarea class="dsrc" data-d="${d.id}" spellcheck="false">${escText(d.body)}</textarea>
+       <div class="dhint">Source view. Type <code>{{name}}</code> to add a reference — ${known}</div>`
+    : `<div class="dbody" data-edit="${d.id}" title="Click to edit the source">${body}</div>`
   return `<div class="doc-card ${isStale ? 'stale' : ''} ${inCycle ? 'cyclic' : ''}">
     <div class="dtitle">${d.title}</div>
-    <div class="dbody">${body}</div>
+    ${surface}
     <div class="dfoot">
       ${isStale ? `<span class="pill amber">citation may be stale</span><button class="fixbtn" data-ack="${d.id}">Reviewed — clear</button>` : '<span class="pill teal">up to date</span>'}
       ${inCycle ? '<span class="pill amber">in a reference cycle</span>' : ''}
@@ -342,18 +382,62 @@ function render() {
   stalePill.textContent = `${stale.size} stale`
   stalePill.className = stale.size ? 'pill amber' : 'pill teal'
 
+  mCause.innerHTML = lastCause
+
   document.querySelectorAll('.fval').forEach(input => {
     input.addEventListener('input', () => {
       const i = Number(input.dataset.i)
       facts[i].value = input.value
       // One definition changed. Propagate from exactly that node.
       propagate([facts[i].name])
+      lastCause = `<b>value changed</b> — <code>{{${facts[i].name}}}</code>. Seeded one definition; the walk found everything downstream of it.`
       rebuild()
       // keep focus and caret through the re-render
       const again = document.querySelector(`.fval[data-i="${i}"]`)
       if (again) { again.focus(); again.setSelectionRange(again.value.length, again.value.length) }
     })
   })
+
+  /* Clicking a page swaps its rendered body for its source. They cannot be the
+     same surface: the render substitutes values for `{{name}}`, so editing the
+     rendered text would destroy the very reference it is displaying. */
+  document.querySelectorAll('[data-edit]').forEach(el =>
+    el.addEventListener('click', () => { editingDoc = el.dataset.edit; render(); document.querySelector('.dsrc')?.focus() }))
+
+  const ta = document.querySelector('.dsrc')
+  if (ta) {
+    /* Re-rendering mid-edit detaches this node; a blur from that is not the user
+       leaving the field, and acting on it would close the editor on every keystroke. */
+    ta.addEventListener('blur', () => { if (ta.isConnected) { editingDoc = null; render(); drawDag() } })
+    ta.addEventListener('input', () => {
+      const d = docs.find(x => x.id === ta.dataset.d)
+      const before = refsIn(d.body)
+      d.body = ta.value
+      const after = refsIn(d.body)
+      const added = [...after].filter(n => !before.has(n))
+      const dropped = [...before].filter(n => !after.has(n))
+
+      /* Three distinct causes, and only one of them dirties anything. Adding an
+         edge dirties the page that gained it — NOT every other page that reads
+         the same fact, which is the mistake a whole-workspace recompute makes. */
+      if (added.length) {
+        propagate([d.id])
+        lastCause = `<b>edge added</b> — ${added.map(n => `<code>{{${n}}}</code>`).join(' ')} now read by <b>${d.title}</b>. Only that page was seeded.`
+      } else if (dropped.length) {
+        lastVisited = 0
+        lastCause = `<b>edge removed</b> — ${dropped.map(n => `<code>{{${n}}}</code>`).join(' ')} dropped from <b>${d.title}</b>. Losing a citation cannot make a page out of date, so nothing was walked.`
+      } else {
+        lastVisited = 0
+        lastCause = `<b>prose edited</b> — no reference changed, so the graph is untouched and <b>nothing</b> was invalidated.`
+      }
+
+      const caret = ta.selectionStart
+      rebuild()
+      const again = document.querySelector('.dsrc')
+      if (again) { again.focus(); again.setSelectionRange(caret, caret) }
+    })
+  }
+
   document.querySelectorAll('[data-ack]').forEach(b =>
     b.addEventListener('click', () => { stale.delete(b.dataset.ack); render(); drawDag() }))
 

@@ -1,8 +1,8 @@
-# LLD — `libs/doc`
+# LLD — `crates/document-core`
 
 **Owns:** the document model itself — the parser, the block tree, the rope, anchors, marks, and the op ISA. **The most important crate in the project.**
 **Transport:** none. It is a library.
-**Depends on:** `libs/domain` only. **No tokio, no sqlx, no filesystem, no network** — `wasm32`-clean by rule (`CLAUDE.md` § Crate Layout), enforced in CI.
+**Depends on:** `crates/domain` only. **No tokio, no sqlx, no filesystem, no network** — `wasm32`-clean by rule (`CLAUDE.md` § Crate Layout), enforced in CI.
 **Related:** `RFC-001` (document model, §9 anchors) · `RFC-002` (op ISA) · `lld/collaboration-service.md` (its largest consumer) · `ui-mockups/compiler.html` (the pipeline, running)
 
 **Not a service, and that is why this document exists.** Every other LLD covers one deployable.
@@ -15,15 +15,15 @@ falls between documents and ends up unspecified.
 
 | Consumer | Needs | Phase |
 |---|---|---|
-| **The browser** (`wasm32`) | **Everything** — and it is the *only* consumer of the front end, which is why the front end lives in `wasm/editor` rather than here | 1, 3, 16 |
+| **The browser** (`wasm32`) | **Everything** — and it is the *only* consumer of the front end, which is why the front end lives in `crates/editor-wasm` rather than here | 1, 3, 16 |
 | **`collaboration-service`** (native) | `tree`, `ops`, `anchor`, `rope`, `marks`. **Not the front end** | 3 |
-| **`document-service`** (native) | `tree` and `ops::apply`, to materialise `blocks` by replaying op events (ADR-003 § Amendment). **Not anchors or the rope** — marks persist as byte offsets in JSONB | 1 |
+| **`document-service`** (native) | `tree` and `ops::apply`, to materialise `blocks` by replaying op events (ADR-003). **Not anchors or the rope** — marks persist as byte offsets in JSONB | 1 |
 
 **The parser has exactly one runtime: the browser.** Paste comes off the clipboard, input rules must
 fire without a round trip, and file import can read the file client-side too. **No server-side code
 path parses markdown**, and if one ever appears that is a design change, not an optimisation.
 
-> **`libs/doc` is where Phase 1's editor half lives.** `lld/document-service.md` covers the backend
+> **`crates/document-core` is where Phase 1's editor half lives.** `lld/document-service.md` covers the backend
 > of Phase 1 and deliberately contains no parser. If you build only from that document you will ship
 > a service with no editor — this is the other half.
 
@@ -31,27 +31,40 @@ path parses markdown**, and if one ever appears that is a design change, not an 
 
 ## 2. Module map
 
-**The editor core spans two crates, split by consumer count.**
+**The editor core spans three crates, split by who links them.**
 
 ```
-libs/doc/             ── the model · shared ──
+crates/document-core/     ── the model · linked by everything ──
+├── page.rs           Page, PageId, apply                          ✔ exists
+├── block.rs          Block, BlockId, BlockKind                    ✔ exists
+├── operation.rs      Op, apply, invert          RFC-002 §2        ✔ exists
+├── history.rs        undo/redo stacks, atomic on failure          ✔ exists
+├── inline.rs         flat text + marks over BYTE ranges  RFC-001 §2   ← NEXT
 ├── tree.rs           block tree ↔ `blocks.content` JSONB       all three consumers
-├── ops.rs            Op, apply, invert          RFC-002 §2     all three consumers
 ├── anchor.rs         Anchor, ItemId, Bias, Resolved  RFC-001 §9  browser + collab
-├── rope/             mod.rs · node.rs · summary.rs   Phase 3     browser + collab
-└── marks.rs          mark intervals over anchors                  browser + collab
+└── rope/             mod.rs · node.rs · summary.rs   Phase 3     browser + collab
 
-wasm/editor/          ── the front end · browser only ──
+crates/document-parser/   ── what the user types · linked by editor-wasm only ──
 ├── lex/
 │   ├── block.rs      line classification → tokens with byte spans
 │   ├── inline.rs     `**` `*` `_` backtick `[[…]]` `[…](…)`, nested
 │   └── scan.rs       the BOUNDED backward scanner — a different shape
 ├── parse.rs          recursive descent over block tokens → Ast
 ├── ast.rs            Ast — TRANSIENT. Lives microseconds, never stored
-├── lower.rs          Ast → block tree + spans; the one place spans are produced
-├── normalise.rs      span coalescing; must be idempotent       RFC-001 §2
+├── lower.rs          Ast → block tree + marks; the one place marks are produced
+├── normalise.rs      mark coalescing; must be idempotent        RFC-001 §2
 └── sanitise.rs       HTML paste allowlist — AN XSS BOUNDARY     RFC-001 §4
+
+crates/editor-wasm/       ── the crossing · browser only ──
+├── lib.rs            every #[wasm_bindgen] export, one reviewable surface
+└── highlight.rs      syntect + two-face — rendering, not modelling
 ```
+
+> **Why three and not two.** The parser could live inside `editor-wasm`, since the browser is its
+> only consumer. It does not, because the dependency concern — *no backend service should link an
+> XSS-boundary HTML parser or `syntect`* — is satisfied just as well by a separate crate that only
+> `editor-wasm` depends on, and a plain library fuzzes, tests and reviews better than a module
+> inside a cdylib. `sanitise.rs` is the file this matters most for.
 
 **Phase 1 builds the top half. Phase 3 builds the bottom half.** `tree.rs`, `anchor.rs`, and
 `ops.rs` are needed by both, which is why the anchor decision had to be made before either
@@ -63,23 +76,24 @@ this document does not repeat it. Sections 3–5 below cover the front end, whic
 
 ### Why the split falls exactly there
 
-**A module in a shared crate that only one crate uses is mislabelled.** The front end has exactly
-one consumer — the browser — so it lives with it.
+**The line is drawn by who links the crate, not by what the code is about.** All three consumers
+need the model; only the browser needs the parser; only the browser needs the crossing.
 
 The dependency consequence is the visible proof. `sanitise.rs` needs an HTML parser and highlighting
-needs `syntect` + `two-face`; with the front end in `libs/doc`, **two backend services would link an
-XSS-boundary HTML parser they never invoke**, plus the largest dependency in the project. Not fatal
-— compile time and review surface — but paid for nothing.
+needs `syntect` + `two-face`; with either in `crates/document-core`, **two backend services would
+link an XSS-boundary HTML parser they never invoke**, plus the largest dependency in the project.
+Not fatal — compile time and review surface — but paid for nothing.
 
 A `parse` feature gate was the first answer here and it was a workaround: it hid a placement problem
-rather than fixing it. Moving the code removes the gate, the conditional compilation, and the
+rather than fixing it. Separate crates remove the gate, the conditional compilation, and the
 question.
 
 | | |
 |---|---|
-| **`syntect` + `two-face`** | Also in `wasm/editor`. Highlighting is *rendering*, not modelling — this crate's job ends at producing a block tree (RFC-001 §5) |
-| **Still testable natively** | `wasm/editor` is `crate-type = ["cdylib", "rlib"]`, so `cargo test` needs no wasm toolchain |
-| **If a second consumer appears** | Server-side file import, say — extract `libs/editor` **then**. That is the third-use rule working, not being ignored |
+| **`syntect` + `two-face`** | `crates/editor-wasm` only. Highlighting is *rendering*, not modelling — `document-core`'s job ends at producing a block tree (RFC-001 §5) |
+| **Still testable natively** | `crates/editor-wasm` is `crate-type = ["cdylib", "rlib"]`, so `cargo test` needs no wasm toolchain. `document-parser` is a plain lib and needs nothing |
+| **`sanitise` is the reason for the seam** | It is the XSS boundary and the `cargo-fuzz` target (TASKS.md D-08). A fuzz target inside a cdylib is harder to run than one in a plain library — that alone earns the crate |
+| **If a server-side consumer appears** | File import, say — it depends on `document-parser` directly. No move required, which is the point of having split it |
 
 ---
 
@@ -196,7 +210,7 @@ truth and blocks are a projection replay must reproduce.*
 ## 7. Test map
 
 ```
-libs/doc/tests/
+crates/document-core/tests/
 ├── lex_block.rs       classification, byte spans, indentation, fences
 ├── lex_inline.rs      nesting, code-is-raw, marks land on byte boundaries
 ├── scan.rs            the bound holds; a rule fires exactly at its trigger
@@ -263,7 +277,7 @@ input. Order is a security property here, not a style preference.
 `normalise(normalise(x)) == normalise(x)` fails on inputs nobody writes by hand — an empty span
 between two identical mark sets, a zero-length mark at a boundary. Generate them.
 
-### `libs/doc` will acquire an infrastructure dependency by accident
+### `crates/document-core` will acquire an infrastructure dependency by accident
 
 `std::time::Instant` panics under `wasm32`. `rand` needs `getrandom`'s `js` feature. Someone adds
 one for a timestamp and the browser build dies months later. **The CI gate is the only thing that

@@ -4,7 +4,7 @@ One document per service, written **before** the code and specific enough that i
 typing rather than deciding. `document-service.md` is the reference; every other LLD follows its
 shape.
 
-**One exception: [`libs-doc.md`](libs-doc.md).** `libs/doc` is a crate rather than a deployable, but
+**One exception: [`document-core.md`](document-core.md).** `crates/document-core` is a crate rather than a deployable, but
 it has **three consumers across four phases** — which is precisely the shape that falls between
 per-service documents and ends up unspecified. It got its own LLD because it did.
 
@@ -50,7 +50,7 @@ empty means the design has not been thought through, not that the service is sim
 
 | Phase | Service | Document |
 |---|---|---|
-| **1, 3** | **`libs/doc`** — *a crate, not a service* | [`libs-doc.md`](libs-doc.md) |
+| **1, 3** | **`crates/document-core`** — *a crate, not a service* | [`document-core.md`](document-core.md) |
 | **1** | `document-service` | [`document-service.md`](document-service.md) |
 | **2** | `auth-service` | [`auth-service.md`](auth-service.md) |
 | **3** | `collaboration-service` | [`collaboration-service.md`](collaboration-service.md) |

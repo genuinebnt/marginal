@@ -52,7 +52,7 @@ Absent from the earlier plan entirely, and not optional:
 | **[`syn`](https://docs.rs/syn) + [`quote`](https://docs.rs/quote)** | Foundation | `#[derive(...)]` proc macros are a distinct skill from `macro_rules!` |
 | **Hand-written `Future`/`Stream`** | Collaboration | `poll`, `Pin`, `Waker` by hand. The op-buffer flush is the natural home |
 
-Keep `unsafe` data structures in `libs/` with pure unit tests so they stay Miri-reachable — Miri cannot run testcontainers.
+Keep `unsafe` data structures in `crates/` with pure unit tests so they stay Miri-reachable — Miri cannot run testcontainers.
 
 > **Read [Rust Atomics and Locks (Mara Bos)](https://marabos.nl/atomics/) before the collaboration phase.** Memory ordering is the one topic where guessing produces code that passes every test and is still wrong. `SeqCst` everywhere is not a plan.
 

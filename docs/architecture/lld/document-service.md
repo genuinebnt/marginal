@@ -1,6 +1,6 @@
 # LLD — `document-service`
 
-**Owns:** its own database — `pages`, `blocks`, `page_links`, its outbox, and **`ops` for Phase 1 only**. Phase 3 hands the op log to `collaboration-service`, after which `blocks` becomes a projection materialised from op events (ADR-003 § Amendment)
+**Owns:** its own database — `pages`, `blocks`, `page_links`, its outbox, and **`ops` for Phase 1 only**. Phase 3 hands the op log to `collaboration-service`, after which `blocks` becomes a projection materialised from op events (ADR-003)
 **Transport:** gRPC `PageService` (ADR-007). HTTP exists only for Kubernetes probes.
 **Depends on:** PostgreSQL 18 only (Phase 1). NATS arrives with the outbox poller.
 **Related:** `DATA_MODEL.md` §4 (schema) · `PROJECT_STRUCTURE.md` §3 (service template) · `RFC-001` (document model) · `RFC-002` (op model) · `docs/api/pages.md` (the contract) · `ADR-007` (gRPC east-west)
@@ -14,8 +14,8 @@ the executable half of the same spec is a test suite you write before each slice
 ## 1. Scope — what is hand-written here
 
 > **This document is one half of Phase 1.** The other half is the **editor core** — parser, input
-> rules, paste, lowering — which lives in `libs/doc` and is specified in
-> [`libs-doc.md`](libs-doc.md). Nothing below contains a parser, deliberately: no server-side code
+> rules, paste, lowering — which lives in `crates/document-core` and is specified in
+> [`document-core.md`](document-core.md). Nothing below contains a parser, deliberately: no server-side code
 > path parses markdown. Build from both documents or you will ship a service with no editor.
 
 The startup path — boot, `/health`, `SIGTERM` drain, config, telemetry — is **scaffolding, not
@@ -61,7 +61,7 @@ src/
 ├── health.rs         liveness / readiness
 │
 │  ── designed below ──
-│                     (ids, SortKey, BlockKind, Op come from `libs/domain`)     §3
+│                     (ids, SortKey, BlockKind, Op come from `crates/domain`)     §3
 │
 ├── pages/            mod.rs · model.rs · repo.rs · grpc.rs                      §4
 ├── blocks/           mod.rs · model.rs · repo.rs                                §5
@@ -87,13 +87,13 @@ errors, and contains no business logic.
 
 ---
 
-## 3. Domain types — in `libs/domain`, not in this service
+## 3. Domain types — in `crates/domain`, not in this service
 
 Newtypes over primitives so the compiler rejects a `BlockId` where a `PageId` belongs
 (`DATA_MODEL.md` §7).
 
-**They live in `libs/domain`, not in `src/domain.rs`.** The *extract on the third use* rule
-(`PROJECT_STRUCTURE.md` §5) does not apply here: `wasm/editor` produces a block tree that this
+**They live in `crates/domain`, not in `src/domain.rs`.** The *extract on the third use* rule
+(`PROJECT_STRUCTURE.md` §5) does not apply here: `crates/editor-wasm` produces a block tree that this
 service stores, so both must agree on `BlockKind`, `SortKey`, and the ids **exactly**. A duplicated
 type that crosses a serialization boundary is a bug, not a duplication.
 
@@ -350,7 +350,7 @@ file up to `tests/` when the code it needs exists.
 |---|---|---|
 | `domain.rs` | Title/path/sort-key validation, ancestry | `domain.rs` |
 | `fractional_index.rs` | `key_between` laws, including two `proptest` properties | `SortKey` |
-| `pages.rs` | Full `PageService` surface, 30 cases | `libs/proto` + `pages/` |
+| `pages.rs` | Full `PageService` surface, 30 cases | `crates/proto` + `pages/` |
 | `tree.rs` | Cycle rules, subtree, breadcrumb, cascade | `tree/` |
 | `blocks.rs` | Grammar, projection reads, JSONB round-trip, cascade | `blocks/` + migration |
 | `outbox.rs` | Same-transaction write, `SKIP LOCKED` claim, at-least-once | `outbox/` + migration |
@@ -383,7 +383,7 @@ Bottom-up, because each step makes the next one's tests compile.
 1. `domain.rs` — types, validation, `key_between`. Activate `domain.rs` and
    `fractional_index.rs`. No database, no proto, no service needed.
 2. `migrations/0002` — `blocks`, `ops`, `outbox` per `DATA_MODEL.md` §4.
-3. `libs/proto` — `document.proto` per `docs/api/pages.md` §1, `tonic-build` in `build.rs`.
+3. `crates/proto` — `document.proto` per `docs/api/pages.md` §1, `tonic-build` in `build.rs`.
 4. `pages/model.rs` + `repo.rs` — insert and fetch first.
 5. `pages/grpc.rs` + registration in `serve`. Activate `pages.rs`.
 6. `tree/service.rs` — cycle check before anything that writes. Activate `tree.rs`.

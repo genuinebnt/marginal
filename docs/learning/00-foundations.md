@@ -17,7 +17,7 @@ Two kinds of thing live here:
 
 You are at **Phase 1, `document-service`**, with **no code written**. Everything below is yours,
 starting from an empty workspace. This is the order that gets you from *no idea where to start* to *writing
-`libs/domain` with opinions you can defend.*
+`crates/domain` with opinions you can defend.*
 
 Each day ends in a **deliverable that is not code** — a decision written down, or an existing doc
 you have read critically enough to disagree with. That is deliberate: the code is the easy part
@@ -25,11 +25,11 @@ once the decisions are yours.
 
 | Day | Read | Then decide | Deliverable |
 |---|---|---|---|
-| **1** | *Rust for Rustaceans* Ch. **Project Structure** · matklad [Large Rust Workspaces](https://matklad.github.io/2021/08/22/large-rust-workspaces.html) · then `PROJECT_STRUCTURE.md` | Whether the `libs/` + `services/` split and the inline→duplicate→extract rule are right | Three sentences on where you disagree with `PROJECT_STRUCTURE.md`, or why you don't |
+| **1** | *Rust for Rustaceans* Ch. **Project Structure** · matklad [Large Rust Workspaces](https://matklad.github.io/2021/08/22/large-rust-workspaces.html) · then `PROJECT_STRUCTURE.md` | Whether the `crates/` + `services/` split and the inline→duplicate→extract rule are right | Three sentences on where you disagree with `PROJECT_STRUCTURE.md`, or why you don't |
 | **2** | §2 below — **Data modelling**, mandatory rows only | Whether `docs.pages` and `docs.blocks` are correctly shaped | Read `DATA_MODEL.md` §4 and justify *every* column out loud. Any you cannot justify is a bug — in the doc or in your understanding |
 | **3** | §2 continued — indexes and trees. [use-the-index-luke](https://use-the-index-luke.com/) Ch. 1–3 · [LTREE docs](https://www.postgresql.org/docs/current/ltree.html) · [Don't Do This](https://wiki.postgresql.org/wiki/Don't_Do_This) | Adjacency list + materialised path, or something else | Write down *why* `path LTREE` and `parent_id` are both stored when either alone is lossy-but-workable |
 | **4** | §3 below — **API design**. Google AIP-121, 122, 131–135, 193 · [protobuf Do's and Don'ts](https://protobuf.dev/best-practices/dos-donts/) | Whether `docs/api/pages.md`'s `PageService` is well-shaped | Find at least one thing in `pages.md` that violates an AIP, and decide whether the AIP or the doc wins |
-| **5** | *Rust for Rustaceans* Ch. **Designing Interfaces** · [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/) checklist | How `PageId`, `SortKey`, `MaterialisedPath` should feel to use | The signatures for `libs/domain` — types and `impl` blocks, `todo!()` bodies |
+| **5** | *Rust for Rustaceans* Ch. **Designing Interfaces** · [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/) checklist | How `PageId`, `SortKey`, `MaterialisedPath` should feel to use | The signatures for `crates/domain` — types and `impl` blocks, `todo!()` bodies |
 | **6** | **Write code.** Domain newtypes + `TryFrom` validation | — | **Write the failing tests first** (`agents.md` § stage 1), then make them pass |
 | **7** | §2 § *Fractional indexing* — [Figma](https://www.figma.com/blog/realtime-editing-of-ordered-sequences/) then [David Greenspan's notebook](https://observablehq.com/@dgreensp/implementing-fractional-indexing) | The alphabet, and what happens when keys grow | `SortKey::key_between` — 11 more tests pass |
 | **8** | *Rust for Rustaceans* Ch. **Testing** · [`#[sqlx::test]` docs](https://docs.rs/sqlx/latest/sqlx/attr.test.html) | How integration tests get a database | `PageRepo` trait signature + the first failing repo test against real Postgres |
@@ -129,7 +129,7 @@ REST at the gateway. The mistake to avoid is designing one and mechanically tran
 
 | Resource | Why after |
 |---|---|
-| [`cargo-semver-checks`](https://github.com/obi1kenobi/cargo-semver-checks) | Once `libs/proto` has consumers, this catches the break you would otherwise ship |
+| [`cargo-semver-checks`](https://github.com/obi1kenobi/cargo-semver-checks) | Once `crates/proto` has consumers, this catches the break you would otherwise ship |
 | [Buf — protobuf lint & breaking-change detection](https://buf.build/docs/breaking/overview) | The CI answer to "did I break the wire format". Worth adopting once the proto stabilises |
 
 ---
@@ -329,5 +329,5 @@ Read these *across* phases, not before them. Each is cited again by the phase th
 | `sqlx` offline | [`cargo sqlx prepare`](https://github.com/launchbadge/sqlx/blob/main/sqlx-cli/README.md) | Phase 1 — commit `.sqlx/`, or CI cannot compile your queries |
 
 > **Set up `clippy`, `rustfmt`, and the `wasm32` CI gate on day one.** All three are cheap now
-> and expensive to retrofit — the third because three later phases depend on `libs/doc` staying
+> and expensive to retrofit — the third because three later phases depend on `crates/document-core` staying
 > browser-clean, and prose does not fail a build (`ROADMAP.md` § The wasm32 rule needs a gate).

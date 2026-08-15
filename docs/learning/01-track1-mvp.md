@@ -15,7 +15,7 @@ Cross-references into [`00-foundations.md`](00-foundations.md) are not repeated 
 **Not a step.** Foundation work is pulled in by the first service that needs it. The reading is
 correspondingly small — you are deciding *layout*, not building infrastructure.
 
-**What you must be able to decide alone at the end:** where a new type goes, when a `libs/` crate
+**What you must be able to decide alone at the end:** where a new type goes, when a `crates/` crate
 is justified, and what a feature flag may and may not do.
 
 ## Before you build
@@ -28,7 +28,7 @@ is justified, and what a feature flag may and may not do.
 | *Rust for Rustaceans* Ch. **Project Structure** | owned | Features, workspaces, the `dep:` syntax, and why **Cargo features must be additive**. The feature-flag rules in `ROADMAP.md` come straight from here |
 | [Cargo Book — Features](https://doc.rust-lang.org/cargo/reference/features.html) + [Resolver](https://doc.rust-lang.org/cargo/reference/resolver.html) | docs | You set `resolver = "3"`. This is what it bought — feature unification rules and MSRV-aware selection. Know it before a dependency conflict teaches you |
 | *Rust for Rustaceans* Ch. **Macros** | owned | Whether `define_id!` is `macro_rules!` or a proc macro. Read the declarative half now; the `syn`/`quote` half when you actually need a derive |
-| [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/) — the [checklist](https://rust-lang.github.io/api-guidelines/checklist.html) | free | Naming, common traits, and the interoperability items. Use as a literal checklist on `libs/domain` |
+| [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/) — the [checklist](https://rust-lang.github.io/api-guidelines/checklist.html) | free | Naming, common traits, and the interoperability items. Use as a literal checklist on `crates/domain` |
 
 ### Optional
 
@@ -49,7 +49,7 @@ is justified, and what a feature flag may and may not do.
 # Phase 1 — Documents · `document-service`
 
 **Build against:** [`lld/document-service.md`](../architecture/lld/document-service.md) for the
-service, and **[`lld/libs-doc.md`](../architecture/lld/libs-doc.md) for the editor core** — Phase 1
+service, and **[`lld/document-core.md`](../architecture/lld/document-core.md) for the editor core** — Phase 1
 is both, and the parser lives entirely in the second.
 
 **Where you are now.** Nothing is written — not the startup path, not the tests. The LLD specifies the design; the layout is yours.

@@ -65,7 +65,7 @@ works — which is a different question from whether it runs.
 
 | Resource | Type | Why |
 |---|---|---|
-| [`cargo-semver-checks`](https://github.com/obi1kenobi/cargo-semver-checks) | repo | `libs/proto` is a contract several services depend on. A silent break there is a runtime failure elsewhere |
+| [`cargo-semver-checks`](https://github.com/obi1kenobi/cargo-semver-checks) | repo | `crates/proto` is a contract several services depend on. A silent break there is a runtime failure elsewhere |
 | [Buf — breaking-change detection](https://buf.build/docs/breaking/overview) | docs | The protobuf-specific version of the same idea |
 | [`sccache`](https://github.com/mozilla/sccache) | repo | If CI build times become the bottleneck. Measure first |
 | [Binary Authorization](https://cloud.google.com/binary-authorization/docs) | docs | Only signed images run. Real security value, and a good Terraform exercise |

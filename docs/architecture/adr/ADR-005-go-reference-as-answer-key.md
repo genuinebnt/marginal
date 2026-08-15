@@ -94,7 +94,7 @@ A Go reference biases the port toward Go idioms — `interface{}`-flavoured trai
 
 ---
 
-## Amendment — the SPA is outsourced, the editor core is not
+## The SPA is outsourced, the editor core is not
 
 **Added 2026-08-07.**
 
@@ -103,7 +103,7 @@ written for me; all Rust remains mine, including the `wasm32` editor core.**
 
 | | Owner |
 |---|---|
-| Services, `libs/`, **and the editor core compiled to `wasm32`** | Me |
+| Services, `crates/`, **and the editor core compiled to `wasm32`** | Me |
 | `web/` — shell, routing, panels, DOM plumbing, API client, styling | Outsourced |
 
 **Why this does not weaken ADR-002.** Rust depth is the primary objective, and the SPA is

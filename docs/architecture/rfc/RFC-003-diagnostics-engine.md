@@ -170,7 +170,7 @@ A diagnostic's span must survive concurrent remote edits. `"unclosed at bytes 41
 
 ## 5. Transport and Degradation
 
-`collaboration-service → diagnostics-service` is a **gRPC server-streaming** call (ADR-006): one long-lived stream per open document, results pushed as computed.
+`collaboration-service → diagnostics-service` is a **gRPC server-streaming** call (ADR-007): one long-lived stream per open document, results pushed as computed.
 
 **Degradation is a transport property, not a code path.** If `diagnostics-service` is unavailable the stream fails to open, the client renders no diagnostics, and editing is unaffected. No request to retry, no queue to drain, no user-visible error.
 
@@ -201,7 +201,7 @@ Two callers, one implementation, compiled twice:
 | `diagnostics-service` (native) | Authoritative pass; results streamed to all sessions on the page |
 | Editor core (`wasm32`) | Local pass for instant feedback on the block being typed |
 
-The analyzers live in `libs/diagnostics`, a pure library with no infrastructure dependencies — `cargo test` only, and therefore Miri-reachable and fuzzable.
+The analyzers live in `crates/diagnostics`, a pure library with no infrastructure dependencies — `cargo test` only, and therefore Miri-reachable and fuzzable.
 
 **Local and authoritative results must agree.** Same crate, same inputs, so a disagreement is a bug in the resolution context passed in, not in the analyzers. A property test should assert agreement given identical context.
 

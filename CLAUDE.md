@@ -33,21 +33,28 @@ before the MVP ships, every phase names new Rust or is cut, and the document cor
 closed to incidental changes from these features.
 
 **Cloud is interleaved, not deferred.** Each phase deploys its own service to Google Cloud
-as part of that phase — see `CLOUD_ROADMAP.md` §2. Phase 1 includes Terraform, Cloud SQL,
-Cloud Storage, Secret Manager, and a Cloud Run deploy; GKE arrives at Phase 3 when
-`collaboration-service` makes it necessary.
+as part of that phase — see `CLOUD_ROADMAP.md` §2. Phase 1 includes Terraform, serverless
+Postgres, Cloud Storage, Secret Manager, and a Cloud Run deploy.
+
+**Two tiers, and the budget decides which (ADR-010).** *Tier R* stays running and must idle at
+zero — Cloud Run `min = 0`, Pub/Sub, GCS, one Postgres with a schema and role per service.
+*Tier S* — GKE, load balancers, Cloud SQL, Memorystore — is rented by the hour and
+`terraform destroy`ed. **≤ $10/month learning, < $2 idle.**
 
 **Phase 0 is a backlog, not a step.** Foundation work is *pulled* in by the first service
-that needs it — never built up front. `libs/` extraction follows PROJECT_STRUCTURE §5:
+that needs it — never built up front. `crates/` extraction follows PROJECT_STRUCTURE §5:
 inline, duplicate on the second use, extract on the third. See ROADMAP § Phase 0 for the
 floor (workspace, migration, Postgres, `Settings`) and each item's trigger.
 
-**Current: Phase 1 — Documents, `document-service`. There is no code yet.** The repository is
-documentation only; every line of Rust, including the startup path and the tests, is unwritten.
-`docs/architecture/lld/` specifies *what* to build and `docs/learning/` what to read first — but
-the **layout is not settled**, so treat the LLD module maps as a proposal rather than a contract.
+**Current: Phase 1 — Documents.** `crates/document-core` exists — `Page`, `Block`, `Op` with
+`invert`, and `History` with undo/redo, 18 tests green. **Next: replace `Vec<Span>` with flat text
++ marks over byte ranges** (RFC-001 §2, TASKS.md D-02). No service, no startup path, no database
+yet — every line of those is unwritten.
 
-`libs/doc` and `libs/diagnostics` need no infrastructure — pure `cargo test`, interleavable any time.
+`docs/architecture/lld/` specifies *what* to build and `docs/learning/` what to read first. Treat
+the LLD module maps as a proposal rather than a contract: the layout is derived, not inherited.
+
+`crates/document-core` and `crates/diagnostics` need no infrastructure — pure `cargo test`, interleavable any time.
 
 ---
 
@@ -58,7 +65,7 @@ the **layout is not settled**, so treat the LLD module maps as a proposal rather
 | HTTP | Axum + Tower + Tokio |
 | Database | PostgreSQL 18 + sqlx (JSONB, LTREE, `uuidv7()`) |
 | Cache / presence | Redis |
-| Event bus | NATS JetStream |
+| Event bus | NATS JetStream (local / self-host) · **Pub/Sub** (cloud) — one `EventBus` trait, two adapters (ADR-010) |
 | Object storage | MinIO (local) / Cloud Storage (cloud) |
 | Search | Tantivy (in-process) |
 | gRPC | tonic + prost — **the east-west default**, all 4 RPC modes (ADR-007) |
@@ -76,7 +83,7 @@ the **layout is not settled**, so treat the LLD module maps as a proposal rather
 |---|---|---|
 | `api-gateway` | 8000 | The edge — only public component; REST/WSS in, gRPC out (ADR-007) |
 | `document-service` | 8001 | Stateless; owns pages, blocks, **its own** outbox. gRPC `PageService`; HTTP probes only |
-| `collaboration-service` | 8002 | **Stateful** — rope per doc, scales on connection count. **Owns the op log** (ADR-003 § Amendment) |
+| `collaboration-service` | 8002 | **Stateful** — rope per doc, scales on connection count. **Owns the op log** (ADR-003) |
 | `diagnostics-service` | 8003 | CPU-bound, bursty, **degradable** |
 | `history-service` | 8004 | Cold path — replay, snapshots to object storage |
 | `search-service` | 8005 | Own Tantivy index, own rebuild cadence |
@@ -93,22 +100,28 @@ A service exists only if it differs in **scaling profile, state, failure mode, o
 ## Crate Layout
 
 ```
-libs/domain/       vocabulary: ids, BlockKind, Op, events, errors — wasm32-clean
-libs/doc/          document model: block tree, rope, anchors, marks, ops — wasm32-clean
-libs/proto/        .proto + generated tonic/prost — NOT wasm32
-services/          one binary per service. api-gateway is the ONLY REST/WS surface;
-                   every other service is gRPC + HTTP probes only
-wasm/editor/       cdylib+rlib — the wasm boundary, the editor front end
-                   (lex/parse/lower/normalise/sanitise: one consumer), syntect
-web/               React + TypeScript SPA — NOT in the workspace (ADR-004)
-deploy/            Terraform, docker-compose, prometheus.yml
+crates/                  ALL Rust lives here, flat, named by role
+├── domain/              vocabulary: ids, BlockKind, Op, errors — zero deps, wasm32-clean
+├── document-core/       the model: block tree, ops, anchors, rope, CRDT — wasm32-clean
+├── document-parser/     what the user types: lex → parse → lower → normalise → sanitise
+├── rbac-core/           roles · permissions · policy · can() — PURE, no I/O
+├── event-core/          one EventEnvelope, typed payload per publisher
+├── infra/               config · error · tracing · metrics — at the THIRD service
+├── proto/               .proto + generated tonic/prost — NOT wasm32
+├── editor-wasm/         cdylib+rlib — the bindgen boundary + syntect rendering
+├── api-gateway/         THE ONLY REST/WS surface
+└── <noun>-service/      one binary each — gRPC + HTTP probes only
 
-Start with those three libs. infra / macros / test-utils / diagnostics are pulled
-in by the first thing that needs them — PROJECT_STRUCTURE §7.
-reference/         Go reference implementations — NOT in the workspace (ADR-005)
+web/                     React + TypeScript SPA — NOT in the workspace (ADR-004)
+deploy/                  Terraform, docker-compose, prometheus.yml
+reference/               Go reference implementations — NOT in the workspace (ADR-005)
+
+Only `document-core` exists. Every other crate appears when its trigger fires —
+PROJECT_STRUCTURE §7. A crate name never carries the project name; the directory
+says which repo it is in.
 ```
 
-`libs/doc` and `libs/diagnostics` must stay `wasm32`-clean and infrastructure-free — they run in the browser, which is also what keeps them Miri-reachable and fuzzable.
+`crates/document-core` and `crates/diagnostics` must stay `wasm32`-clean and infrastructure-free — they run in the browser, which is also what keeps them Miri-reachable and fuzzable.
 
 ---
 
@@ -124,16 +137,18 @@ reference/         Go reference implementations — NOT in the workspace (ADR-00
 | `docs/architecture/lld/document-service.md` | **LLD — module map, type contracts, invariants, build order** |
 | `docs/api/pages.md` | Pages contract — gRPC `PageService` + the gateway's REST mapping |
 | `docs/architecture/ARCHITECTURE.md` | Service map, event bus, request flows, saga |
-| `docs/architecture/DATA_MODEL.md` | **Database per service** (ADR-003 § Amendment) — schemas, ownership, and where a join happens |
+| `docs/architecture/DATA_MODEL.md` | **Database per service** (ADR-003) — schemas, ownership, and where a join happens |
 | `docs/architecture/CLOUD_PORTABILITY.md` | Ports & adapters, local vs Google Cloud |
 | `docs/architecture/GLOSSARY.md` | Ubiquitous language |
 | `docs/planning/ROADMAP.md` | Phases, **Rust/DSA concepts map**, tooling |
+| `docs/planning/USER_STORIES.md` | **What each phase means from the outside** — stories with a testable *Done when*, in execution order |
+| `docs/planning/TASKS.md` | **Track 1 subtasks with an owner on every line** — the ADR-005 split, applied |
 | `docs/planning/CLOUD_ROADMAP.md` | Cloud track + cost discipline |
 | `docs/planning/TIMELINE.md` | Estimates, the two handoffs, division of labour |
 | **`docs/learning/`** | **Per-phase reading lists — prerequisites and post-build, mandatory vs optional.** Start at `learning/README.md`; `00-foundations.md` §1 is a ten-day start-here order |
 | `docs/api/README.md` | Why `utoipa` annotations are mandatory |
 | `docs/ui-mockups/` | Static visual specs + **editor and reader chrome spec** — `editor.html` is the block editor |
-| `docs/architecture/adr/` | 001 scope · 002 Rust depth · 003 Postgres · **004 SPA** (§ Amendment — a Rust frontend is revisitable after the 🏁) · 005 Go reference · ~~006~~ · **007 gRPC east-west** · **008 GCP + Terraform** · **009 scope expansion** |
+| `docs/architecture/adr/` | 001 scope · 002 Rust depth · 003 Postgres · **004 SPA** (a Rust frontend is revisitable after the 🏁) · 005 Go reference · **007 gRPC east-west** · **008 GCP + Terraform** · **009 scope expansion** · **010 cost-bounded cloud posture** |
 
 ---
 
@@ -156,7 +171,7 @@ reference/         Go reference implementations — NOT in the workspace (ADR-00
 - **The op log is the source of truth**; block rows are a projection that replay must reproduce
 - **Every op passes `can_apply(op, actor)`** — one auditable authorization chokepoint
 - Every external dependency sits behind a **trait declared in the same file** as its impl
-- `libs/domain` has **zero** external dependencies — required for `wasm32`
+- `crates/domain` has **zero** external dependencies — required for `wasm32`
 - One `config.yaml` per service; safe local defaults; secrets via env only
 - Integration tests hit real services via Testcontainers / `#[sqlx::test]` — **never mock infrastructure**
 

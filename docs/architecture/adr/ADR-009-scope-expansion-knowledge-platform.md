@@ -22,7 +22,7 @@ instead of offsets, `content_version` per row, and the outbox mean most of this 
 additive rather than structural. That was analysed feature by feature before this ADR was
 written, not assumed.
 
-**The learning argument reversed.** ADR-001 judged these features to teach nothing new.
+**The learning argument does not hold.** ADR-001 judged these features to teach nothing new.
 That is true of a naive implementation and false of the adaptations below: anchored
 comments that survive concurrent edits, reaction counters as a real CRDT, WASM plugins
 with capability-based security and fuel metering, and an assistant that emits **ops rather

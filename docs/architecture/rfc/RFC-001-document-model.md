@@ -98,7 +98,7 @@ reason, not an assumption.
 2. **OT correctness is famously hard.** Several published OT algorithms were later shown incorrect —
    the TP2 property in particular is subtle and has broken multiple implementations. CRDT
    convergence is easier to *establish* even where it is harder to *implement*, and this project
-   asserts convergence as a proptest rather than a claim (`libs/doc/tests/convergence.rs`)
+   asserts convergence as a proptest rather than a claim (`crates/document-core/tests/convergence.rs`)
 3. ADR-002 — Rust depth wins ties, and a sequence CRDT is the richer target
 
 **The cost being accepted, stated plainly.** OT transforms indices and retains **no tombstones**. A
@@ -315,7 +315,7 @@ The never-panic law is the one that finds real bugs — generate arbitrary bytes
 
 Code needs highlighting in the **editor** (live) and in **HTML export** (server). Two implementations means two theme definitions and guaranteed drift.
 
-**`syntect` + `two-face`, compiled to `wasm32` and shared — but *not* inside `libs/doc`.** Highlighting is rendering, not the document model, and `libs/doc` is linked by every service (`lld/libs-doc.md` §2 § The dependency problem). It belongs in the wasm binding layer for the browser and in `publishing-service` for static HTML.
+**`syntect` + `two-face`, compiled to `wasm32` and shared — but *not* inside `crates/document-core`.** Highlighting is rendering, not the document model, and `crates/document-core` is linked by every service (`lld/document-core.md` §2 § The dependency problem). It belongs in the wasm binding layer for the browser and in `publishing-service` for static HTML.
 
  One grammar set, one theme, identical output both sides. Fits the `wasm-bindgen` boundary ADR-004 already establishes. Trim grammars to a supported-language allowlist against the WASM bundle budget — `two-face` bundles `bat`'s full collection, which is large.
 
@@ -381,7 +381,7 @@ This is the non-obvious consequence and it follows from **lifetime**, not from c
 ### The type, and the laws it must satisfy
 
 ```rust
-// libs/domain/src/anchor.rs — zero deps, wasm32-clean.
+// crates/domain/src/anchor.rs — zero deps, wasm32-clean.
 // Shared by marks (3), diagnostic spans (4), and comments (14). RFC-003 §Anchoring
 // says build anchoring once; this is the type that makes that true.
 // Fields stay private: nothing may do arithmetic on an anchor, because integer

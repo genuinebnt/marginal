@@ -21,7 +21,7 @@ again. Re-deriving it teaches nothing on `ROADMAP.md` § Rust, DSA & Concepts Ma
 
 | Copy from `document-service` | Designed for this service |
 |---|---|
-| `main.rs`, `lib.rs` (`serve`, pool, drain, both listeners) | `libs/proto` — `auth.proto` |
+| `main.rs`, `lib.rs` (`serve`, pool, drain, both listeners) | `crates/proto` — `auth.proto` |
 | `telemetry.rs` | `domain.rs` — `Email`, `Password`, `PasswordHash`, `UserId`, `Jti` |
 | `routes.rs` (probe router + middleware) | `users/` slice |
 | `health.rs` | `sessions/` slice — issue, refresh, revoke |
@@ -29,7 +29,7 @@ again. Re-deriving it teaches nothing on `ROADMAP.md` § Rust, DSA & Concepts Ma
 | `config.rs` pattern | `bootstrap/` — the first-run claim |
 
 Copying rather than extracting is correct here: `PROJECT_STRUCTURE.md` §5 says duplicate on the
-second use and extract on the third. This is the second use. **`libs/infra` gets extracted when
+second use and extract on the third. This is the second use. **`crates/infra` gets extracted when
 `collaboration-service` needs the same code — not before.**
 
 ---
@@ -37,7 +37,7 @@ second use and extract on the third. This is the second use. **`libs/infra` gets
 ## 2. Module map
 
 ```
-services/auth-service/
+crates/auth-service/
 ├── config.yaml                  # port 8006, argon2 params, token lifetimes. NO secrets
 ├── migrations/
 │   ├── 0001_users.sql           # auth.users            — DATA_MODEL.md §3

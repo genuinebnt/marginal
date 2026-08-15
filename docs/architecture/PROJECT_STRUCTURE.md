@@ -1,13 +1,13 @@
 # Marginal — Project Structure & Code Architecture
 
-**Governing document.** Applies identically to all seven services.
+**Governing document.** Applies identically to every service.
 **Principle:** keep the dependency rules, drop the ceremony.
 
 ---
 
 ## 1. Why This Document Exists
 
-An earlier attempt used **layer-first** directories — the textbook Clean Architecture shape:
+The default reach is **layer-first** directories — the textbook Clean Architecture shape:
 
 ```
 src/
@@ -18,9 +18,9 @@ src/
 └── presentation/handlers/page.rs
 ```
 
-Adding **one field to a block** meant editing six files across four directories: the entity, the repository trait, the row mapping, the command struct, the service, and the handler.
+Adding **one field to a block** means editing six files across four directories: the entity, the repository trait, the row mapping, the command struct, the service, and the handler.
 
-Nothing there is wrong. It is priced for twenty maintainers on a decade-old codebase, and it was being paid by one person learning Rust. Progress stalled on it.
+Nothing there is wrong. It is priced for twenty maintainers on a decade-old codebase, and here it would be paid by one person learning Rust.
 
 The fix is not to abandon Clean Architecture. It is to **organise directories by feature instead of by layer**, keeping every dependency rule that earns its cost.
 
@@ -28,34 +28,60 @@ The fix is not to abandon Clean Architecture. It is to **organise directories by
 
 ## 2. The Whole Repository
 
-Four Rust buckets and one TypeScript one, split by **deployment target**.
+### One directory, flat, named by role
+
+**All Rust lives in `crates/`.** There is no `libs/`, no `services/`, no `wasm/` — a crate's
+job is carried by its **name**, not by which bucket it sits in. `document-core` is a library
+because it has no `main`; `document-service` is a binary because it does; `editor-wasm` is a
+cdylib because its `Cargo.toml` says so. A directory cannot enforce any of that, so it was
+only ever a comment with a slash in it.
+
+**A crate name never contains the project name.** `document-core`, not `marginal-doc` — the
+repository already says which project it is, and the project may be renamed.
 
 ```
 marginal/
-├── Cargo.toml            workspace: libs/* services/* wasm/editor
-│                         default-members excludes wasm/ (cdylib for host is useless)
-│
-├── libs/                 shared Rust — the only crates more than one thing links
-│   ├── domain/           vocabulary: ids · BlockKind · Op · events · errors
-│   │                     zero infra · wasm32-clean · linked by EVERYTHING
-│   ├── doc/              document model: block tree · rope · anchors · marks · ops
-│   │                     wasm32-clean · browser + document + collaboration
-│   └── proto/            .proto files + generated tonic/prost. NOT wasm32
-│
-├── services/             one binary crate per service
-│   ├── api-gateway/      THE ONLY REST + WebSocket SURFACE
-│   └── document-service/ gRPC only, plus HTTP probes
-│
-├── wasm/editor/          cdylib+rlib — the wasm-bindgen boundary,
-│                         the editor front end, and syntect rendering
-│
-├── web/                  React + TypeScript SPA — NOT in the Cargo workspace
-├── deploy/               Terraform, docker-compose, prometheus.yml
+├── Cargo.toml                 workspace · members = ["crates/*"]
+├── crates/
+│   └── document-core/         the only crate that exists today
+├── web/                       TS SPA — not in the workspace
+├── deploy/                    docker-compose, later Terraform
 └── docs/
 ```
 
-**Start with three `libs/`.** `infra`, `macros`, and `test-utils` get created when something
-actually needs them — §6.
+**Start with as few crates as the work needs.** Creating one before a second consumer exists is
+the speculative abstraction §5 forbids. The `.proto` file and its `build.rs` live inside the
+service that owns them until something else needs the generated types.
+
+### What it grows into
+
+Each crate appears when a **trigger** fires — §7 has the full table.
+
+```
+marginal/
+├── crates/
+│   ├── domain/             ← a SECOND crate needs the ids and kinds
+│   ├── document-core/      the model: block tree, rope, anchors, marks, ops
+│   ├── document-parser/    ← the editor needs to turn typing into a block tree
+│   │                         lex · parse · lower · normalise · sanitise
+│   ├── proto/              ← a second service needs the generated types
+│   ├── editor-wasm/        ← the browser needs to call Rust
+│   │                         cdylib+rlib · bindgen boundary · syntect rendering
+│   ├── api-gateway/        ← the browser needs REST. THE ONLY REST + WS SURFACE
+│   └── document-service/   gRPC + HTTP probes
+│
+├── web/                    React + TypeScript SPA — NOT in the Cargo workspace
+├── deploy/                 Terraform, docker-compose, prometheus.yml
+└── docs/
+```
+
+**The name carries the role, and the roles are three.** A `*-service` is a binary that binds two
+listeners. `editor-wasm` is the one cdylib. Everything else is a plain library. Nothing about
+that is enforced by a directory, and pretending otherwise cost a rename.
+
+`document-core` and `document-parser` are split by **who links them**, not by size: the parser
+pulls in an HTML parser for `sanitise` and `syntect` for highlighting, and no backend service
+should link either. See `lld/document-core.md` §2.
 
 ### The transport rule, in three lines
 
@@ -81,7 +107,7 @@ in `lib.rs` and then never change.
 `search-service` having only read `document-service` and know where everything is.
 
 ```
-services/<name>/
+crates/<noun>-service/
 ├── Cargo.toml
 ├── config.yaml           safe local defaults · NO secrets, ever
 ├── migrations/           this service's schema only
@@ -106,7 +132,7 @@ services/<name>/
 `repo.rs` — just translation, plus two files the other services do not need:
 
 ```
-services/api-gateway/src/
+crates/api-gateway/src/
 ├── main.rs  lib.rs  config.rs  telemetry.rs  state.rs  error.rs
 ├── auth.rs               JWT verify against cached JWKS — NO call to auth-service
 ├── clients.rs            one generated gRPC client per upstream
@@ -213,7 +239,7 @@ tx.commit().await?;
 |---|---|
 | **A trait for every external dependency** — DB, cache, broker, object store | `CLOUD_PORTABILITY.md`: Cloud SQL↔Postgres, GCS↔MinIO, Memorystore↔Redis swap behind one trait. Also what makes `#[sqlx::test]` viable |
 | **Trait and impl in the same `repo.rs`** | A trait in a separate file from its only implementation is ceremony |
-| **`libs/domain` has near-zero deps** | It and `libs/doc` compile to `wasm32` — CI-enforced |
+| **`crates/domain` has near-zero deps** | It and `crates/document-core` compile to `wasm32` — CI-enforced |
 | **No cross-service database access** | ADR-001. Data crosses as NATS events, never as a join |
 | **`AppError` internal; mapped at the boundary** | One-way `From` to `tonic::Status` and to an axum response. **A database message never reaches a client** |
 | **One `config.yaml` per service, secrets via env only** | Missing variable ⇒ fail to start, loudly |
@@ -310,22 +336,22 @@ The default is **not** to share. Duplication across services is cheaper than a s
 ```
   ┌──────────────────────────────────────────────────────────────────┐
   │  Domain primitive (id newtype, BlockKind, Op, event, error)?      │
-  │      └─ yes ──▶ libs/domain        zero deps, wasm32-safe         │
+  │      └─ yes ──▶ crates/domain        zero deps, wasm32-safe         │
   │                                                                   │
   │  Cross-cutting plumbing (telemetry, config, AppError)?            │
-  │      └─ yes ──▶ libs/infra                                        │
+  │      └─ yes ──▶ crates/infra                                        │
   │                                                                   │
   │  Wire contract between two services?                              │
-  │      └─ yes ──▶ libs/proto         tonic + prost                  │
+  │      └─ yes ──▶ crates/proto         tonic + prost                  │
   │                                                                   │
   │  Document model — rope, marks, ops, input rules?                  │
-  │      └─ yes ──▶ libs/doc           wasm32; the editor core        │
+  │      └─ yes ──▶ crates/document-core           wasm32; the editor core        │
   │                                                                   │
   │  A diagnostic analyzer?                                           │
-  │      └─ yes ──▶ libs/diagnostics   wasm32; pure, no infra         │
+  │      └─ yes ──▶ crates/diagnostics   wasm32; pure, no infra         │
   │                                                                   │
   │  Test scaffolding?                                                │
-  │      └─ yes ──▶ libs/test-utils    Testcontainers, TestContext    │
+  │      └─ yes ──▶ crates/test-utils    Testcontainers, TestContext    │
   │                                                                   │
   │  Anything else?                                                   │
   │      └─ KEEP IT IN THE SERVICE. Duplicate if two services need    │
@@ -338,7 +364,7 @@ The default is **not** to share. Duplication across services is cheaper than a s
 The decision tree above is easy to over-apply. The sharper test, because it settles almost every
 case in one line:
 
-> **`libs/domain` holds the *vocabulary*, never the *entities*.**
+> **`crates/domain` holds the *vocabulary*, never the *entities*.**
 
 | Vocabulary — shared | Entity — stays in the slice that owns it |
 |---|---|
@@ -347,18 +373,18 @@ case in one line:
 | `SortKey` — `lower.rs` assigns them, the service orders by them | `Title` · `MaterialisedPath` (an LTREE detail) · `LifecycleState` |
 | `Op` · domain events · `DomainError` | `User` · `Email` · `Password` — `auth-service`'s alone |
 
-`libs/domain/src/block.rs` is the pattern in miniature: it holds **`BlockKind`**, not `Block`.
+`crates/domain/src/block.rs` is the pattern in miniature: it holds **`BlockKind`**, not `Block`.
 
 **Two tests, and a type must pass one:**
 
-1. **Count the consumers.** Two or more crates → `libs/domain`. Exactly one → that crate.
-2. **Does it cross a serialization boundary?** If `wasm/editor` produces it and a service stores
+1. **Count the consumers.** Two or more crates → `crates/domain`. Exactly one → that crate.
+2. **Does it cross a serialization boundary?** If `crates/editor-wasm` produces it and a service stores
    it, they must agree *exactly* — so it is shared even at two consumers. This is the one case
    where *extract on the third use* does not apply: **a duplicated type that crosses a wire is a
    bug, not a duplication.**
 
 `Page` fails both — one constructing crate, and it reaches the browser as a proto message rather
-than as a Rust type. So there is no `page.rs` in `libs/domain`, and there should not be.
+than as a Rust type. So there is no `page.rs` in `crates/domain`, and there should not be.
 
 ---
 
@@ -370,32 +396,45 @@ that needs it.*
 
 | Trigger | Add |
 |---|---|
+| **A second crate needs the ids, `BlockKind`, `Op`** | `crates/domain`. **The one case where two consumers is enough** rather than three — a type that crosses a serialization boundary must be identical, not merely compatible (§6) |
+| **The editor core exists** | `crates/document-core` — the model: block tree, ops, anchors, rope, CRDT. wasm32-clean |
+| **Typing has to become a block tree** | `crates/document-parser` — lex · parse · lower · normalise · sanitise. Split from `document-core` by **who links it**, not by size: `sanitise` needs an HTML parser and no backend service should link one |
+| **A second consumer of the permission check** | `crates/rbac-core` — roles, permissions, policy, `can()`. **Pure, no I/O** — it is the shape `can_apply(op, actor)` needs |
+| **A second service publishes events** | `crates/event-core` — one `EventEnvelope`, typed payload per publisher |
+| **A second service needs the generated types** | `crates/proto`. Until then the `.proto` and `build.rs` live in the one service that uses them |
+| **The browser needs to call Rust** | `crates/editor-wasm` |
 | **Second service** | Nothing shared. **Copy** the six root files. Copying twice is cheaper than a wrong abstraction |
-| **Third service** | *Now* extract `libs/infra` — telemetry, config, `AppError`. Three consumers is the rule (§6) |
+| **Third service** | *Now* extract `crates/infra` — telemetry, config, `AppError`. Three consumers is the rule (§6) |
 | A service needs another's data | An **event** and local materialisation. Never a call on a hot path, never a cross-database join (`DATA_MODEL.md` §1) |
 | A slice's `api.rs` serves two transports | Split to `api/rest.rs` + `api/grpc.rs`. Only the gateway has needed this |
 | Logic spans two aggregates | `service.rs` in the slice that owns the operation — §5.3 |
-| A proc macro would remove real duplication | `libs/macros`. Not before: `macro_rules!` covers most of it |
-| Integration tests repeat container setup three times | `libs/test-utils` |
-| A diagnostic analyzer exists | `libs/diagnostics` — wasm32-clean, pure, no infra |
+| A proc macro would remove real duplication | `crates/macros`. Not before: `macro_rules!` covers most of it |
+| Integration tests repeat container setup three times | `crates/test-utils` |
+| A diagnostic analyzer exists | `crates/diagnostics` — wasm32-clean, pure, no infra |
 
 **What never gets added**: a `usecases/` directory (§5.4), a trait that abstracts another trait
-(§5.2), or a `libs/` crate with one consumer (§6).
+(§5.2), or a `crates/` crate with one consumer (§6).
 
-### `wasm/editor` is the `wasm-bindgen` boundary, made into a file
+### `crates/editor-wasm` is the `wasm-bindgen` boundary, made into a file
 
 ADR-004 requires the boundary be **designed, not discovered**. Without a crate to hold it, it gets
 discovered — one `#[wasm_bindgen]` at a time, scattered wherever one was needed.
 
-| It owns | Why here and not in `libs/doc` |
+| It owns | Why here and not in `crates/document-core` |
 |---|---|
 | Every `#[wasm_bindgen]` export | The TypeScript-facing API is one reviewable surface |
 | `serde_wasm_bindgen` marshalling | The crossing cost lives at the crossing |
-| **The editor front end** — lex, parse, lower, normalise, sanitise | **Exactly one consumer.** A module in a shared crate that only one crate uses is mislabelled — and it would make two backend services link an XSS-boundary HTML parser they never invoke |
 | **`syntect` + `two-face`** | Highlighting is *rendering*, not modelling, and the project's largest dependency |
 
+**The parser is `crates/document-parser`, not a module in here.** Earlier revisions put lex, parse,
+lower, normalise and sanitise inside this crate on the argument that the browser is their only
+consumer. The dependency argument that motivated it — *no backend service should link an
+XSS-boundary HTML parser or `syntect`* — is fully satisfied by a separate crate that only
+`editor-wasm` depends on, and a plain library tests, fuzzes and reviews better than a module
+inside a cdylib. `editor-wasm` is left as what it actually is: the bindgen boundary plus rendering.
+
 `crate-type = ["cdylib", "rlib"]`, so **all of it tests natively** — `cargo test` needs no wasm
-toolchain. If a server-side consumer for the parser ever appears, extract `libs/editor` **then**.
+toolchain.
 
 > **The boundary is a syscall, not a function call.** Cross it rarely with large payloads, never
 > often with small ones. A per-keystroke round trip to fetch a token list is the shape that kills
@@ -404,8 +443,8 @@ toolchain. If a server-side consumer for the parser ever appears, extract `libs/
 ### Workspace mechanics
 
 ```toml
-members         = ["libs/*", "services/*", "wasm/editor"]
-default-members = ["libs/*", "services/*"]     # root `cargo test` skips the cdylib
+members         = ["crates/*"]
+default-members = ["crates/*"]                 # editor-wasm is rlib too, so this is fine
 ```
 
 Without `default-members`, a root build compiles a `cdylib` for the host target — useless at best.
@@ -414,10 +453,10 @@ the CI gate needs.
 
 ### The wasm line
 
-`libs/domain` and `libs/doc` must stay `wasm32`-clean and infrastructure-free — they run in the
+`crates/domain` and `crates/document-core` must stay `wasm32`-clean and infrastructure-free — they run in the
 browser, and that purity is what keeps them Miri-reachable and fuzzable.
 
-> **Adding a crate to `libs/` means stating which side of that line it is on.** If it is clean, add
+> **Adding a crate to `crates/` means stating which side of that line it is on.** If it is clean, add
 > it to the gate in the same commit:
 > `cargo check -p domain -p doc --target wasm32-unknown-unknown`
 >
@@ -441,7 +480,7 @@ browser, and that purity is what keeps them Miri-reachable and fuzzable.
   □ Mutation paths pass can_apply
   □ NO service.rs unless §5.3 says so
   □ NO new trait unless a second impl or a test needs it
-  □ NO libs/ extraction unless §6 says so
+  □ NO new crate unless §6 says so
 ```
 
 ---
@@ -456,10 +495,10 @@ browser, and that purity is what keeps them Miri-reachable and fuzzable.
 | Trait with one impl and no test need | Concrete type |
 | Handler with an `if` on business rules | Move to `service.rs` |
 | Six 30-line files in a new slice | Two files; split later |
-| `libs/shared` as a dumping ground | §6 decision tree |
+| `crates/shared` as a dumping ground | §6 decision tree |
 | Layer-first directories | Feature-first slices |
 | UI or handler mutating the tree directly | Compile it to an `Op` (RFC-002 §1) |
-| Infrastructure imported into `libs/doc` or `libs/diagnostics` | Those stay `wasm32`-clean |
+| Infrastructure imported into `crates/document-core` or `crates/diagnostics` | Those stay `wasm32`-clean |
 | Go-shaped Rust after a reference port | `interface{}`-ish trait objects, channels where ownership transfer is simpler, stringly-typed errors |
 
 ---
@@ -473,7 +512,9 @@ browser, and that purity is what keeps them Miri-reachable and fuzzable.
 | `adr/ADR-003` | PostgreSQL + sqlx |
 | `adr/ADR-004` | React SPA, Rust editor core |
 | `adr/ADR-005` | Go reference as answer key |
-| `adr/ADR-006` | gRPC pairs |
+| `adr/ADR-007` | gRPC as the east-west default |
+| `adr/ADR-008` | Google Cloud + Terraform |
+| `adr/ADR-010` | Cost-bounded cloud posture; Tier R vs Tier S |
 | `rfc/RFC-001` | Block tree, spans↔rope, input rules, paste |
 | `rfc/RFC-002` | Op ISA, invertibility, log versioning, WAL |
 | `rfc/RFC-003` | Diagnostics analyzers, symbol table, incrementality |

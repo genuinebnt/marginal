@@ -18,7 +18,7 @@ A document-oriented store was considered first. It was rejected once the op log 
 
 **PostgreSQL 18** as the only persistent store, accessed via **sqlx**.
 
-One **database per service** — see § Amendment. No cross-database joins (ADR-001).
+One **database per service** — see § Database per service. No cross-database joins (ADR-001).
 
 ### Why PostgreSQL 18 specifically
 
@@ -67,9 +67,7 @@ Block rows are a **projection** of the op log, not the authority. That means:
 
 ---
 
-## Amendment — database per service, not schema per service
-
-**Added 2026-08-09.** Supersedes the original *"one schema per service, in one instance"*.
+## Database per service, not schema per service
 
 Each service gets its **own PostgreSQL instance**, not a schema in a shared one. The reason is
 **failure isolation**: one service's database going down must not take the others with it, and a

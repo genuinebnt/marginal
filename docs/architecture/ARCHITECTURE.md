@@ -119,9 +119,9 @@ one.
 
 | Coupling | Consequence |
 |---|---|
-| ~~The outbox poller lives in `document-service`~~ | **Resolved** by ADR-003 § Amendment — one outbox and one poller per publishing service, each in its own database |
-| ~~`collaboration-service` writes `document-service`'s tables~~ | **Resolved** — the op log moved; no service writes another's tables |
-| ~~Three schemas, one Postgres instance~~ | **Resolved** — one instance per service |
+| **One outbox and one poller per publishing service** | Each lives in that service's own database (ADR-003). A shared poller would be a coupling between publishers |
+| **No service writes another's tables** | `collaboration-service` owns `ops`; `document-service` materialises `blocks` by replaying its events. The op log's owner is the only writer |
+| **The grant is the schema boundary** | The resident deployment is one Postgres instance with a schema and login role per service (ADR-010 §3), so there is no network boundary between schemas — a cross-schema join fails on a permission error. A service that respects its grant is extractable to its own instance by changing a connection string |
 | **`document-service` lags the live rope** | The remaining coupling, and it is deliberate: `blocks` is materialised by replay, so a page read during an active session may be stale. Read-your-writes reads from the doc-actor (`ROADMAP.md` § Distributed systems) |
 
 ### What is genuinely well decoupled
@@ -255,7 +255,7 @@ The client is acknowledged after the **local WAL sync**, not after Postgres. Dur
 
 **Session open is a replay, and it reads only this service's own database.** Loading
 `document-service`'s `blocks` would put that service's availability on the path to *starting an
-edit*, undoing the isolation ADR-003 § Amendment bought. So `collaboration-service` snapshots its
+edit*, undoing the isolation ADR-003 bought. So `collaboration-service` snapshots its
 own rope periodically and starts from *its* snapshot plus its own op tail.
 
 **Build neither snapshot system at Phase 3.** Two cheaper things come first, in order:
@@ -273,7 +273,7 @@ is cold random point-in-time access, chosen so a snapshot is analysable without 
 the resume path.
 
 **`blocks` is not written on this path.** `collaboration-service` appends to its own `ops` table and
-publishes; `document-service` materialises `blocks` by replaying those events (ADR-003 § Amendment).
+publishes; `document-service` materialises `blocks` by replaying those events (ADR-003).
 So the projection is eventually consistent by construction — which `RFC-001` §2 already required
 (*the JSONB is a checkpoint, not the truth*) and which is why read-your-writes reads from the
 doc-actor rather than the projection.
@@ -309,7 +309,7 @@ Choreographed, no central coordinator. Four services, no shared database.
 
 ```
         ╔═══════════════════════════════════════════════╗
-        ║  libs/domain — ids, block kinds, ops, events   ║
+        ║  crates/domain — ids, block kinds, ops, events   ║
         ║       ZERO external dependencies (wasm32)      ║
         ╚══════════════════════▲════════════════════════╝
                                │ depends on
@@ -327,7 +327,7 @@ Choreographed, no central coordinator. Four services, no shared database.
                      └────────────────────┘
 ```
 
-Every external dependency sits behind a trait declared in the **same file** as its implementation. `libs/domain` has zero external dependencies — required because `libs/diagnostics` and the editor core compile to `wasm32`.
+Every external dependency sits behind a trait declared in the **same file** as its implementation. `crates/domain` has zero external dependencies — required because `crates/diagnostics` and the editor core compile to `wasm32`.
 
 ---
 

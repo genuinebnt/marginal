@@ -42,11 +42,11 @@ Each of these is falsifiable, and each one failing has a different fix.
 
 ## 3. Division of labour
 
-Agreed 2026-08-07. Recorded in ADR-005 § Amendment, because it changes who writes what.
+Agreed 2026-08-07. Recorded in ADR-005, because it changes who writes what.
 
 | | Owner |
 |---|---|
-| All Rust — services, `libs/`, **and the `wasm32` editor core** | You |
+| All Rust — services, `crates/`, **and the `wasm32` editor core** | You |
 | The TypeScript SPA in `web/` — shell, routing, panels, DOM plumbing, API client | Me |
 
 **The line does not move.** `agents.md` forbids reimplementing the document model,
@@ -67,7 +67,7 @@ Weeks are relative to starting `domain.rs`, not calendar dates.
 |---|---|---|---|
 | **1–3** | `domain.rs`: newtypes, `TryFrom`, **fractional indexing**, LTREE paths. Activate `domain.rs` and `fractional_index.rs` | `web/` scaffold, design tokens from `mockup.css`, app shell, both themes | none |
 | **4** | **Thin gateway (~6h)** — Phase 0's ~150-line proxy + JWT verification | Mock API against `docs/api/pages.md` §2, then swap to the real one | ⚠ handoff |
-| **4–9** | `libs/proto`, migration 0002, `pages` repo + gRPC, `tree`, `blocks`, outbox write | Page tree with drag-reorder, inspector panels, reader chrome, search, admin | parallel |
+| **4–9** | `crates/proto`, migration 0002, `pages` repo + gRPC, `tree`, `blocks`, outbox write | Page tree with drag-reorder, inspector panels, reader chrome, search, admin | parallel |
 | **9–10** | Cloud Run deploy, Terraform, Secret Manager, budget alert | Empty states, error handling, loading, polish | parallel |
 | **11–13** | Auth: Argon2id, RS256, refresh rotation, Redis blocklist, first-run claim | Sign-in, first-run, session handling, protected routes | parallel |
 | **14** | **`wasm-bindgen` API surface (~10h)** — signatures only | Editor shell built against the stubs | ⚠ handoff |

@@ -6,7 +6,18 @@
   intermediate representation, because "markdown becomes a document" is where most
   editor bugs live and none of them are visible in the finished render.
 
-  What IS real — every stage below is computed from the textarea, on every keystroke:
+  THE TRIGGER SELECTOR IS THE POINT. The same buffer is read three ways, because the
+  editor reads it three ways, and the gap between them is enormous:
+
+    · **Paste** — the full pipeline, over the whole fragment, once
+    · **Trigger character** — a bounded backward scan from the caret, one block, no AST
+    · **Ordinary key** — nothing at all. One `InsertText` against the rope
+
+  Watch `bytes read` in the rail across the three. It is the only number on the page
+  that does not grow with the document, and that is the entire reason typing can afford
+  a rule and cannot afford the pipeline (RFC-001 §2).
+
+  What IS real, on the PASTE path — every stage computed from the buffer:
     1. **block lexer**  — line-classified tokens with source byte spans
     2. **inline lexer + parser** — `**`, `*`/`_`, backtick, `[label](url)`, `[[wikilink]]`,
        nested, producing **plain text plus marks over byte ranges** — never nested nodes
@@ -28,8 +39,9 @@
     · marks are **byte ranges into stripped text** (RFC-001 §2). The sample contains
       `café` and an em dash on purpose: char offsets and byte offsets diverge there,
       and a UI that stores char offsets corrupts on the first non-ASCII paste
-    · input rules and paste are the *same* pipeline at different granularity — paste
-      runs the whole thing, typing `## ` runs one line of it     → RFC-001 §4
+    · input rules and paste share a vocabulary of ops, NOT an implementation. The rule
+      scanner (§7 below) calls neither `lexBlocks` nor `parse` — it is a bounded backward
+      scan with no grammar and no recursion               → RFC-001 §3, §4
     · `sort_key` is a fractional index, so inserting between two blocks writes ONE row
     · every op here is invertible by construction               → RFC-002 §2, trace.html
 
@@ -38,7 +50,7 @@
   normalisation, tree lowering). Stages 5–6 — op emission and the projection check — are Phase 3.
   Phase 16 extends the *grammar* with new block kinds; it does not rewrite the front end.
 
-  Lives in `libs/doc`, wasm32-clean, no infrastructure.
+  Lives in `crates/document-core`, wasm32-clean, no infrastructure.
 
   NOTE ON THE AST: this page shows it as a stage because it is one, but it is **transient**.
   RFC-001 §2 stores the block tree, not a syntax tree — the AST exists for microseconds during a
@@ -125,6 +137,43 @@
   .metric2 { display: flex; align-items: baseline; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--rule); font-size: 12.5px; color: var(--ink-soft); }
   .metric2:last-child { border-bottom: 0; }
   .metric2 .v { margin-left: auto; font-family: var(--mono); font-size: 12.5px; color: var(--ink); }
+  .metric2.off { opacity: .38; }
+  .metric2 .v.hot { color: var(--teal); }
+
+  /* The trigger selector. Three inputs, one pipeline, wildly different scope —
+     which is the fact the page exists to make visible. */
+  .trig {
+    padding: 4px 11px; border-radius: 999px; cursor: pointer;
+    border: 1px solid var(--rule-strong); background: var(--bg-raised);
+    font-family: var(--sans); font-size: 11.5px; font-weight: 500; color: var(--ink-soft);
+    transition: background var(--dur-1), border-color var(--dur-1), color var(--dur-1);
+  }
+  .trig:hover { color: var(--ink); border-color: color-mix(in srgb, var(--ink) 24%, var(--rule-strong)); background: var(--hover); }
+  .trig[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+
+  /* A tab that this trigger does not reach. Still clickable — clicking it is how
+     you find out *why* it does not run, which is more use than a dead control. */
+  .tab.off { opacity: .4; }
+  .tab.off[aria-selected="true"] { opacity: .7; }
+
+  .void {
+    border: 1px dashed var(--rule-strong); border-radius: var(--radius);
+    padding: 18px 20px; color: var(--ink-soft); font-size: 13px; line-height: 1.65;
+    background: var(--bg-raised);
+  }
+  .void b { color: var(--ink); font-weight: 600; }
+  .void .h {
+    display: block; font-family: var(--sans); font-size: 10px; font-weight: 600;
+    letter-spacing: .09em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 7px;
+  }
+
+  /* The lookbehind window, drawn over the caret's line. Everything outside it is
+     text the rule provably never read. */
+  .win { font-family: var(--mono); font-size: 12px; line-height: 1.9; overflow-wrap: anywhere; margin-bottom: 16px; }
+  .win .cold { color: var(--ink-faint); opacity: .5; }
+  .win .scan { background: var(--teal-soft); color: var(--ink); border-radius: 3px; padding: 1px 0; }
+  .win .dlm  { background: var(--violet-soft); color: var(--violet); border-radius: 3px; }
+  .win .caret { border-left: 2px solid var(--amber); margin-left: -1px; }
 </style>
 </head>
 <body>
@@ -142,16 +191,19 @@
       <a href="admin.html">Admin</a>
       <a href="settings.html">Settings</a>
     </nav>
-    <div class="crumb">Editor · <b>Compiler view</b></div>
+    <div class="crumb">Paste path · <b>Compiler view</b></div>
     <div class="spacer"></div>
     <span class="pill teal" id="lawPill">projection HOLDS</span>
     <button class="icon-btn" id="themeBtn" title="Toggle theme" aria-label="Toggle theme">◐</button>
   </header>
 
   <div class="cbar">
-    <span class="label">Source → tokens → AST → blocks → ops</span>
-    <span class="muted" style="font-size:12px">Type on the left. Every stage recomputes, including the projection check.</span>
-    <span class="pill amber" title="RFC-001 §2 — What a keystroke actually costs">this is the PASTE path</span>
+    <span class="label">Trigger</span>
+    <button class="trig" id="tPaste" data-m="paste" aria-pressed="true"  title="Paste or import — the full pipeline over the whole fragment, once">Paste</button>
+    <button class="trig" id="tRule"  data-m="rule"  aria-pressed="false" title="A trigger character — a bounded backward scan from the caret, one block">Trigger character</button>
+    <button class="trig" id="tKey"   data-m="key"   aria-pressed="false" title="An ordinary keypress — one InsertText against the rope, and nothing else">Ordinary key</button>
+    <span class="sep" style="width:1px;height:18px;background:var(--rule-strong)"></span>
+    <span class="muted" style="font-size:12px" id="trigNote">—</span>
     <span class="spacer"></span>
     <button class="btn" id="btnPaste">Paste-a-list</button>
     <button class="btn" id="btnUnicode">Break the offsets</button>
@@ -162,7 +214,7 @@
 
     <section class="stage">
       <div class="stage-head">
-        <span class="label">Source</span>
+        <span class="label" id="srcLabel">Pasted fragment</span>
         <span class="spacer"></span>
         <span class="muted mono" style="font-size:11px" id="srcMeta">—</span>
       </div>
@@ -186,26 +238,24 @@
     <aside class="rail right" style="width:auto;border-right:0">
       <div class="rail-head"><span class="label">Pipeline</span></div>
       <div class="panel-body">
-        <div class="metric2"><span>Source bytes</span><span class="v" id="mBytes">—</span></div>
-        <div class="metric2"><span>Block tokens</span><span class="v" id="mBlockTok">—</span></div>
-        <div class="metric2"><span>Inline tokens</span><span class="v" id="mInlineTok">—</span></div>
-        <div class="metric2"><span>AST nodes</span><span class="v" id="mAst">—</span></div>
-        <div class="metric2"><span>Blocks</span><span class="v" id="mBlocks">—</span></div>
-        <div class="metric2"><span>Marks</span><span class="v" id="mMarks">—</span></div>
+        <div class="metric2"><span>Buffer bytes</span><span class="v" id="mBytes">—</span></div>
+        <div class="metric2"><span><b>Bytes read</b></span><span class="v hot" id="mScan">—</span></div>
+        <div class="metric2" id="rBlockTok"><span>Block tokens</span><span class="v" id="mBlockTok">—</span></div>
+        <div class="metric2" id="rInlineTok"><span>Inline tokens</span><span class="v" id="mInlineTok">—</span></div>
+        <div class="metric2" id="rAst"><span>AST nodes</span><span class="v" id="mAst">—</span></div>
+        <div class="metric2" id="rBlocks"><span>Blocks</span><span class="v" id="mBlocks">—</span></div>
+        <div class="metric2" id="rMarks"><span>Marks</span><span class="v" id="mMarks">—</span></div>
         <div class="metric2"><span>Ops emitted</span><span class="v" id="mOps">—</span></div>
-        <div class="metric2"><span>Max depth</span><span class="v" id="mDepth">—</span></div>
+        <div class="metric2" id="rDepth"><span>Max depth</span><span class="v" id="mDepth">—</span></div>
 
         <div class="panel-section">
-          <div class="panel-h">What this is, and is not</div>
-          <div class="note" style="margin:0;max-width:none">
-            This is the <b>paste</b> path. The pipeline is real and it is exactly what an import
-            runs — but the editor runs all of it only on <b>paste</b>; on a <b>trigger character</b>
-            it runs one bounded line of it against a single block; on an <b>ordinary keypress</b> it
-            runs <i>none</i> of it — one <code>InsertText</code> op against the rope, and stop.
-            <b>The document is never re-parsed</b> (RFC-001 §2).
-            <br><br>
-            The page recomputes on every keystroke because that is what makes the stages pokeable.
-            Do not read the interaction as the hot path.
+          <div class="panel-h">What runs, and when</div>
+          <div class="note" style="margin:0;max-width:none" id="whatRuns"></div>
+          <div class="note" style="margin:10px 0 0;max-width:none">
+            <b>Bytes read</b> is the metric to watch across the three triggers. It is the only
+            number here that does not grow with the document — which is the entire reason typing
+            can afford a rule and cannot afford the pipeline. <b>The document is never
+            re-parsed</b> (RFC-001 §2).
           </div>
         </div>
 
@@ -495,6 +545,87 @@ function canon(blocks) {
   })).sort((x, y) => (x.s < y.s ? -1 : 1)))
 }
 
+/* ══ 7. input rules — a SCANNER, not a parser ══════════════════════════════
+   RFC-001 §3. A bounded backward scan from the caret: no grammar, no recursion,
+   no AST, and it never reads outside the one block it fires in. LOOKBEHIND caps
+   the inline scan, so the cost is independent of document length — which is the
+   whole reason this can run on every keypress and stages 1–6 above cannot.
+
+   Nothing here calls lexBlocks or parse. That is the point: the two paths share a
+   vocabulary of ops, not an implementation. */
+
+const LOOKBEHIND = 48
+
+/* Anchored at block start, so these can only fire while the caret is still in the
+   prefix. At most six characters are examined. */
+const BLOCK_RULES = [
+  [/^(#{1,3}) $/,   m => ({ kind: 'heading_' + m[1].length })],
+  [/^> $/,          () => ({ kind: 'quote' })],
+  [/^[-*] $/,       () => ({ kind: 'bullet_item' })],
+  [/^\d+\. $/,      () => ({ kind: 'ordered_item' })],
+  [/^\[\] $/,       () => ({ kind: 'todo_item' })],
+  [/^```([a-z]*)$/, m => ({ kind: 'code', lang: m[1] })],
+]
+
+/* Longest delimiter first — otherwise `**` resolves as an empty `*` span. */
+const INLINE_RULES = [['**', 'strong'], ['~~', 'strike'], ['`', 'code'], ['*', 'em'], ['_', 'em']]
+
+function scanRule(text, caret, block) {
+  const head = text.slice(0, caret)
+
+  for (const [re, mk] of BLOCK_RULES) {
+    const m = head.match(re)
+    if (!m) continue
+    const a = mk(m)
+    return {
+      rule: 'block prefix', delim: [[0, caret]], from: 0, read: bytes(head),
+      ops: [
+        { op: 'SetBlockKind', block, kind: a.kind, ...(a.lang ? { lang: a.lang } : {}) },
+        { op: 'DeleteText', block, at: 0, len: bytes(head) },
+      ],
+    }
+  }
+
+  for (const [d, kind] of INLINE_RULES) {
+    if (!head.endsWith(d)) continue
+    const closeAt = head.length - d.length
+    const floor = Math.max(0, closeAt - LOOKBEHIND)
+    const open = head.lastIndexOf(d, closeAt - 1)
+    if (open < floor) continue                 // opener is outside the window — give up, do not widen
+    if (open + d.length >= closeAt) continue   // empty span, e.g. `****`
+    if (head[open - 1] === '\\') continue      // escaped opener — RFC-001 §3
+
+    /* Byte offsets, computed against the text as it will be AFTER both delimiters
+       are gone. Deleting the closer first keeps the opener's offset valid. */
+    const s = bytes(head.slice(0, open))
+    const e = s + bytes(head.slice(open + d.length, closeAt))
+    return {
+      rule: `inline ${kind}`, from: floor,
+      delim: [[open, open + d.length], [closeAt, closeAt + d.length]],
+      read: bytes(head.slice(floor)),
+      ops: [
+        { op: 'DeleteText', block, at: bytes(head.slice(0, closeAt)), len: bytes(d) },
+        { op: 'DeleteText', block, at: bytes(head.slice(0, open)), len: bytes(d) },
+        { op: 'SetMark', block, kind, range: [s, e] },
+      ],
+    }
+  }
+  return null
+}
+
+/* The caret's line is the block, because in the real editor a block IS the unit a
+   rule is bounded by. */
+function caretBlock() {
+  const ta = document.getElementById('src')
+  const caret = ta.selectionStart ?? ta.value.length
+  const start = ta.value.lastIndexOf('\n', caret - 1) + 1
+  const endNl = ta.value.indexOf('\n', caret)
+  const end = endNl === -1 ? ta.value.length : endNl
+  const line = ta.value.slice(0, caret).split('\n').length - 1
+  return { text: ta.value.slice(start, end), at: caret - start, line,
+           id: 'b' + String(line + 1).padStart(3, '0') }
+}
+
 /* ══ rendering ═════════════════════════════════════════════════════════════ */
 const DEFAULT = [
   '# Operation model',
@@ -546,43 +677,122 @@ const UNICODE = [
 ].join('\n')
 
 let tab = 'tokens'
+let MODE = 'paste'
 let S = {}
+
+/* Which stages each trigger actually reaches. Everything outside this set renders
+   its reason instead of a blank, because "why did nothing run" is the lesson. */
+const AVAIL = { paste: ['tokens', 'ast', 'blocks', 'ops'], rule: ['ops'], key: ['ops'] }
+
+const SRC_LABEL = { paste: 'Pasted fragment', rule: 'One block · the caret’s line', key: 'One keystroke' }
+
+const TRIG_NOTE = {
+  paste: 'The whole fragment, once. Sanitise → lex → parse → lower → emit → verify.',
+  rule:  'A bounded backward scan from the caret. Move the caret to fire a different rule.',
+  key:   'Nothing parses. One <code>InsertText</code> against the rope, and stop.',
+}
+
+const WHAT_RUNS = {
+  paste: `<b>Paste and import.</b> The pipeline is real and this is exactly what it runs — over the
+          fragment, <b>once</b>. The syntax tree is transient: it exists for microseconds and is
+          discarded after lowering. Nothing downstream holds a reference to it.`,
+  rule:  `<b>A trigger character</b> — the space in <code>## </code>, a closing <code>**</code>.
+          A <b>scanner, not a parser</b> (RFC-001 §3): no grammar, no recursion, no AST, and a hard
+          <code>${LOOKBEHIND}</code>-byte lookbehind cap. It emits ops directly against a block that
+          already exists.`,
+  key:   `<b>An ordinary keypress.</b> No lexer, no AST, no tree rebuild — one <code>InsertText</code>
+          op applied to the rope, span normalisation, WAL, ack, broadcast. This is the hot path, and
+          it reads <b>zero</b> bytes of the document.`,
+}
+
+const VOID = {
+  rule: {
+    tokens: ['No block lexer', `A rule reads a bounded window behind the caret — at most <b>${LOOKBEHIND} bytes</b>, and never past the block it fires in. It does not tokenise the document, or even the block.`],
+    ast:    ['No AST', `An input rule is a <b>scanner</b>: a backward scan for a closing delimiter with a matching opener in range. No grammar, no recursion — nothing to build a tree from (RFC-001 §3).`],
+    blocks: ['No lowering', `The block already exists. A rule changes its <code>kind</code> or adds a mark; it never constructs a tree, so there is nothing to lower and nothing to project.`],
+  },
+  key: {
+    tokens: ['Nothing runs', `An ordinary character is not syntax. It never reaches a lexer — RFC-001 §2, row one.`],
+    ast:    ['Nothing runs', `The document is <b>never re-parsed</b>. That is the difference from a markdown editor, and it is why live collaboration here has no merge-conflict UI.`],
+    blocks: ['Nothing runs', `The tree is not rebuilt. One op is applied to one rope, in <code>O(log n)</code>.`],
+  },
+}
 
 function compile() {
   const src = document.getElementById('src').value
-  const inlineSink = []
-  const btoks = lexBlocks(src)
-  const ast = parse(btoks, inlineSink)
-  const blocks = lower(ast)
-  const ops = emitOps(blocks)
-  const replayed = interpret(ops)
-  const holds = canon(blocks) === canon(replayed)
-  S = { src, btoks, inlineSink, ast, blocks, ops, replayed, holds }
+
+  if (MODE === 'paste') {
+    const inlineSink = []
+    const btoks = lexBlocks(src)
+    const ast = parse(btoks, inlineSink)
+    const blocks = lower(ast)
+    const ops = emitOps(blocks)
+    const replayed = interpret(ops)
+    S = { src, btoks, inlineSink, ast, blocks, ops, replayed,
+          holds: canon(blocks) === canon(replayed), read: bytes(src) }
+  }
+  else {
+    /* Deliberately does NOT run the pipeline. Running it and hiding the output
+       would make "bytes read" a lie, and that number is the whole argument. */
+    const cb = caretBlock()
+    if (MODE === 'rule') {
+      const hit = scanRule(cb.text, cb.at, cb.id)
+      S = { src, cb, hit, ops: hit?.ops ?? [], read: hit?.read ?? 0,
+            btoks: [], inlineSink: [], ast: null, blocks: [] }
+    } else {
+      /* The op that produced the character immediately behind the caret. */
+      const ch = cb.at > 0 ? cb.text[cb.at - 1] : null
+      S = { src, cb, hit: null, read: 0, btoks: [], inlineSink: [], ast: null, blocks: [],
+            ops: ch == null ? [] : [{ op: 'InsertText', block: cb.id, at: bytes(cb.text.slice(0, cb.at - 1)), text: ch }] }
+    }
+  }
   render()
 }
 
 function render() {
-  const { src, btoks, inlineSink, ast, blocks, ops, holds } = S
+  const { src, btoks, inlineSink, ast, blocks, ops, holds, read, cb, hit } = S
+  const full = MODE === 'paste'
   const marks = blocks.reduce((a, b) => a + b.marks.length, 0)
   const maxDepth = blocks.reduce((a, b) => Math.max(a, depthOf(blocks, b)), 0)
+  const dash = (el, on, v) => { el.textContent = on ? v : '—' }
 
   mBytes.textContent = bytes(src)
-  mBlockTok.textContent = btoks.length
-  mInlineTok.textContent = inlineSink.length
-  mAst.textContent = countAst(ast)
-  mBlocks.textContent = blocks.length
-  mMarks.textContent = marks
+  mScan.textContent = read + ' B'
+  dash(mBlockTok, full, btoks.length)
+  dash(mInlineTok, full, inlineSink.length)
+  dash(mAst, full, full ? countAst(ast) : 0)
+  dash(mBlocks, full, blocks.length)
+  dash(mMarks, full, marks)
+  dash(mDepth, full, maxDepth)
   mOps.textContent = ops.length
-  mDepth.textContent = maxDepth
-  srcMeta.textContent = `${src.split('\n').length} lines · ${bytes(src)} B`
+  for (const id of ['rBlockTok', 'rInlineTok', 'rAst', 'rBlocks', 'rMarks', 'rDepth'])
+    document.getElementById(id).classList.toggle('off', !full)
 
-  lawPill.textContent = holds ? 'projection HOLDS' : 'projection FAILS'
-  lawPill.className = holds ? 'pill teal' : 'pill amber'
-  lawBox.innerHTML = `<div class="check ${holds ? 'ok' : 'warn'}">
-      <b>${holds ? 'HOLDS' : 'FAILS'}</b> — replay(${ops.length} ops) ${holds ? '≡' : '≠'} lower(AST), ${blocks.length} blocks compared
-    </div>`
+  srcLabel.textContent = SRC_LABEL[MODE]
+  srcMeta.textContent = full
+    ? `${src.split('\n').length} lines · ${bytes(src)} B`
+    : `line ${cb.line + 1} · block ${cb.id} · caret at ${cb.at}`
+  trigNote.innerHTML = TRIG_NOTE[MODE]
+  whatRuns.innerHTML = WHAT_RUNS[MODE]
 
-  const nonAscii = blocks.filter(b => bytes(b.text) !== [...b.text].length)
+  if (full) {
+    lawPill.textContent = holds ? 'projection HOLDS' : 'projection FAILS'
+    lawPill.className = holds ? 'pill teal' : 'pill amber'
+    lawBox.innerHTML = `<div class="check ${holds ? 'ok' : 'warn'}">
+        <b>${holds ? 'HOLDS' : 'FAILS'}</b> — replay(${ops.length} ops) ${holds ? '≡' : '≠'} lower(AST), ${blocks.length} blocks compared
+      </div>`
+  } else {
+    lawPill.textContent = 'paste path only'
+    lawPill.className = 'pill'
+    lawBox.innerHTML = `<div class="check hint"><span class="stripe"></span><div>
+        Nothing was lowered, so there is no second tree to compare. The check belongs to the
+        path that <i>builds</i> a tree — which is the paste path, and only the paste path.
+      </div></div>`
+  }
+
+  /* Offsets stay useful in every mode: without a tree, measure the caret's block. */
+  const measured = full ? blocks : [{ kind: cb.id, text: cb.text }]
+  const nonAscii = measured.filter(b => bytes(b.text) !== [...b.text].length)
   offsetBox.innerHTML = nonAscii.length
     ? nonAscii.slice(0, 4).map(b => {
         const c = [...b.text].length, n = bytes(b.text)
@@ -590,8 +800,19 @@ function render() {
       }).join('') + (nonAscii.length > 4 ? `<div class="muted" style="font-size:11px;margin-top:6px">and ${nonAscii.length - 4} more</div>` : '')
     : `<div class="check ok">All text is ASCII — char and byte offsets agree here, which is exactly when the bug hides.</div>`
 
+  document.querySelectorAll('.tab').forEach(b => b.classList.toggle('off', !AVAIL[MODE].includes(b.dataset.t)))
+
   const out = document.getElementById('out')
-  if (tab === 'tokens') {
+  if (!AVAIL[MODE].includes(tab)) {
+    const [h, body] = VOID[MODE][tab]
+    stageMeta.textContent = '0 · not reached'
+    out.innerHTML = `<div class="void"><span class="h">${h}</span>${body}</div>`
+  }
+  else if (!full) {
+    stageMeta.textContent = `${ops.length} op${ops.length === 1 ? '' : 's'} · ${read} B read`
+    out.innerHTML = windowHtml() + opsHtml(ops)
+  }
+  else if (tab === 'tokens') {
     stageMeta.textContent = `${btoks.length} block · ${inlineSink.length} inline`
     out.innerHTML =
       `<div class="label" style="margin-bottom:8px">Block tokens <span class="muted">— with source byte spans</span></div>` +
@@ -642,14 +863,53 @@ function render() {
   }
   else {
     stageMeta.textContent = `${ops.length} ops`
-    out.innerHTML = ops.map((o, i) => {
-      const cls = o.op === 'SetMark' ? 'mark' : o.op === 'InsertText' ? 'text' : ''
-      const p = Object.entries(o).filter(([k]) => k !== 'op')
-        .map(([k, v]) => `${k}=${Array.isArray(v) ? v.join('‥') : esc(String(clip(String(v ?? 'null'), 34)))}`).join(' ')
-      return `<div class="op-row ${cls}"><span class="i">${i + 1}</span><span class="k">${o.op}</span><span class="p">${p}</span></div>`
-    }).join('') || '<div class="muted" style="font-size:12px">no ops</div>'
+    out.innerHTML = opsHtml(ops)
   }
 }
+
+function opsHtml(ops) {
+  return ops.map((o, i) => {
+    const cls = o.op === 'SetMark' ? 'mark' : o.op === 'InsertText' ? 'text' : ''
+    const p = Object.entries(o).filter(([k]) => k !== 'op')
+      .map(([k, v]) => `${k}=${Array.isArray(v) ? v.join('‥') : esc(String(clip(String(v ?? 'null'), 34)))}`).join(' ')
+    return `<div class="op-row ${cls}"><span class="i">${i + 1}</span><span class="k">${o.op}</span><span class="p">${p}</span></div>`
+  }).join('') || '<div class="muted" style="font-size:12px">no ops</div>'
+}
+
+/* Draws the caret's block with the bytes the rule actually read picked out of the
+   bytes it did not. The dim run on the left is the proof of boundedness. */
+function windowHtml() {
+  const { cb, hit } = S
+  const t = cb.text
+  const from = hit ? hit.from : cb.at
+  const seg = []
+  const mark = new Array(t.length).fill(0)
+  for (let i = from; i < cb.at; i++) mark[i] = 1
+  for (const [a, b] of hit?.delim ?? []) for (let i = a; i < b; i++) mark[i] = 2
+
+  let i = 0
+  while (i < t.length) {
+    if (i === cb.at) seg.push('<span class="caret"></span>')
+    let j = i + 1
+    while (j < t.length && mark[j] === mark[i] && j !== cb.at) j++
+    const cls = mark[i] === 2 ? 'dlm' : mark[i] === 1 ? 'scan' : 'cold'
+    seg.push(`<span class="${cls}">${esc(t.slice(i, j))}</span>`)
+    i = j
+  }
+  if (cb.at >= t.length) seg.push('<span class="caret"></span>')
+
+  const verdict = MODE === 'key'
+    ? `<b>Nothing read.</b> The op below is the whole cost of that keystroke.`
+    : hit
+      ? `<b>${hit.rule}</b> fired — ${hit.read} bytes examined, delimiters in violet.`
+      : `<b>No rule fires here.</b> The scan looked back ${LOOKBEHIND} bytes for a closing delimiter with a matching opener and found none — so the character is ordinary and the row below is all that happens.`
+
+  return `<div class="label" style="margin-bottom:8px">Block ${cb.id} <span class="muted">— teal is what the scan read</span></div>
+    <div class="win">${seg.join('') || '<span class="cold">(empty block)</span>'}</div>
+    <div class="note" style="margin:0 0 18px;max-width:none">${verdict}</div>
+    <div class="label" style="margin-bottom:8px">Ops emitted</div>`
+}
+
 function clip(s, n = 44) { return s.length > n ? s.slice(0, n) + '…' : s }
 
 document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => {
@@ -659,9 +919,26 @@ document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () =>
 }))
 const set = v => { document.getElementById('src').value = v; compile() }
 document.getElementById('btnReset').addEventListener('click', () => set(DEFAULT))
-document.getElementById('btnPaste').addEventListener('click', () => set(PASTE))
+document.getElementById('btnPaste').addEventListener('click', () => { MODE !== 'paste' && setMode('paste'); set(PASTE) })
 document.getElementById('btnUnicode').addEventListener('click', () => set(UNICODE))
 document.getElementById('src').addEventListener('input', compile)
+
+/* In the two bounded modes the caret IS the input, so moving it has to recompute
+   as surely as typing does. */
+for (const ev of ['click', 'keyup', 'select']) document.getElementById('src').addEventListener(ev, () => { if (MODE !== 'paste') compile() })
+
+function setMode(m) {
+  MODE = m
+  document.querySelectorAll('.trig').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.m === m)))
+  /* Land on a stage this trigger reaches, rather than opening on an explanation. */
+  if (!AVAIL[m].includes(tab)) {
+    tab = m === 'paste' ? 'tokens' : 'ops'
+    document.querySelectorAll('.tab').forEach(x => x.setAttribute('aria-selected', String(x.dataset.t === tab)))
+  }
+  if (m !== 'paste') document.getElementById('src').focus()
+  compile()
+}
+document.querySelectorAll('.trig').forEach(b => b.addEventListener('click', () => setMode(b.dataset.m)))
 document.getElementById('themeBtn').addEventListener('click', () => {
   const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim().toLowerCase()
   document.documentElement.setAttribute('data-theme', bg === '#16151a' ? 'light' : 'dark')

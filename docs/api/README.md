@@ -48,7 +48,7 @@ Two transports fall outside it, and both need hand-written contracts documented 
 | Transport | Contract | Where documented |
 |---|---|---|
 | **WebSocket** (`/collab/pages/:id`) | Op frames, presence, acks | `rfc/RFC-002` — the op ISA *is* the wire contract |
-| **gRPC** (internal, east-west) | Four service pairs | `libs/proto/proto/*.proto` — protobuf is already a schema |
+| **gRPC** (internal, east-west) | Four service pairs | `crates/proto/proto/*.proto` — protobuf is already a schema |
 
 The op frame encoding is versioned (`RFC-002` §4) because it is persisted as well as transmitted. OpenAPI covers only the REST surface the browser calls.
 

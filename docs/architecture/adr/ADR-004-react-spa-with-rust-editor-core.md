@@ -98,7 +98,7 @@ Every backend phase ships the UI that exercises it. A real client consuming the 
 
 | Alternative | Why not |
 |---|---|
-| Leptos / Dioxus (Rust frontend) | Frontend is not a learning goal, so AI authorship is correct — and AI-authored Rust conflicts with the mentor rules. The editor core in `wasm32` captures the Rust value without the conflict. **See § Amendment — that premise is now in question, and the revisit is scheduled after the 🏁** |
+| Leptos / Dioxus (Rust frontend) | Frontend is not a learning goal, so AI authorship is correct — and AI-authored Rust conflicts with the mentor rules. The editor core in `wasm32` captures the Rust value without the conflict. **See § A Rust frontend is revisitable — the premise is open, and the revisit is scheduled after the 🏁** |
 | Next.js | Five objections above; principally the Node process and hiding the gateway |
 | TipTap / Lexical / Slate | Ships a finished CRDT; deletes the deepest phase |
 | Sass Modules | Native CSS absorbed nesting, custom properties, `@layer`, and `color-mix()`; and it supplies no accessible primitives |
@@ -107,7 +107,7 @@ Every backend phase ships the UI that exercises it. A real client consuming the 
 
 ---
 
-## Amendment — a Rust frontend is revisitable, after the 🏁
+## A Rust frontend is revisitable, after the 🏁
 
 **Added 2026-08-09.**
 
@@ -117,7 +117,7 @@ records the trade so it is decided once rather than re-litigated every few weeks
 
 ### The argument for, and it is architectural rather than preferential
 
-**If the whole frontend is Rust, `libs/doc` stops being a wasm boundary and becomes a plain
+**If the whole frontend is Rust, `crates/document-core` stops being a wasm boundary and becomes a plain
 dependency.** That removes § *The `wasm-bindgen` boundary must be designed, not discovered*
 entirely — no `serde_wasm_bindgen` marshalling, no crossing budget, no debate about exposing an
 AST to a debug panel. Passing a `Rope` to a component becomes passing a Rust value.

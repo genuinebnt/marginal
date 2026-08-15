@@ -31,7 +31,7 @@ The tension this ADR resolves: a tight product does not obviously need microserv
 - **Inline diagnostics on prose** — dangling `[[page links]]`, heading-level skips, orphan pages, empty code blocks — with click-to-fix
 - Per-user undo/redo that survives interleaved collaborative edits
 - Version history with a scrubber and restore
-- **Deployed to Google Cloud via Terraform** as the primary target (ADR-008 § Amendment); also self-hostable via `docker compose up`
+- **Deployed to Google Cloud via Terraform** as the primary target (ADR-008); also self-hostable via `docker compose up`
 
 ### What it deliberately does not do
 

@@ -1,8 +1,8 @@
 # LLD — `collaboration-service`
 
-**Owns:** its own database — **`ops`** (append-only, the source of truth) and its own **outbox** (ADR-003 § Amendment). Also the live editing session: one rope per open page, the local WAL, and the op fan-out. It **never writes another service's tables** — `document-service` materialises `blocks` by replaying the op events this service publishes.
+**Owns:** its own database — **`ops`** (append-only, the source of truth) and its own **outbox** (ADR-003). Also the live editing session: one rope per open page, the local WAL, and the op fan-out. It **never writes another service's tables** — `document-service` materialises `blocks` by replaying the op events this service publishes.
 **Transport:** WebSocket in (proxied by the gateway), gRPC out to `diagnostics-service`. HTTP for probes only.
-**Depends on:** its own PostgreSQL 18 instance, Redis (presence, instance registry, page ownership lease), a local filesystem for the WAL. NATS on flush via its outbox. **No dependency on `document-service`'s database** — that isolation is the point (ADR-003 § Amendment).
+**Depends on:** its own PostgreSQL 18 instance, Redis (presence, instance registry, page ownership lease), a local filesystem for the WAL. NATS on flush via its outbox. **No dependency on `document-service`'s database** — that isolation is the point (ADR-003).
 **Related:** `RFC-001` (document model, **§9 anchors**) · `RFC-002` (op ISA, WAL, batching, dedup) · `ARCHITECTURE.md` §4 (live-editing flow) · `DATA_MODEL.md` §6 (Redis keys) · `docs/learning/01-track1-mvp.md` § Phase 3
 
 **The hardest service in the project, and the only stateful one.** Rope, sequence CRDT, WAL,
@@ -20,7 +20,7 @@ zero-copy fan-out. Thirteen of the rare concepts in `ROADMAP.md` § Rust, DSA & 
 
 | Copy from `document-service` | Designed for this service |
 |---|---|
-| Startup path, copied from `document-service` | `libs/doc` — rope, anchors, marks, block tree (`wasm32`-clean) |
+| Startup path, copied from `document-service` | `crates/document-core` — rope, anchors, marks, block tree (`wasm32`-clean) |
 | `blocks` / `pages` DDL (`document-service`'s database) | `session/` — the doc-actor, one per open page |
 | | `ops/` — the op log **this service owns**, plus its outbox |
 | `AppError` shape | `wal/` — framing, `sync_data`, recovering reader |
@@ -28,13 +28,13 @@ zero-copy fan-out. Thirteen of the rare concepts in `ROADMAP.md` § Rust, DSA & 
 | | `ownership/` — lease, fencing token, handoff |
 | | `flush/` — `ArrayQueue`, the hand-written `Stream`, rope → spans |
 
-**`libs/doc` is the centre of gravity, and it has its own LLD** —
-[`libs-doc.md`](libs-doc.md) covers the crate as a whole, including the front end that Phase 1
+**`crates/document-core` is the centre of gravity, and it has its own LLD** —
+[`document-core.md`](document-core.md) covers the crate as a whole, including the front end that Phase 1
 builds. §3–§5 below remain the authority for the rope, anchors, and ops; everything else about the
 crate lives there.
 
 It is `wasm32`-clean and infrastructure-free by rule (`CLAUDE.md`), which is what lets the same rope
-run in the browser and keeps it Miri-reachable and fuzzable. **Nothing in `libs/doc` may touch
+run in the browser and keeps it Miri-reachable and fuzzable. **Nothing in `crates/document-core` may touch
 tokio, sqlx, or the filesystem.**
 
 ---
@@ -42,7 +42,7 @@ tokio, sqlx, or the filesystem.**
 ## 2. Module map
 
 ```
-libs/doc/                        ← wasm32-clean. No tokio, no sqlx, no fs. CI-enforced
+crates/document-core/                        ← wasm32-clean. No tokio, no sqlx, no fs. CI-enforced
 ├── anchor.rs         Anchor, AnchorRange, ItemId, Bias, Resolved            RFC-001 §9
 ├── rope/
 │   ├── mod.rs        Rope — insert, delete, slice, resolve
@@ -52,7 +52,7 @@ libs/doc/                        ← wasm32-clean. No tokio, no sqlx, no fs. CI-
 ├── ops.rs            Op enum, apply, invert                                 RFC-002 §2
 └── tree.rs           block tree, projection to/from `blocks` content
 
-services/collaboration-service/src/
+crates/collaboration-service/src/
 ├── (startup path, copied)
 ├── session/
 │   ├── mod.rs        SessionRegistry — page_id → actor handle
@@ -84,7 +84,7 @@ Alice Ryhl's [Actors with Tokio](https://ryhl.io/blog/actors-with-tokio/) is the
 
 ---
 
-## 3. `libs/doc/anchor.rs` — the decision everything rests on
+## 3. `crates/document-core/anchor.rs` — the decision everything rests on
 
 Resolved in **RFC-001 §9**: Yjs/Peritext-style item ids, not offset-plus-origin. Read that
 section before this one; it carries the reasoning and the rejected alternative.
@@ -121,7 +121,7 @@ the bug this design prevents.
 
 ---
 
-## 4. `libs/doc/rope/` — the text structure
+## 4. `crates/document-core/rope/` — the text structure
 
 A B-tree of UTF-8 chunks with per-subtree summaries. The summary is what makes
 `resolve(anchor) -> byte offset` an O(log n) descent rather than a scan.
@@ -302,14 +302,14 @@ The densest §9 in the project. Each row is a `ROADMAP.md` § Concepts Map item.
 ## 10. Test map
 
 ```
-libs/doc/tests/                 ← no infrastructure. Pure cargo test, wasm32-clean
+crates/document-core/tests/                 ← no infrastructure. Pure cargo test, wasm32-clean
 ├── rope.rs                     insert/delete/slice, UTF-8 boundaries, huge inputs
 ├── anchor.rs                   the eight laws from RFC-001 §9
 ├── marks.rs                    coalescing idempotence, bias at boundaries
 ├── invertibility.rs            proptest: apply∘invert == identity, every op kind
 └── convergence.rs              proptest: random interleavings converge
 
-services/collaboration-service/tests/
+crates/collaboration-service/tests/
 ├── wal.rs                      round trip, torn tail, SIGKILL recovery, rotation
 ├── session.rs                  join/apply/leave, ack ordering, rejection path
 ├── ownership.rs                lease acquire/renew/expire, fencing rejects a stale write
@@ -337,10 +337,10 @@ do not cover this phase (`CLAUDE.md`).
 Strictly bottom-up. Steps 1–5 need no database, no network, and no Docker — they are pure
 `cargo test`, and they are most of the difficulty.
 
-1. **`libs/doc/anchor.rs`** — types and the eight laws as failing tests. No rope yet; a `Vec<char>` stub is enough to make the laws meaningful.
-2. **`libs/doc/rope/`** — safe implementation, `Summary` with bytes and chars. Activate `rope.rs`, `anchor.rs`.
-3. **`libs/doc/marks.rs`** — intervals over anchors, coalescing. Activate `marks.rs`.
-4. **`libs/doc/ops.rs`** — the `Op` enum, `apply`, `invert`. Activate `invertibility.rs`. **This is the gate: do not proceed until the law holds under proptest.**
+1. **`crates/document-core/anchor.rs`** — types and the eight laws as failing tests. No rope yet; a `Vec<char>` stub is enough to make the laws meaningful.
+2. **`crates/document-core/rope/`** — safe implementation, `Summary` with bytes and chars. Activate `rope.rs`, `anchor.rs`.
+3. **`crates/document-core/marks.rs`** — intervals over anchors, coalescing. Activate `marks.rs`.
+4. **`crates/document-core/ops.rs`** — the `Op` enum, `apply`, `invert`. Activate `invertibility.rs`. **This is the gate: do not proceed until the law holds under proptest.**
 5. **Convergence** — vector clocks and the merge rule. Activate `convergence.rs`.
 6. **`wal/`** — framing, `sync_data`, the recovering reader. Activate `wal.rs` including `SIGKILL`.
 7. **`session/actor.rs`** — the actor with an in-memory rope, no persistence. Activate `session.rs`.
@@ -366,7 +366,7 @@ holds long-lived WebSocket connections, and needs stable identity for consistent
 | PersistentVolume per pod | The WAL. **Ephemeral is acceptable** — correctness needs it flushed before shutdown, not surviving the pod (`CLOUD_PORTABILITY.md` §6) |
 | Gateway API `HTTPRoute` with WebSocket support | The proxy path |
 | `terminationGracePeriodSeconds` **>** drain timeout | Otherwise Kubernetes kills the pod mid-flush |
-| NATS on GKE | The outbox gets its first subscriber |
+| Pub/Sub topic + subscription (ADR-010 §2) | The outbox gets its first subscriber |
 
 ---
 
@@ -444,11 +444,11 @@ same page. The fencing token must be checked **inside** the flush transaction �
 `BEGIN` is a TOCTOU window. Carry the token into the SQL as a predicate, not as an assertion in
 Rust.
 
-### `libs/doc` will acquire an infrastructure dependency by accident
+### `crates/document-core` will acquire an infrastructure dependency by accident
 
 Someone adds `tokio::time::Instant` for a timestamp, or `rand` without `getrandom`'s `js` feature,
 and the browser build dies months later. The CI gate exists for this
-(`ROADMAP.md` § The wasm32 rule needs a gate) — **add it before writing `libs/doc`, not after.**
+(`ROADMAP.md` § The wasm32 rule needs a gate) — **add it before writing `crates/document-core`, not after.**
 
 ```
 cargo check -p domain -p doc -p diagnostics --target wasm32-unknown-unknown
