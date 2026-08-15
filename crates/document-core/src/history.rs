@@ -57,6 +57,8 @@ impl History {
 
 #[cfg(test)]
 mod tests {
+    use uuid::Uuid;
+
     use super::*;
     use crate::block::{Block, BlockId, BlockKind};
     use crate::inline::Span;
@@ -68,7 +70,7 @@ mod tests {
 
     /// A page holding one paragraph, block 1, inserted outside the history.
     fn page_with_one_block() -> Page {
-        let mut page = Page::new(PageId::new(), "Title");
+        let mut page = Page::new(PageId::new(Uuid::from_u128(1)), "Title");
         page.apply(&Op::InsertBlock {
             after: None,
             block: paragraph(1),

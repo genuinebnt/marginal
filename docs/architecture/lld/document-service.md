@@ -117,7 +117,7 @@ enforcement point, so a handler cannot forget to validate. That interacts with w
 Required surface — pin it with tests before implementing:
 
 ```
-PageId::new() -> Self                MaterialisedPath::root(PageId) -> Self
+PageId::new(Uuid) -> Self            MaterialisedPath::root(PageId) -> Self
 PageId::from_uuid(Uuid) -> Self      MaterialisedPath::child(&self, PageId) -> Self
 PageId::as_uuid(self) -> Uuid        MaterialisedPath::parent(&self) -> Option<Self>
                                      MaterialisedPath::is_ancestor_of(&self, &Self) -> bool
@@ -524,5 +524,5 @@ constraint.
 ### Never omit the id on insert
 
 `DEFAULT uuidv7()` is a PostgreSQL 18 built-in and managed Postgres lags (ADR-008).
-`PageId::new()` generates the id in Rust; the column default is a convenience for
+The service generates the UUIDv7 and passes it to `PageId::new(uuid)`; the column default is a convenience for
 hand-written SQL only.

@@ -4,6 +4,11 @@ A self-hosted, real-time collaborative markdown notebook. Eleven Rust services (
 
 See ADR-001 for why each service boundary exists.
 
+> **The map below shows the seven Track 1–3 services.** The four added by ADR-009 —
+> `notification-service` (8007), `publishing-service` (8008), `plugin-service` (8009) and
+> `assistant-service` (8010) — are gated on the 🏁 and get drawn when they are built.
+> `CLAUDE.md` § Services is the full eleven.
+
 ---
 
 ## 1. Service Map
@@ -31,7 +36,7 @@ graph TD
     subgraph Infra["Infrastructure — Docker Compose / Google Cloud"]
         PG[("PostgreSQL 18<br/>schemas: docs · auth · history")]
         REDIS[("Redis<br/>blocklist · presence<br/>rate limits · instance registry")]
-        NATS[/"NATS JetStream<br/>event bus"/]
+        NATS[/"NATS JetStream local<br/>Pub/Sub in cloud<br/>one EventBus trait"/]
         OBJ[("MinIO / Cloud Storage<br/>snapshots · images")]
         TANTIVY["Tantivy<br/>in-process index"]
     end
@@ -102,7 +107,7 @@ one.
 |---|---|---|
 | **Redis** | **No lease can be acquired or renewed** → live editing stops **globally**, not per page. Blocklist unavailable. Rate limits unavailable | **The worst one.** It is on the live-editing hot path and there is no second source for a lease |
 | **PostgreSQL** (single primary, three schemas) | No page reads or writes, no logins, no history projection. `collaboration-service` keeps serving from memory + WAL but **cannot flush**, so the WAL grows unbounded | Wide, and **also a coupling**: pool exhaustion or lock contention in one schema starves the other two — noisy-neighbour risk that logical isolation does not prevent |
-| **NATS** | Outbox rows accumulate in Postgres — **durable, not lost**. Search goes stale, diagnostics go stale | **Correctly degradable.** This is what the outbox pattern bought |
+| **The event bus** (NATS local, Pub/Sub cloud) | Outbox rows accumulate in Postgres — **durable, not lost**. Search goes stale, diagnostics go stale | **Correctly degradable.** This is what the outbox pattern bought |
 
 **Two fail-behaviour decisions that follow, and they must go opposite ways:**
 
@@ -131,7 +136,7 @@ Worth naming, because it is the part that took a decision rather than an omissio
 - **JWT verified locally at the gateway against cached JWKS.** `auth-service` being down does not
   break authenticated requests — only new logins. **The best decoupling decision in the project**,
   and the reason the service table can say "existing tokens keep working"
-- **Outbox + NATS.** A publisher never waits on a subscriber, and an event survives a bus outage
+- **Outbox + the bus.** A publisher never waits on a subscriber, and an event survives a bus outage
   because it is a Postgres row first
 - **Per-page failure isolation.** One owner dying costs one page, not the workspace
 - **Four services are declared degradable** — diagnostics, notification, publishing, assistant

@@ -17,18 +17,18 @@ Both run identical application code, which is only true if every external depend
 
 | Concern | Local (compose) | Google Cloud — Tier S (session) | Google Cloud — Tier R (resident) | Notes |
 |---|---|---|---|---|
-| Database | `pgvector/pgvector:pg18`, **one container per service** | Cloud SQL for PostgreSQL, **one instance per service** (ADR-003) | **one serverless Postgres (Neon), schema + role per service** | **Version skew is real** — managed Postgres lags upstream. LTREE and `pgvector` are available; `uuidv7()` may not be. See § The `uuidv7()` trap. Neither managed option idles at zero except Neon |
+| Database | `pgvector/pgvector:pg18`, **one container per service** | Cloud SQL for PostgreSQL, **one instance per service** (ADR-003) | **one serverless Postgres, schema + role per service** | **Version skew is real** — managed Postgres lags upstream. LTREE and `pgvector` are available; `uuidv7()` may not be. See § The `uuidv7()` trap. Neither managed option idles at zero except Neon |
 | Cache / presence | `redis:7-alpine` | Memorystore for Redis | in-process behind the same trait, or the free `e2-micro` | Memorystore is provisioned and always billing |
 | Event bus | `nats:2` JetStream (`NatsBus`) | **Pub/Sub** (`PubSubBus`) | **Pub/Sub** (`PubSubBus`) | Pub/Sub in the cloud, NATS locally and self-hosted. Why both, and what it costs: § Pub/Sub and NATS — why both |
 | Object storage | `minio/minio` | Cloud Storage | Cloud Storage | One `object_store` adapter covers both; the difference is a URL and a credential source |
 | Search index | Tantivy on a local volume | Tantivy on a Persistent Disk | Tantivy on the Cloud Run instance, rebuilt from events on cold start | In-process; no managed equivalent, and none needed at this scope |
 | Static client | `vite dev` / nginx | Cloud Storage + Cloud CDN | Firebase Hosting | Static bundle, no server (ADR-004). Cloud CDN needs a load balancer, which is never free |
 | Ingress | exposed ports | Cloud Load Balancing via the GKE Gateway API | the Cloud Run service URL | Managed TLS either way; a forwarding rule bills continuously |
-| Secrets | git-ignored `.env` | Secret Manager, injected as env | Never in `config.yaml` |
-| Traces | Jaeger container | Cloud Trace via OTel Collector | Same OTLP exporter |
-| Metrics | Prometheus container | Managed Service for Prometheus | Same `/metrics` endpoint |
-| Container images | local build | Artifact Registry | |
-| Pod identity | none needed | Workload Identity Federation | No static keys in cluster |
+| Secrets | git-ignored `.env` | Secret Manager, injected as env | Secret Manager, injected as env | Never in `config.yaml`, ever |
+| Traces | Jaeger container | Cloud Trace via OTel Collector | Cloud Trace via OTel Collector | Same OTLP exporter |
+| Metrics | Prometheus container | Managed Service for Prometheus | Cloud Monitoring | Same `/metrics` endpoint |
+| Container images | local build | Artifact Registry | Artifact Registry | 500 MB free — prune tags |
+| Pod identity | none needed | Workload Identity Federation | the Cloud Run service account | No static keys either way |
 
 ---
 
@@ -107,7 +107,7 @@ managed instance cannot host the vector index is discovering it a year late.
 
 `migrations/0001_init.sql` declares `id UUID PRIMARY KEY DEFAULT uuidv7()`. That function is a **PostgreSQL 18** built-in, and managed Postgres lags upstream — on Cloud SQL, and on RDS equally.
 
-The design already survives this: `PageId::new()` generates UUIDv7 in Rust, so ids come from the application and the column default is a convenience for hand-written SQL. Keep it that way.
+The design already survives this: ids are generated as UUIDv7 **by the service** and passed into `PageId::new(uuid)`, so they come from the application and the column default is a convenience for hand-written SQL. Keep it that way. `document-core` itself never generates one — it cannot, because `wasm32-unknown-unknown` has no source of randomness.
 
 > **Never write an `INSERT` that omits the id and lets the database generate it.** It works locally and fails on the first managed instance that ships Postgres 17.
 

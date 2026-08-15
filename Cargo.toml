@@ -11,5 +11,5 @@ tracing = { version = "0.1.44" }
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
 tracing-log = { version = "0.2.0" }
 
-uuid = { version = "1.24.0", features = ["v4"] }
+uuid = { version = "1.24.0" }
 thiserror = { version = "2.0.20" }

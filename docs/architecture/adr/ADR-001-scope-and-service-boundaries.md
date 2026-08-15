@@ -46,9 +46,11 @@ The tension this ADR resolves: a tight product does not obviously need microserv
 | Mobile apps | Web only |
 | Offline-first beyond what the CRDT gives free | Local queue + replay, no bespoke conflict resolution |
 
-### Seven services, each with a defensible boundary
+### Eleven services, each with a defensible boundary
 
 A service exists only if it differs in **scaling profile, state, failure mode, or deploy cadence**. Owning a different noun is not sufficient — that is how the previous scope reached thirteen.
+
+Seven are listed below; **ADR-009 adds four** — `notification-service` (8007), `publishing-service` (8008), `plugin-service` (8009), `assistant-service` (8010) — each justified against the same rule. `CLAUDE.md` § Services carries the full table.
 
 | Service | Port | Boundary justification |
 |---|---|---|

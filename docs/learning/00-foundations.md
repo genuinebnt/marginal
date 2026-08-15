@@ -15,7 +15,7 @@ Two kinds of thing live here:
 
 ## 1. Start here — the first ten days
 
-You are at **Phase 1, `document-service`**, with **no code written**. Everything below is yours,
+You are at **Phase 1**. `crates/document-core` exists — `Page`, `Block`, `Op` with `invert`, `History` with undo/redo, 18 tests green — and nothing else does. Everything below is yours,
 starting from an empty workspace. This is the order that gets you from *no idea where to start* to *writing
 `crates/domain` with opinions you can defend.*
 

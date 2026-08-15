@@ -8,8 +8,8 @@ use crate::{
 pub struct PageId(uuid::Uuid);
 
 impl PageId {
-    pub fn new() -> Self {
-        Self(uuid::Uuid::new_v4())
+    pub fn new(id: uuid::Uuid) -> Self {
+        Self(id)
     }
 }
 
@@ -91,6 +91,8 @@ pub enum PageError {
 
 #[cfg(test)]
 mod tests {
+    use uuid::Uuid;
+
     use super::*;
     use crate::block::{Block, BlockId, BlockKind};
     use crate::inline::Span;
@@ -98,7 +100,7 @@ mod tests {
     const FIXTURE_LEN: u64 = 20;
 
     fn empty_page() -> Page {
-        Page::new(PageId::new(), "Title")
+        Page::new(PageId::new(Uuid::from_u128(1)), "Title")
     }
 
     fn paragraph(id: u64) -> Block {

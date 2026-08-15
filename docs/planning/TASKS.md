@@ -15,11 +15,15 @@ starts, not before.
 
 ## Where you are
 
-**Updated 2026-08-15. → Step 1.**
+**Updated 2026-08-15. → Step 2.**
 
 `crates/document-core` exists and is the only crate. `Page`, `Block`, `Op` with `invert()`,
-`History` with undo/redo and atomic rollback. **18 tests green.** `inline.rs`'s `Span` is
-provisional — Step 3 deletes it.
+`History` with undo/redo and atomic rollback. **18 tests green, and `wasm32-unknown-unknown`
+builds clean.** `inline.rs`'s `Span` is provisional — Step 3 deletes it.
+
+**Step 1 is done.** `PageId::new` now takes a `Uuid` instead of manufacturing one, and the
+`uuid` feature moved out of `[workspace.dependencies]` so `document-core` inherits no rng.
+Whoever generates ids adds `features = ["v7"]` to its own manifest.
 
 ### Why the queue is not in story order
 
@@ -36,8 +40,8 @@ Yours — ADR-005 puts design on your side of the line. Each blocks a step below
 
 | # | Decision | Blocks |
 |---|---|---|
-| **1** | **Where UUIDs are generated.** `PageId::new()` calls `Uuid::new_v4()` inside `document-core`, so the crate needs randomness — which `wasm32-unknown-unknown` has none of. Either add uuid's `js` feature and accept a JS-shaped dependency in the "infrastructure-free" crate, or stop generating ids in the model and let the caller pass them in (`Page::new` already takes one). | Step 1 |
-| **2** | **v4 or v7.** Code generates v4; `ADR-008` and `DATA_MODEL.md` §7 specify **uuidv7** — time-ordered, so ids cluster in an index rather than scattering. | Step 1 |
+| ~~1~~ | ~~Where UUIDs are generated.~~ **Resolved.** `document-core` never manufactures an id; it receives one. Randomness is ambient authority and a crate that must compile into a `wasm32` sandbox cannot reach for it — the same reason `CLOUD_PORTABILITY.md` §2 has `Clock` behind a trait. | — |
+| ~~2~~ | ~~v4 or v7.~~ **Resolved by #1** — v7 needs an rng too (48-bit timestamp **plus 74 random bits**), so it moved out of the model with v4. The service that generates ids uses v7, for the index locality `DATA_MODEL.md` §7 wants. | — |
 | **3** | **`BlockId(u64)` against `PageId(Uuid)`.** Two identity strategies in one crate, and `RFC-001` §9 wants Yjs-style `ItemId` for anchors, which a `u64` counter cannot become. `BlockId` is already in all four `Op` variants. | Step 3 |
 | **4** | **`Op::DeleteBlock`'s `after`.** `apply` ignores it, `invert` depends on it, nothing checks they agree — so a wrong `after` applies cleanly and restores the block to the wrong place on undo. | Step 9 |
 | **5** | **Soft or hard delete for pages.** | Step 30 |
@@ -57,18 +61,15 @@ the service — Phase 1 is both.
 
 Nothing here needs Postgres, Docker, or a network. Pure `cargo test`.
 
-### Step 1 · Make `wasm32` build
-
-Resolve Open decisions #1 and #2, then:
+### ✅ Step 1 · Make `wasm32` build — **done**
 
 ```
 rustup target add wasm32-unknown-unknown
 cargo build -p document-core --target wasm32-unknown-unknown
 ```
 
-**Done when:** the target compiles clean.
-**Why first:** `CLAUDE.md` requires this crate stay `wasm32`-clean. Finding out otherwise after
-marks are built on top is expensive, and the failure is already waiting for you.
+Resolved Open decisions #1 and #2. **Re-run this after every step in Part A** — Steps 3–16 are
+exactly where an accidental dependency on the host creeps back in.
 
 ### Step 2 · Clean the lints, commit
 

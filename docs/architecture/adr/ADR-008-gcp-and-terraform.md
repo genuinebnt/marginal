@@ -62,9 +62,10 @@ makes this a documentation change rather than a rewrite.
 Postgres lags upstream by a year or more — this applies to Cloud SQL and to RDS equally,
 so it is not a GCP-specific problem, but the move surfaces it now rather than in Phase 12.
 
-**The fix is already the design.** `PageId::new()` generates UUIDv7 in Rust
-(`uuid` crate, `now_v7`). Ids are assigned by the application, and the column default is
-belt-and-braces for hand-written SQL only. Keep it that way: **never write an `INSERT`
+**The fix is already the design.** Ids are generated as UUIDv7 in Rust by the service that owns
+the write (`uuid` crate, `now_v7`) and passed into `PageId::new(uuid)`. The column default is
+belt-and-braces for hand-written SQL only. `document-core` never generates one — it compiles to
+`wasm32`, which has no randomness. Keep it that way: **never write an `INSERT`
 that omits the id and relies on the database to generate it**, or the code stops working
 the moment it meets a managed Postgres.
 
@@ -118,18 +119,19 @@ $20–40 rather than a monthly bill.
 ## Google Cloud is the primary deployment target
 
 **Google Cloud is the primary hosting target and a project requirement**, not an optional
-learning track alongside a self-hosted product. The reference
-deployment is GKE and Cloud Run in a real project; `docker compose up` remains supported
-for self-hosting and for local development, but it is no longer the definition of "running".
+learning track alongside a self-hosted product. The reference deployment is **Cloud Run in a
+real project** (ADR-010 §1), with GKE rented per session for the work that needs a cluster;
+`docker compose up` remains supported for self-hosting and for local development, but it is no
+longer the definition of "running".
 
 ### What that means
 
 - **A phase is not done until it is deployed.** `CLOUD_ROADMAP.md` §2 already attaches a
   cloud increment to every phase; that increment is now part of the phase's definition of
   done rather than an optional extra.
-- **Cloud-only failure modes are in scope.** Cold starts, Workload Identity token refresh,
-  Cloud SQL failover, and a rolling replacement of a `StatefulSet` are things this project
-  must handle, not things it may.
+- **Cloud-only failure modes are in scope.** Cold starts (which `min = 0` makes routine),
+  Workload Identity token refresh, database failover, and a rolling replacement of a
+  `StatefulSet` are things this project must handle, not things it may.
 - **Cost discipline becomes a real constraint**, not advice. `terraform destroy` between
   sessions and a $10 budget alert are the mechanism that makes a required cloud target
   affordable on a learning budget.
