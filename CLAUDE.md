@@ -83,7 +83,7 @@ the LLD module maps as a proposal rather than a contract: the layout is derived,
 |---|---|---|
 | `api-gateway` | 8000 | The edge — only public component; REST/WSS in, gRPC out (ADR-007) |
 | `document-service` | 8001 | Stateless; owns pages, blocks, **its own** outbox. gRPC `PageService`; HTTP probes only |
-| `collaboration-service` | 8002 | **Stateful** — rope per doc, scales on connection count. **Owns the op log** (ADR-003) |
+| `collaboration-service` | 8002 | **Stateful** — rope per doc, scales on connection count. **Owns `collab`** — the op log and its outbox (ADR-003) |
 | `diagnostics-service` | 8003 | CPU-bound, bursty, **degradable** |
 | `history-service` | 8004 | Cold path — replay, snapshots to object storage |
 | `search-service` | 8005 | Own Tantivy index, own rebuild cadence |
@@ -187,7 +187,7 @@ says which repo it is in.
 
 Databases/tables/views/relations/rollups · formula language · spatial canvas · mobile apps.
 
-The first is the hard one: `docs.ops.page_id` is `NOT NULL` and `collaboration-service`
+The first is the hard one: `collab.ops.page_id` is `NOT NULL` and `collaboration-service`
 owns exactly one page per instance, so cross-page aggregation has **no owner**. That is a
 second ownership tier, not a feature.
 

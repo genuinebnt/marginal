@@ -100,8 +100,8 @@ is not Redis, is the follow-on decision.
 
 ### The consequence that changes an existing design
 
-In the pre-amendment design `collaboration-service` wrote `docs.blocks`, `docs.ops`, and
-`docs.outbox` — tables `document-service` owned. With one instance that was a convention violation.
+The obvious arrangement has `collaboration-service` writing `docs.blocks`, `docs.ops` and
+`docs.outbox` — tables `document-service` owns. With one instance that is a convention violation.
 **With separate instances it would mean handing one service credentials to another service's
 database server**, which is no longer a shortcut but an architecture.
 

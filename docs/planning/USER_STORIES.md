@@ -160,7 +160,7 @@ service (`CLOUD_ROADMAP.md` §2).
 Out of scope per ADR-001, and deliberately absent. If one of these turns up in a request it
 needs an ADR before it needs a story.
 
-- Databases, tables, views, relations, rollups — the hard one: `docs.ops.page_id` is
+- Databases, tables, views, relations, rollups — the hard one: `collab.ops.page_id` is
   `NOT NULL` and `collaboration-service` owns exactly one page per instance, so cross-page
   aggregation has no owner. That is a second ownership tier, not a feature
 - A formula language

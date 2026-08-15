@@ -173,7 +173,7 @@ your `Ordering` choices are correct, when the WAL is durable, and what happens t
 | 3 | Kleppmann — [**CRDTs and the Quest for Distributed Consistency**](https://www.youtube.com/watch?v=B5NULPSiOGw) | talk (45 min) | The clearest explanation of *why* CRDTs converge. Watch before reading any CRDT paper |
 | 4 | [**Peritext**](https://www.inkandswitch.com/peritext/) — Litt, Lim, Kleppmann, van Hardenberg | paper + prose | **The paper this project's document model is based on.** Formatting spans anchored to stable character ids, converging deterministically. RFC-001 §9's anchor decision comes from here — read it before implementing anchors |
 | 5 | Joseph Gentle — [**CRDTs go brrr**](https://josephg.com/blog/crdts-go-brrr/) | blog | The performance reality of sequence CRDTs, with measurements. Also the best explanation of why the naive representation is unusable |
-| 6 | [Automerge](https://github.com/automerge/automerge) — read the **storage format** docs | repo | Columnar encoding of an op log by people who did it in Rust. Directly relevant to your `docs.ops` payload design |
+| 6 | [Automerge](https://github.com/automerge/automerge) — read the **storage format** docs | repo | Columnar encoding of an op log by people who did it in Rust. Directly relevant to your `collab.ops` payload design |
 | 7 | **DDIA** Ch. *Consistency and Consensus* — total order broadcast section | owned | Why one owner per page gives you linearizable writes without consensus |
 
 ### Optional

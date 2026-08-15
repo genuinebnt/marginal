@@ -854,7 +854,7 @@ possible at all.
 | **LCS / Myers diff** | The revision diff view — what changed between two points |
 | Chandy-Lamport (conceptual) | A consistent snapshot of a live distributed session |
 
-**The projection test:** replaying `docs.ops` from empty must reproduce `docs.blocks` exactly. If it does not, the log is not the source of truth.
+**The projection test:** replaying `collab.ops` from empty must reproduce `docs.blocks` exactly. If it does not, the log is not the source of truth.
 
 ---
 

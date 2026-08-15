@@ -189,7 +189,7 @@ Unchanged from ADR-001, and now with a structural reason rather than a scope one
 
 | Still cut | Why it would hurt |
 |---|---|
-| Databases, tables, relations, rollups | `docs.ops.page_id` is `NOT NULL` and `collaboration-service` owns exactly one page per instance. Cross-page aggregation has **no owner** — it needs a second ownership tier, which is a distributed-systems redesign, not a feature |
+| Databases, tables, relations, rollups | `collab.ops.page_id` is `NOT NULL` and `collaboration-service` owns exactly one page per instance. Cross-page aggregation has **no owner** — it needs a second ownership tier, which is a distributed-systems redesign, not a feature |
 | Formula language / expression VM | Self-contained and portable, but worthless without databases |
 | Spatial canvas | Fractional indexing is 1-D. 2-D positions need different convergence, and "every op is invertible" degrades to LWW |
 | Mobile apps | The Rust core ports; the editor UI is a second full client |

@@ -1,8 +1,8 @@
 # LLD — `collaboration-service`
 
-**Owns:** its own database — **`ops`** (append-only, the source of truth) and its own **outbox** (ADR-003). Also the live editing session: one rope per open page, the local WAL, and the op fan-out. It **never writes another service's tables** — `document-service` materialises `blocks` by replaying the op events this service publishes.
+**Owns:** the **`collab`** schema — **`collab.ops`** (append-only, the source of truth) and **`collab.outbox`** (ADR-003). Also the live editing session: one rope per open page, the local WAL, and the op fan-out. It **never writes another service's tables** — `document-service` materialises `blocks` by replaying the op events this service publishes.
 **Transport:** WebSocket in (proxied by the gateway), gRPC out to `diagnostics-service`. HTTP for probes only.
-**Depends on:** its own PostgreSQL 18 instance, Redis (presence, instance registry, page ownership lease), a local filesystem for the WAL. NATS on flush via its outbox. **No dependency on `document-service`'s database** — that isolation is the point (ADR-003).
+**Depends on:** PostgreSQL 18 — its own instance locally and in Tier S, its own schema and login role in the resident deployment (ADR-010 §3) — Redis (presence, instance registry, page ownership lease), a local filesystem for the WAL. NATS on flush via its outbox. **No dependency on `document-service`'s database** — that isolation is the point (ADR-003).
 **Related:** `RFC-001` (document model, **§9 anchors**) · `RFC-002` (op ISA, WAL, batching, dedup) · `ARCHITECTURE.md` §4 (live-editing flow) · `DATA_MODEL.md` §6 (Redis keys) · `docs/learning/01-track1-mvp.md` § Phase 3
 
 **The hardest service in the project, and the only stateful one.** Rope, sequence CRDT, WAL,
@@ -22,7 +22,7 @@ zero-copy fan-out. Thirteen of the rare concepts in `ROADMAP.md` § Rust, DSA & 
 |---|---|
 | Startup path, copied from `document-service` | `crates/document-core` — rope, anchors, marks, block tree (`wasm32`-clean) |
 | `blocks` / `pages` DDL (`document-service`'s database) | `session/` — the doc-actor, one per open page |
-| | `ops/` — the op log **this service owns**, plus its outbox |
+| | `ops/` — `collab.ops`, the log **this service owns**, plus `collab.outbox` |
 | `AppError` shape | `wal/` — framing, `sync_data`, recovering reader |
 | Probe router | `transport/` — WebSocket, frame decode, fan-out |
 | | `ownership/` — lease, fencing token, handoff |
@@ -66,7 +66,7 @@ crates/collaboration-service/src/
 │   ├── writer.rs     [len][payload][crc32], O_APPEND, sync_data, rotation
 │   └── recovery.rs   RECOVERING reader — skips a torn tail
 ├── ops/
-│   ├── mod.rs        trait OpLog + PostgresOpLog (same file) — THIS service's table
+│   ├── mod.rs        trait OpLog + PostgresOpLog (same file) — collab.ops
 │   └── outbox.rs     same-transaction publish; its own poller
 ├── flush/
 │   ├── mod.rs        ArrayQueue + the batch policy
@@ -179,7 +179,7 @@ enum Message {
    4. WAL append + sync_data        ← durability
    5. ack the originating client    ← ONLY here. Not before 4, not after 6
    6. broadcast to other clients    ← Bytes, one allocation, N refcount bumps
-   7. push to ArrayQueue            ← batched flush to THIS service's `ops` + outbox, ~20:1
+   7. push to ArrayQueue            ← batched flush to collab.ops + collab.outbox, ~20:1
    8. notify diagnostics-service    ← gRPC server stream, changed blocks only
 ```
 

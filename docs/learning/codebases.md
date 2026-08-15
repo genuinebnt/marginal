@@ -75,7 +75,7 @@ build, and each is exceptionally well written. The last one you wrote yourself.
 | Repo | Read | For |
 |---|---|---|
 | [**diamond-types**](https://github.com/josephg/diamond-types) | `src/list/`, and the benchmarks | **The fastest sequence CRDT in Rust**, by the author of the "CRDTs go brrr" post. Read for how far the constants can be pushed |
-| [**automerge**](https://github.com/automerge/automerge) | `rust/automerge/src/op_set/`, `src/storage/` | **The columnar op-log storage format.** Directly relevant to your `docs.ops` payload encoding. Also read their `OpId` type |
+| [**automerge**](https://github.com/automerge/automerge) | `rust/automerge/src/op_set/`, `src/storage/` | **The columnar op-log storage format.** Directly relevant to your `collab.ops` payload encoding. Also read their `OpId` type |
 | [**loro**](https://github.com/loro-dev/loro) | `crates/loro-internal/src/container/richtext/` | Rich-text CRDT with **movable trees** — and their richtext module is a Peritext-family implementation you can read |
 | [**y-crdt**](https://github.com/y-crdt/y-crdt) | `yrs/src/block.rs`, `yrs/src/types/text.rs` | YATA in Rust. The `Block` type is the item-id design RFC-001 §9 chose |
 | [**crossbeam**](https://github.com/crossbeam-rs/crossbeam) | `crossbeam-epoch/src/`, `crossbeam-queue/src/array_queue.rs` | **Read `array_queue.rs` line by line before using `ArrayQueue`.** Then `crossbeam-epoch` — this is the epoch reclamation KAIST cs431 teaches |

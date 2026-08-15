@@ -68,7 +68,7 @@ subscription. Nothing in this project's use of the bus exceeds it.
 
 Unbounded replay is not the differentiator either: **the op log is the source of truth and it
 lives in Postgres** (`DATA_MODEL.md` §1). The bus carries derived events for indexing, cache
-invalidation and saga steps. A full rebuild replays `docs.ops`, not the bus.
+invalidation and saga steps. A full rebuild replays `collab.ops`, not the bus.
 
 **Neither can do the other's job.**
 

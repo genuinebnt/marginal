@@ -300,7 +300,7 @@ regardless of traffic.** That is the realistic risk to this project, far more th
 
 Self-hosted Marginal serves a team. If it ever needed more, the order things break:
 
-1. **Postgres write throughput.** Op batching (~20:1) is what makes it survivable at all. Beyond that: partition `docs.ops` by `page_id`, then read replicas. Nothing needs building now.
+1. **Postgres write throughput.** Op batching (~20:1) is what makes it survivable at all. Beyond that: partition `collab.ops` by `page_id`, then read replicas. Nothing needs building now.
 2. **`collaboration-service` connection count.** tokio holds 50–100k sockets per instance with tuned fd limits. Consistent hashing (Phase 10) already distributes pages across instances.
 3. **Tantivy is in-process with no distributed mode.** The migration path is sharding by page or moving to [Quickwit](https://quickwit.io/), which is built on Tantivy — index-format knowledge transfers. Worth recording so Phase 7 does not look like a dead end.
 4. **Diagnostics fan-out on rename.** A page rename invalidates diagnostics across every referring page. Batch or rate-limit if it becomes a spike.

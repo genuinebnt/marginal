@@ -11,10 +11,13 @@
 > **The op log is the source of truth. Block rows are a projection.**
 
 ```
-   docs.ops  ────replay────▶  docs.blocks
-   (append-only,              (materialised current state,
-    never UPDATE,              rebuildable from ops,
-    never DELETE)              exists for query performance)
+   collab.ops  ──replay──▶  docs.blocks
+   (append-only,            (materialised current state,
+    never UPDATE,            rebuildable from ops,
+    never DELETE)            exists for query performance)
+
+   owned by                 owned by
+   collaboration-service    document-service
 ```
 
 A test must prove the projection can be rebuilt by replay. Snapshots exist for performance, never for correctness.
@@ -25,11 +28,11 @@ A test must prove the projection can be rebuilt by replay. Snapshots exist for p
 (**ADR-003**). Isolation is enforced by the network, so one service's database failing
 degrades only that service.
 
-> The schema names below (`auth`, `docs`, `history`) remain as *namespaces within* each service's
-> own database. They are no longer three schemas in one instance.
+> The schema names below (`auth`, `docs`, `collab`, `history`) remain as *namespaces within* each
+> service's own database. They are no longer schemas sharing one instance by default.
 
-**Three schemas exist, and most services do not have one.** "Database per service" makes it sound
-as though every service gets storage; here only three of eleven are Postgres-backed, and the
+**Four schemas exist, and most services do not have one.** "Database per service" makes it sound
+as though every service gets storage; here only four of eleven are Postgres-backed, and the
 interesting ones deliberately are not — Postgres is the wrong tool for a rope or an inverted index.
 
 | Service | Postgres schema | Its other durable state |
@@ -37,14 +40,14 @@ interesting ones deliberately are not — Postgres is the wrong tool for a rope 
 | `auth-service` | **`auth`** | Redis — the `jti` revocation blocklist |
 | `document-service` | **`docs`** | — |
 | `history-service` | **`history`** | Object storage — Parquet snapshots (§5) |
-| `collaboration-service` | **none** — writes `docs` under a session lease, see below | **The local WAL on the filesystem**; Redis for presence, lease, and the instance registry; the rope in memory |
+| `collaboration-service` | **`collab`** — `ops` and its own outbox | **The local WAL on the filesystem**; Redis for presence, lease, and the instance registry; the rope in memory |
 | `search-service` | none | A Tantivy index on a local volume |
 | `diagnostics-service` | none | In-memory, materialised from NATS. *Whether the reverse index earns a schema is an open question — RFC-003 §Open questions* |
 | `api-gateway` | none | Stateless. Redis for rate limits |
 
 **What makes it real rather than cosmetic:**
 
-- **No cross-schema joins.** `docs` never joins `auth` or `history`. Data needed elsewhere travels as NATS events and is materialised locally
+- **No cross-schema joins.** `docs` never joins `auth`, `collab` or `history`. Data needed elsewhere travels as events and is materialised locally
 - **No cross-schema foreign keys.** `docs.pages.created_by` references a user by plain `UUID` with no constraint, validated at the application layer (§4). Same reasoning as § *Why `actor_id` has no foreign key*
 - Each schema migrates independently, on its own service's cadence
 
@@ -80,7 +83,7 @@ GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA docs TO docs_svc;
 |---|---|
 | **Enforcement** | A cross-schema join fails at the database instead of passing review |
 | **Blast radius** | A compromised `document-service` cannot read `auth.users.password_hash` |
-| **The exception becomes visible** | `collab_svc` is granted on `docs.blocks`, `docs.ops`, `docs.outbox` **and not `docs.pages`** — so § The exception below is expressed as a grant rather than a paragraph, and drift shows up as a permission error |
+| **Ownership becomes visible** | `collab_svc` is granted on `collab` **and on nothing in `docs`** — the op log is its own, and `document-service` materialises `blocks` from published events rather than from a shared table. Drift shows up as a permission error |
 
 **Migrate as the owner, run as the restricted role.** DDL rights and runtime rights are different
 concerns; conflating them means a service can drop its own tables. Two roles per schema — an owner
@@ -114,21 +117,16 @@ is the rule for choosing.
 services to build a response; that is a distributed join with a service's name on it, and it turns
 one slow dependency into a slow dependency for everybody (`ROADMAP.md` § Tail latency amplification).
 
-### The exception: `collaboration-service` writes `document-service`'s tables
+### Ownership transfers for the life of a session
 
-> **Resolved by ADR-003 — the op log moved.** `collaboration-service` now owns `ops`
-> and its own outbox in its own database; `document-service` owns `pages`, `blocks`, and
-> `page_links`, materialising `blocks` by replaying op events. **No service writes another's
-> tables.** The reasoning below is retained because it explains why the shared-table version was
-> ever coherent, and because the ownership-transfer rule it describes still governs *who is
-> authoritative for a page's content while a session is live*.
+**No service writes another's tables.** `collaboration-service` owns `collab.ops` and its own
+outbox; `document-service` owns `docs.pages`, `docs.blocks` and `docs.page_links`, materialising
+`blocks` by replaying the op events the first publishes.
 
-`collaboration-service` formerly wrote `docs.blocks`, `docs.ops`, and `docs.outbox` on flush
-(`ARCHITECTURE.md` §4). Two services on one set of tables is precisely what database-per-service
-forbids, which is why the exception needed a justification rather than an assumption.
+That leaves one question the schema alone cannot answer: **while a session is live, who is
+authoritative for a page's content?**
 
-**The rule that makes it coherent: ownership of a page's block data transfers for the life of a
-session.** RFC-001 §2 already says it — *while a session is live the rope is authoritative; the
+**The rule: ownership of a page's block data transfers for the life of a session.** RFC-001 §2 already says it — *while a session is live the rope is authoritative; the
 JSONB is a checkpoint, not the truth.* So `collaboration-service` is not a competing writer; it is
 the **current owner**, flushing a checkpoint of state it holds authoritatively, and
 `document-service` is the owner at every other time.
@@ -138,12 +136,18 @@ The alternatives were worse:
 | Alternative | Why not |
 |---|---|
 | Flush through `document-service` over gRPC | Doubles write latency on the hot path and forces an API shaped like *"here is a rope projection"*, which is not a document operation |
-| Give `collaboration-service` its own schema | `docs.blocks` would be stale for the duration of every session, and every reader would need to know which store is current |
+| Keep both services writing `docs.blocks` | What was done first, and what ADR-003 reversed. Two writers on one table is exactly what database-per-service forbids, and the "ownership transfers for the life of a session" rule was the justification it needed. The rule survives — it still decides who is authoritative — but it no longer has to excuse a shared table |
+
+**What was chosen instead:** `collaboration-service` gets `collab`, owns `ops` and its own outbox,
+and publishes op events. `document-service` materialises `docs.blocks` by replaying them. The cost
+is that `docs.blocks` lags the live rope during a session, which `ARCHITECTURE.md` § The couplings
+records as the one remaining coupling and calls deliberate — read-your-writes reads from the
+doc-actor.
 
 **Two consequences that follow, and both are binding:**
 
-1. **A migration to `docs.blocks`, `docs.ops`, or `docs.outbox` affects two services** and must be rolled out consumers-before-producers (`ROADMAP.md` Phase 11)
-2. **The transfer must be explicit, not implied.** It is the lease in `collaboration-service`'s `ownership/` module — a page has one owner at a time, enforced by a fencing token, and that lease *is* the ownership transfer this exception depends on
+1. **Each table has exactly one writer**, so a migration is one service's problem. `collab.ops` is `collaboration-service`'s; `docs.blocks` is `document-service`'s. What still crosses the line is the **event contract** between them (§10), and that is what must be rolled out consumers-before-producers (`ROADMAP.md` Phase 11)
+2. **The transfer must be explicit, not implied.** It is the lease in `collaboration-service`'s `ownership/` module — a page has one owner at a time, enforced by a fencing token, and that lease is what decides who is authoritative for a page's content while a session is live
 
 ---
 
@@ -360,15 +364,15 @@ Mark keys are serialised in a fixed order and absent means false — never `"bol
 
 ```sql
 -- APPEND ONLY. No UPDATE. No DELETE. This is the source of truth.
-CREATE TABLE docs.ops (
+CREATE TABLE collab.ops (
     id               UUID PRIMARY KEY,      -- UUIDv7 from the client; the dedup key
-    -- NO foreign key: `pages` lives in document-service's database and this table
-    -- lives in collaboration-service's. Cross-database references are plain UUID,
+    -- NO foreign key: `pages` is document-service's, this table is
+    -- collaboration-service's. Cross-schema references are plain UUID,
     -- validated at the application layer (ADR-003).
     page_id          UUID NOT NULL,
 
     -- NO foreign key, deliberately. Once the assistant and plugins are actors
-    -- (ADR-009), not every actor has a row in docs.users. See § Why actor_id
+    -- (ADR-009), not every actor has a row in auth.users. See § Why actor_id
     -- has no foreign key — do not "fix" this in review.
     actor_id         UUID NOT NULL,
     actor_kind       TEXT NOT NULL DEFAULT 'user'
@@ -385,8 +389,8 @@ CREATE TABLE docs.ops (
     vector_clock     JSONB NOT NULL,
     created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX ON docs.ops (page_id, created_at);
-CREATE INDEX ON docs.ops (page_id, actor_id, created_at);  -- per-user undo
+CREATE INDEX ON collab.ops (page_id, created_at);
+CREATE INDEX ON collab.ops (page_id, actor_id, created_at);  -- per-user undo
 ```
 
 `payload` carries inversion data — deleted text, the removed subtree, `from` values. Deletes are the large ops precisely because they must be invertible (RFC-002 §3).
@@ -430,7 +434,7 @@ rows for a language model and a WASM module — so the constraint is **absent on
 -- transaction. If COMMIT succeeds and publish fails, the event is lost
 -- permanently — search never indexes it, history has a hole, nothing notices.
 -- The event row is written in the SAME transaction; a poller publishes it.
-CREATE TABLE docs.outbox (
+CREATE TABLE <schema>.outbox (   -- one per publishing service: docs, collab
     id            UUID PRIMARY KEY DEFAULT uuidv7(),
     aggregate_id  UUID NOT NULL,
     event_type    TEXT NOT NULL,
@@ -440,7 +444,7 @@ CREATE TABLE docs.outbox (
 );
 -- Partial index: the poller only scans unpublished rows, so it stays small
 -- however large the table grows. Claim with FOR UPDATE SKIP LOCKED.
-CREATE INDEX ON docs.outbox (created_at) WHERE published_at IS NULL;
+CREATE INDEX ON <schema>.outbox (created_at) WHERE published_at IS NULL;
 ```
 
 At-least-once, not exactly-once. A crash between publish and stamp republishes — correct and unavoidable, so **every consumer must be idempotent**.
@@ -486,7 +490,7 @@ Bytes go browser → S3/MinIO directly via presigned PUT, bypassing every servic
 ```sql
 CREATE SCHEMA history;
 
--- CQRS read model, projected from docs.ops. Snapshot bodies live in object
+-- CQRS read model, projected from collab.ops. Snapshot bodies live in object
 -- storage; only pointers are relational.
 CREATE TABLE history.snapshots (
     id          UUID PRIMARY KEY DEFAULT uuidv7(),
@@ -572,14 +576,14 @@ Enforced in Rust and covered by `proptest`:
 | `content` shape matches `kind` | JSONB is unvalidated by design; enforced by the tagged enum plus `content_version` |
 | Adjacent spans have distinct mark sets | Normalisation invariant (RFC-001 §2) |
 | Replaying `ops` reproduces `blocks` | The projection property — a test, not a constraint |
-| `docs.ops` is never truncated | See §9 — a decision, not an omission |
+| `collab.ops` is never truncated | See §9 — a decision, not an omission |
 | No cycles in `parent_id` | Would need a recursive check on every write |
 
 ---
 
 ## 9. The Log Is Never Truncated
 
-`docs.ops` grows forever. That is a decision, not an omission, and it is recorded because the
+`collab.ops` grows forever. That is a decision, not an omission, and it is recorded because the
 absence of a compaction mechanism reads like a gap otherwise.
 
 **Snapshots are performance, never origin.** A snapshot lets replay start late; it does not
