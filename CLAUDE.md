@@ -73,10 +73,13 @@ that needs it — never built up front. `crates/` extraction follows PROJECT_STR
 inline, duplicate on the second use, extract on the third. See ROADMAP § Phase 0 for the
 floor (workspace, migration, Postgres, `Settings`) and each item's trigger.
 
-**Current: Phase 1 — Documents.** `crates/document-core` exists — `Page`, `Block`, `Op` with
-`invert`, and `History` with undo/redo, 18 tests green. **Next: replace `Vec<Span>` with flat text
-+ marks over byte ranges** (RFC-001 §2, TASKS.md D-02). No service, no startup path, no database
-yet — every line of those is unwritten.
+**`docs/planning/TASKS.md` is the queue — 41 numbered steps, and its § *Where you are* is the
+single source of truth for what comes next.** Read it before proposing work.
+
+**Current: Phase 1, Step 3.** `crates/document-core` is the only crate. `Page`, `Block`, `Op`
+with `invert`, `History` with undo/redo, `Content` with marks over byte ranges. `wasm32` builds.
+Four `todo!()` bodies remain — `add_mark`, `remove_mark`, `normalise`, `marks_at` — and 19 tests
+are written against them. No service, no startup path, no database yet.
 
 `docs/architecture/lld/` specifies *what* to build and `docs/learning/` what to read first. Treat
 the LLD module maps as a proposal rather than a contract: the layout is derived, not inherited.
@@ -169,7 +172,7 @@ says which repo it is in.
 | `docs/architecture/GLOSSARY.md` | Ubiquitous language |
 | `docs/planning/ROADMAP.md` | Phases, **Rust/DSA concepts map**, tooling |
 | `docs/planning/USER_STORIES.md` | **What each phase means from the outside** — stories with a testable *Done when*, in execution order |
-| `docs/planning/TASKS.md` | **Track 1 subtasks with an owner on every line** — the ADR-005 split, applied |
+| `docs/planning/TASKS.md` | **THE QUEUE — 41 numbered steps in dependency order.** § *Where you are*, § *Open decisions*, and per-step *Before / DSA / After* reading |
 | `docs/planning/CLOUD_ROADMAP.md` | Cloud track + cost discipline |
 | `docs/planning/TIMELINE.md` | Estimates, the two handoffs, division of labour |
 | **`docs/learning/`** | **Per-phase reading lists — prerequisites and post-build, mandatory vs optional.** Start at `learning/README.md`; `00-foundations.md` §1 is a ten-day start-here order |

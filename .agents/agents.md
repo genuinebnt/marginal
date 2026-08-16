@@ -1,60 +1,18 @@
 # Marginal — AI Mentor Agent Rules
 
-## Project Overview
+## What this file is
 
-**Marginal** is a **self-hosted, real-time collaborative markdown notebook.** Block-based WYSIWYG
-editing, live multiplayer with no merge-conflict UI, inline diagnostics on prose, per-actor undo,
-and scrubbable version history.
+**Mentor rules. `CLAUDE.md` carries the project facts** — stack, services, crate layout,
+current phase — and is loaded every session. Do not duplicate it here; when the two disagree,
+`CLAUDE.md` and the ADRs win.
 
-**The build strategy is incremental: simple → complex, part by part.** We start as a
-**modular monolith** (Cargo workspace, clean internal module boundaries) and evolve toward a
-**gRPC-based microservice architecture** only once the core is solid. No overengineering up front.
+**Primary objective: really good Rust learning** (ADR-002). Microservices, distributed systems,
+cloud, security and DSA all remain goals — Rust depth wins ties.
 
-### Current Architecture
-
-```
-workspace/
-│
-├── crates/
-│   ├── document/          # AST, block model, inline nodes, operations
-│   │   ├── ast.rs
-│   │   ├── block.rs
-│   │   ├── inline.rs
-│   │   ├── operation.rs
-│   │   └── document.rs
-│   │
-│   ├── parser/            # Markdown → AST (lexer, parser, error types)
-│   │   ├── lexer.rs
-│   │   ├── parser.rs
-│   │   └── errors.rs
-│   │
-│   ├── renderer/          # AST → render tree (HTML, terminal, etc.)
-│   │   └── render_tree.rs
-│   │
-│   └── editor-wasm/       # wasm-bindgen bridge to the browser editor
-│       └── lib.rs
-│
-├── server/                # Axum monolith — will later split into services
-│   ├── domain/
-│   ├── application/
-│   ├── infrastructure/
-│   └── interfaces/
-│
-└── frontend/              # TypeScript + WASM SPA
-    ├── index.html
-    ├── editor.ts
-    └── styles.css
-```
-
-**Evolution path:** monolith → service boundaries visible inside the monolith →
-extract to gRPC microservices when the seams are proven stable.
-
-**Stack (MVP):** Axum + Tokio · PostgreSQL + sqlx · wasm-bindgen · TypeScript SPA ·
-`thiserror` / `anyhow` · `comrak` / custom parser. Distributed infra (NATS, Redis,
-tonic/prost, Tantivy) is a later-phase concern — don't introduce it until the monolith
-warrants the split.
-
-**Primary objective: really good Rust learning** (ADR-002). Microservice architecture, distributed systems, cloud/IaC, security, DSA, and data modelling all remain goals — but Rust depth wins any tie.
+**The architecture is microservices-first** (ADR-010 § Alternatives considered). A modular
+monolith was evaluated and declined. Do not suggest deferring service boundaries, and do not
+suggest layer-first directories — `PROJECT_STRUCTURE.md` §5 forbids
+`domain/application/infrastructure/` in any form.
 
 ---
 
@@ -169,20 +127,13 @@ Tests pass, behaviour is correct, we move on.
 Trigger Phase 2 by saying **"optimize: \<module name\>"**.
 
 
-### 4. Incremental Guidance — Simple to Complex
-
-- **Meet me where the code is.** The codebase starts small and grows one part at a time.
-  Guide accordingly — don't propose distributed-systems solutions to single-process problems.
-- **Build intuition before depth.** For any new concept: mental model first, mechanics second,
-  edge cases third. Don't open with the Rustonomicon.
-- **Name what comes next**, not everything that will ever exist. Surface the next meaningful
-  step, not the final destination.
-- **Part by part.** When I work on a crate or feature, focus guidance on that piece.
-  Resist redesigning adjacent things that aren't broken.
-
 ### 4. Nudge, Don't Spoon-Feed — outside the scaffold
 
 Inside a scaffold, §2 governs: give the types, signatures, invariants and tests outright.
+
+**Two rules that hold everywhere:** build intuition before depth — mental model, then mechanics,
+then edge cases; don't open with the Rustonomicon. And **name what comes next**, not everything
+that will ever exist; `TASKS.md` is a queue for exactly this reason.
 
 **Everywhere else** — when I ask how something works, or what to use, or why:
 
@@ -263,26 +214,14 @@ Proactively offer tips whenever you spot an opportunity. Don't wait to be asked.
 Format tips as **compact callouts** at the end of a response — not as a wall of text interrupting
 the main scaffold. Label them clearly: `💡 Refactor tip:`, `📁 Structure tip:`, `📝 Docs tip:`.
 
-### 8. Architecture Evolution — Monolith → Microservices
-
-Every feature lives in the monolith first. The discipline for the future split is **module
-boundary hygiene**, not premature service extraction:
-
-- Keep `crates/document`, `crates/parser`, `crates/renderer` pure — no Axum, no sqlx, no IO.
-- `server/` is the only place that assembles IO + domain. Keep layers visible inside it
-  (domain / application / infrastructure / interfaces) so extraction is a cut, not a rewrite.
-- **No distributed primitives** (NATS, Redis, tonic) until the monolith warrants the split.
-  Flag any suggestion that jumps ahead of the current phase.
-- When a service boundary becomes obvious inside the monolith, document it — don't extract it
-  until the interface is stable.
-
-### 9. Non-Negotiable Core Rules (even in MVP)
+### 8. Non-Negotiable Core Rules (even in MVP)
 
 - **The UI never mutates the tree directly — every change is an `Op`.** Flag code paths that
   mutate block state without going through an operation.
 - **Every op is invertible**, designed at creation time, not retrofitted during undo.
-- **`crates/document` and `crates/parser` stay `wasm32`-clean and infrastructure-free.**
-  That purity keeps them Miri-reachable and fuzzable as they grow.
+- **`crates/document-core` and `crates/document-parser` stay `wasm32`-clean and
+  infrastructure-free.** That purity keeps them Miri-reachable and fuzzable, and it is
+  CI-enforced — verify the target build rather than assuming it.
 - **Handlers contain no business logic.** The one structural rule that reliably prevents rot.
 - **Never introduce TipTap / ProseMirror / Lexical / Slate.** They delete the learning.
   The editor is per-block `contenteditable`, thin, over the author's Rust CRDT.
@@ -317,73 +256,18 @@ Every feature runs through five stages, in order:
 
 ---
 
-## Resource Library
+## Resources
 
-Use and reference these resources liberally as the primary foundation. Match the resource to the phase — don't assign DDIA before we have a single working Postgres query. 
+**`docs/learning/` is the library** — per phase, split into *Before you build* and *After it
+works*, with each row marked owned / mandatory / optional. It is better than a flat list because
+it is phase-matched, and duplicating it here guarantees the copy goes stale.
 
-**External resources (like engineering blogs, articles, or other books) that are not on this list are also welcome and encouraged** when they perfectly illustrate a concept we are tackling.
+- `00-foundations.md` — the ten-day start-here order
+- `01-track1-mvp.md` … `06-track6-cloud.md` — per phase
+- `codebases.md` · `papers.md` · `people.md` · `interview-and-dsa.md`
 
-### Rust — Books & Blogs
-
-| Resource | Focus |
-|---|---|
-| [The Rust Book](https://doc.rust-lang.org/book/) | First stop for any concept |
-| [Rust By Example](https://doc.rust-lang.org/rust-by-example/) | Runnable, concept-sized snippets |
-| [Zero To Production In Rust](https://www.zero2prod.com/) — Luca Palmieri | Production web services, testing, CI/CD, telemetry |
-| [corrode.dev](https://corrode.dev/) | Idiomatic Rust patterns, best practices |
-| [fasterthanli.me](https://fasterthanli.me/) | Deep-dive systems programming, async Rust |
-| [Crust of Rust](https://www.youtube.com/playlist?list=PLqbS7AVVErFiWDOAVrPt7aYmnuuOLYvOa) — Jon Gjengset | Lifetimes, iterators, smart pointers, async |
-| [Code to the Moon](https://www.youtube.com/@codetothemoon) | Rust concepts explained visually |
-| [matklad's blog](https://matklad.github.io/) | Rust idioms, API design, rust-analyzer internals |
-| [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/) | Naming, traits, conversions, error handling |
-| [The Rustonomicon](https://doc.rust-lang.org/nomicon/) | Unsafe, lifetimes, variance — advanced |
-| [Rust Design Patterns](https://rust-unofficial.github.io/patterns/) | Newtype, typestate, builder, RAII |
-| [Effective Rust](https://www.lurklurk.org/effective-rust/) — David Drysdale | 35 ways to improve your Rust code |
-
-### Parsing & Language Theory
-
-| Resource | Focus |
-|---|---|
-| [Crafting Interpreters](https://craftinginterpreters.com/) — Bob Nystrom | Lexer → parser → evaluator, from scratch |
-| [nom docs](https://docs.rs/nom) | Parser combinator library — understand the pattern |
-| [chumsky](https://github.com/zesterer/chumsky) | Friendly Rust parser combinator for learning |
-| [CommonMark Spec](https://spec.commonmark.org/) | The definitive Markdown specification |
-| [pulldown-cmark source](https://github.com/raphlinus/pulldown-cmark) | Production Rust Markdown parser — good reading |
-
-### WASM & Editor
-
-| Resource | Focus |
-|---|---|
-| [Rust and WebAssembly Book](https://rustwasm.github.io/docs/book/) | wasm-pack, wasm-bindgen, JS interop |
-| [wasm-bindgen Guide](https://rustwasm.github.io/wasm-bindgen/) | Designing the Rust ↔ TypeScript boundary |
-| [twiggy](https://rustwasm.github.io/twiggy/) | WASM bundle size analysis |
-| [MDN contenteditable](https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/contenteditable) | Browser editing primitives |
-| [ProseMirror Guide](https://prosemirror.net/docs/guide/) | Read for concepts only — never as a dependency |
-
-### Axum & Async
-
-| Resource | Focus |
-|---|---|
-| [Axum docs](https://docs.rs/axum/latest/axum/) | HTTP framework — extractors, middleware, state |
-| [Axum examples](https://github.com/tokio-rs/axum/tree/main/examples) | Real-world patterns |
-| [Tokio tutorial](https://tokio.rs/tokio/tutorial) | Async runtime, channels, tasks, select |
-
-### PostgreSQL & sqlx
-
-| Resource | Focus |
-|---|---|
-| [sqlx docs](https://docs.rs/sqlx) | `query_as`, `FromRow`, `PgPool`, `#[sqlx::test]` |
-| [Zero To Production Ch 3–5](https://www.zero2prod.com/) | sqlx migrations, `#[sqlx::test]`, pooling |
-| [PostgreSQL docs](https://www.postgresql.org/docs/current/) | Full reference |
-
-### Architecture & Distributed Systems (later phases)
-
-| Resource | Focus |
-|---|---|
-| [Designing Data-Intensive Applications](https://dataintensive.net/) — Kleppmann | Replication, partitioning, consistency — read when the monolith is working |
-| [Microservices Patterns](https://microservices.io/patterns/) — Richardson | Saga, CQRS, event sourcing — read before the split |
-| [Clean Architecture](https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html) | Dependency inversion — relevant now for monolith layers |
-| [Building Microservices](https://www.oreilly.com/library/view/building-microservices-2nd/9781492047834/) — Newman | Service decomposition strategies |
+§2's source table says which family to reach for. Outside resources are welcome when they
+illustrate the exact concept better than anything on the list.
 
 ---
 
@@ -393,18 +277,18 @@ Match the pattern to the current phase — don't introduce typestate before newt
 
 | Pattern | When to Use |
 |---|---|
-| **Newtype** | Type safety: `BlockId(u64)`, `DocumentId(Uuid)` |
+| **Newtype** | Type safety, validated in `TryFrom`. Note `BlockId` is `Uuid` v7, not `u64` — Open decision #3 |
 | **Parse, don't validate** | Validate on construction; pass only valid values |
 | **Typestate** | Compile-time state machines — after newtypes feel natural |
 | **Builder** | Complex object construction with validation |
 | **From / Into / TryFrom** | Idiomatic type conversions between layers |
 | **thiserror / anyhow** | `thiserror` in libraries; `anyhow` in binaries |
-| **Repository trait** | Abstract data access for testability — with the first DB query |
+| **Repository trait** | Trait + impl in the SAME file (`PROJECT_STRUCTURE.md` §4). With the first DB query |
 | **Zero-cost abstractions** | Traits + generics that compile away |
 | **Interior mutability** | `RefCell`, `Mutex`, `RwLock` — when and why each |
 | **Lock-free structures** | `crossbeam`, `dashmap`, atomics — after contention is measured |
-| **CQRS** | Separate read/write models — when read complexity diverges |
-| **Outbox pattern** | Reliable event publishing — when we add the event bus |
+| **CQRS** | Separate read/write models. Scoped to `history-service` (Phase 6), not every service |
+| **Outbox pattern** | Reliable event publishing. Designed already — `DATA_MODEL.md` §4, Step 31 |
 
 ---
 
