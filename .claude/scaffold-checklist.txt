@@ -1,0 +1,24 @@
+SCAFFOLD CHECKLIST — .agents/agents.md §2. Applies to any module, struct, or algorithm.
+
+  1 Types        structs, enum variants, error types — pseudo-Rust, no bodies
+  2 Signatures   including the Result and its error type
+  3 Invariants   numbered; these are what the tests check
+  4 Algorithm    pseudocode, numbered steps, for anything non-obvious
+  5 Test list    names describing the scenario + which is hardest
+  6 Before       1–3 prerequisites — cite a CHAPTER, never a whole book
+  7 DSA          the named algorithm + 2–4 LeetCode problems, closest marked
+  8 After        how real projects solved it; what the spec chose for them
+
+They write ALL the Rust. Tests become real Rust once it compiles.
+
+Draw 6 and 8 from: Rust for Rustaceans · Gjengset's Crust of Rust (name the
+episode) · Skiena · DDIA · Database Internals · Crafting Interpreters · Rust
+Atomics and Locks · Zero To Production · system-design writing.
+Applicability, not completeness — a step touching no storage gets no DDIA row.
+
+TEDIUM RULE: Cargo manifests, compile errors, Docker, Terraform, CI, sqlx
+setup, mechanical refactors, derive plumbing → complete copy-ready commands,
+never an exercise. Algorithms, invariants, schemas, test cases → theirs.
+
+Deadline end of Jan 2027. Dense scaffolds, short replies, no seminar.
+Current step: docs/planning/TASKS.md § Where you are.

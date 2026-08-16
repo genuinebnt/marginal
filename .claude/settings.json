@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -n --rawfile ctx \"$CLAUDE_PROJECT_DIR/.claude/scaffold-checklist.txt\" '{hookSpecificOutput:{hookEventName:\"UserPromptSubmit\",additionalContext:$ctx}}' 2>/dev/null || true",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -98,15 +98,34 @@ For every new struct, algorithm, or module piece, provide:
 4. **The algorithm in pseudocode** for anything non-obvious. Numbered steps, not prose.
 5. **The test list** — names that describe the scenario, and a note on which one is hardest.
    These are the spec. I make them pass.
-6. **Before you build** — 1–3 prerequisite resources. What must be understood *first*,
-   not everything relevant. Check `docs/learning/` for the phase's list before reaching outside.
+6. **Before you build** — 1–3 prerequisites. What must be understood *first*, not everything
+   relevant.
 7. **The DSA behind it** — the named algorithm, and **2–4 LeetCode-style problems** that are
    the same problem stripped of domain. Solving them is faster than debugging the same logic
    inside a document model, and it names the pattern so it is recognisable next time. Mark
    which one is closest.
-8. **After it works** — further reading that deepens what was just built: how real projects
-   solved it, what the spec chose for me and why, the version of the problem I did not have
-   to handle yet. This is where the design judgment the scaffold skipped gets paid back.
+8. **After it works** — reading that deepens what was just built: how real projects solved it,
+   what the spec chose for me and why, the version of the problem I did not have to handle yet.
+
+### Where items 6–8 draw from
+
+**Lead with what I own.** `docs/learning/` marks these; check the phase's list before reaching
+outside it, and cite a **chapter**, never a whole book.
+
+| Source | Reach for it when |
+|---|---|
+| ***Rust for Rustaceans*** — Gjengset | A type, trait, lifetime or API-design decision. Ch. 1 *Foundations* for variance, Ch. 2 *Types*, Ch. 3 *Designing Interfaces*, Ch. *Error Handling*, Ch. *Testing*, Ch. *Unsafe* |
+| **Jon Gjengset — [Crust of Rust](https://www.youtube.com/playlist?list=PLqbS7AVVErFiWDOAVrPt7aYmnuuOLYvOa)** | The specific confusion has an episode. *Lifetime Annotations* builds a borrowing `StrSplit`; also `Pin`, variance, atomics, channels, iterators. **Name the episode, not the playlist** |
+| ***The Algorithm Design Manual*** — Skiena | A data-structure or algorithm choice. The **war stories and the catalogue** are the value, not the proofs |
+| ***Designing Data-Intensive Applications*** | Anything crossing a process boundary — storage, logs, replication, transactions, streams. Ch. 3, 5, 7, 9, 11 carry most of this project |
+| ***Database Internals*** — Petrov | Below DDIA: page layout, B-tree implementation, WAL, distributed transactions |
+| ***Crafting Interpreters*** | Lexing, parsing, ASTs |
+| ***Rust Atomics and Locks*** — Bos ([free](https://marabos.nl/atomics/)) | Concurrency, memory ordering, building a lock |
+| ***The Art of PostgreSQL*** · ***Zero To Production*** | Schema design; Axum/sqlx service shape |
+| **System design** — real architectures, postmortems, engineering blogs | A service boundary, a failure mode, a scaling decision. `docs/learning/codebases.md` lists the repos worth reading |
+
+**Applicability is the filter, not completeness.** A step that touches no storage gets no DDIA
+row. Do not pad a scaffold with a chapter that is merely adjacent.
 
 **Then I write the Rust. All of it.** When it compiles, you turn the test list into real
 tests against my actual signatures.

@@ -8,6 +8,33 @@ Eleven Rust microservices, event-sourced on a CRDT operation log.
 
 **Read `.agents/agents.md` before every response.** All mentor behaviour, strict review rules, TDD guidance, and documentation requirements live there. This file is fast context only.
 
+### The scaffold checklist — every module, no exceptions
+
+`agents.md` §2 in full. Reproduced here because this file is loaded every session and that one is not.
+
+```
+1  Types          structs, enum variants, error types — no bodies
+2  Signatures     including the Result and its error type
+3  Invariants     numbered; what the tests check
+4  Algorithm      pseudocode, numbered steps, for anything non-obvious
+5  Test list      names + which is hardest
+6  Before         1–3 prerequisites — cite a CHAPTER, never a book
+7  DSA            the named algorithm + 2–4 LeetCode problems, closest marked
+8  After          how real projects solved it; what the spec chose for me
+```
+
+**They write all the Rust.** Tests become real Rust once it compiles.
+
+**Draw 6 and 8 from:** *Rust for Rustaceans* · Gjengset's *Crust of Rust* (name the episode) ·
+Skiena · **DDIA** · **Database Internals** · *Crafting Interpreters* · *Rust Atomics and Locks* ·
+*Zero To Production* · system-design writing. **Applicability, not completeness** — a step that
+touches no storage gets no DDIA row.
+
+**The tedium rule:** Cargo, build errors, Docker, Terraform, CI, sqlx setup, mechanical refactors
+→ complete copy-ready commands, never an exercise. Algorithms, invariants, schemas → theirs.
+
+**Deadline: end of January 2027.** Dense scaffolds, no seminar.
+
 ---
 
 ## Objective & Order
