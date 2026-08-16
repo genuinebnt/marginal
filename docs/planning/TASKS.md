@@ -3,6 +3,15 @@
 **A numbered queue. Do them in order.** Each step is what comes next when the previous one is
 green — the thing you would otherwise have to ask for.
 
+**Every step carries three reading blocks** — **Before** (prerequisites, 1–3 items),
+**DSA** (the named algorithm plus 2–4 LeetCode problems that are the same problem without the
+domain), and **After** (deeper reading once it works). Part A is annotated; later parts get
+theirs when the step is reached, because writing them now would be guesswork.
+
+> **Do the DSA problems before the step, not instead of it.** They exist so the interval or
+> stack logic is already familiar when you meet it inside a document model — debugging
+> merge-intervals through `Content` is far slower than debugging it on its own.
+
 **How a step runs** (`.agents/agents.md` §2 is the authority, changed 2026-08-15 for the
 January deadline):
 
@@ -99,12 +108,34 @@ baseline to diff against.
 
 ### Step 3 · Flat text + marks over byte ranges
 
-**Spec:** RFC-001 §2 — read the whole section. Then `lld/document-core.md` §3 (`inline.rs`) and
-**§9 (byte vs char vs grapheme)**, which is the one that bites.
+**Before:** RFC-001 §2, the whole section · `lld/document-core.md` §3 (`inline.rs`) and **§9
+(byte vs char vs grapheme)** · [`std::str`](https://doc.rust-lang.org/std/primitive.str.html) —
+`is_char_boundary`, `char_indices`, and why `&s[a..b]` panics rather than returning `None`.
 
 Delete `Span`. A block holds a `String` and a list of marks over **byte** ranges.
 
+**DSA — merging intervals.** `normalise` is merge-intervals; `remove_mark` is the same with a
+subtraction, one interval in and up to two out.
+
+| # | Problem | Maps to |
+|---|---|---|
+| 56 | Merge Intervals | the coalescing loop, verbatim |
+| 57 | Insert Interval | `add_mark` |
+| **715** | **Range Module** | **closest — add/remove/query *is* your three functions** |
+| 1288 | Remove Covered Intervals | the idempotence test |
+
+Half-open ranges make it easier than the LeetCode versions: `next.start <= cur.end` covers
+overlap *and* touching in one comparison. Harder in one way — marks are keyed by kind, so it is
+N interval sets, not one.
+
 **Done when:** `Span` is gone, `Block` holds flat text, and existing tests compile again.
+
+**After:** [Peritext](https://www.inkandswitch.com/peritext/) § *The mark data model* and
+§ *Expanding vs non-expanding* — whether typing at the edge of a bold run stays bold, which is
+Step 16 and which your tests currently only half-answer ·
+[CodeMirror `RangeSet`](https://codemirror.net/docs/ref/#state.RangeSet), the same structure
+shipped · [Automerge rich text](https://automerge.org/docs/reference/documents/rich_text/) —
+what the API looks like with expand policy as an explicit parameter.
 
 ### Step 4 · **[me]** Tests for the mark model
 
@@ -112,10 +143,27 @@ Boundaries, non-ASCII, empty block, out-of-range.
 
 ### Step 5 · `InsertText` / `DeleteText` at an offset
 
-Two new `Op` variants. Both apply, both invert, both refuse an out-of-range or
-non-char-boundary offset.
+**Before:** RFC-002 §2.1 — the block-granular tier, and why anchors wait for Phase 3 ·
+`String::insert_str`, `String::replace_range`, `str::floor_char_boundary`.
 
-**Done when:** the existing round-trip law passes for both new variants.
+Two new `Op` variants. Both apply, both invert, both refuse an out-of-range or
+non-char-boundary offset. **The hard half is marks:** inserting at offset `k` shifts every mark
+boundary `>= k` by `len`; deleting `[a,b)` shifts, truncates, or removes them.
+
+**DSA — offset shifting under edits.**
+
+| # | Problem | Maps to |
+|---|---|---|
+| **2296** | **Design a Text Editor** | **closest — cursor, insert, delete, and why a naive `String` degrades** |
+| 57 | Insert Interval | re-run it; this time the interval *moves* |
+| 731 | My Calendar II | overlap bookkeeping under repeated mutation |
+
+**Done when:** the round-trip law passes for both new variants, and a delete that lands inside a
+bold run restores the mark exactly on undo.
+
+**After:** [xi-editor's rope science](https://xi-editor.io/docs/rope_science-00.html) §0–2 — what
+you are approximating with a `String`, and when it stops being enough ·
+[Zed's Rope & SumTree](https://zed.dev/blog/zed-decoded-rope-sumtree) — read now, build at Step 37.
 
 ### Step 6 · **[me]** Tests for text ops
 
@@ -150,8 +198,21 @@ token. `ROADMAP.md` calls this the one place in Phase 1 that forces a lifetime.
 
 Bounded backward scan. No grammar, no recursion, a fixed lookbehind.
 
+**DSA — bounded string scanning.**
+
+| # | Problem | Maps to |
+|---|---|---|
+| 28 | Find the Index of the First Occurrence | naive vs KMP, and why a *bounded* scan needs neither |
+| 20 | Valid Parentheses | the stack that Step 15's delimiter matching needs |
+| 65 | Valid Number | a hand-written scanner with states, no regex |
+
 **Done when:** no per-token allocation, and you can name the bound.
 **Read first, don't port:** `ui-mockups/compiler.html` runs a reference scanner.
+
+**After:** *Crafting Interpreters* Ch. **Scanning** — already mandatory in
+`docs/learning/00-foundations.md` day 9 · [pulldown-cmark](https://github.com/pulldown-cmark/pulldown-cmark),
+the block/inline split · [CommonMark §4](https://spec.commonmark.org/current/#leaf-blocks) —
+the reference definition of what you are approximating, and where you deliberately differ.
 
 ### Step 13 · One undo step per rule firing
 
@@ -163,7 +224,20 @@ Bounded backward scan. No grammar, no recursion, a fixed lookbehind.
 
 **Story:** D-05. `**`, `_`, `` ` ``, `~~`, `[]()`.
 
+**DSA — balanced delimiters.** `**bold**` matching is parenthesis matching with a stack, and
+the failure modes are the same: unclosed, nested, and interleaved (`**a _b** c_`).
+
+| # | Problem | Maps to |
+|---|---|---|
+| **20** | **Valid Parentheses** | **closest — the stack, and what an unmatched opener means** |
+| 32 | Longest Valid Parentheses | recovering from a partial match instead of failing the block |
+| 678 | Valid Parenthesis String | ambiguous tokens — `*` is emphasis *or* a literal |
+
 **Done when:** the mark applies and the delimiters are **not in the stored text**.
+
+**After:** [CommonMark §6 *Inlines*](https://spec.commonmark.org/current/#inlines) and its
+**delimiter-run** rules — left-flanking, right-flanking, and why `a*b*c` behaves differently
+from `a *b* c`. This is the part everyone gets wrong first.
 
 ### Step 16 · Mark maintenance under edits
 

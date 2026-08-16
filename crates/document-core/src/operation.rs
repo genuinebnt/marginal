@@ -1,6 +1,6 @@
 use crate::{
     block::{Block, BlockId, BlockKind},
-    inline::Span,
+    inline::Content,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -23,8 +23,8 @@ pub enum Op {
 
     UpdateBlockContent {
         id: BlockId,
-        old_content: Vec<Span>,
-        new_content: Vec<Span>,
+        old_content: Content,
+        new_content: Content,
     },
 }
 

@@ -61,14 +61,20 @@ mod tests {
 
     use super::*;
     use crate::block::{Block, BlockId, BlockKind};
-    use crate::inline::Span;
+    use crate::inline::{Content, MarkKind};
     use crate::page::PageId;
 
-    fn paragraph(id: u64) -> Block {
-        Block::new(BlockId::new(id), BlockKind::Paragraph, vec![])
+    fn bold_hello() -> Content {
+        let mut c = Content::plain("hello");
+        c.add_mark(MarkKind::Bold, 0, 5)
+            .expect("fixture mark must apply");
+        c
     }
 
-    /// A page holding one paragraph, block 1, inserted outside the history.
+    fn paragraph(id: u64) -> Block {
+        Block::new(BlockId::new(id), BlockKind::Paragraph, Content::plain(""))
+    }
+
     fn page_with_one_block() -> Page {
         let mut page = Page::new(PageId::new(Uuid::from_u128(1)), "Title");
         page.apply(&Op::InsertBlock {
@@ -82,8 +88,8 @@ mod tests {
     fn retype_block_1() -> Op {
         Op::UpdateBlockContent {
             id: BlockId::new(1),
-            old_content: vec![],
-            new_content: vec![Span::new("hello").with_bold()],
+            old_content: Content::plain(""),
+            new_content: bold_hello(),
         }
     }
 
@@ -93,8 +99,6 @@ mod tests {
         history.record(op);
     }
 
-    /// `redo` recovers the forward op by inverting twice, so `invert` must be an
-    /// involution. Nothing in the type system enforces that; this test does.
     #[test]
     fn invert_is_an_involution() {
         let ops = [
@@ -146,8 +150,6 @@ mod tests {
         assert_eq!(page, after, "redo did not restore the post-op page");
     }
 
-    /// Undo and redo must be exact inverses however many times they alternate —
-    /// no drift, no accumulation.
     #[test]
     fn undo_redo_cycles_converge() {
         let mut page = page_with_one_block();
@@ -234,10 +236,6 @@ mod tests {
         }
     }
 
-    /// If the inverse cannot apply, the undo must not have happened: the op stays
-    /// on the undo stack and the redo stack is untouched. Today the op is popped
-    /// and pushed to redo *before* `apply` runs, so a failure leaves both stacks
-    /// describing edits that were never made.
     #[test]
     fn failed_undo_leaves_both_stacks_unchanged() {
         let mut page = page_with_one_block();

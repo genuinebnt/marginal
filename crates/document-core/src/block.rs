@@ -1,4 +1,4 @@
-use crate::inline::Span;
+use crate::inline::Content;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BlockId(u64);
@@ -20,16 +20,12 @@ pub enum BlockKind {
 pub struct Block {
     id: BlockId,
     kind: BlockKind,
-    content: Vec<Span>,
+    content: Content,
 }
 
 impl Block {
-    pub fn new(id: BlockId, kind: BlockKind, content: Vec<Span>) -> Self {
-        Self {
-            id,
-            kind,
-            content: content,
-        }
+    pub fn new(id: BlockId, kind: BlockKind, content: Content) -> Self {
+        Self { id, kind, content }
     }
 
     pub fn id(&self) -> BlockId {
@@ -40,7 +36,7 @@ impl Block {
         &self.kind
     }
 
-    pub fn content(&self) -> &[Span] {
+    pub fn content(&self) -> &Content {
         &self.content
     }
 
@@ -48,7 +44,7 @@ impl Block {
         self.kind = kind;
     }
 
-    pub fn update_content(&mut self, content: Vec<Span>) {
+    pub fn update_content(&mut self, content: Content) {
         self.content = content;
     }
 }

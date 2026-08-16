@@ -95,7 +95,7 @@ mod tests {
 
     use super::*;
     use crate::block::{Block, BlockId, BlockKind};
-    use crate::inline::Span;
+    use crate::inline::{Content, MarkKind};
 
     const FIXTURE_LEN: u64 = 20;
 
@@ -103,8 +103,15 @@ mod tests {
         Page::new(PageId::new(Uuid::from_u128(1)), "Title")
     }
 
+    /// `"hello"` with bold over the whole run — the standard non-empty fixture.
+    fn bold_hello() -> Content {
+        let mut c = Content::plain("hello");
+        c.add_mark(MarkKind::Bold, 0, 5).expect("fixture mark must apply");
+        c
+    }
+
     fn paragraph(id: u64) -> Block {
-        Block::new(BlockId::new(id), BlockKind::Paragraph, vec![])
+        Block::new(BlockId::new(id), BlockKind::Paragraph, Content::plain(""))
     }
 
     fn page_with_blocks(n: u64) -> Page {
@@ -119,7 +126,7 @@ mod tests {
             };
             let op = Op::InsertBlock {
                 after: (i > 0).then(|| BlockId::new(i - 1)),
-                block: Block::new(BlockId::new(i), kind, vec![]),
+                block: Block::new(BlockId::new(i), kind, Content::plain("")),
             };
             page.apply(&op).expect("fixture insert must apply");
         }
@@ -270,8 +277,8 @@ mod tests {
             &mut page,
             Op::UpdateBlockContent {
                 id: target.id(),
-                old_content: target.content().to_vec(),
-                new_content: vec![Span::new("hello").with_bold()],
+                old_content: target.content().clone(),
+                new_content: bold_hello(),
             },
         );
     }
