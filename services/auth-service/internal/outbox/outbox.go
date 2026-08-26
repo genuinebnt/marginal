@@ -66,9 +66,15 @@ func WriteUserRegistered(ctx context.Context, q *authrepo.Queries, userID uuid.U
 // (the dedup key a consumer keys idempotency on) alongside its payload.
 // Mirrors notification-service's own internal/notify wireEvent shape;
 // see that type's doc comment for why this isn't a shared module.
+//
+// Payload is json.RawMessage, not []byte: encoding/json base64-encodes a
+// plain []byte field, so the wire message's "payload" would be an opaque
+// base64 string rather than the readable nested JSON it actually holds —
+// only "working" because every consumer today happens to be Go using the
+// same package. json.RawMessage passes the bytes through verbatim.
 type wireEvent struct {
-	ID      uuid.UUID `json:"id"`
-	Payload []byte    `json:"payload"`
+	ID      uuid.UUID       `json:"id"`
+	Payload json.RawMessage `json:"payload"`
 }
 
 // Poller periodically claims unpublished outbox rows and publishes them.

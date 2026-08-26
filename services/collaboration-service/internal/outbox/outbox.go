@@ -30,10 +30,17 @@ import (
 // outbox.payload is only ever the op itself (opstore.buildOpRow), which
 // has no page_id inside it (an op is scoped to a page by the outbox row,
 // not by its own JSON), so a consumer needs it carried alongside.
+//
+// Payload is json.RawMessage, not []byte: encoding/json base64-encodes a
+// plain []byte field, so the wire message's "payload" would be an opaque
+// base64 string rather than the readable nested JSON it actually holds —
+// only "working" because every consumer today happens to be Go using the
+// same package. json.RawMessage passes the bytes through verbatim, which
+// document-service's blockproj.wireEvent mirrors for the same reason.
 type wireEvent struct {
-	ID          uuid.UUID `json:"id"`
-	AggregateID uuid.UUID `json:"aggregate_id"`
-	Payload     []byte    `json:"payload"`
+	ID          uuid.UUID       `json:"id"`
+	AggregateID uuid.UUID       `json:"aggregate_id"`
+	Payload     json.RawMessage `json:"payload"`
 }
 
 // Poller periodically claims unpublished collab.outbox rows and publishes

@@ -93,8 +93,8 @@ func TestPollerPublishesAndMarksPublished(t *testing.T) {
 	go poller.Run(pollCtx, func(err error) { t.Logf("poller error: %v", err) })
 
 	var envelope struct {
-		ID      uuid.UUID `json:"id"`
-		Payload []byte    `json:"payload"`
+		ID      uuid.UUID       `json:"id"`
+		Payload json.RawMessage `json:"payload"`
 	}
 	select {
 	case data := <-received:

@@ -141,8 +141,8 @@ func TestSubscribeEndToEnd(t *testing.T) {
 	payload, err := json.Marshal(notify.UserRegisteredEvent{UserID: userID, Email: "a@b.com", DisplayName: "Ada"})
 	require.NoError(t, err)
 	envelope, err := json.Marshal(struct {
-		ID      uuid.UUID `json:"id"`
-		Payload []byte    `json:"payload"`
+		ID      uuid.UUID       `json:"id"`
+		Payload json.RawMessage `json:"payload"`
 	}{ID: eventID, Payload: payload})
 	require.NoError(t, err)
 
