@@ -1,0 +1,203 @@
+[
+  {
+    "name": "plain_text_has_no_marks",
+    "text": "hello",
+    "ops": [],
+    "expect_error": null,
+    "expect_marks": []
+  },
+  {
+    "name": "add_mark_stores_it",
+    "text": "hello",
+    "ops": [{ "op": "add", "kind": { "tag": "bold" }, "start": 0, "end": 5 }],
+    "expect_error": null,
+    "expect_marks": [{ "kind": { "tag": "bold" }, "start": 0, "end": 5 }]
+  },
+  {
+    "name": "add_mark_drops_zero_width",
+    "text": "hello",
+    "ops": [{ "op": "add", "kind": { "tag": "bold" }, "start": 2, "end": 2 }],
+    "expect_error": null,
+    "expect_marks": []
+  },
+  {
+    "name": "add_mark_rejects_inverted_range",
+    "text": "hello",
+    "ops": [{ "op": "add", "kind": { "tag": "bold" }, "start": 4, "end": 1 }],
+    "expect_error": { "type": "InvertedRange", "start": 4, "end": 1 },
+    "expect_marks": []
+  },
+  {
+    "name": "add_mark_rejects_non_char_boundary",
+    "text": "héllo",
+    "ops": [{ "op": "add", "kind": { "tag": "bold" }, "start": 0, "end": 2 }],
+    "expect_error": { "type": "NotCharBoundary", "offset": 2 },
+    "expect_marks": []
+  },
+  {
+    "name": "add_mark_accepts_boundaries_around_a_multibyte_char",
+    "text": "héllo",
+    "ops": [{ "op": "add", "kind": { "tag": "bold" }, "start": 1, "end": 3 }],
+    "expect_error": null,
+    "expect_marks": [{ "kind": { "tag": "bold" }, "start": 1, "end": 3 }]
+  },
+  {
+    "name": "add_mark_rejects_out_of_bounds",
+    "text": "héllo",
+    "ops": [{ "op": "add", "kind": { "tag": "bold" }, "start": 0, "end": 99 }],
+    "expect_error": { "type": "OutOfBounds", "offset": 99, "len": 6 },
+    "expect_marks": []
+  },
+  {
+    "name": "same_kind_overlapping_coalesce",
+    "text": "hello world",
+    "ops": [
+      { "op": "add", "kind": { "tag": "bold" }, "start": 0, "end": 5 },
+      { "op": "add", "kind": { "tag": "bold" }, "start": 3, "end": 8 }
+    ],
+    "expect_error": null,
+    "expect_marks": [{ "kind": { "tag": "bold" }, "start": 0, "end": 8 }]
+  },
+  {
+    "name": "same_kind_touching_coalesce",
+    "text": "hello world",
+    "ops": [
+      { "op": "add", "kind": { "tag": "bold" }, "start": 0, "end": 3 },
+      { "op": "add", "kind": { "tag": "bold" }, "start": 3, "end": 5 }
+    ],
+    "expect_error": null,
+    "expect_marks": [{ "kind": { "tag": "bold" }, "start": 0, "end": 5 }]
+  },
+  {
+    "name": "same_kind_disjoint_stay_separate",
+    "text": "hello world",
+    "ops": [
+      { "op": "add", "kind": { "tag": "bold" }, "start": 0, "end": 3 },
+      { "op": "add", "kind": { "tag": "bold" }, "start": 6, "end": 9 }
+    ],
+    "expect_error": null,
+    "expect_marks": [
+      { "kind": { "tag": "bold" }, "start": 0, "end": 3 },
+      { "kind": { "tag": "bold" }, "start": 6, "end": 9 }
+    ]
+  },
+  {
+    "name": "adding_a_covered_mark_changes_nothing",
+    "text": "hello world",
+    "ops": [
+      { "op": "add", "kind": { "tag": "bold" }, "start": 0, "end": 8 },
+      { "op": "add", "kind": { "tag": "bold" }, "start": 2, "end": 5 }
+    ],
+    "expect_error": null,
+    "expect_marks": [{ "kind": { "tag": "bold" }, "start": 0, "end": 8 }]
+  },
+  {
+    "name": "different_kinds_overlap_freely",
+    "text": "hello world",
+    "ops": [
+      { "op": "add", "kind": { "tag": "bold" }, "start": 0, "end": 5 },
+      { "op": "add", "kind": { "tag": "italic" }, "start": 2, "end": 7 }
+    ],
+    "expect_error": null,
+    "expect_marks": [
+      { "kind": { "tag": "bold" }, "start": 0, "end": 5 },
+      { "kind": { "tag": "italic" }, "start": 2, "end": 7 }
+    ]
+  },
+  {
+    "name": "links_with_different_urls_do_not_coalesce",
+    "text": "hello world",
+    "ops": [
+      { "op": "add", "kind": { "tag": "link", "url": "https://a.example" }, "start": 0, "end": 5 },
+      { "op": "add", "kind": { "tag": "link", "url": "https://b.example" }, "start": 5, "end": 9 }
+    ],
+    "expect_error": null,
+    "expect_marks": [
+      { "kind": { "tag": "link", "url": "https://a.example" }, "start": 0, "end": 5 },
+      { "kind": { "tag": "link", "url": "https://b.example" }, "start": 5, "end": 9 }
+    ]
+  },
+  {
+    "name": "remove_mark_splits_a_covering_mark",
+    "text": "hello world",
+    "ops": [
+      { "op": "add", "kind": { "tag": "bold" }, "start": 0, "end": 10 },
+      { "op": "remove", "kind": { "tag": "bold" }, "start": 3, "end": 6 }
+    ],
+    "expect_error": null,
+    "expect_marks": [
+      { "kind": { "tag": "bold" }, "start": 0, "end": 3 },
+      { "kind": { "tag": "bold" }, "start": 6, "end": 10 }
+    ]
+  },
+  {
+    "name": "remove_mark_trims_a_leading_overlap",
+    "text": "hello world",
+    "ops": [
+      { "op": "add", "kind": { "tag": "bold" }, "start": 4, "end": 10 },
+      { "op": "remove", "kind": { "tag": "bold" }, "start": 0, "end": 6 }
+    ],
+    "expect_error": null,
+    "expect_marks": [{ "kind": { "tag": "bold" }, "start": 6, "end": 10 }]
+  },
+  {
+    "name": "remove_mark_on_unmarked_range_is_a_noop",
+    "text": "hello world",
+    "ops": [
+      { "op": "add", "kind": { "tag": "bold" }, "start": 0, "end": 3 },
+      { "op": "remove", "kind": { "tag": "bold" }, "start": 6, "end": 9 }
+    ],
+    "expect_error": null,
+    "expect_marks": [{ "kind": { "tag": "bold" }, "start": 0, "end": 3 }]
+  },
+  {
+    "name": "remove_mark_ignores_other_kinds",
+    "text": "hello world",
+    "ops": [
+      { "op": "add", "kind": { "tag": "bold" }, "start": 0, "end": 5 },
+      { "op": "add", "kind": { "tag": "italic" }, "start": 0, "end": 5 },
+      { "op": "remove", "kind": { "tag": "bold" }, "start": 0, "end": 5 }
+    ],
+    "expect_error": null,
+    "expect_marks": [{ "kind": { "tag": "italic" }, "start": 0, "end": 5 }]
+  },
+  {
+    "name": "marks_are_sorted_by_start",
+    "text": "hello world",
+    "ops": [
+      { "op": "add", "kind": { "tag": "bold" }, "start": 6, "end": 9 },
+      { "op": "add", "kind": { "tag": "bold" }, "start": 0, "end": 3 }
+    ],
+    "expect_error": null,
+    "expect_marks": [
+      { "kind": { "tag": "bold" }, "start": 0, "end": 3 },
+      { "kind": { "tag": "bold" }, "start": 6, "end": 9 }
+    ]
+  },
+  {
+    "name": "marks_at_returns_every_kind_covering_offset",
+    "text": "hello world",
+    "ops": [
+      { "op": "add", "kind": { "tag": "bold" }, "start": 0, "end": 5 },
+      { "op": "add", "kind": { "tag": "italic" }, "start": 2, "end": 7 }
+    ],
+    "expect_error": null,
+    "expect_marks": [
+      { "kind": { "tag": "bold" }, "start": 0, "end": 5 },
+      { "kind": { "tag": "italic" }, "start": 2, "end": 7 }
+    ],
+    "queries": [
+      { "offset": 3, "expect": [{ "tag": "bold" }, { "tag": "italic" }] },
+      { "offset": 6, "expect": [{ "tag": "italic" }] },
+      { "offset": 9, "expect": [] }
+    ]
+  },
+  {
+    "name": "marks_at_excludes_the_end_offset",
+    "text": "hello",
+    "ops": [{ "op": "add", "kind": { "tag": "bold" }, "start": 0, "end": 3 }],
+    "expect_error": null,
+    "expect_marks": [{ "kind": { "tag": "bold" }, "start": 0, "end": 3 }],
+    "queries": [{ "offset": 3, "expect": [] }]
+  }
+]
