@@ -388,3 +388,41 @@ for the live document text, character-granular ops, anchors) as pure
 logic first, same order document-core was built in — persistence and the
 WebSocket/session layer come after that's solid. Per `ROADMAP.md`'s Track
 1 order.
+
+---
+
+## 2026-08-26 — `collaboration-service`: the rope, first piece of the CRDT core
+
+`internal/rope` — the live-editing-session text representation RFC-001 §2
+calls the "CRDT working format" (as opposed to document-service's flat
+`spans` JSONB, the storage/wire side of that split). Immutable/persistent
+(`Insert`/`Delete` return a new `Rope`, structural sharing with the old
+one) — the idiomatic fit for Go here, and it makes every op trivially
+safe to reason about across goroutines with no lock, unlike a mutate-in-
+place design would be.
+
+Balanced via a scapegoat-tree-style amortized rebuild: `concat` checks the
+resulting depth against a `2*log2(leaf count)`-ish threshold and rebuilds
+from the leaves when exceeded, rather than incremental rotations — simpler
+to get right, and `TestManyInsertsStayBalanced` (2000 sequential
+appends-at-end — the exact pattern that degrades an unbalanced tree to a
+linked list) confirms depth stays near-logarithmic instead of linear.
+
+**Verified two ways beyond example tests:** `TestPropertyMatchesNaiveStringReference`
+(rapid, 2000 iterations) is the standard way to test a rope — apply the
+same random sequence of inserts/deletes to a `Rope` and to a plain Go
+string, assert they always match; this is what would actually catch a
+split/concat/rebalance bug, not a handful of hand-picked examples. And
+benchmarks (`docs/porting/BENCHMARKS.md`) measuring **~700x** faster than
+naive string slicing for a middle-insert on a ~900KB document — the
+concrete reason a rope exists over `string`, not just an assertion that
+it should be faster.
+
+`golangci-lint` clean.
+
+**Next:** character-granular `Op` (`InsertText`/`DeleteText`/`SetMark`,
+RFC-002 §2's Phase-3 tier) over the rope, then Anchors (RFC-001 §9,
+Yjs/Peritext-style `ItemId`+`Bias` — needed so a mark or comment survives
+concurrent edits around it), then the WAL framing and `collab.ops`
+persistence, then the session/WebSocket layer. In that order — each piece
+needs the one before it to mean anything.
