@@ -91,16 +91,21 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	dummy, err := passwordhash.NewDummy(passwordhash.DefaultParams)
+	dummy, err := passwordhash.NewDummy(passwordhash.DefaultParams())
 	if err != nil {
 		return err
 	}
 
 	logger := slog.Default()
-	svc := authservice.New(
-		pool, keyStore, passwordhash.DefaultParams, dummy,
-		blocklist.New(rdb), lockout.New(rdb), logger,
-	)
+	svc := authservice.New(authservice.Config{
+		Pool:         pool,
+		Keys:         keyStore,
+		Argon2Params: passwordhash.DefaultParams(),
+		Dummy:        dummy,
+		Blocklist:    blocklist.New(rdb),
+		Lockout:      lockout.New(rdb),
+		Logger:       logger,
+	})
 
 	grpcAddr := envOr("AUTH_SERVICE_GRPC_ADDR", ":9006")
 	httpAddr := envOr("AUTH_SERVICE_HTTP_ADDR", ":8006")

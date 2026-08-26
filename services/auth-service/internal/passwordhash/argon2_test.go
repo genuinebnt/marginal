@@ -71,9 +71,9 @@ func TestUnknownEmailAndWrongPasswordTakeSimilarTime(t *testing.T) {
 		t.Skip("timing sample needs real Argon2id cost; skipped in -short")
 	}
 
-	real, err := Hash(mustPassword(t, "the real password"), DefaultParams)
+	real, err := Hash(mustPassword(t, "the real password"), DefaultParams())
 	require.NoError(t, err)
-	dummy, err := NewDummy(DefaultParams)
+	dummy, err := NewDummy(DefaultParams())
 	require.NoError(t, err)
 
 	const samples = 8

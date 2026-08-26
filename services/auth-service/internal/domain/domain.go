@@ -166,11 +166,15 @@ func (c CursorColor) String() string { return c.value }
 // only ever written by AssignCursorColor in the first place.
 func CursorColorFromStored(value string) CursorColor { return CursorColor{value: value} }
 
-// CursorPalette is the fixed set every collaborator's cursor is assigned
+// cursorPalette is the fixed set every collaborator's cursor is assigned
 // from — the convention collaborative editors (Google Docs, Figma, Notion)
 // use so two active cursors are never confusingly similar. See
-// docs/api/auth.md § Product-facing behavior.
-var CursorPalette = []CursorColor{
+// docs/api/auth.md § Product-facing behavior. Unexported: an exported
+// mutable package var here would let any caller reorder, truncate, or
+// reassign the shared backing slice and silently change cursor
+// assignment for the whole process; CursorPalette returns a defensive
+// copy instead.
+var cursorPalette = []CursorColor{
 	{"#E03131"}, // red
 	{"#F08C00"}, // orange
 	{"#F5C518"}, // yellow
@@ -181,6 +185,12 @@ var CursorPalette = []CursorColor{
 	{"#D6336C"}, // pink
 }
 
+// CursorPalette returns a copy of the fixed palette AssignCursorColor
+// draws from.
+func CursorPalette() []CursorColor {
+	return append([]CursorColor(nil), cursorPalette...)
+}
+
 // AssignCursorColor picks a color deterministically from id, so it's
 // stable across sessions without a separate stored assignment beyond the
 // column DATA_MODEL.md §3 already has.
@@ -188,5 +198,5 @@ func AssignCursorColor(id UserID) CursorColor {
 	h := fnv.New32a()
 	raw := uuid.UUID(id)
 	_, _ = h.Write(raw[:])
-	return CursorPalette[h.Sum32()%uint32(len(CursorPalette))]
+	return cursorPalette[h.Sum32()%uint32(len(cursorPalette))]
 }

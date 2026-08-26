@@ -17,9 +17,7 @@ import (
 )
 
 // Params are a latency budget, not a security dial (docs/architecture/lld/auth-service.md
-// §12) — verification runs synchronously on every login. DefaultParams is
-// docs/api/auth.md's OWASP second-tier choice: lighter than the 64 MiB/p=4
-// first tier, sized for small, cost-bounded Cloud Run instances.
+// §12) — verification runs synchronously on every login.
 type Params struct {
 	Memory  uint32 // KiB
 	Time    uint32 // iterations
@@ -28,12 +26,22 @@ type Params struct {
 	SaltLen uint32
 }
 
-var DefaultParams = Params{
-	Memory:  19 * 1024, // 19 MiB
-	Time:    2,
-	Threads: 1,
-	KeyLen:  32,
-	SaltLen: 16,
+// DefaultParams is docs/api/auth.md's OWASP second-tier choice: lighter
+// than the 64 MiB/p=4 first tier, sized for small, cost-bounded Cloud Run
+// instances. A function, not an exported package var — Params' fields
+// are all exported, so a shared mutable var would let any code path
+// silently weaken the process-wide Argon2id cost at runtime (e.g.
+// passwordhash.DefaultParams.Memory = 1) for everyone. Returning a fresh
+// copy each call costs nothing (Params has no pointer/slice fields) and
+// makes that a compile-time impossibility instead of a runtime one.
+func DefaultParams() Params {
+	return Params{
+		Memory:  19 * 1024, // 19 MiB
+		Time:    2,
+		Threads: 1,
+		KeyLen:  32,
+		SaltLen: 16,
+	}
 }
 
 // Hash computes a new PHC-format hash for password using params. Call
@@ -59,43 +67,54 @@ func Hash(password domain.Password, params Params) (domain.PasswordHash, error) 
 // constant-time (crypto/subtle) — a == on the raw bytes would leak the
 // hash's shared-prefix length through timing.
 func Verify(hash domain.PasswordHash, password domain.Password) (bool, error) {
-	params, salt, sum, err := parse(hash.String())
+	parsed, err := parse(hash.String())
 	if err != nil {
 		return false, err
 	}
-	candidate := argon2.IDKey([]byte(password.Expose()), salt, params.Time, params.Memory, params.Threads, uint32(len(sum)))
-	return subtle.ConstantTimeCompare(candidate, sum) == 1, nil
+	candidate := argon2.IDKey([]byte(password.Expose()), parsed.Salt, parsed.Params.Time, parsed.Params.Memory, parsed.Params.Threads, uint32(len(parsed.Sum)))
+	return subtle.ConstantTimeCompare(candidate, parsed.Sum) == 1, nil
 }
 
-func parse(phc string) (Params, []byte, []byte, error) {
+// parsedHash is parse's result — a named struct, not two positional
+// []byte return values, since Salt and Sum are the same type and nothing
+// stops a future edit from swapping their return order or their use at a
+// call site; named fields make that swap a compile-time impossibility
+// instead of a silent one.
+type parsedHash struct {
+	Params Params
+	Salt   []byte
+	Sum    []byte
+}
+
+func parse(phc string) (parsedHash, error) {
 	// $argon2id$v=19$m=19456,t=2,p=1$<salt>$<hash>
 	parts := strings.Split(phc, "$")
 	if len(parts) != 6 || parts[1] != "argon2id" {
-		return Params{}, nil, nil, fmt.Errorf("passwordhash: not a recognized argon2id PHC string")
+		return parsedHash{}, fmt.Errorf("passwordhash: not a recognized argon2id PHC string")
 	}
 
 	var version int
 	if _, err := fmt.Sscanf(parts[2], "v=%d", &version); err != nil {
-		return Params{}, nil, nil, fmt.Errorf("passwordhash: malformed version segment: %w", err)
+		return parsedHash{}, fmt.Errorf("passwordhash: malformed version segment: %w", err)
 	}
 	if version != argon2.Version {
-		return Params{}, nil, nil, fmt.Errorf("passwordhash: unsupported argon2 version %d", version)
+		return parsedHash{}, fmt.Errorf("passwordhash: unsupported argon2 version %d", version)
 	}
 
 	var params Params
 	if _, err := fmt.Sscanf(parts[3], "m=%d,t=%d,p=%d", &params.Memory, &params.Time, &params.Threads); err != nil {
-		return Params{}, nil, nil, fmt.Errorf("passwordhash: malformed params segment: %w", err)
+		return parsedHash{}, fmt.Errorf("passwordhash: malformed params segment: %w", err)
 	}
 
 	salt, err := base64.RawStdEncoding.DecodeString(parts[4])
 	if err != nil {
-		return Params{}, nil, nil, fmt.Errorf("passwordhash: malformed salt: %w", err)
+		return parsedHash{}, fmt.Errorf("passwordhash: malformed salt: %w", err)
 	}
 	sum, err := base64.RawStdEncoding.DecodeString(parts[5])
 	if err != nil {
-		return Params{}, nil, nil, fmt.Errorf("passwordhash: malformed hash: %w", err)
+		return parsedHash{}, fmt.Errorf("passwordhash: malformed hash: %w", err)
 	}
-	return params, salt, sum, nil
+	return parsedHash{Params: params, Salt: salt, Sum: sum}, nil
 }
 
 // Dummy is a real Argon2id hash of a fixed string, computed once so the

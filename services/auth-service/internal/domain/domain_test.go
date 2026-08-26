@@ -76,6 +76,6 @@ func TestAssignCursorColorIsDeterministic(t *testing.T) {
 func TestAssignCursorColorIsAlwaysFromThePalette(t *testing.T) {
 	for i := 0; i < 50; i++ {
 		color := AssignCursorColor(NewUserID())
-		assert.Contains(t, CursorPalette, color)
+		assert.Contains(t, CursorPalette(), color)
 	}
 }

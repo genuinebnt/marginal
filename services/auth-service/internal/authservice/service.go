@@ -52,23 +52,34 @@ type Service struct {
 	log          *slog.Logger
 }
 
-func New(
-	pool *pgxpool.Pool,
-	keyStore keys.Store,
-	argon2Params passwordhash.Params,
-	dummy *passwordhash.Dummy,
-	blocklistStore *blocklist.Store,
-	lockoutStore *lockout.Store,
-	logger *slog.Logger,
-) *Service {
+// Config is New's dependency set. A struct rather than seven positional
+// parameters: every field here is required (none has a sensible
+// zero-value default), which is exactly the case a Config struct suits —
+// functional options earn their keep when most parameters are optional
+// with sane defaults (this codebase's own convention for that case is
+// collaboration-service/internal/outbox.Option/session.ManagerOption);
+// here, named fields just make a call site self-documenting and immune
+// to two same-typed arguments (Blocklist/Lockout, both *Store) getting
+// silently transposed.
+type Config struct {
+	Pool         *pgxpool.Pool
+	Keys         keys.Store
+	Argon2Params passwordhash.Params
+	Dummy        *passwordhash.Dummy
+	Blocklist    *blocklist.Store
+	Lockout      *lockout.Store
+	Logger       *slog.Logger
+}
+
+func New(cfg Config) *Service {
 	return &Service{
-		pool:         pool,
-		keys:         keyStore,
-		argon2Params: argon2Params,
-		dummy:        dummy,
-		blocklist:    blocklistStore,
-		lockout:      lockoutStore,
-		log:          logger,
+		pool:         cfg.Pool,
+		keys:         cfg.Keys,
+		argon2Params: cfg.Argon2Params,
+		dummy:        cfg.Dummy,
+		blocklist:    cfg.Blocklist,
+		lockout:      cfg.Lockout,
+		log:          cfg.Logger,
 	}
 }
 
@@ -91,12 +102,11 @@ func (s *Service) Register(ctx context.Context, email domain.Email, password dom
 	if err != nil {
 		return users.User{}, TokenPair{}, fmt.Errorf("authservice: register: begin: %w", err)
 	}
-	committed := false
-	defer func() {
-		if !committed {
-			_ = tx.Rollback(ctx)
-		}
-	}()
+	// Rollback after a successful Commit is a safe no-op (pgx.ErrTxClosed,
+	// discarded here) — no committed-bool guard needed, matching every
+	// other transactional method in this codebase (e.g.
+	// document-service/internal/pages.PostgresRepo.Reparent).
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	q := authrepo.New(tx)
 
@@ -114,22 +124,21 @@ func (s *Service) Register(ctx context.Context, email domain.Email, password dom
 		CursorColor:  domain.AssignCursorColor(id),
 	})
 	if err != nil {
-		return users.User{}, TokenPair{}, err
+		return users.User{}, TokenPair{}, fmt.Errorf("authservice: register: creating user: %w", err)
 	}
 
 	pair, err := issueTokenPair(ctx, q, s.keys, id)
 	if err != nil {
-		return users.User{}, TokenPair{}, err
+		return users.User{}, TokenPair{}, fmt.Errorf("authservice: register: %w", err)
 	}
 
 	if err := outbox.WriteUserRegistered(ctx, q, uuid.UUID(id), email.String(), displayName.String()); err != nil {
-		return users.User{}, TokenPair{}, err
+		return users.User{}, TokenPair{}, fmt.Errorf("authservice: register: writing outbox event: %w", err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
 		return users.User{}, TokenPair{}, fmt.Errorf("authservice: register: commit: %w", err)
 	}
-	committed = true
 	return user, pair, nil
 }
 
@@ -200,24 +209,21 @@ func (s *Service) Refresh(ctx context.Context, presented string) (TokenPair, err
 	if err != nil {
 		return TokenPair{}, fmt.Errorf("authservice: refresh: begin: %w", err)
 	}
-	committed := false
-	defer func() {
-		if !committed {
-			_ = tx.Rollback(ctx)
-		}
-	}()
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	q := authrepo.New(tx)
-	newPlain, result, rotErr := sessions.Rotate(ctx, q, presented)
+	newPlain, userID, rotErr := sessions.Rotate(ctx, q, presented)
 
 	switch {
 	case errors.Is(rotErr, sessions.ErrRefreshTokenReused):
 		if err := tx.Commit(ctx); err != nil {
 			return TokenPair{}, fmt.Errorf("authservice: refresh: commit reuse revocation: %w", err)
 		}
-		committed = true
-		s.log.Warn("refresh: token reuse detected, family revoked",
-			"user_id", result.UserID.String(), "family_revoked", result.FamilyRevoked)
+		var reuseErr *sessions.ReuseDetectedError
+		if errors.As(rotErr, &reuseErr) {
+			s.log.Warn("refresh: token reuse detected, family revoked",
+				"user_id", reuseErr.UserID.String(), "family_revoked", reuseErr.FamilyRevoked)
+		}
 		return TokenPair{}, ErrSessionExpired
 
 	case errors.Is(rotErr, sessions.ErrRefreshTokenExpired):
@@ -232,14 +238,13 @@ func (s *Service) Refresh(ctx context.Context, presented string) (TokenPair, err
 		return TokenPair{}, rotErr
 	}
 
-	access, _, err := sessions.Issue(s.keys, result.UserID)
+	access, _, err := sessions.Issue(s.keys, userID)
 	if err != nil {
 		return TokenPair{}, fmt.Errorf("authservice: refresh: issuing access token: %w", err)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return TokenPair{}, fmt.Errorf("authservice: refresh: commit: %w", err)
 	}
-	committed = true
 	return TokenPair{
 		AccessToken:  access,
 		RefreshToken: newPlain,
@@ -303,7 +308,7 @@ func issueTokenPair(ctx context.Context, q *authrepo.Queries, store keys.Store, 
 		ParentID:  nil,
 		ExpiresAt: time.Now().Add(sessions.RefreshTokenLifetime),
 	}); err != nil {
-		return TokenPair{}, err
+		return TokenPair{}, fmt.Errorf("authservice: inserting refresh token: %w", err)
 	}
 
 	return TokenPair{

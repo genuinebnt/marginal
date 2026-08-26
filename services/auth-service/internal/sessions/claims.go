@@ -33,13 +33,6 @@ type Claims struct {
 	Nbf time.Time
 }
 
-// jwtClaims is the wire shape jwt.RegisteredClaims already covers —
-// Claims above is the domain type callers work with; this is the
-// (de)serialization adapter, kept private to this file.
-type jwtClaims struct {
-	jwt.RegisteredClaims
-}
-
 var ErrInvalidToken = errors.New("sessions: invalid access token")
 
 // Issue signs a new access token for sub, returning the token string and
@@ -49,14 +42,12 @@ func Issue(store keys.Store, sub domain.UserID) (string, domain.Jti, error) {
 	now := time.Now().UTC()
 	jti := domain.NewJti()
 
-	claims := jwtClaims{
-		RegisteredClaims: jwt.RegisteredClaims{
-			Subject:   sub.String(),
-			ID:        jti.String(),
-			IssuedAt:  jwt.NewNumericDate(now),
-			NotBefore: jwt.NewNumericDate(now),
-			ExpiresAt: jwt.NewNumericDate(now.Add(AccessTokenLifetime)),
-		},
+	claims := jwt.RegisteredClaims{
+		Subject:   sub.String(),
+		ID:        jti.String(),
+		IssuedAt:  jwt.NewNumericDate(now),
+		NotBefore: jwt.NewNumericDate(now),
+		ExpiresAt: jwt.NewNumericDate(now.Add(AccessTokenLifetime)),
 	}
 
 	private, kid := store.SigningKey()
@@ -77,7 +68,7 @@ func Issue(store keys.Store, sub domain.UserID) (string, domain.Jti, error) {
 // classic JWT vulnerability is a verifier that trusts the token's own
 // header for which algorithm to use.
 func Verify(store keys.Store, tokenString string) (Claims, error) {
-	var claims jwtClaims
+	var claims jwt.RegisteredClaims
 	token, err := jwt.ParseWithClaims(tokenString, &claims,
 		func(t *jwt.Token) (any, error) {
 			kid, _ := t.Header["kid"].(string)

@@ -33,48 +33,59 @@ var (
 	ErrRefreshTokenReused = errors.New("sessions: refresh token reused")
 )
 
-// RotationResult carries what the caller needs to log — user id and
-// (only set when reuse was detected) how many tokens the family
-// revocation touched, for the WARN-level log line
-// docs/api/auth.md's status table requires.
-type RotationResult struct {
+// ReuseDetectedError reports that Rotate found an already-consumed
+// refresh token and, as a consequence, revoked its entire family.
+// Wraps ErrRefreshTokenReused (errors.Is still matches it); the extra
+// UserID/FamilyRevoked detail the WARN-level log line needs
+// (docs/api/auth.md's status table) rides along on the error itself via
+// errors.As, rather than through a third RotationResult return value
+// that was only ever populated on two of Rotate's several return paths.
+type ReuseDetectedError struct {
 	UserID        domain.UserID
-	FamilyRevoked int64 // only meaningful when the error is ErrRefreshTokenReused
+	FamilyRevoked int64
 }
+
+func (e *ReuseDetectedError) Error() string {
+	return fmt.Sprintf("sessions: refresh token reused (user %s, %d tokens in family revoked)", e.UserID, e.FamilyRevoked)
+}
+
+func (e *ReuseDetectedError) Unwrap() error { return ErrRefreshTokenReused }
 
 // Rotate implements the state machine: hash the presented token, look it
 // up, and either detect reuse (revoke the family), reject an expired
 // token, or perform a legitimate rotation (revoke the old row, insert a
 // new one, both in q's transaction — the caller opens and commits it,
-// same reasoning as users.Insert).
-func Rotate(ctx context.Context, q *authrepo.Queries, presented string) (newPlaintext string, result RotationResult, err error) {
+// same reasoning as users.Insert). userID is only meaningful when err is
+// nil or a *ReuseDetectedError (via errors.As) — Rotate's other error
+// paths have no user to report.
+func Rotate(ctx context.Context, q *authrepo.Queries, presented string) (newPlaintext string, userID domain.UserID, err error) {
 	hash := HashRefreshToken(presented)
 	row, err := FindByHash(ctx, q, hash)
 	if errors.Is(err, ErrNotFound) {
-		return "", RotationResult{}, ErrRefreshTokenInvalid
+		return "", domain.UserID{}, ErrRefreshTokenInvalid
 	}
 	if err != nil {
-		return "", RotationResult{}, err
+		return "", domain.UserID{}, err
 	}
 
 	if row.RevokedAt != nil {
 		n, revokeErr := RevokeChain(ctx, q, row.ID)
 		if revokeErr != nil {
-			return "", RotationResult{}, fmt.Errorf("sessions: revoking reused token's family: %w", revokeErr)
+			return "", domain.UserID{}, fmt.Errorf("sessions: revoking reused token's family: %w", revokeErr)
 		}
-		return "", RotationResult{UserID: row.UserID, FamilyRevoked: n}, ErrRefreshTokenReused
+		return "", domain.UserID{}, &ReuseDetectedError{UserID: row.UserID, FamilyRevoked: n}
 	}
 
 	if time.Now().After(row.ExpiresAt) {
-		return "", RotationResult{UserID: row.UserID}, ErrRefreshTokenExpired
+		return "", domain.UserID{}, ErrRefreshTokenExpired
 	}
 
 	newPlaintext, newHash, err := NewRefreshToken()
 	if err != nil {
-		return "", RotationResult{}, fmt.Errorf("sessions: generating new refresh token: %w", err)
+		return "", domain.UserID{}, fmt.Errorf("sessions: generating new refresh token: %w", err)
 	}
 	if err := Revoke(ctx, q, row.ID); err != nil {
-		return "", RotationResult{}, err
+		return "", domain.UserID{}, err
 	}
 	newID := uuid.New()
 	if err := Insert(ctx, q, NewToken{
@@ -84,8 +95,8 @@ func Rotate(ctx context.Context, q *authrepo.Queries, presented string) (newPlai
 		ParentID:  &row.ID,
 		ExpiresAt: time.Now().Add(RefreshTokenLifetime),
 	}); err != nil {
-		return "", RotationResult{}, err
+		return "", domain.UserID{}, err
 	}
 
-	return newPlaintext, RotationResult{UserID: row.UserID}, nil
+	return newPlaintext, row.UserID, nil
 }

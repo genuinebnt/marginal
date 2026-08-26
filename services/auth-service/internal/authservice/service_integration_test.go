@@ -89,7 +89,15 @@ func newTestService(t *testing.T) *harness {
 	require.NoError(t, err)
 
 	logger := slog.New(slog.NewTextHandler(testWriter{t}, nil))
-	svc := authservice.New(pool, keyStore, testParams, dummy, blocklist.New(rdb), lockout.New(rdb), logger)
+	svc := authservice.New(authservice.Config{
+		Pool:         pool,
+		Keys:         keyStore,
+		Argon2Params: testParams,
+		Dummy:        dummy,
+		Blocklist:    blocklist.New(rdb),
+		Lockout:      lockout.New(rdb),
+		Logger:       logger,
+	})
 	return &harness{Service: svc, rdb: rdb, keys: keyStore, pool: pool}
 }
 

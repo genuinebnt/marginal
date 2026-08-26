@@ -48,13 +48,13 @@ func TestVerifyRejectsExpiredToken(t *testing.T) {
 	store := mustStore(t)
 	private, kid := store.SigningKey()
 
-	claims := jwtClaims{RegisteredClaims: jwt.RegisteredClaims{
+	claims := jwt.RegisteredClaims{
 		Subject:   domain.NewUserID().String(),
 		ID:        domain.NewJti().String(),
 		IssuedAt:  jwt.NewNumericDate(time.Now().Add(-2 * time.Hour)),
 		NotBefore: jwt.NewNumericDate(time.Now().Add(-2 * time.Hour)),
 		ExpiresAt: jwt.NewNumericDate(time.Now().Add(-time.Hour)), // expired well outside any leeway
-	}}
+	}
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
 	token.Header["kid"] = kid
 	signed, err := token.SignedString(private)
@@ -72,13 +72,13 @@ func TestVerifyRejectsExpiredToken(t *testing.T) {
 func TestVerifyRejectsAlgorithmConfusion(t *testing.T) {
 	store := mustStore(t)
 
-	claims := jwtClaims{RegisteredClaims: jwt.RegisteredClaims{
+	claims := jwt.RegisteredClaims{
 		Subject:   domain.NewUserID().String(),
 		ID:        domain.NewJti().String(),
 		IssuedAt:  jwt.NewNumericDate(time.Now()),
 		NotBefore: jwt.NewNumericDate(time.Now()),
 		ExpiresAt: jwt.NewNumericDate(time.Now().Add(AccessTokenLifetime)),
-	}}
+	}
 
 	none := jwt.NewWithClaims(jwt.SigningMethodNone, claims)
 	signed, err := none.SignedString(jwt.UnsafeAllowNoneSignatureType)
@@ -100,13 +100,13 @@ func TestVerifyRejectsHS256SignedWithThePublicKeyBytes(t *testing.T) {
 	private, kid := store.SigningKey()
 	pubDER := x509.MarshalPKCS1PublicKey(&private.PublicKey)
 
-	claims := jwtClaims{RegisteredClaims: jwt.RegisteredClaims{
+	claims := jwt.RegisteredClaims{
 		Subject:   domain.NewUserID().String(),
 		ID:        domain.NewJti().String(),
 		IssuedAt:  jwt.NewNumericDate(time.Now()),
 		NotBefore: jwt.NewNumericDate(time.Now()),
 		ExpiresAt: jwt.NewNumericDate(time.Now().Add(AccessTokenLifetime)),
-	}}
+	}
 	forged := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	forged.Header["kid"] = kid
 	signed, err := forged.SignedString(pubDER)
