@@ -1,0 +1,288 @@
+# API — Collaboration
+
+**Status:** Implemented in Go (`services/collaboration-service/internal/wsapi`,
+built on `internal/session`) — connect, snapshot, submit an op, get acked,
+broadcast to every other connected client, real join/leave presence
+(§3's `"presence"` frame — per-actor, not per-connection), real live
+cursor tracking (§2/§3's `"cursor"` frame — added 2026-08-26, at explicit
+request, superseding the earlier "presence answers who's here, not
+where" line), error frames for a bad message. A `Session` now reconciles
+RFC-002 §2's two ISA tiers into one system (`internal/pageop`): structural
+block ops (insert/delete/reorder/kind — a `documentcore.Page`) and
+character ops scoped to one block's own live rope (`internal/doctext`,
+via `internal/ops`) share the same WAL, flush pipeline, and broadcast.
+**The frontend (`web/`'s `RichEditorPane`/`useCollabPage`) speaks this
+protocol** — see `CLAUDE.md`'s "Block/live-text reconciliation" note.
+**Owners:** `collaboration-service` (WebSocket) · `api-gateway` (out of this
+repo's scope — see "Auth" below for what that means today)
+**Related:** `RFC-002` (op ISA, invertibility, WAL) · `ARCHITECTURE.md` §4
+(Request Flow — Live Editing) · `docs/porting/PROGRESS.md`'s session/wsapi
+entries
+
+Unlike `pages.md`/`auth.md`, there is **one contract, not two**: no REST
+projection exists or is planned for this endpoint — a live editing session
+is inherently a persistent connection, not a request/response resource, so
+`api-gateway`'s REST-translation role (§2 in the other two docs) doesn't
+apply here even conceptually.
+
+```
+   browser  ──WebSocket/JSON──▶  collaboration-service
+```
+
+---
+
+## 1. Connecting
+
+```
+GET /collab/pages/{id}?actor_id=<uuid>&actor_kind=user
+Upgrade: websocket
+```
+
+or, for a non-browser caller that can set headers on the upgrade request
+(`grpcurl`-style tools, another service, a test):
+
+```
+GET /collab/pages/{id}
+Upgrade: websocket
+X-Actor-Id: <uuid>
+X-Actor-Kind: user            # optional, defaults to "user"
+```
+
+**A real browser must use the query parameters, not the headers.** The
+WebSocket browser API has no mechanism to set custom headers on the
+upgrade request at all — not a gap in this API, a characteristic of the
+browser API itself. The header form exists because it matches
+`pages.md`/`auth.md`'s convention for every other service; the query-param
+form exists because this is the one endpoint in the repo an actual browser
+connects to directly without going through `fetch` (which can set
+headers) first. If both are present, the header wins.
+
+`{id}` is the page's id (a UUID, matching `document-service`'s `Page.id`).
+There is no check today that the page actually exists in `document-service`
+— `collaboration-service` owns `collab.ops` independently (`DATA_MODEL.md`
+§1: no cross-schema joins) and will happily open a session for any UUID.
+Opening a session for a page that document-service has no record of is a
+client-side bug, not something this service can detect on its own.
+
+On success, the connection upgrades and the server immediately sends one
+`snapshot` frame (§3) with the whole page — title and every block's current
+live text — replayed from `collab.ops` plus any locally-recovered,
+not-yet-flushed WAL records (`internal/session`'s `open`; see
+`PROGRESS.md`'s crash-recovery entry).
+
+### Auth is a temporary stand-in
+
+There is no JWT verification here. The actor id/kind are read directly
+off the request (header or query param, per above), unauthenticated —
+the same convention `document-service`'s `PageService` already uses
+(`pages.md`'s "temporary scaffolding, not the real trust boundary")
+because no `api-gateway` exists in this repo's scope to have verified a
+token upstream. **Do not treat this as a real security boundary.** A
+missing or unparseable actor id, or an invalid actor kind (must be one of
+`user`/`agent`/`plugin`/`system`), gets `401`/`400` before the WebSocket
+upgrade even happens.
+
+---
+
+## 2. Client → Server: submitting an op, or reporting a cursor
+
+A client sends one of two message types. `"op"` is the durable one —
+everything in this section below the example. `"cursor"` is the other:
+
+```json
+{ "type": "cursor", "cursor": { "block_id": "<block-uuid>", "start": 3, "end": 7 } }
+{ "type": "cursor", "cursor": { "block_id": null, "start": 0, "end": 0 } }
+```
+
+Fire-and-forget — no `ack`, never touches the WAL/op log/`can_apply`
+(`internal/session.CursorEvent`'s own doc comment: this is where someone
+*is right now*, not a fact worth reconstructing on replay). `start`/`end`
+are rune offsets into `block_id`'s live text, the same unit `InsertText`/
+`DeleteText` already use (`start === end` is a plain caret, not a
+selection). `block_id: null` clears the sender's cursor — they blurred
+out of every block — rather than leaving a stale position parked
+somewhere they've since left; `start`/`end` are ignored in that case.
+
+The only message that commits anything:
+
+```json
+{
+  "type": "op",
+  "op": { "scope": "text", "block": "<block-uuid>", "op": { "type": "InsertText", "at": null, "text": "hello" } }
+}
+```
+
+`op` is `internal/pageop.Op`, JSON-encoded exactly as `pageop.Marshal`
+produces it — one of two scopes, each nesting its own tier's op:
+
+```jsonc
+// scope: "block" — structural, whole-page. The nested op is one of
+// documentcore's six block-tier variants (RFC-002 §2), tagged the same
+// way (documentcore.MarshalOp) and merged into this envelope directly —
+// there is no extra nesting level for this scope, unlike "text" below.
+{ "scope": "block", "type": "InsertBlock", "id": "<block-uuid>", "after": null, "kind": { "tag": "paragraph" }, "content": { "text": "" } }
+{ "scope": "block", "type": "DeleteBlock", "tombstone": { "id": "...", "kind": {...}, "content": {...} }, "after": null }
+{ "scope": "block", "type": "SetBlockKind", "id": "...", "from": { "tag": "paragraph" }, "to": { "tag": "heading", "level": 2 } }
+{ "scope": "block", "type": "SetBlockContent", "block": "...", "prev": { "text": "old" }, "content": { "text": "new" } }
+{ "scope": "block", "type": "SetTitle", "page": "...", "from": "", "to": "Untitled" }
+{ "scope": "block", "type": "MoveBlock", "id": "...", "from": null, "to": "<other-block-uuid>" }
+
+// scope: "text" — character-granular, scoped to exactly one block's own
+// live rope (RFC-002 §2.1). "block" names which block; "op" is one of
+// internal/ops' two variants, tagged the same way ops.MarshalOp always
+// has (unchanged from before this envelope existed):
+{ "scope": "text", "block": "...", "op": { "type": "InsertText", "at": null, "text": "hello" } }
+{ "scope": "text", "block": "...", "op": { "type": "DeleteText", "range": { "start": {...}, "end": {...} }, "text": "" } }
+```
+
+`"at": null` on `InsertText` means "the start of that block's text" — the
+one position nothing can anchor to yet. `text` on `DeleteText` is ignored
+on the way in (the server fills it from what it actually deletes) —
+sending it is harmless, not required. `SetMark` doesn't exist yet
+(`internal/doctext` has no mark storage — `PROGRESS.md`).
+
+A block must exist (a prior `InsertBlock` committed) before any `"text"`
+op naming it can apply — an unknown block id is an `error` frame, not a
+silent no-op. `SetBlockContent`'s `prev` must equal that block's current
+content exactly (`documentcore.Page.Apply`'s precondition), which is kept
+in sync with the block's live rope after every `"text"` op that touches
+it — so a `SetBlockContent` right after live typing sees that typing's
+result, not a stale snapshot.
+
+Every submitted op is authorized through `can_apply` (`RFC-002` §5) before
+touching anything — it always allows today (single-tenant scope), same as
+the spec itself says: `fn can_apply(op, actor) -> bool { true } // today`.
+
+---
+
+## 3. Server → Client frames
+
+Every frame the server sends has this shape:
+
+```jsonc
+{ "type": "snapshot", "snapshot": { "page_id": "...", "title": "", "blocks": [ /* BlockSnapshot[] — see below */ ] }, "present": ["actor-id", "..."], "cursors": [ /* CursorWire[] — see below; omitted/empty if nobody has one set */ ] }
+{ "type": "ack",       "op": { /* the committed LoggedOp — see below */ }, "boundaries": { /* set only for a "text" op; omitted for "block" or an emptied block */ } }
+{ "type": "broadcast", "op": { /* the same shape, for everyone else */ }, "boundaries": { /* same as the ack's */ } }
+{ "type": "presence",  "actor_id": "...", "joined": true }
+{ "type": "cursor",    "cursor": { "actor_id": "...", "block_id": "<block-uuid>", "start": 3, "end": 7 } }
+{ "type": "error",     "message": "human-readable reason" }
+```
+
+- **`snapshot`** — sent once, immediately after connecting (§1). Each
+  entry in `blocks` (`session.BlockSnapshot`) is:
+  ```json
+  { "id": "...", "kind": { "tag": "paragraph" }, "text": "current live text", "boundaries": { /* or omitted if this block is empty */ } }
+  ```
+  `text` is that block's *live* rope content, which can differ from
+  whatever a `SetBlockContent`/`InsertBlock` op last recorded if
+  character-level edits happened since — the rope, not the last-recorded
+  `Content`, is authoritative during a live session (`DATA_MODEL.md`).
+  Each block's own `boundaries` lets a reconnecting client build its
+  first edit into that block without waiting on an ack of its own.
+  `present` (top-level, sibling to `snapshot`) is every distinct actor
+  already connected to this page at join time — omitted/empty if nobody
+  else is here. Use it to seed a presence list immediately; don't wait
+  for a future `"presence"` event to learn who's already here. `cursors`
+  is `present`'s own last-known caret/selection — only for those who
+  currently have one set (see the `"cursor"` frame below) — so a joining
+  client can render every already-connected peer's live caret
+  immediately, not just their avatar.
+- **`presence`** — sent to every *other* connection when an actor's
+  *first* connection joins (`joined: true`) or their *last* connection
+  closes (`joined: false`). A second tab/device from an actor already
+  present does **not** re-send `joined: true`, and closing just one of
+  several open connections for the same actor does **not** send
+  `joined: false` — presence is per-actor, not per-connection
+  (`internal/session.Session.Subscribe`'s own bookkeeping). A departing
+  actor's cursor is cleared (a synthetic `"cursor"` frame with
+  `block_id: null`) in the same moment their `joined: false` goes out —
+  a gone actor's stale caret must not linger for whoever's still here.
+- **`cursor`** — one actor's caret/selection just changed: `block_id`
+  names which block (`null` means they blurred out of every block —
+  `start`/`end` are meaningless then), `start`/`end` are rune offsets
+  into that block's live text (`start === end` is a plain caret). Sent to
+  every *other* connection on the page, never echoed back to whoever
+  reported it. Purely ephemeral — never appears in an `ack`/`broadcast`,
+  the op log, or a replay; a fresh connection only ever learns current
+  cursors from the snapshot's own `cursors` list above.
+- **`ack`** — sent only to the connection that submitted the op, in
+  response to its own `op` message. This is the acknowledgement point:
+  by the time this frame is sent, the op is durable in the local WAL
+  (`RFC-002` §6 — "the client is acknowledged after the local WAL sync,
+  not after Postgres") and has already been broadcast to every other
+  connected client.
+- **`broadcast`** — sent to every *other* connection subscribed to the
+  same page. The submitter never receives its own op back this way — its
+  `ack` frame is the only confirmation it gets, by design
+  (`internal/session`'s `Subscriber` doc comment).
+- **`error`** — sent for a malformed message, an unknown `op` variant, a
+  `"text"` op naming a block that doesn't exist, an op that fails to apply
+  (e.g. an `Anchor` naming an `ItemID` this session never saw, or a
+  `SetBlockContent` whose `prev` doesn't match), or a `can_apply` denial.
+  **The connection stays open** — one bad message doesn't end the
+  session, so a client can recover from a transient bug without
+  reconnecting.
+
+### `boundaries` — for a client with no `Anchor` of its own
+
+`ack` and `broadcast` both carry the *submitted-or-affected block's*
+current start/end anchors, only when that op was a `"text"` op:
+
+```json
+"boundaries": {
+  "start": { "item": { "actor": "...", "counter": 1 }, "bias": "before" },
+  "end":   { "item": { "actor": "...", "counter": 5 }, "bias": "after" }
+}
+```
+
+— **omitted** for a `"block"` (structural) op, and for a `"text"` op that
+leaves the block empty. A plain-text client (a `<textarea>`, say) that
+only ever sees rune offsets, never an `ItemID`, has no way to build a
+`DeleteText` naming the text it wants removed — its only source of a
+valid `Anchor` is a frame the server already sent it. `boundaries` names
+a block's whole live text as one range, so such a client can implement
+editing as "replace this block's text": send a `DeleteText` (scoped to
+that block) using its most recent `boundaries`, followed by an
+`InsertText` at `at: null` with the new full text, then use the next
+ack's `boundaries` for that block's following edit. This is
+`doctext.Text.Boundaries`'s whole reason to exist — see that method's doc
+comment for why `DeleteText` only ever needs a range's first and last
+item, not every item in between.
+
+### The committed op (`ack`/`broadcast`'s `op` field)
+
+The full `oplog.LoggedOp`, RFC-002 §4's permanent wire format:
+
+```json
+{
+  "id": "...",
+  "version": 1,
+  "page_id": "...",
+  "actor_id": "...",
+  "actor_kind": "user",
+  "vector_clock": { "<actor-id>": 3 },
+  "op": { "scope": "text", "block": "...", "op": { "type": "InsertText", "at": null, "text": "hello" } },
+  "created_at": "2026-08-26T08:29:32.966828Z"
+}
+```
+
+`id` is a UUIDv7 — every consumer that ever needs to deduplicate (there is
+none yet on the wire side; `internal/opstore`'s Postgres flush already
+dedupes on it) should key on this field, per RFC-002 §4 rule 5.
+
+---
+
+## 4. Disconnection
+
+A connection is closed by the server, without a specific error frame
+first, in exactly one situation: **its own outbound buffer filled up**
+(64 frames) because it stopped reading fast enough. This is deliberate,
+not a bug — `internal/session.ApplyClientOp` broadcasts to every
+subscriber while holding the whole session's lock, so a slow reader must
+never be allowed to block delivery to everyone else on the page. A
+disconnected client just reconnects; §1's snapshot-on-connect makes that
+safe and cheap (no state to reconcile client-side beyond re-rendering the
+fresh snapshot).
+
+There is no explicit ping/pong or idle-timeout policy documented yet —
+left to `coder/websocket`'s defaults for now.

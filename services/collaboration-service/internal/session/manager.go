@@ -1,0 +1,92 @@
+package session
+
+import (
+	"context"
+	"fmt"
+	"sync"
+
+	"github.com/google/uuid"
+
+	"marginal/collaboration-service/internal/flush"
+	"marginal/collaboration-service/internal/opstore"
+)
+
+// Manager is the one-Session-per-page registry a transport layer (the
+// WebSocket handler, docs/porting/PROGRESS.md "Next") calls Get against
+// per incoming connection. Held open indefinitely once opened — see the
+// package doc comment on why idle-eviction is deferred, not missing by
+// oversight.
+type Manager struct {
+	mu       sync.Mutex
+	sessions map[uuid.UUID]*Session
+
+	repo        opstore.Repo
+	walDir      string
+	serverActor string
+	canApply    CanApplyFunc
+	flushOpts   []flush.Option
+}
+
+type ManagerOption func(*Manager)
+
+func WithCanApply(f CanApplyFunc) ManagerOption { return func(m *Manager) { m.canApply = f } }
+func WithFlushOptions(opts ...flush.Option) ManagerOption {
+	return func(m *Manager) { m.flushOpts = opts }
+}
+
+// NewManager. serverActor is this collaboration-service instance's own
+// identity for Lamport ItemIDs (doctext.New) — not an editing user;
+// distinct per running instance (e.g. uuid.NewV7().String(), generated
+// once at process startup and passed in, so the caller controls where
+// that identity comes from rather than this package inventing one).
+// walDir is where each page's local WAL segment lives.
+func NewManager(repo opstore.Repo, walDir string, serverActor string, opts ...ManagerOption) *Manager {
+	m := &Manager{
+		sessions:    make(map[uuid.UUID]*Session),
+		repo:        repo,
+		walDir:      walDir,
+		serverActor: serverActor,
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// Get returns pageID's live Session, opening (replaying + reconciling) it
+// on first access. Held for the whole open, not just the map lookup —
+// two concurrent Gets for the same never-yet-opened page must not both
+// open it (that would double-claim the same WAL file); this repo's scale
+// makes that global-lock cost a non-issue, unlike it would be at
+// ARCHITECTURE.md's stated 15k-concurrent-editor scale.
+func (m *Manager) Get(ctx context.Context, pageID uuid.UUID) (*Session, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if s, ok := m.sessions[pageID]; ok {
+		return s, nil
+	}
+	s, err := open(ctx, pageID, m.repo, m.walDir, m.serverActor, m.canApply, m.flushOpts)
+	if err != nil {
+		return nil, fmt.Errorf("session: manager: opening %s: %w", pageID, err)
+	}
+	m.sessions[pageID] = s
+	return s, nil
+}
+
+// CloseAll closes every open session — graceful shutdown's job, so
+// buffered flush data drains instead of relying solely on what's already
+// in each session's WAL segment.
+func (m *Manager) CloseAll() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	var firstErr error
+	for id, s := range m.sessions {
+		if err := s.Close(); err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("session: manager: closing %s: %w", id, err)
+		}
+		delete(m.sessions, id)
+	}
+	return firstErr
+}

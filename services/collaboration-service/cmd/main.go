@@ -1,29 +1,157 @@
 // Command collaboration-service is the Track 1 MVP's stateful service: an
 // in-memory rope + CRDT op log per open document, live cursors, one
 // doc-actor per page. See docs/architecture/rfc/RFC-002-operation-model.md
-// for the op log and WAL framing this owns.
+// for the op log and WAL framing this owns, and docs/api/collaboration.md
+// for the WebSocket wire contract this serves.
 //
-// Skeleton only for now — health probe endpoint, no business logic yet.
-// See docs/porting/PROGRESS.md for current status.
+// HTTP only — health probes and the WebSocket upgrade at
+// /collab/pages/{id} (internal/wsapi). See docs/porting/PROGRESS.md for
+// current status.
 package main
 
 import (
+	"context"
+	"database/sql"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"strings"
+	"syscall"
+
+	"github.com/coder/websocket"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
+	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/nats-io/nats.go"
+
+	"marginal/collaboration-service/internal/migrate"
+	"marginal/collaboration-service/internal/opstore"
+	"marginal/collaboration-service/internal/outbox"
+	"marginal/collaboration-service/internal/session"
+	"marginal/collaboration-service/internal/wsapi"
 )
 
 func main() {
+	if err := run(); err != nil {
+		slog.Error("collaboration-service failed", "err", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL == "" {
+		return errRequiredEnv("DATABASE_URL")
+	}
+
+	sqlDB, err := sql.Open("pgx", databaseURL)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = sqlDB.Close() }()
+	if err := migrate.Up(sqlDB); err != nil {
+		return err
+	}
+
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+
+	natsURL := envOr("NATS_URL", nats.DefaultURL)
+	nc, err := nats.Connect(natsURL)
+	if err != nil {
+		return err
+	}
+	defer nc.Close()
+
+	poller := outbox.NewPoller(pool, nc)
+	go poller.Run(ctx, func(err error) {
+		slog.Error("collaboration-service: outbox poller", "err", err)
+	})
+
+	// A persistent volume in any real deployment — see
+	// deploy/terraform/README.md's "known limitations" on what an
+	// abrupt (not orderly) loss of this directory costs. A plain local
+	// dir is the right default for local dev and this repo's demo scale.
+	walDir := envOr("COLLAB_WAL_DIR", "./data/collab-wal")
+	if err := os.MkdirAll(walDir, 0o700); err != nil {
+		return err
+	}
+
+	// This process's own identity for Lamport ItemIDs (internal/doctext),
+	// not an editing user's — fresh per process start is fine: it only
+	// needs to be unique among concurrently-running instances, which a
+	// UUIDv7 is with overwhelming probability.
+	serverActor := uuid.Must(uuid.NewV7()).String()
+
+	repo := opstore.NewPostgresRepo(pool)
+	manager := session.NewManager(repo, walDir, serverActor)
+	defer func() {
+		if err := manager.CloseAll(); err != nil {
+			slog.Error("closing sessions during shutdown", "err", err)
+		}
+	}()
+
+	httpAddr := envOr("COLLABORATION_SERVICE_HTTP_ADDR", ":8002")
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
+	mux.HandleFunc("/collab/pages/{id}", wsapi.NewHandler(manager, wsAcceptOptions()).ServeHTTP)
 
-	addr := ":8002"
-	slog.Info("collaboration-service listening", "addr", addr)
-	if err := http.ListenAndServe(addr, mux); err != nil {
-		slog.Error("server failed", "err", err)
-		os.Exit(1)
+	httpServer := &http.Server{Addr: httpAddr, Handler: mux}
+
+	errCh := make(chan error, 1)
+	go func() {
+		slog.Info("collaboration-service listening", "addr", httpAddr)
+		errCh <- httpServer.ListenAndServe()
+	}()
+
+	select {
+	case <-ctx.Done():
+		return httpServer.Shutdown(context.Background())
+	case err := <-errCh:
+		return err
 	}
 }
+
+// wsAcceptOptions controls coder/websocket's cross-origin check.
+// web/ is served from a different origin than this service (a different
+// port, in local dev) — every real browser connection is cross-origin by
+// this library's own definition, and its default (nil options) rejects
+// that outright. COLLAB_ALLOWED_ORIGINS (comma-separated host patterns,
+// e.g. "localhost:5173") sets a real allowlist; left unset, this defaults
+// to skipping the check entirely — safe at this repo's scope because
+// nothing in docs/api/collaboration.md's protocol uses cookies or any
+// other ambient credential an arbitrary origin could leak (actor identity
+// is the same unauthenticated header/query stand-in pages.md/auth.md
+// document), the same reasoning api-gateway's own CORS default uses.
+func wsAcceptOptions() *websocket.AcceptOptions {
+	raw := os.Getenv("COLLAB_ALLOWED_ORIGINS")
+	if raw == "" {
+		return &websocket.AcceptOptions{InsecureSkipVerify: true}
+	}
+	patterns := strings.Split(raw, ",")
+	for i, p := range patterns {
+		patterns[i] = strings.TrimSpace(p)
+	}
+	return &websocket.AcceptOptions{OriginPatterns: patterns}
+}
+
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
+type errRequiredEnv string
+
+func (e errRequiredEnv) Error() string { return "missing required env var: " + string(e) }

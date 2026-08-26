@@ -1,6 +1,7 @@
 go 1.25.7
 
 use (
+	./services/documentcore
 	./services/auth-service
 	./services/collaboration-service
 	./services/document-service

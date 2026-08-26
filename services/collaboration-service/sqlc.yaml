@@ -1,0 +1,11 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    queries: "internal/collabrepo/queries.sql"
+    schema: "internal/migrate/migrations"
+    gen:
+      go:
+        package: "collabrepo"
+        out: "internal/collabrepo/gen"
+        sql_package: "pgx/v5"
+        emit_pointers_for_null_types: true
