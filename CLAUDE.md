@@ -2,89 +2,58 @@
 
 A **self-hosted, real-time collaborative markdown notebook.** Block-based WYSIWYG editing, live multiplayer with no merge-conflict UI, inline diagnostics on prose, per-actor undo, and scrubable version history.
 
-Eleven Rust microservices, event-sourced on a CRDT operation log.
+Eleven microservices, event-sourced on a CRDT operation log.
+
+**Currently building the Track 1 MVP in Go + TypeScript** (`ADR-011`) — Claude
+writes the implementation directly. The eventual Rust port is a separate,
+later repo; see `rust/README.md` for what's archived there and why.
 
 ## Rules
 
-**Read `.agents/agents.md` before every response.** All mentor behaviour, strict review rules, TDD guidance, and documentation requirements live there. This file is fast context only.
+**Read `.agents/agents.md` before every response.** Testing philosophy,
+documentation conventions, the Go/TS idiom table, and the feature-depth
+complexity budget all live there. This file is fast context only.
 
-### The scaffold checklist — every module, no exceptions
+**Read `docs/porting/PROGRESS.md` at the start of any new or compacted
+session.** It is the record of what's actually done — don't re-derive or
+assume prior decisions from a stale summary.
 
-`agents.md` §2 in full. Reproduced here because this file is loaded every session and that one is not.
-
-```
-1  Types          structs, enum variants, error types — no bodies
-2  Signatures     including the Result and its error type
-3  Invariants     numbered; what the tests check
-4  Algorithm      pseudocode, numbered steps, for anything non-obvious
-5  Test list      names + which is hardest
-6  Before         1–3 prerequisites — cite a CHAPTER, never a book
-7  DSA            the named algorithm + 2–4 LeetCode problems, closest marked
-8  After          how real projects solved it; what the spec chose for me
-```
-
-**They write all the Rust.** Tests become real Rust once it compiles.
-
-**Draw 6 and 8 from:** *Rust for Rustaceans* · Gjengset's *Crust of Rust* (name the episode) ·
-Skiena · **DDIA** · **Database Internals** · *Crafting Interpreters* · *Rust Atomics and Locks* ·
-*Zero To Production* · system-design writing. **Applicability, not completeness** — a step that
-touches no storage gets no DDIA row.
-
-**The tedium rule:** Cargo, build errors, Docker, Terraform, CI, sqlx setup, mechanical refactors
-→ complete copy-ready commands, never an exercise. Algorithms, invariants, schemas → theirs.
-
-**Deadline: end of January 2027.** Dense scaffolds, no seminar.
+**Deadline: none imposed by this track** — the goal is a complete,
+demo-quality MVP, not a fixed date. Scope discipline comes from
+`.agents/agents.md` §3 (feature depth, not surface area), not a calendar.
 
 ---
 
 ## Objective & Order
 
-**Primary objective: really good Rust learning** (ADR-002). Microservices, distributed systems, cloud, security, and DSA all remain goals — Rust depth wins ties.
+**Primary objective: a complete, demo-quality Track 1 MVP in Go + TypeScript**
+(`ADR-011`). Rust depth (`ADR-002`) is suspended for this track, not
+abandoned — it resumes in the future Rust-port repo.
 
-**Phase numbers are identifiers, not a sequence.** Work `ROADMAP.md` § Execution Order:
+**Phase numbers are identifiers, not a sequence.** Work `ROADMAP.md` § Execution Order — only Track 1 is in scope for this repo right now:
 
 ```
 Track 1 — MVP             1 Documents → 2 Auth → 3 Collaboration
                           🏁 log in, write a page, edit live with someone
-Track 2 — Differentiators 4 Diagnostics → 5 Undo/Redo → 6 History
-Track 3 — Distributed     7 Search → 8 Saga → 9 Gateway → 10 Session routing
-Track 4 — Platform        13 Identity/RBAC → 14 Comments → 15 Notifications
-                          → 16 Full editor → 20 Settings/admin      (ADR-009)
-Track 5 — Reach           17 Publishing → 18 Plugins → 19 Assistant
-                          → 21 Related content                       (ADR-009)
-Track 6 — Cloud           11 Containers/CI + self-host ops → 12 Observability + hardening
 ```
 
-**Tracks 4–5 are gated on the 🏁.** ADR-009 § Guard Rails is binding: nothing starts
-before the MVP ships, every phase names new Rust or is cut, and the document core is
-closed to incidental changes from these features.
+All three Track 1 services are scaffolded as standalone code areas now
+(`.agents/agents.md` §3) — they share no code, so there's no benefit to
+phasing them in one at a time. Real logic still lands one at a time,
+starting with `document-service`.
 
-**Cloud is interleaved, not deferred.** Each phase deploys its own service to Google Cloud
-as part of that phase — see `CLOUD_ROADMAP.md` §2. Phase 1 includes Terraform, serverless
-Postgres, Cloud Storage, Secret Manager, and a Cloud Run deploy.
+**Tracks 2–6 are out of scope for this repo.** They were previously gated on
+the 🏁 and built here afterward (`ADR-009`); now the plan is to build them,
+if at all, after the Rust port, in that future repo, per `ADR-011`.
 
-**Two tiers, and the budget decides which (ADR-010).** *Tier R* stays running and must idle at
-zero — Cloud Run `min = 0`, Pub/Sub, GCS, one Postgres with a schema and role per service.
-*Tier S* — GKE, load balancers, Cloud SQL, Memorystore — is rented by the hour and
-`terraform destroy`ed. **≤ $10/month learning, < $2 idle.**
+**Cloud is deferred, not designed away.** `CLOUD_ROADMAP.md`/`ADR-008`/`ADR-010`'s
+GCP+Terraform plan still applies conceptually (Cloud Run, one Postgres per
+service, the two-tier cost posture) — it's pulled in once a service is ready
+to deploy, same "Phase 0 is a backlog" principle as before, just not yet
+exercised for the Go build.
 
-**Phase 0 is a backlog, not a step.** Foundation work is *pulled* in by the first service
-that needs it — never built up front. `crates/` extraction follows PROJECT_STRUCTURE §5:
-inline, duplicate on the second use, extract on the third. See ROADMAP § Phase 0 for the
-floor (workspace, migration, Postgres, `Settings`) and each item's trigger.
-
-**`docs/planning/TASKS.md` is the queue — 41 numbered steps, and its § *Where you are* is the
-single source of truth for what comes next.** Read it before proposing work.
-
-**Current: Phase 1, Step 3.** `crates/document-core` is the only crate. `Page`, `Block`, `Op`
-with `invert`, `History` with undo/redo, `Content` with marks over byte ranges. `wasm32` builds.
-Four `todo!()` bodies remain — `add_mark`, `remove_mark`, `normalise`, `marks_at` — and 19 tests
-are written against them. No service, no startup path, no database yet.
-
-`docs/architecture/lld/` specifies *what* to build and `docs/learning/` what to read first. Treat
-the LLD module maps as a proposal rather than a contract: the layout is derived, not inherited.
-
-`crates/document-core` and `crates/diagnostics` need no infrastructure — pure `cargo test`, interleavable any time.
+**Current state:** see `docs/porting/PROGRESS.md` — the single source of
+truth for what's implemented and what's next.
 
 ---
 
@@ -92,66 +61,62 @@ the LLD module maps as a proposal rather than a contract: the layout is derived,
 
 | Layer | Technology |
 |---|---|
-| HTTP | Axum + Tower + Tokio |
-| Database | PostgreSQL 18 + sqlx (JSONB, LTREE, `uuidv7()`) |
+| HTTP | Go stdlib `net/http` (health probes) + `chi` (REST, gateway only) |
+| Database | PostgreSQL 18 + `pgx/v5` + `sqlc` (JSONB, LTREE, `uuidv7()`) |
 | Cache / presence | Redis |
-| Event bus | NATS JetStream (local / self-host) · **Pub/Sub** (cloud) — one `EventBus` trait, two adapters (ADR-010) |
-| Object storage | MinIO (local) / Cloud Storage (cloud) |
-| Search | Tantivy (in-process) |
-| gRPC | tonic + prost — **the east-west default**, all 4 RPC modes (ADR-007) |
-| Frontend | React 19 + TypeScript SPA (Vite), Tailwind v4, Radix UI (ADR-004) |
-| **Editor core** | **Rust → `wasm32`** — document model, rope, marks, selection, ops |
-| API contract | `utoipa` → OpenAPI → `openapi-typescript` |
-| IaC / hosting | Terraform (HCL) → **Google Cloud, the primary target** (ADR-008) |
-| Observability | OpenTelemetry → Jaeger/Cloud Trace + Prometheus + Grafana |
+| Event bus | NATS JetStream (local / self-host) · **Pub/Sub** (cloud, deferred) — one `EventBus` interface, two adapters |
+| Object storage | MinIO (local) / Cloud Storage (cloud, deferred) |
+| Search | deferred — out of Track 1 scope |
+| gRPC | `google.golang.org/grpc` + `buf` — **the east-west default**, REST only at the gateway |
+| Frontend | React 19 + TypeScript SPA (Vite), Tailwind v4, Radix UI |
+| **Editor core** | **Native TypeScript** — document model, marks, selection, ops (no `wasm32` for this track — `ADR-011` overrides `ADR-004`) |
+| API contract | Hand-maintained OpenAPI in `docs/api/` → `openapi-typescript` |
+| IaC / hosting | Terraform (HCL) → Google Cloud — deferred until a service is ready to deploy |
+| Observability | OpenTelemetry → Jaeger/Cloud Trace + Prometheus + Grafana — deferred |
 
 ---
 
-## Services
+## Services (Track 1 only, this repo)
 
 | Service | Port | Boundary justification |
 |---|---|---|
-| `api-gateway` | 8000 | The edge — only public component; REST/WSS in, gRPC out (ADR-007) |
 | `document-service` | 8001 | Stateless; owns pages, blocks, **its own** outbox. gRPC `PageService`; HTTP probes only |
-| `collaboration-service` | 8002 | **Stateful** — rope per doc, scales on connection count. **Owns `collab`** — the op log and its outbox (ADR-003) |
-| `diagnostics-service` | 8003 | CPU-bound, bursty, **degradable** |
-| `history-service` | 8004 | Cold path — replay, snapshots to object storage |
-| `search-service` | 8005 | Own Tantivy index, own rebuild cadence |
 | `auth-service` | 8006 | Distinct security surface; also users, roles, preferences |
-| `notification-service` | 8007 | Bursty fan-out, **degradable** — a lost notification costs nothing (ADR-009) |
-| `publishing-service` | 8008 | **Unauthenticated** public read path, CDN-fronted (ADR-009) |
-| `plugin-service` | 8009 | **Untrusted code** — isolation is the whole point (ADR-009) |
-| `assistant-service` | 8010 | External API latency, **degradable**, never on the editing path (ADR-009) |
+| `collaboration-service` | 8002 | **Stateful** — rope per doc, scales on connection count. **Owns `collab`** — the op log and its outbox |
 
-A service exists only if it differs in **scaling profile, state, failure mode, or deploy cadence**. Owning a different noun is not sufficient.
+The other 8 services from the full design (`api-gateway`, `diagnostics-service`,
+`history-service`, `search-service`, `notification-service`,
+`publishing-service`, `plugin-service`, `assistant-service`) are out of scope
+for this repo — see `ADR-011`. A service exists only if it differs in
+**scaling profile, state, failure mode, or deploy cadence**; owning a
+different noun is not sufficient (`ADR-001`, unchanged).
 
 ---
 
-## Crate Layout
+## Layout
 
 ```
-crates/                  ALL Rust lives here, flat, named by role
-├── domain/              vocabulary: ids, BlockKind, Op, errors — zero deps, wasm32-clean
-├── document-core/       the model: block tree, ops, anchors, rope, CRDT — wasm32-clean
-├── document-parser/     what the user types: lex → parse → lower → normalise → sanitise
-├── rbac-core/           roles · permissions · policy · can() — PURE, no I/O
-├── event-core/          one EventEnvelope, typed payload per publisher
-├── infra/               config · error · tracing · metrics — at the THIRD service
-├── proto/               .proto + generated tonic/prost — NOT wasm32
-├── editor-wasm/         cdylib+rlib — the bindgen boundary + syntect rendering
-├── api-gateway/         THE ONLY REST/WS surface
-└── <noun>-service/      one binary each — gRPC + HTTP probes only
+go/
+├── go.work
+└── services/
+    ├── document-service/       go.mod, cmd/main.go, internal/documentcore/, internal/...
+    ├── auth-service/
+    └── collaboration-service/
 
-web/                     React + TypeScript SPA — NOT in the workspace (ADR-004)
-deploy/                  Terraform, docker-compose, prometheus.yml
-reference/               Go reference implementations — NOT in the workspace (ADR-005)
+web/                            React 19 + TS SPA + native TS document-core (Vite)
+├── src/document-core/          page.ts, block.ts, operation.ts, history.ts, inline.ts
+└── ...
 
-Only `document-core` exists. Every other crate appears when its trigger fires —
-PROJECT_STRUCTURE §7. A crate name never carries the project name; the directory
-says which repo it is in.
+testdata/<module>/*.json        golden test vectors — shared behavior spec across languages
+
+rust/                           docs only, no code — the archived Rust-mentor track (see rust/README.md)
+
+docs/porting/                   PROGRESS.md, PORTING_GUIDE.md, OPEN_QUESTIONS.md, BENCHMARKS.md
 ```
 
-`crates/document-core` and `crates/diagnostics` must stay `wasm32`-clean and infrastructure-free — they run in the browser, which is also what keeps them Miri-reachable and fuzzable.
+`reference/` and `deploy/` don't exist yet — pulled in when a service
+actually needs a Go answer-key reference or infra, same "Phase 0 is a
+backlog" principle as before.
 
 ---
 
@@ -159,26 +124,28 @@ says which repo it is in.
 
 | Doc | Purpose |
 |---|---|
-| `.agents/agents.md` | Mentor rules — governs every response |
-| `docs/architecture/PROJECT_STRUCTURE.md` | **Layout + principles — governs every file placement** |
-| `docs/architecture/rfc/RFC-001-document-model.md` | Block tree, spans↔rope, input rules, paste |
-| `docs/architecture/rfc/RFC-002-operation-model.md` | **Op ISA, invertibility, log versioning, WAL** |
-| `docs/architecture/rfc/RFC-003-diagnostics-engine.md` | Analyzers, symbol table, incrementality |
-| `docs/architecture/lld/document-service.md` | **LLD — module map, type contracts, invariants, build order** |
+| `.agents/agents.md` | Build rules for this track — governs every response |
+| `docs/architecture/PROJECT_STRUCTURE.md` | Layout + principles — governs every file placement |
+| `docs/architecture/rfc/RFC-001-document-model.md` | Block tree, spans, input rules, paste — language-agnostic |
+| `docs/architecture/rfc/RFC-002-operation-model.md` | **Op ISA, invertibility, log versioning, WAL** — language-agnostic |
+| `docs/architecture/rfc/RFC-003-diagnostics-engine.md` | Analyzers, symbol table, incrementality (Track 2, not in scope yet) |
+| `docs/architecture/lld/document-service.md` | Module map, type contracts, invariants, build order |
 | `docs/api/pages.md` | Pages contract — gRPC `PageService` + the gateway's REST mapping |
-| `docs/architecture/ARCHITECTURE.md` | Service map, event bus, request flows, saga |
-| `docs/architecture/DATA_MODEL.md` | **Database per service** (ADR-003) — schemas, ownership, and where a join happens |
+| `docs/architecture/ARCHITECTURE.md` | Service map, event bus, request flows |
+| `docs/architecture/DATA_MODEL.md` | **Database per service** — schemas, ownership, and where a join happens |
 | `docs/architecture/CLOUD_PORTABILITY.md` | Ports & adapters, local vs Google Cloud |
 | `docs/architecture/GLOSSARY.md` | Ubiquitous language |
-| `docs/planning/ROADMAP.md` | Phases, **Rust/DSA concepts map**, tooling |
-| `docs/planning/USER_STORIES.md` | **What each phase means from the outside** — stories with a testable *Done when*, in execution order |
-| `docs/planning/TASKS.md` | **THE QUEUE — 41 numbered steps in dependency order.** § *Where you are*, § *Open decisions*, and per-step *Before / DSA / After* reading |
-| `docs/planning/CLOUD_ROADMAP.md` | Cloud track + cost discipline |
-| `docs/planning/TIMELINE.md` | Estimates, the two handoffs, division of labour |
-| **`docs/learning/`** | **Per-phase reading lists — prerequisites and post-build, mandatory vs optional.** Start at `learning/README.md`; `00-foundations.md` §1 is a ten-day start-here order |
-| `docs/api/README.md` | Why `utoipa` annotations are mandatory |
-| `docs/ui-mockups/` | Static visual specs + **editor and reader chrome spec** — `editor.html` is the block editor |
-| `docs/architecture/adr/` | 001 scope · 002 Rust depth · 003 Postgres · **004 SPA** (a Rust frontend is revisitable after the 🏁) · 005 Go reference · **007 gRPC east-west** · **008 GCP + Terraform** · **009 scope expansion** · **010 cost-bounded cloud posture** |
+| `docs/planning/ROADMAP.md` | Full phase list — only Track 1 is in scope here |
+| `docs/planning/USER_STORIES.md` | **What each phase means from the outside** — testable *Done when* |
+| `docs/planning/CLOUD_ROADMAP.md` | Cloud track + cost discipline (deferred) |
+| `docs/planning/TIMELINE.md` | Original estimates — largely superseded by `ADR-011`'s scope change |
+| `docs/porting/PROGRESS.md` | **Current state — read first every session** |
+| `docs/porting/PORTING_GUIDE.md` | How the future Rust port should approach this codebase |
+| `docs/porting/OPEN_QUESTIONS.md` | Still-open, language-independent product decisions |
+| `docs/api/README.md` | API documentation conventions |
+| `docs/ui-mockups/` | Static visual specs + editor/reader chrome spec |
+| `rust/README.md` | What's archived from the Rust attempt, and why |
+| `docs/architecture/adr/` | 001 scope · ~~002 Rust depth~~ · 003 Postgres · ~~004 SPA~~ · ~~005 Go reference~~ · 007 gRPC east-west · 008 GCP + Terraform · 009 scope expansion · 010 cost-bounded cloud posture · **011 Go+TS MVP, Rust port later** |
 
 ---
 
@@ -186,32 +153,31 @@ says which repo it is in.
 
 | When | Run |
 |---|---|
-| After implementing a feature | `/project:simplify` |
-| Before merging any PR | `/project:review` |
-| Any auth / paste / op-authorization boundary touched | `/project:security-review` |
+| After implementing a feature | `/code-review` or `/project:simplify` (idiom + simplicity) |
+| Before merging any PR | `/code-review` |
+| Any auth / paste / op-authorization boundary touched | `/security-review` |
 
 ---
 
 ## Architecture Rules (summary)
 
-- **Feature-first slices, not layer-first directories** — `pages/`, `blocks/`, `tree/`, each owning `model.rs` + `repo.rs` + `api.rs` (+ `service.rs` **only** when logic exists). Never `application/usecases/<entity>/`
-- **gRPC internally, REST only at the gateway.** Every service binds two listeners: gRPC for traffic, HTTP for `/health` probes. The gateway is the sole translator
+- **Feature-first slices, not layer-first directories** — `pages/`, `blocks/`, `tree/`, each owning `model.go`/`.ts` + `repo.go` + `api.go` (+ `service.go` **only** when logic exists). Never `application/usecases/<entity>/`
+- **gRPC internally, REST only at the gateway** (deferred until a gateway exists in this repo's scope — direct HTTP is fine for the standalone services meanwhile)
 - **The UI never mutates the tree — every change is an `Op`** (RFC-002 §1)
 - **Every op is invertible**, designed in from the start, not discovered in the undo phase
 - **The op log is the source of truth**; block rows are a projection that replay must reproduce
 - **Every op passes `can_apply(op, actor)`** — one auditable authorization chokepoint
-- Every external dependency sits behind a **trait declared in the same file** as its impl
-- `crates/domain` has **zero** external dependencies — required for `wasm32`
+- Every external dependency sits behind a **small interface declared at its point of use** (Go) / a typed port (TS) — see `CLOUD_PORTABILITY.md`
 - One `config.yaml` per service; safe local defaults; secrets via env only
-- Integration tests hit real services via Testcontainers / `#[sqlx::test]` — **never mock infrastructure**
+- Integration tests hit real services via `testcontainers-go` — **never mock infrastructure**
 
-**Speed rules (over-abstraction is a review failure too):** one struct with stacked derives instead of Row→Domain→Dto chains · no trait abstracting another trait · no `service.rs` for CRUD · start a slice at two files and split on friction · duplicate on the second use, extract on the third.
+**Speed rules (over-abstraction is a review failure too):** one struct with stacked tags instead of Row→Domain→DTO chains · no interface abstracting another interface · no `service.go` for CRUD · start a slice at two files and split on friction · duplicate on the second use, extract on the third.
 
-**`unsafe` and concurrent code need `loom` + Miri + `cargo-fuzz`, not just tests.**
+**Concurrent/untrusted-input code needs `-race`, `goleak`, and native fuzzing, not just tests** (`.agents/agents.md`).
 
 ---
 
-## Out of Scope (ADR-001, narrowed by ADR-009)
+## Out of Scope
 
 **Still out — these need structural change, not just an ADR:**
 
@@ -221,9 +187,11 @@ The first is the hard one: `collab.ops.page_id` is `NOT NULL` and `collaboration
 owns exactly one page per instance, so cross-page aggregation has **no owner**. That is a
 second ownership tier, not a feature.
 
-**Now in scope (ADR-009):** RBAC/spaces · comments · reactions · notifications ·
-publishing/feeds/newsletter · analytics · WASM plugins · semantic search and the assistant
-· the full editor, fonts, reader modes, ⌘K.
+**Out for this repo specifically (`ADR-011`):** everything beyond Track 1 —
+RBAC/spaces, comments, reactions, notifications, publishing, plugins,
+semantic search/assistant, the full editor. These were "now in scope" under
+ADR-009 for the eventual full build; they come after the Rust port, in that
+future repo, not here.
 
 If a still-out item appears in a request, it needs an ADR first.
 
@@ -237,8 +205,4 @@ Before writing any code, check whether these need updating:
 2. `docs/api/` — endpoint added or modified?
 3. `docs/architecture/rfc/` — document model, op set, or analyzer set changed?
 4. `docs/architecture/adr/` — major architectural decision?
-
-5. `docs/learning/` — **phase added, split, renumbered, or cut?** A phase with no reading list is
-   a phase whose decisions get made by whoever is nearest.
-
-Full rules: `.agents/agents.md` § Continuous Documentation.
+5. `docs/porting/PROGRESS.md` — anything land, or any decision made? Log it.

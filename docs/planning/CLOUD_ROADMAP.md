@@ -1,5 +1,9 @@
 # Marginal — Cloud Deployment Roadmap
 
+**Deferred for this repo** — nothing here is exercised until a Track 1
+service is ready to deploy (ADR-011). The plan itself is unchanged and
+still applies conceptually to the Go services.
+
 **Google Cloud is the primary deployment target** (ADR-008). This document is
 how the eleven services get there, provisioned entirely as code.
 

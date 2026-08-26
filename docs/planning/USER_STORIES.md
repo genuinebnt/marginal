@@ -1,5 +1,8 @@
 # User Stories
 
+**This repo builds Track 1 only, in Go + TypeScript (ADR-011).** The stories below stay
+language-agnostic and apply the same way; Track 2+ stories describe the future full build.
+
 What Marginal does, told from the outside. `ROADMAP.md` says what to *build* and in what
 order; this says what someone can *do* once it is built, and what "done" means for each one.
 

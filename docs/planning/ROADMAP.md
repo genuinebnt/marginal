@@ -1,7 +1,9 @@
 # Marginal — Roadmap
 
 **Product:** a self-hosted collaborative knowledge platform (ADR-001, expanded by ADR-009)
-**Primary objective:** really good Rust learning (ADR-002)
+**Primary objective:** really good Rust learning (ADR-002) — **suspended for this repo; see ADR-011.**
+Only Track 1 (MVP) is in scope here, built in Go + TypeScript. Tracks 2–6 below
+describe the full original design and apply to the future Rust-port repo, not this one.
 
 ---
 

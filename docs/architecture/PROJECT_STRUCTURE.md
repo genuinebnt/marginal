@@ -3,6 +3,14 @@
 **Governing document.** Applies identically to every service.
 **Principle:** keep the dependency rules, drop the ceremony.
 
+**Go/TS translation (ADR-011):** every principle below is language-agnostic and
+governs the Go+TS build unchanged — read `crate`/`crates/` as `package`/`go/services/<name>/internal/`,
+`trait` as a small Go interface declared at its point of use (or a TS type),
+and `Cargo.toml` workspace membership as a `go.work` module. The extraction
+triggers in §5/§7 (duplicate on the second use, extract on the third; a
+wire-crossing type shares at two consumers) apply exactly as written, just
+against Go packages/TS modules instead of crates.
+
 ---
 
 ## 1. Why This Document Exists

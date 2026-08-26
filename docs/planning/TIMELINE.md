@@ -1,5 +1,8 @@
 # Marginal — Timeline
 
+**Superseded for this repo by ADR-011** — these estimates assumed Rust mentor-mode.
+Kept for historical reference; `docs/porting/PROGRESS.md` tracks actual current state.
+
 **Status:** Estimate. Not a commitment, not a schedule, and not a thing to feel behind.
 **Basis:** ~2 hours a day, ~12 effective hours a week.
 **Related:** `ROADMAP.md` (what gets built and why) · `ADR-002` (Rust depth is the objective)
