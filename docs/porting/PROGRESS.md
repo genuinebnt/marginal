@@ -354,6 +354,37 @@ no gateway exists); JWKS key-rotation tooling; the api-gateway/cookie/CSRF
 boundary. These remain real gaps for a production deployment, not silent
 ones — `docs/api/auth.md` §3 already named them before this review ran.
 
-**Next:** `collaboration-service` still has no business logic;
-document-service's delete-saga cascade and outbox are still open; per
-`ROADMAP.md`'s Track 1 order.
+---
+
+## 2026-08-26 — document-service's remaining Phase 1 pieces closed out
+
+**Delete now cascades to descendants** — one transaction, the same LTREE
+`path <@ ...` pattern `Reparent`'s descendant rewrite already uses, applied
+to `lifecycle_state` instead of `path`. Idempotent over an
+already-cascaded subtree; an unrelated sibling untouched.
+
+**The "outbox" item from the last entry was a scoping mistake, corrected
+here, not implemented:** re-reading `ARCHITECTURE.md` §5, the full delete
+saga coordinates with `search-service`, `diagnostics-service`, and
+`history-service` for a final hard-delete — **none of which exist in this
+repo** (`ADR-011` scopes this repo to `document-service`/`auth-service`/
+`collaboration-service` only). A saga can't coordinate with participants
+that don't exist, so it isn't attempted. `lifecycle_state` stays
+`'deleting'` forever in this repo — `docs/api/pages.md` now says this
+plainly instead of implying it's a pending TODO. This also means a
+generic outbox-publishing mechanism isn't needed yet either — there's
+currently nothing in this repo's scope for document-service to publish
+*to* (no other service subscribes to its events). It'll get built when
+`collaboration-service` actually needs to consume something from it, not
+before.
+
+Document-service's Phase 1 is now complete for this repo's scope: all six
+`PageService` RPCs, ownership enforcement, cascading delete.
+
+**Next:** `collaboration-service` has no business logic yet — the
+remaining major piece for the MVP finish line ("🏁 log in, write a page,
+edit live with someone"). Starting with its core data structures (a rope
+for the live document text, character-granular ops, anchors) as pure
+logic first, same order document-core was built in — persistence and the
+WebSocket/session layer come after that's solid. Per `ROADMAP.md`'s Track
+1 order.
