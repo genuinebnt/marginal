@@ -12,6 +12,12 @@ dist
 dist-ssr
 *.local
 
+# Built by services/document-service/scripts/build-wasm.sh — regenerate,
+# don't commit (Go build output + a vendored copy of the Go toolchain's
+# wasm_exec.js).
+public/documentcore.wasm
+public/wasm_exec.js
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

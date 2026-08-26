@@ -6,8 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:wasm": "../services/document-service/scripts/build-wasm.sh",
     "lint": "oxlint",
     "preview": "vite preview",
+    "pretest": "npm run build:wasm",
     "test": "vitest run"
   },
   "dependencies": {
@@ -19,7 +21,6 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.1.0",
-    "fast-check": "^4.9.0",
     "oxlint": "^1.79.0",
     "typescript": "~6.0.2",
     "vite": "^8.2.2",
