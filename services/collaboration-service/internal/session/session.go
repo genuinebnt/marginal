@@ -29,6 +29,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
@@ -149,10 +150,16 @@ type Snapshot struct {
 // the durability pipeline (internal/wal + internal/flush), and the set of
 // currently-connected subscribers to broadcast committed ops to. Every
 // method is safe for concurrent use — callers are separate client
-// connections — but internally serializes through one mutex, matching
-// ARCHITECTURE.md's "one document, one owner, at any time" doc-actor
-// model: a page's ops are applied in one serial order by one process,
-// never concurrently.
+// connections — and every one of them takes s.mu for its whole body, so
+// ARCHITECTURE.md's "one document, one owner, at any time" (a page's ops
+// are applied in one serial order, never concurrently) holds in the
+// sense that matters: no two ops interleave. The mechanism is a shared
+// mutex, though, not an owning actor/goroutine with exclusive access —
+// worth being precise about for a future Rust port specifically, since
+// the two map to genuinely different designs (Arc<Mutex<Session>> vs. an
+// actor task reached only through channels, no lock anywhere). Decide
+// which one the port targets before translating this type; don't infer
+// it from this comment's earlier, looser wording.
 type Session struct {
 	mu          sync.Mutex
 	pageID      uuid.UUID
@@ -165,18 +172,36 @@ type Session struct {
 	canApply    CanApplyFunc
 
 	subs      map[uint64]Subscriber
-	subActors map[uint64]uuid.UUID // which actor owns each subID, for presence join/leave bookkeeping
-	presence  map[uuid.UUID]int    // actor id -> number of currently-open connections (>1 means more than one tab)
+	subActors map[uint64]uuid.UUID      // which actor owns each subID, for presence join/leave bookkeeping
+	presence  map[uuid.UUID]int         // actor id -> number of currently-open connections (>1 means more than one tab)
 	cursors   map[uuid.UUID]CursorEvent // actor id -> their last-known cursor; absent means "not in a block right now"
 	nextSubID uint64
 
-	onFlushEnqueueError func(error)
+	// blockIndex mirrors page.Blocks' ordering (id -> its current slice
+	// index) so a character-op's syncBlockContent — the actual hot path,
+	// once per keystroke — doesn't have to linear-scan page.Blocks to find
+	// which one to update. Rebuilt wholesale on any structural (block-scope)
+	// op instead of maintained incrementally: those are comparatively rare
+	// (insert/delete/kind-change/move), so an O(n) rebuild there is the
+	// right place to pay for O(1) lookups on the much hotter text-op path.
+	blockIndex map[documentcore.BlockID]int
+
+	logger *slog.Logger
+}
+
+// rebuildBlockIndex must be called (with s.mu held) after any op that
+// changes page.Blocks' membership or order.
+func (s *Session) rebuildBlockIndex() {
+	s.blockIndex = make(map[documentcore.BlockID]int, len(s.page.Blocks))
+	for i, b := range s.page.Blocks {
+		s.blockIndex[b.ID] = i
+	}
 }
 
 // open replays confirmed ops from repo, reconciles any local WAL records
 // a crash left un-flushed, and starts a fresh WAL segment + flush loop —
 // see the package doc comment and Open's own steps below.
-func open(ctx context.Context, pageID uuid.UUID, repo opstore.Repo, walDir string, serverActor string, canApply CanApplyFunc, flushOpts []flush.Option) (*Session, error) {
+func open(ctx context.Context, pageID uuid.UUID, repo opstore.Repo, walDir string, serverActor string, canApply CanApplyFunc, flushOpts []flush.Option, logger *slog.Logger) (*Session, error) {
 	if canApply == nil {
 		canApply = allowAll
 	}
@@ -239,23 +264,39 @@ func open(ctx context.Context, pageID uuid.UUID, repo opstore.Repo, walDir strin
 	}
 
 	loop := flush.New(repo, flushOpts...)
-	loop.Start(ctx)
+	// Deliberately NOT ctx: ctx here is the request that happened to
+	// trigger this page's first open (an HTTP handler's context in
+	// wsapi), not this Session's own lifetime — Manager holds every
+	// Session open indefinitely (this package's own doc comment), so
+	// binding the flush loop to that first caller's context meant the
+	// loop silently died the moment that specific client disconnected,
+	// while the Session itself lived on and kept accepting edits that
+	// then never reached Postgres. The loop's actual lifetime is
+	// Session.Close (which calls flush.Loop.Stop) — background.Context
+	// here just means "not cancelled by anything else."
+	loop.Start(context.Background())
 
-	return &Session{
-		pageID:              pageID,
-		serverActor:         serverActor,
-		page:                page,
-		blocks:              blocks,
-		clock:               clock,
-		wal:                 w,
-		flush:               loop,
-		canApply:            canApply,
-		subs:                make(map[uint64]Subscriber),
-		subActors:           make(map[uint64]uuid.UUID),
-		presence:            make(map[uuid.UUID]int),
-		cursors:             make(map[uuid.UUID]CursorEvent),
-		onFlushEnqueueError: func(error) {},
-	}, nil
+	if logger == nil {
+		logger = slog.Default()
+	}
+
+	s := &Session{
+		pageID:      pageID,
+		serverActor: serverActor,
+		page:        page,
+		blocks:      blocks,
+		clock:       clock,
+		wal:         w,
+		flush:       loop,
+		canApply:    canApply,
+		subs:        make(map[uint64]Subscriber),
+		subActors:   make(map[uint64]uuid.UUID),
+		presence:    make(map[uuid.UUID]int),
+		cursors:     make(map[uuid.UUID]CursorEvent),
+		logger:      logger,
+	}
+	s.rebuildBlockIndex()
+	return s, nil
 }
 
 // applyReplayedOp is the shared step open() runs for every op it replays,
@@ -281,18 +322,24 @@ func applyReplayedOp(page *documentcore.Page, blocks map[documentcore.BlockID]*d
 	}
 }
 
-// applyBlockOp applies a structural op to page, then keeps blocks (the
-// per-block live ropes) consistent with it: InsertBlock seeds a fresh rope
-// from the inserted block's initial content, DeleteBlock discards its
-// rope, and SetBlockContent reseeds the rope wholesale (a deliberate
-// last-write-wins replace — the same semantics the op itself already
-// carries, since it can only apply if Prev matches, RFC-002 §2). Every
-// other variant (SetBlockKind, SetTitle, MoveBlock) doesn't touch any
-// block's text at all.
+// applyBlockOp keeps blocks (the per-block live ropes) consistent with a
+// structural op: InsertBlock seeds a fresh rope from the inserted block's
+// initial content, DeleteBlock discards its rope, and SetBlockContent
+// reseeds the rope wholesale (a deliberate last-write-wins replace — the
+// same semantics the op itself already carries, since it can only apply
+// if Prev matches, RFC-002 §2). Every other variant (SetBlockKind,
+// SetTitle, MoveBlock) doesn't touch any block's text at all.
+//
+// Any new rope is built BEFORE page.Apply, not after: an earlier version
+// applied to page first and seeded blocks second, so a seeding failure
+// (InsertAt rejecting the initial content) returned an error while
+// leaving page.Blocks and blocks disagreeing about whether the block
+// existed at all — Session.Snapshot indexes by page.Blocks and
+// unconditionally dereferences the matching *doctext.Text, so that gap
+// was a nil-pointer panic waiting for the next client to connect, not
+// just a returned error the caller could recover from.
 func applyBlockOp(page *documentcore.Page, blocks map[documentcore.BlockID]*doctext.Text, serverActor string, op documentcore.Op) error {
-	if err := page.Apply(op); err != nil {
-		return err
-	}
+	var seeded *doctext.Text
 	switch op := op.(type) {
 	case documentcore.InsertBlock:
 		text := doctext.New(serverActor)
@@ -301,9 +348,7 @@ func applyBlockOp(page *documentcore.Page, blocks map[documentcore.BlockID]*doct
 				return fmt.Errorf("seeding new block's live text: %w", err)
 			}
 		}
-		blocks[op.ID] = text
-	case documentcore.DeleteBlock:
-		delete(blocks, op.Tombstone.ID)
+		seeded = text
 	case documentcore.SetBlockContent:
 		text := doctext.New(serverActor)
 		if op.Content.Text != "" {
@@ -311,7 +356,20 @@ func applyBlockOp(page *documentcore.Page, blocks map[documentcore.BlockID]*doct
 				return fmt.Errorf("reseeding block's live text: %w", err)
 			}
 		}
-		blocks[op.Block] = text
+		seeded = text
+	}
+
+	if err := page.Apply(op); err != nil {
+		return err
+	}
+
+	switch op := op.(type) {
+	case documentcore.InsertBlock:
+		blocks[op.ID] = seeded
+	case documentcore.DeleteBlock:
+		delete(blocks, op.Tombstone.ID)
+	case documentcore.SetBlockContent:
+		blocks[op.Block] = seeded
 	}
 	return nil
 }
@@ -320,13 +378,24 @@ func applyBlockOp(page *documentcore.Page, blocks map[documentcore.BlockID]*doct
 // page's own Content.Text after a character-granular edit — needed so a
 // later SetBlockContent's Prev precondition (documentcore.Page.Apply)
 // still matches current state, since Page.Blocks never changes on its own
-// as a block's rope is edited.
+// as a block's rope is edited. A linear scan — fine for applyReplayedOp's
+// one-time-at-startup use (open() replaying confirmed/WAL ops before any
+// Session, and therefore any blockIndex, exists yet); ApplyClientOp's own
+// per-keystroke hot path uses Session.syncBlockContentFast instead.
 func syncBlockContent(page *documentcore.Page, blockID documentcore.BlockID, text *doctext.Text) {
 	for i := range page.Blocks {
 		if page.Blocks[i].ID == blockID {
 			page.Blocks[i].Content.Text = text.String()
 			return
 		}
+	}
+}
+
+// syncBlockContentFast is syncBlockContent via s.blockIndex — O(1) instead
+// of a scan over every block, on the path a keystroke actually takes.
+func (s *Session) syncBlockContentFast(blockID documentcore.BlockID, text *doctext.Text) {
+	if i, ok := s.blockIndex[blockID]; ok {
+		s.page.Blocks[i].Content.Text = text.String()
 	}
 }
 
@@ -342,8 +411,8 @@ func syncBlockContent(page *documentcore.Page, blockID documentcore.BlockID, tex
 // full and ctx expires waiting) does not fail the op: the op is already
 // durable (WAL) and already visible to every other client (broadcast) by
 // that point, matching ARCHITECTURE.md's ack-at-WAL-sync design. It's
-// reported via onFlushEnqueueError instead, since the Postgres flush is a
-// background durability concern once the client-visible steps are done.
+// logged instead, since the Postgres flush is a background durability
+// concern once the client-visible steps are done.
 func (s *Session) ApplyClientOp(ctx context.Context, actorID uuid.UUID, actorKind oplog.ActorKind, op pageop.Op, senderSubID uint64) (CommitResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -364,6 +433,7 @@ func (s *Session) ApplyClientOp(ctx context.Context, actorID uuid.UUID, actorKin
 		if err := applyBlockOp(&s.page, s.blocks, s.serverActor, o.Op); err != nil {
 			return CommitResult{}, fmt.Errorf("session: apply: %w", err)
 		}
+		s.rebuildBlockIndex()
 	case pageop.Text:
 		text, ok := s.blocks[o.BlockID]
 		if !ok {
@@ -372,7 +442,7 @@ func (s *Session) ApplyClientOp(ctx context.Context, actorID uuid.UUID, actorKin
 		if _, err := ops.Apply(text, o.Op); err != nil {
 			return CommitResult{}, fmt.Errorf("session: apply: %w", err)
 		}
-		syncBlockContent(&s.page, o.BlockID, text)
+		s.syncBlockContentFast(o.BlockID, text)
 		boundaries = text.Boundaries()
 	default:
 		return CommitResult{}, fmt.Errorf("session: apply: unknown op type %T", op)
@@ -402,33 +472,74 @@ func (s *Session) ApplyClientOp(ctx context.Context, actorID uuid.UUID, actorKin
 	}
 
 	if err := s.flush.Enqueue(ctx, l); err != nil {
-		s.onFlushEnqueueError(fmt.Errorf("session: enqueue for flush: %w", err))
+		s.logger.Error("session: enqueue for flush failed", "page_id", s.pageID, "op_id", l.ID, "err", err)
 	}
 
 	return result, nil
 }
 
+// Subscription is the handle Subscribe returns: an id (what the caller
+// passes as senderSubID on its own submissions, so ApplyClientOp/SetCursor
+// can exclude the connection that sent them from its own broadcast), the
+// state needed to seed a joining client's initial view, and a Close
+// method to unsubscribe. A real handle type instead of Subscribe's
+// earlier four positional returns (one of them a closure capturing the
+// Session, id, and actorID) — the same shape a Rust port would want as a
+// guard type, not four loose values a caller has to keep straight.
+type Subscription struct {
+	ID uint64
+	// Present is every distinct actor already here at the moment of
+	// joining (before actorID's own join is counted).
+	Present []uuid.UUID
+	// Cursors is Present's own last-known cursor positions (only for
+	// those who currently have one set).
+	Cursors []CursorEvent
+	// Snapshot is the page's own state as of the exact same instant
+	// Present/Cursors were read — taken under the same lock acquisition
+	// as the rest of Subscribe, not a second, separate Session.Snapshot()
+	// call. Calling Snapshot() separately after Subscribe returned had a
+	// real race: another actor's op could commit and broadcast in the
+	// gap between the two lock acquisitions, since the new subscriber was
+	// already registered to receive it — the broadcast landed AND the
+	// following Snapshot() already reflected it, so the client applied
+	// that one op twice.
+	Snapshot Snapshot
+
+	session *Session
+	actorID uuid.UUID
+}
+
+// Close unsubscribes and, if this was actorID's last open connection,
+// broadcasts that they left and clears their cursor (a gone actor's stale
+// caret must not linger for everyone still here).
+func (sub *Subscription) Close() {
+	s := sub.session
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.subs, sub.ID)
+	delete(s.subActors, sub.ID)
+	s.presence[sub.actorID]--
+	if s.presence[sub.actorID] <= 0 {
+		delete(s.presence, sub.actorID)
+		delete(s.cursors, sub.actorID)
+		s.broadcastPresenceLocked(PresenceEvent{ActorID: sub.actorID, Joined: false}, sub.ID)
+		s.broadcastCursorLocked(CursorEvent{ActorID: sub.actorID, BlockID: nil}, sub.ID)
+	}
+}
+
 // Subscribe registers sub, owned by actorID, to receive every future op
 // this Session commits (except ones it submits itself via its own subID —
 // see ApplyClientOp), every other actor's presence changes, and every
-// other actor's cursor moves. The returned id is what the caller passes
-// as senderSubID on its own submissions; unsubscribe removes sub and, if
-// this was actorID's last open connection, broadcasts that they left and
-// clears their cursor (a gone actor's stale caret must not linger for
-// everyone still here). present is every distinct actor already here at
-// the moment of joining (before actorID's own join is counted); cursors
-// is present's own last-known cursor positions (only for those who
-// currently have one set) — together, what the caller needs to seed its
-// initial "who's here, and where" view without waiting for a future move.
-func (s *Session) Subscribe(actorID uuid.UUID, sub Subscriber) (subID uint64, present []uuid.UUID, cursors []CursorEvent, unsubscribe func()) {
+// other actor's cursor moves.
+func (s *Session) Subscribe(actorID uuid.UUID, sub Subscriber) *Subscription {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	present = make([]uuid.UUID, 0, len(s.presence))
+	present := make([]uuid.UUID, 0, len(s.presence))
 	for a := range s.presence {
 		present = append(present, a)
 	}
-	cursors = make([]CursorEvent, 0, len(s.cursors))
+	cursors := make([]CursorEvent, 0, len(s.cursors))
 	for _, c := range s.cursors {
 		cursors = append(cursors, c)
 	}
@@ -444,18 +555,13 @@ func (s *Session) Subscribe(actorID uuid.UUID, sub Subscriber) (subID uint64, pr
 		s.broadcastPresenceLocked(PresenceEvent{ActorID: actorID, Joined: true}, id)
 	}
 
-	return id, present, cursors, func() {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		delete(s.subs, id)
-		delete(s.subActors, id)
-		s.presence[actorID]--
-		if s.presence[actorID] <= 0 {
-			delete(s.presence, actorID)
-			delete(s.cursors, actorID)
-			s.broadcastPresenceLocked(PresenceEvent{ActorID: actorID, Joined: false}, id)
-			s.broadcastCursorLocked(CursorEvent{ActorID: actorID, BlockID: nil}, id)
-		}
+	return &Subscription{
+		ID:       id,
+		Present:  present,
+		Cursors:  cursors,
+		Snapshot: s.snapshotLocked(),
+		session:  s,
+		actorID:  actorID,
 	}
 }
 
@@ -500,18 +606,34 @@ func (s *Session) broadcastCursorLocked(e CursorEvent, exceptSubID uint64) {
 }
 
 // Snapshot is the whole page's current live state — title, ordered
-// blocks, and each block's live text plus boundary anchors. wsapi's
-// connection handler calls this once, for the initial "snapshot" frame,
-// so a client connecting to an already non-empty page can render it and
-// build valid Text ops immediately instead of only after its own first
-// edit (docs/api/collaboration.md).
+// blocks, and each block's live text plus boundary anchors. Use
+// Subscribe's own Snapshot field when connecting for the first time (the
+// same state, taken atomically with registering as a subscriber); this
+// method is for anything that needs a fresh read later, mid-connection.
 func (s *Session) Snapshot() Snapshot {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.snapshotLocked()
+}
 
+// snapshotLocked is Snapshot's body, callable by anything that already
+// holds s.mu (Subscribe, so its own Snapshot field reflects the exact
+// same instant as Present/Cursors, not a second, separately-locked read
+// that could race a commit landing in between).
+func (s *Session) snapshotLocked() Snapshot {
 	blocks := make([]BlockSnapshot, len(s.page.Blocks))
 	for i, b := range s.page.Blocks {
+		// text == nil should be unreachable now that applyBlockOp seeds a
+		// block's rope before, not after, admitting it into page.Blocks —
+		// kept as a defence-in-depth guard against that invariant
+		// (spanning two separate data structures) breaking again, rather
+		// than a nil-pointer panic taking down whichever connection asked
+		// for a snapshot.
 		text := s.blocks[b.ID]
+		if text == nil {
+			blocks[i] = BlockSnapshot{ID: b.ID, Kind: b.Kind, Marks: b.Content.Marks}
+			continue
+		}
 		blocks[i] = BlockSnapshot{
 			ID:         b.ID,
 			Kind:       b.Kind,

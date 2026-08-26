@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
 
 	"github.com/google/uuid"
@@ -25,6 +26,7 @@ type Manager struct {
 	serverActor string
 	canApply    CanApplyFunc
 	flushOpts   []flush.Option
+	logger      *slog.Logger
 }
 
 type ManagerOption func(*Manager)
@@ -33,6 +35,11 @@ func WithCanApply(f CanApplyFunc) ManagerOption { return func(m *Manager) { m.ca
 func WithFlushOptions(opts ...flush.Option) ManagerOption {
 	return func(m *Manager) { m.flushOpts = opts }
 }
+
+// WithLogger sets where a Session logs background failures it can't
+// surface to any caller (a flush-enqueue failing, say) — defaults to
+// slog.Default() if never set.
+func WithLogger(l *slog.Logger) ManagerOption { return func(m *Manager) { m.logger = l } }
 
 // NewManager. serverActor is this collaboration-service instance's own
 // identity for Lamport ItemIDs (doctext.New) — not an editing user;
@@ -66,7 +73,7 @@ func (m *Manager) Get(ctx context.Context, pageID uuid.UUID) (*Session, error) {
 	if s, ok := m.sessions[pageID]; ok {
 		return s, nil
 	}
-	s, err := open(ctx, pageID, m.repo, m.walDir, m.serverActor, m.canApply, m.flushOpts)
+	s, err := open(ctx, pageID, m.repo, m.walDir, m.serverActor, m.canApply, m.flushOpts, m.logger)
 	if err != nil {
 		return nil, fmt.Errorf("session: manager: opening %s: %w", pageID, err)
 	}

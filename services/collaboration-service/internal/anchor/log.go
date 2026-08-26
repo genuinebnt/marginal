@@ -1,6 +1,9 @@
 package anchor
 
-import "errors"
+import (
+	"errors"
+	"slices"
+)
 
 var ErrOutOfBounds = errors.New("anchor: offset out of bounds")
 
@@ -17,15 +20,21 @@ type item struct {
 // ItemID at now" — the rope holds the content, Log holds the identities;
 // see the package doc comment on why they're separate structures.
 //
-// This is a correctness-first version: every operation is O(n) in the
-// number of items the Log has ever seen (a full index rebuild on each
-// mutation). Deliberate, per .agents/agents.md §2 ("ship minimal, refactor
-// on friction") — a page's text is not expected to reach a size where
-// this matters for a demo, and the fix when it does is well-known and
-// localized: replace the linear liveCountBefore scan with an
-// order-statistics structure (a Fenwick/BIT tree over "is this item
-// live", giving O(log n) rank queries) without changing Log's exported
-// API at all. Optimize only after that's actually measured, not before.
+// This is a correctness-first version: every operation is still O(n) in
+// the number of items the Log has ever seen (liveCountBefore/LiveLen/
+// ItemAt/sliceIndexForLiveOffset are all linear scans). Deliberate, per
+// .agents/agents.md §2 ("ship minimal, refactor on friction") — a page's
+// text is not expected to reach a size where this matters for a demo, and
+// the fix when it does is well-known and localized: replace the linear
+// liveCountBefore scan with an order-statistics structure (a Fenwick/BIT
+// tree over "is this item live", giving O(log n) rank queries) without
+// changing Log's exported API at all. Optimize only after that's
+// actually measured, not before. index itself no longer rebuilds wholesale
+// on every InsertAt (reindexFrom updates only the shifted suffix) — a
+// narrower fix than the O(n) scans above, done because throwing away and
+// rebuilding an entire map that's almost entirely still correct crossed
+// from "simple" into "wasteful for no simplicity gained," not because the
+// broader O(n) design above was reconsidered.
 type Log struct {
 	items []item
 	index map[ItemID]int // id -> current slice index; rebuilt on mutation
@@ -64,13 +73,8 @@ func (l *Log) InsertAt(pos int, ids []ItemID) error {
 		inserted[i] = item{id: id}
 	}
 
-	merged := make([]item, 0, len(l.items)+len(inserted))
-	merged = append(merged, l.items[:sliceIdx]...)
-	merged = append(merged, inserted...)
-	merged = append(merged, l.items[sliceIdx:]...)
-	l.items = merged
-
-	l.reindex()
+	l.items = slices.Insert(l.items, sliceIdx, inserted...)
+	l.reindexFrom(sliceIdx)
 	return nil
 }
 
@@ -80,6 +84,15 @@ func (l *Log) InsertAt(pos int, ids []ItemID) error {
 // resolving to Unknown.
 func (l *Log) Tombstone(start, end int) error {
 	if start > end {
+		return ErrOutOfBounds
+	}
+	if end > l.LiveLen() {
+		// Checked up front, before anything is mutated — an earlier
+		// version discovered an out-of-range end only after already
+		// tombstoning every live item from start to the end of the
+		// slice, and returned that error with the Log left partially
+		// mutated: a method that fails should leave its receiver
+		// exactly as it found it, not sometimes.
 		return ErrOutOfBounds
 	}
 	sliceIdx, err := l.sliceIndexForLiveOffset(start)
@@ -93,9 +106,6 @@ func (l *Log) Tombstone(start, end int) error {
 			l.items[i].tombstoned = true
 			remaining--
 		}
-	}
-	if remaining > 0 {
-		return ErrOutOfBounds
 	}
 	return nil
 }
@@ -182,9 +192,13 @@ func (l *Log) liveCountBefore(idx int) int {
 	return n
 }
 
-func (l *Log) reindex() {
-	l.index = make(map[ItemID]int, len(l.items))
-	for i, it := range l.items {
-		l.index[it.id] = i
+// reindexFrom updates l.index for every item from slice index start
+// onward — everything before start kept its index, since InsertAt (the
+// only caller) only ever grows the slice at or after start. Replaces an
+// earlier full l.index = make(...) + rebuild-every-entry on every single
+// insert, which threw away a map that was almost entirely still correct.
+func (l *Log) reindexFrom(start int) {
+	for i := start; i < len(l.items); i++ {
+		l.index[l.items[i].id] = i
 	}
 }

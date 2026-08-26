@@ -53,11 +53,12 @@ var ErrStopped = errors.New("flush: loop is stopped")
 // Loop drains LoggedOps into opstore.Repo.AppendBatch in batches, bounded
 // by either count (BatchSize) or time (Interval), whichever comes first.
 type Loop struct {
-	repo    opstore.Repo
-	pending chan oplog.LoggedOp
-	stopped chan struct{}
-	cancel  context.CancelFunc
-	wg      sync.WaitGroup
+	repo     opstore.Repo
+	pending  chan oplog.LoggedOp
+	stopped  chan struct{}
+	cancel   context.CancelFunc
+	stopOnce sync.Once
+	wg       sync.WaitGroup
 
 	batchSize   int
 	interval    time.Duration
@@ -82,6 +83,7 @@ func New(repo opstore.Repo, opts ...Option) *Loop {
 		repo:        repo,
 		pending:     make(chan oplog.LoggedOp, DefaultQueueSize),
 		stopped:     make(chan struct{}),
+		cancel:      func() {}, // safe no-op if Stop is ever called before Start
 		batchSize:   DefaultBatchSize,
 		interval:    DefaultInterval,
 		maxAttempts: DefaultMaxAttempts,
@@ -134,11 +136,16 @@ func (l *Loop) Enqueue(ctx context.Context, op oplog.LoggedOp) error {
 // Stop rejects further Enqueue calls, flushes every op already buffered
 // (using a background context — a shutdown flush must not be aborted by
 // the same ctx that's shutting everything down), and blocks until the
-// drain goroutine has exited.
+// drain goroutine has exited. Idempotent — safe to call more than once,
+// or on a Loop that was never Start-ed (New sets a no-op l.cancel for
+// exactly that case) — a second call, or one racing the first from a
+// different goroutine, no longer panics on an already-closed l.stopped.
 func (l *Loop) Stop() {
-	close(l.stopped)
-	l.cancel()
-	l.wg.Wait()
+	l.stopOnce.Do(func() {
+		close(l.stopped)
+		l.cancel()
+		l.wg.Wait()
+	})
 }
 
 func (l *Loop) run(ctx context.Context) {
@@ -147,7 +154,7 @@ func (l *Loop) run(ctx context.Context) {
 	defer ticker.Stop()
 
 	var batch []oplog.LoggedOp
-	flush := func() {
+	flushBatch := func() {
 		if len(batch) == 0 {
 			return
 		}
@@ -162,32 +169,38 @@ func (l *Loop) run(ctx context.Context) {
 		case op := <-l.pending:
 			batch = append(batch, op)
 			if len(batch) >= l.batchSize {
-				flush()
+				flushBatch()
 			}
 		case <-ticker.C:
-			flush()
+			flushBatch()
 		case <-ctx.Done():
-			l.drainNonBlocking(&batch, flush)
-			flush()
+			batch = append(batch, l.drainRemaining()...)
+			flushBatch()
 			return
 		}
 	}
 }
 
-// drainNonBlocking sweeps whatever is already sitting in the channel
+// drainRemaining collects whatever is already sitting in the channel
 // buffer without waiting for more to arrive — Stop must not hang waiting
 // for a producer that has already been told (via l.stopped) to stop
-// sending.
-func (l *Loop) drainNonBlocking(batch *[]oplog.LoggedOp, flush func()) {
+// sending. Returns a fresh slice rather than mutating run's own `batch`
+// through a pointer parameter: run's batch is already reached through
+// flushBatch's closure capture, and reaching it a second way here too
+// meant one mutable value aliased through both a closure and a pointer —
+// exactly the shape a Rust port's borrow checker would refuse outright,
+// worth not writing in the Go this is ported from either. The shutdown
+// drain no longer respects batchSize mid-sweep (everything collected here
+// flushes as one final batch) — a deliberate simplification: batchSize
+// exists to bound steady-state latency, not shutdown correctness.
+func (l *Loop) drainRemaining() []oplog.LoggedOp {
+	var extra []oplog.LoggedOp
 	for {
 		select {
 		case op := <-l.pending:
-			*batch = append(*batch, op)
-			if len(*batch) >= l.batchSize {
-				flush()
-			}
+			extra = append(extra, op)
 		default:
-			return
+			return extra
 		}
 	}
 }
@@ -202,7 +215,11 @@ func (l *Loop) flushWithRetry(ctx context.Context, batch []oplog.LoggedOp) error
 		}
 		lastErr = err
 		if attempt < l.maxAttempts {
-			time.Sleep(backoff)
+			select {
+			case <-ctx.Done():
+				return fmt.Errorf("flush: batch of %d abandoned after %d attempts: %w", len(batch), attempt, ctx.Err())
+			case <-time.After(backoff):
+			}
 			backoff *= 2
 		}
 	}

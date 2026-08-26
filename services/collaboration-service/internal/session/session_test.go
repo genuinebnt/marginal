@@ -31,7 +31,7 @@ func noAutoFlush() []flush.Option {
 
 func openTestSession(t *testing.T, repo *fakeRepo, pageID uuid.UUID) *Session {
 	t.Helper()
-	s, err := open(context.Background(), pageID, repo, t.TempDir(), "server-actor", nil, noAutoFlush())
+	s, err := open(context.Background(), pageID, repo, t.TempDir(), "server-actor", nil, noAutoFlush(), nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = s.Close() })
 	return s
@@ -131,15 +131,15 @@ func TestBroadcastExcludesTheSubmittingSubscriber(t *testing.T) {
 	blockID := insertBlock(t, s, actor, "")
 
 	subARec := &recordingSubscriber{}
-	subAID, _, _, unsubA := s.Subscribe(uuid.Must(uuid.NewV7()), subARec)
-	defer unsubA()
+	subA := s.Subscribe(uuid.Must(uuid.NewV7()), subARec)
+	defer subA.Close()
 
 	subBRec := &recordingSubscriber{}
-	_, _, _, unsubB := s.Subscribe(uuid.Must(uuid.NewV7()), subBRec)
-	defer unsubB()
+	subB := s.Subscribe(uuid.Must(uuid.NewV7()), subBRec)
+	defer subB.Close()
 
 	result, err := s.ApplyClientOp(context.Background(), actor, oplog.ActorUser,
-		pageop.Text{BlockID: blockID, Op: ops.InsertText{At: nil, Text: "hi"}}, subAID)
+		pageop.Text{BlockID: blockID, Op: ops.InsertText{At: nil, Text: "hi"}}, subA.ID)
 	require.NoError(t, err)
 
 	assert.Empty(t, subARec.snapshot(), "the submitting subscriber must not also receive its own op via Deliver")
@@ -154,8 +154,8 @@ func TestUnsubscribeStopsFurtherDelivery(t *testing.T) {
 	blockID := insertBlock(t, s, actor, "")
 
 	rec := &recordingSubscriber{}
-	_, _, _, unsub := s.Subscribe(uuid.Must(uuid.NewV7()), rec)
-	unsub()
+	sub := s.Subscribe(uuid.Must(uuid.NewV7()), rec)
+	sub.Close()
 
 	_, err := s.ApplyClientOp(context.Background(), actor, oplog.ActorUser,
 		pageop.Text{BlockID: blockID, Op: ops.InsertText{At: nil, Text: "hi"}}, 999)
@@ -168,7 +168,7 @@ func TestCanApplyDeniesWithoutMutatingState(t *testing.T) {
 	pageID := uuid.Must(uuid.NewV7())
 	deny := func(pageop.Op, uuid.UUID, oplog.ActorKind) bool { return false }
 
-	s, err := open(context.Background(), pageID, repo, t.TempDir(), "server-actor", deny, noAutoFlush())
+	s, err := open(context.Background(), pageID, repo, t.TempDir(), "server-actor", deny, noAutoFlush(), nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = s.Close() })
 
@@ -192,7 +192,7 @@ func TestOpenRecoversUnflushedWALOps(t *testing.T) {
 	actor := uuid.Must(uuid.NewV7())
 	dir := t.TempDir()
 
-	first, err := open(context.Background(), pageID, repo, dir, "server-actor", nil, noAutoFlush())
+	first, err := open(context.Background(), pageID, repo, dir, "server-actor", nil, noAutoFlush(), nil)
 	require.NoError(t, err)
 
 	blockID := insertBlock(t, first, actor, "")
@@ -213,7 +213,7 @@ func TestOpenRecoversUnflushedWALOps(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, got, "precondition: nothing flushed to the repo yet")
 
-	second, err := open(context.Background(), pageID, repo, dir, "server-actor", nil, noAutoFlush())
+	second, err := open(context.Background(), pageID, repo, dir, "server-actor", nil, noAutoFlush(), nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = second.Close() })
 	t.Cleanup(func() { first.flush.Stop() }) // appease goleak; assertions are already done
@@ -232,7 +232,7 @@ func TestOpenDoesNotDoubleApplyAlreadyConfirmedOps(t *testing.T) {
 	dir := t.TempDir()
 
 	first, err := open(context.Background(), pageID, repo, dir, "server-actor", nil,
-		[]flush.Option{flush.WithBatchSize(1), flush.WithInterval(time.Hour)}) // batch size 1: flushes immediately
+		[]flush.Option{flush.WithBatchSize(1), flush.WithInterval(time.Hour)}, nil) // batch size 1: flushes immediately
 	require.NoError(t, err)
 
 	blockID := documentcore.BlockID(uuid.Must(uuid.NewV7()))
@@ -247,7 +247,7 @@ func TestOpenDoesNotDoubleApplyAlreadyConfirmedOps(t *testing.T) {
 
 	require.NoError(t, first.Close()) // orderly close: flush loop drains (nothing left to drain)
 
-	second, err := open(context.Background(), pageID, repo, dir, "server-actor", nil, noAutoFlush())
+	second, err := open(context.Background(), pageID, repo, dir, "server-actor", nil, noAutoFlush(), nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = second.Close() })
 
@@ -264,14 +264,14 @@ func TestSubscribeReportsAlreadyPresentActorsAndBroadcastsJoinLeave(t *testing.T
 	actorB := uuid.Must(uuid.NewV7())
 
 	recA := &recordingSubscriber{}
-	_, presentForA, _, unsubA := s.Subscribe(actorA, recA)
-	defer unsubA()
-	assert.Empty(t, presentForA, "the first subscriber has nobody already present")
+	subA := s.Subscribe(actorA, recA)
+	defer subA.Close()
+	assert.Empty(t, subA.Present, "the first subscriber has nobody already present")
 
 	recB := &recordingSubscriber{}
-	_, presentForB, _, unsubB := s.Subscribe(actorB, recB)
-	require.Len(t, presentForB, 1, "B's own join must report A, who was already here")
-	assert.Equal(t, actorA, presentForB[0])
+	subB := s.Subscribe(actorB, recB)
+	require.Len(t, subB.Present, 1, "B's own join must report A, who was already here")
+	assert.Equal(t, actorA, subB.Present[0])
 
 	joinEvents := recA.presenceSnapshot()
 	require.Len(t, joinEvents, 1, "A must be told about B's join")
@@ -279,7 +279,7 @@ func TestSubscribeReportsAlreadyPresentActorsAndBroadcastsJoinLeave(t *testing.T
 	assert.True(t, joinEvents[0].Joined)
 	assert.Empty(t, recB.presenceSnapshot(), "B must not be told about its own join")
 
-	unsubB()
+	subB.Close()
 	leaveEvents := recA.presenceSnapshot()
 	require.Len(t, leaveEvents, 2)
 	assert.Equal(t, actorB, leaveEvents[1].ActorID)
@@ -292,21 +292,21 @@ func TestSubscribeIgnoresASecondConnectionFromTheSameActor(t *testing.T) {
 	observer := uuid.Must(uuid.NewV7())
 
 	obsRec := &recordingSubscriber{}
-	_, _, _, unsubObs := s.Subscribe(observer, obsRec)
-	defer unsubObs()
+	subObs := s.Subscribe(observer, obsRec)
+	defer subObs.Close()
 
 	tab1Rec := &recordingSubscriber{}
-	_, _, _, unsubTab1 := s.Subscribe(actorA, tab1Rec)
+	subTab1 := s.Subscribe(actorA, tab1Rec)
 	require.Len(t, obsRec.presenceSnapshot(), 1, "the observer sees A's first connection join")
 
 	tab2Rec := &recordingSubscriber{}
-	_, _, _, unsubTab2 := s.Subscribe(actorA, tab2Rec)
+	subTab2 := s.Subscribe(actorA, tab2Rec)
 	assert.Len(t, obsRec.presenceSnapshot(), 1, "a second connection from an already-present actor must not re-announce a join")
 
-	unsubTab1()
+	subTab1.Close()
 	assert.Len(t, obsRec.presenceSnapshot(), 1, "actor A is still present via tab2 — no leave yet")
 
-	unsubTab2()
+	subTab2.Close()
 	events := obsRec.presenceSnapshot()
 	require.Len(t, events, 2, "only the LAST connection closing announces a leave")
 	assert.False(t, events[1].Joined)
@@ -319,14 +319,14 @@ func TestSetCursorBroadcastsAndSeedsLaterJoinersSnapshot(t *testing.T) {
 	blockID := documentcore.BlockID(uuid.Must(uuid.NewV7()))
 
 	recA := &recordingSubscriber{}
-	subA, _, _, unsubA := s.Subscribe(actorA, recA)
-	defer unsubA()
+	subA := s.Subscribe(actorA, recA)
+	defer subA.Close()
 
 	recB := &recordingSubscriber{}
-	_, _, _, unsubB := s.Subscribe(actorB, recB)
-	defer unsubB()
+	subB := s.Subscribe(actorB, recB)
+	defer subB.Close()
 
-	s.SetCursor(actorA, CursorEvent{BlockID: &blockID, Start: 3, End: 7}, subA)
+	s.SetCursor(actorA, CursorEvent{BlockID: &blockID, Start: 3, End: 7}, subA.ID)
 
 	bEvents := recB.cursorSnapshot()
 	require.Len(t, bEvents, 1, "B must be told about A's cursor move")
@@ -339,22 +339,22 @@ func TestSetCursorBroadcastsAndSeedsLaterJoinersSnapshot(t *testing.T) {
 
 	// A later joiner's Subscribe must be seeded with A's still-current cursor.
 	recC := &recordingSubscriber{}
-	_, _, cursorsForC, unsubC := s.Subscribe(uuid.Must(uuid.NewV7()), recC)
-	defer unsubC()
-	require.Len(t, cursorsForC, 1, "C's own join must be seeded with A's last-known cursor")
-	assert.Equal(t, actorA, cursorsForC[0].ActorID)
+	subC := s.Subscribe(uuid.Must(uuid.NewV7()), recC)
+	defer subC.Close()
+	require.Len(t, subC.Cursors, 1, "C's own join must be seeded with A's last-known cursor")
+	assert.Equal(t, actorA, subC.Cursors[0].ActorID)
 
 	// Clearing the cursor (blurring out of every block) removes it from
 	// the next joiner's seed and is itself broadcast.
-	s.SetCursor(actorA, CursorEvent{BlockID: nil}, subA)
+	s.SetCursor(actorA, CursorEvent{BlockID: nil}, subA.ID)
 	clearEvents := recB.cursorSnapshot()
 	require.Len(t, clearEvents, 2)
 	assert.Nil(t, clearEvents[1].BlockID)
 
 	recD := &recordingSubscriber{}
-	_, _, cursorsForD, unsubD := s.Subscribe(uuid.Must(uuid.NewV7()), recD)
-	defer unsubD()
-	assert.Empty(t, cursorsForD, "a cleared cursor must not linger for a later joiner")
+	subD := s.Subscribe(uuid.Must(uuid.NewV7()), recD)
+	defer subD.Close()
+	assert.Empty(t, subD.Cursors, "a cleared cursor must not linger for a later joiner")
 }
 
 func TestUnsubscribeClearsTheLeavingActorsCursor(t *testing.T) {
@@ -363,15 +363,15 @@ func TestUnsubscribeClearsTheLeavingActorsCursor(t *testing.T) {
 	blockID := documentcore.BlockID(uuid.Must(uuid.NewV7()))
 
 	recA := &recordingSubscriber{}
-	subA, _, _, unsubA := s.Subscribe(actorA, recA)
-	s.SetCursor(actorA, CursorEvent{BlockID: &blockID, Start: 0, End: 0}, subA)
+	subA := s.Subscribe(actorA, recA)
+	s.SetCursor(actorA, CursorEvent{BlockID: &blockID, Start: 0, End: 0}, subA.ID)
 
 	recB := &recordingSubscriber{}
-	_, _, cursorsForB, unsubB := s.Subscribe(uuid.Must(uuid.NewV7()), recB)
-	defer unsubB()
-	require.Len(t, cursorsForB, 1, "B joins while A's cursor is still live")
+	subB := s.Subscribe(uuid.Must(uuid.NewV7()), recB)
+	defer subB.Close()
+	require.Len(t, subB.Cursors, 1, "B joins while A's cursor is still live")
 
-	unsubA()
+	subA.Close()
 	leaveClears := recB.cursorSnapshot()
 	require.NotEmpty(t, leaveClears, "A leaving must clear their cursor for whoever's still here")
 	last := leaveClears[len(leaveClears)-1]
@@ -379,7 +379,7 @@ func TestUnsubscribeClearsTheLeavingActorsCursor(t *testing.T) {
 	assert.Nil(t, last.BlockID)
 
 	recC := &recordingSubscriber{}
-	_, _, cursorsForC, unsubC := s.Subscribe(uuid.Must(uuid.NewV7()), recC)
-	defer unsubC()
-	assert.Empty(t, cursorsForC, "a departed actor's stale cursor must not linger for a later joiner")
+	subC := s.Subscribe(uuid.Must(uuid.NewV7()), recC)
+	defer subC.Close()
+	assert.Empty(t, subC.Cursors, "a departed actor's stale cursor must not linger for a later joiner")
 }

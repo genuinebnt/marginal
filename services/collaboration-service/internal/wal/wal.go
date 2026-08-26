@@ -111,9 +111,14 @@ func (w *Writer) Close() error { return w.f.Close() }
 // complete, correctly-sized frame is different: that's corruption, not a
 // torn write, and IS reported.
 //
-// Recover returns the byte offset immediately after the last valid record
-// — where a Writer should truncate to (discarding a confirmed-torn tail)
-// before resuming appends, and everything replayed decoded cleanly.
+// Recover returns the byte offset immediately after the last valid
+// record, and everything replayed decoded cleanly. session.open is the
+// one caller: it reconciles any record recovered here against what's
+// already confirmed in Postgres, reflushes the difference, then deletes
+// this whole segment file outright and opens a fresh one — simpler than
+// truncating this file in place to validUpTo and resuming appends to it,
+// since a session only ever recovers a segment once, at open, not
+// repeatedly.
 func Recover(path string, fn func(record []byte) error) (validUpTo int64, err error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -185,20 +190,4 @@ func isTornBoundary(readErr error, n int) bool {
 		return true
 	}
 	return errors.Is(readErr, io.ErrUnexpectedEOF)
-}
-
-// Truncate cuts path back to validUpTo bytes — call after Recover to
-// discard a confirmed-torn tail before a fresh Writer resumes appending,
-// so the next Append lands immediately after the last valid record
-// instead of after garbage.
-func Truncate(path string, validUpTo int64) error {
-	f, err := os.OpenFile(path, os.O_WRONLY, 0o600)
-	if err != nil {
-		return fmt.Errorf("wal: opening %s to truncate: %w", path, err)
-	}
-	defer func() { _ = f.Close() }()
-	if err := f.Truncate(validUpTo); err != nil {
-		return fmt.Errorf("wal: truncating %s to %d: %w", path, validUpTo, err)
-	}
-	return nil
 }

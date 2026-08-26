@@ -17,6 +17,7 @@ package wsapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -28,7 +29,9 @@ import (
 	"marginal/documentcore"
 
 	"marginal/collaboration-service/internal/anchor"
+	"marginal/collaboration-service/internal/doctext"
 	"marginal/collaboration-service/internal/oplog"
+	"marginal/collaboration-service/internal/ops"
 	"marginal/collaboration-service/internal/pageop"
 	"marginal/collaboration-service/internal/session"
 )
@@ -163,8 +166,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sub := newConnSubscriber(cancel)
-	subID, present, cursors, unsubscribe := sess.Subscribe(actorID, sub)
-	defer unsubscribe()
+	subscription := sess.Subscribe(actorID, sub)
+	defer subscription.Close()
 
 	writeDone := make(chan struct{})
 	go func() {
@@ -173,18 +176,17 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		sub.writeLoop(ctx, conn)
 	}()
 
-	snapshot := sess.Snapshot()
-	presentIDs := make([]string, len(present))
-	for i, a := range present {
+	presentIDs := make([]string, len(subscription.Present))
+	for i, a := range subscription.Present {
 		presentIDs[i] = a.String()
 	}
-	cursorWires := make([]cursorWire, len(cursors))
-	for i, c := range cursors {
+	cursorWires := make([]cursorWire, len(subscription.Cursors))
+	for i, c := range subscription.Cursors {
 		cursorWires[i] = toCursorWire(c)
 	}
-	sub.enqueue(serverMessage{Type: "snapshot", Snapshot: &snapshot, Present: presentIDs, Cursors: cursorWires})
+	sub.enqueue(serverMessage{Type: "snapshot", Snapshot: &subscription.Snapshot, Present: presentIDs, Cursors: cursorWires})
 
-	readLoop(ctx, conn, sess, sub, actorID, actorKind, subID)
+	readLoop(ctx, conn, sess, sub, actorID, actorKind, subscription.ID)
 
 	cancel()
 	<-writeDone
@@ -245,7 +247,7 @@ func readLoop(ctx context.Context, conn *websocket.Conn, sess *session.Session, 
 
 			result, err := sess.ApplyClientOp(ctx, actorID, actorKind, op, subID)
 			if err != nil {
-				sub.enqueue(serverMessage{Type: "error", Message: err.Error()})
+				sub.enqueue(serverMessage{Type: "error", Message: clientSafeMessage(err)})
 				continue
 			}
 			sub.enqueue(serverMessage{Type: "ack", Op: &result.Op, Boundaries: result.Boundaries})
@@ -261,4 +263,40 @@ func readLoop(ctx context.Context, conn *websocket.Conn, sess *session.Session, 
 			sub.enqueue(serverMessage{Type: "error", Message: fmt.Sprintf("unknown message type %q", msg.Type)})
 		}
 	}
+}
+
+// clientSafeMessage decides what ApplyClientOp's error becomes on the
+// wire. An earlier version sent err.Error() verbatim for every failure —
+// fine for the recognized domain errors below (their messages are
+// already client-facing by design, naming a conflicting edit or a
+// missing block, nothing internal), but the same bare err.Error() also
+// covered *unrecognized* errors: a WAL Append failure, for instance,
+// wraps Go's own os package errors, which routinely embed the full
+// filesystem path being written to. Anything not on this allowlist gets
+// a generic message instead, with the real error only reaching the
+// server's own log — the same "known errors get a specific status,
+// everything else is INTERNAL with no detail" convention document-service's
+// api.go (toStatus) and auth-service's api.go already use for their own
+// gRPC/REST error boundaries; this is the WebSocket transport's
+// equivalent chokepoint.
+func clientSafeMessage(err error) string {
+	switch {
+	case errors.Is(err, session.ErrDenied),
+		errors.Is(err, session.ErrUnknownBlock),
+		errors.Is(err, ops.ErrUnknownAnchor),
+		errors.Is(err, anchor.ErrOutOfBounds),
+		errors.Is(err, doctext.ErrOutOfBounds),
+		errors.Is(err, doctext.ErrInvertedRange):
+		return err.Error()
+	}
+	var blockNotFound *documentcore.BlockNotFoundError
+	var duplicateBlockID *documentcore.DuplicateBlockIDError
+	var positionMismatch *documentcore.PositionMismatchError
+	var precondition *documentcore.PreconditionError
+	if errors.As(err, &blockNotFound) || errors.As(err, &duplicateBlockID) ||
+		errors.As(err, &positionMismatch) || errors.As(err, &precondition) {
+		return err.Error()
+	}
+	slog.Error("wsapi: op rejected by an unrecognized error", "err", err)
+	return "internal error"
 }

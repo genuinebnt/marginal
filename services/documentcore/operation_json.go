@@ -40,21 +40,45 @@ func MarshalOp(op Op) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	fields, err := json.Marshal(op)
 	if err != nil {
 		return nil, err
 	}
-	var merged map[string]json.RawMessage
-	if err := json.Unmarshal(fields, &merged); err != nil {
-		return nil, err
-	}
-	typeJSON, err := json.Marshal(typeName)
+	return spliceStringField(fields, "type", typeName)
+}
+
+// spliceStringField adds one string-valued field to the front of an
+// already-marshaled JSON object, without decoding it — object is always
+// a JSON object here (every Op variant is a struct), so this is a byte
+// splice, not a decode-modify-reencode round trip through a
+// map[string]json.RawMessage. An earlier version did exactly that:
+// unmarshal into a map, add the field, marshal the whole map back out —
+// on the op-marshaling path the WAL, collab.ops, and every WebSocket
+// frame all go through, per op. Also changes nothing semantically: Go's
+// own encoding/json sorts map keys when marshaling one, so the old
+// version silently re-ordered every other field alphabetically as a
+// side effect of the round trip; encoding/json's Unmarshal never cared
+// about field order, so nothing downstream depended on that ordering
+// either way.
+func spliceStringField(object []byte, key, value string) ([]byte, error) {
+	valueJSON, err := json.Marshal(value)
 	if err != nil {
 		return nil, err
 	}
-	merged["type"] = typeJSON
-	return json.Marshal(merged)
+	keyJSON, err := json.Marshal(key)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]byte, 0, len(object)+len(keyJSON)+len(valueJSON)+2)
+	out = append(out, '{')
+	out = append(out, keyJSON...)
+	out = append(out, ':')
+	out = append(out, valueJSON...)
+	if len(object) > 2 { // object isn't just "{}" — it has fields of its own
+		out = append(out, ',')
+	}
+	out = append(out, object[1:]...) // object sans its own leading '{'
+	return out, nil
 }
 
 func UnmarshalOp(data []byte) (Op, error) {

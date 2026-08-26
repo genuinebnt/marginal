@@ -81,27 +81,6 @@ func TestRecoverResyncsPastATornTailRecord(t *testing.T) {
 	require.NoError(t, err, "a torn tail must not surface as an error")
 	assert.Equal(t, [][]byte{[]byte("complete-one"), []byte("complete-two")}, got)
 	assert.Equal(t, completeSize, validUpTo, "validUpTo must point right after the last complete record")
-
-	require.NoError(t, Truncate(path, validUpTo))
-	info, err = os.Stat(path)
-	require.NoError(t, err)
-	assert.Equal(t, completeSize, info.Size())
-
-	// A fresh Writer resuming after Truncate must produce a clean,
-	// fully-recoverable file — proves the torn tail is really gone, not
-	// just skipped over.
-	w2, err := OpenWriter(path)
-	require.NoError(t, err)
-	require.NoError(t, w2.Append([]byte("complete-three")))
-	require.NoError(t, w2.Close())
-
-	got = nil
-	_, err = Recover(path, func(record []byte) error {
-		got = append(got, append([]byte(nil), record...))
-		return nil
-	})
-	require.NoError(t, err)
-	assert.Equal(t, [][]byte{[]byte("complete-one"), []byte("complete-two"), []byte("complete-three")}, got)
 }
 
 func TestRecoverDetectsChecksumMismatchAsCorruptionNotATornWrite(t *testing.T) {

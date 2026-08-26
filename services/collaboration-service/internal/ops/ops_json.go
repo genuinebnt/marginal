@@ -33,21 +33,40 @@ func MarshalOp(op Op) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	fields, err := json.Marshal(op)
 	if err != nil {
 		return nil, err
 	}
-	var merged map[string]json.RawMessage
-	if err := json.Unmarshal(fields, &merged); err != nil {
-		return nil, err
-	}
-	typeJSON, err := json.Marshal(typeName)
+	return spliceStringField(fields, "type", typeName)
+}
+
+// spliceStringField adds one string-valued field to the front of an
+// already-marshaled JSON object without decoding it — see
+// documentcore.MarshalOp's identical helper (same fix, same reason: this
+// package's own equivalent op-marshaling path used to round-trip through
+// a map[string]json.RawMessage just to add one "type" field). Not shared
+// across the module boundary between documentcore and this package for
+// ~15 lines of code; duplicated deliberately rather than forcing an
+// import neither package's own domain actually needs.
+func spliceStringField(object []byte, key, value string) ([]byte, error) {
+	valueJSON, err := json.Marshal(value)
 	if err != nil {
 		return nil, err
 	}
-	merged["type"] = typeJSON
-	return json.Marshal(merged)
+	keyJSON, err := json.Marshal(key)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]byte, 0, len(object)+len(keyJSON)+len(valueJSON)+2)
+	out = append(out, '{')
+	out = append(out, keyJSON...)
+	out = append(out, ':')
+	out = append(out, valueJSON...)
+	if len(object) > 2 {
+		out = append(out, ',')
+	}
+	out = append(out, object[1:]...)
+	return out, nil
 }
 
 func UnmarshalOp(data []byte) (Op, error) {

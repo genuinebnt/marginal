@@ -10,12 +10,13 @@
 // position is conceptually "the Nth character," and an Anchor should
 // never be able to point into the middle of one. The rope itself is
 // byte-indexed (matching document-service's stored spans), so Text
-// converts at the boundary; see byteOffsetForRuneOffset's doc comment for
-// the honest cost of that today.
+// converts at the boundary via rope.Rope.ByteOffsetForRune, an O(log n)
+// tree walk — see byteOffsetForRuneOffset's own doc comment.
 package doctext
 
 import (
 	"errors"
+	"fmt"
 
 	"marginal/collaboration-service/internal/anchor"
 	"marginal/collaboration-service/internal/rope"
@@ -64,7 +65,15 @@ func (t *Text) InsertAt(pos int, s string) ([]anchor.ItemID, error) {
 	}
 	newRope, err := t.rope.Insert(byteOffset, s)
 	if err != nil {
-		return nil, err
+		// Wrapped, not returned bare: doctext declares its own
+		// ErrOutOfBounds/ErrInvertedRange sentinels, but an unwrapped
+		// rope error here would leak rope.ErrOutOfBounds/
+		// rope.ErrNotCharBoundary instead — errors.Is(err,
+		// doctext.ErrOutOfBounds) would then silently return false for
+		// a condition doctext's own doc comment implies it covers. %w
+		// keeps rope's own sentinel discoverable via errors.Is too, so
+		// nothing is lost, just no longer silently substituted.
+		return nil, fmt.Errorf("doctext: insert: %w", err)
 	}
 
 	ids := make([]anchor.ItemID, len(runes))
@@ -102,7 +111,7 @@ func (t *Text) DeleteRange(start, end int) error {
 
 	newRope, err := t.rope.Delete(startByte, endByte)
 	if err != nil {
-		return err
+		return fmt.Errorf("doctext: delete: %w", err) // see InsertAt's identical wrap for why
 	}
 	if err := t.log.Tombstone(start, end); err != nil {
 		return err
@@ -163,34 +172,25 @@ func (t *Text) Slice(start, end int) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return t.rope.Slice(startByte, endByte)
+	s, err := t.rope.Slice(startByte, endByte)
+	if err != nil {
+		return "", fmt.Errorf("doctext: slice: %w", err) // see InsertAt's identical wrap for why
+	}
+	return s, nil
 }
 
 // byteOffsetForRuneOffset converts a rune count into the byte offset the
-// rope actually indexes by.
-//
-// O(n) today — it decodes the rope's full string on every call, the same
-// "make it work first" tradeoff anchor.Log's own doc comment makes, and
-// for the same reason: a page's text isn't expected to reach a size where
-// this is the bottleneck for a demo. The fix, when measured, is narrow
-// and doesn't change Text's exported API: give Rope a rune-aware index
-// (each leaf already knows its own byte length; caching each leaf's rune
-// count alongside it turns this into an O(log n) tree walk, the same
-// technique the rope's own weight field already uses for byte offsets).
+// rope actually indexes by — an O(log n) tree walk (rope.Rope.ByteOffsetForRune),
+// not a decode of the whole document. An earlier version called
+// t.rope.String() on every InsertAt/DeleteRange/Slice — twice, for the
+// latter two — materialising the entire live text just to find one byte
+// offset, which defeated the actual point of using a rope over a plain
+// string for exactly the hot path (one character op per keystroke) the
+// rope exists to make cheap.
 func (t *Text) byteOffsetForRuneOffset(runeOffset int) (int, error) {
-	if runeOffset < 0 {
+	i, err := t.rope.ByteOffsetForRune(runeOffset)
+	if err != nil {
 		return 0, ErrOutOfBounds
 	}
-	s := t.rope.String()
-	i := 0
-	for byteIdx := range s {
-		if i == runeOffset {
-			return byteIdx, nil
-		}
-		i++
-	}
-	if i == runeOffset {
-		return len(s), nil
-	}
-	return 0, ErrOutOfBounds
+	return i, nil
 }

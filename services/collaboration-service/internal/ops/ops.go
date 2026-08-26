@@ -120,7 +120,10 @@ func applyDeleteText(text *doctext.Text, op DeleteText) (Op, error) {
 	// tombstoned (this delete just did that), so it comes back Detached
 	// at exactly the gap left behind — the correct reinsertion point.
 	reinsertAt := text.Resolve(op.Range.Start)
-	return InsertText{At: &op.Range.Start, Text: deleted}, validateReinsertPosition(reinsertAt)
+	if err := validateReinsertPosition(reinsertAt); err != nil {
+		return nil, err
+	}
+	return InsertText{At: &op.Range.Start, Text: deleted}, nil
 }
 
 // validateReinsertPosition is a defensive check, not a real branch in

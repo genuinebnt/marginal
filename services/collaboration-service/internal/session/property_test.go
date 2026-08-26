@@ -34,7 +34,7 @@ func TestConcurrentApplyClientOpSerializesCorrectly(t *testing.T) {
 	subIDs := make([]uint64, numGoroutines)
 	for i := range subs {
 		subs[i] = &recordingSubscriber{}
-		subIDs[i], _, _, _ = s.Subscribe(uuid.Must(uuid.NewV7()), subs[i])
+		subIDs[i] = s.Subscribe(uuid.Must(uuid.NewV7()), subs[i]).ID
 	}
 
 	var wg sync.WaitGroup

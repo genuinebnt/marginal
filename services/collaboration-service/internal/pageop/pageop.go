@@ -86,16 +86,13 @@ func Marshal(op Op) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		var merged map[string]json.RawMessage
-		if err := json.Unmarshal(inner, &merged); err != nil {
-			return nil, err
-		}
-		scopeJSON, err := json.Marshal("block")
-		if err != nil {
-			return nil, err
-		}
-		merged["scope"] = scopeJSON
-		return json.Marshal(merged)
+		// inner is already a JSON object (documentcore.MarshalOp's own
+		// {"type": "...", ...} envelope) — splicing "scope" onto the
+		// front of it is a byte-level insert, not the decode-modify-
+		// reencode round trip through a map[string]json.RawMessage an
+		// earlier version did (see documentcore.MarshalOp's own
+		// spliceStringField, the same fix for the same reason).
+		return spliceStringField(inner, "scope", "block")
 	case Text:
 		innerOp, err := ops.MarshalOp(op.Op)
 		if err != nil {
@@ -105,8 +102,12 @@ func Marshal(op Op) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
+		scopeJSON, err := json.Marshal("text")
+		if err != nil {
+			return nil, err
+		}
 		return json.Marshal(map[string]json.RawMessage{
-			"scope": mustMarshal("text"),
+			"scope": scopeJSON,
 			"block": blockJSON,
 			"op":    innerOp,
 		})
@@ -115,9 +116,30 @@ func Marshal(op Op) ([]byte, error) {
 	}
 }
 
-func mustMarshal(v string) json.RawMessage {
-	data, _ := json.Marshal(v)
-	return data
+// spliceStringField adds one string-valued field to the front of an
+// already-marshaled JSON object without decoding it — see
+// documentcore.MarshalOp's identical helper for the full reasoning.
+// Duplicated rather than shared across the module boundary, same call as
+// ops.MarshalOp's own copy.
+func spliceStringField(object []byte, key, value string) ([]byte, error) {
+	valueJSON, err := json.Marshal(value)
+	if err != nil {
+		return nil, err
+	}
+	keyJSON, err := json.Marshal(key)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]byte, 0, len(object)+len(keyJSON)+len(valueJSON)+2)
+	out = append(out, '{')
+	out = append(out, keyJSON...)
+	out = append(out, ':')
+	out = append(out, valueJSON...)
+	if len(object) > 2 {
+		out = append(out, ',')
+	}
+	out = append(out, object[1:]...)
+	return out, nil
 }
 
 func Unmarshal(data []byte) (Op, error) {

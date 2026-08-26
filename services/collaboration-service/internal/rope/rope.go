@@ -31,12 +31,19 @@ const maxLeafBytes = 512
 // node is either a leaf (text set, left/right nil) or a branch. length
 // and weight let split/index navigate without walking the whole subtree:
 // weight is the left subtree's byte length, so "is offset i in the left
-// half" is a single comparison at every level.
+// half" is a single comparison at every level. runeLen mirrors weight/
+// length one level up — the left subtree's rune count, and this
+// subtree's own total — so a rune offset can descend the tree the same
+// O(log n) way a byte offset already does, without ever materialising a
+// leaf larger than maxLeafBytes, let alone the whole rope (see
+// Rope.ByteOffsetForRune).
 type node struct {
 	text        string
 	left, right *node
 	weight      int
 	length      int
+	runeWeight  int
+	runeLen     int
 	depth       int
 }
 
@@ -46,15 +53,17 @@ func newLeaf(s string) *node {
 	if s == "" {
 		return nil
 	}
-	return &node{text: s, weight: len(s), length: len(s)}
+	return &node{text: s, weight: len(s), length: len(s), runeWeight: utf8.RuneCountInString(s), runeLen: utf8.RuneCountInString(s)}
 }
 
 func newBranch(left, right *node) *node {
 	return &node{
 		left: left, right: right,
-		weight: left.length,
-		length: left.length + right.length,
-		depth:  max(left.depth, right.depth) + 1,
+		weight:     left.length,
+		length:     left.length + right.length,
+		runeWeight: left.runeLen,
+		runeLen:    left.runeLen + right.runeLen,
+		depth:      max(left.depth, right.depth) + 1,
 	}
 }
 
@@ -108,6 +117,57 @@ func (r Rope) Len() int {
 		return 0
 	}
 	return r.root.length
+}
+
+// RuneLen is Len in runes rather than bytes — O(1), same as Len (both are
+// just reading the root node's own precomputed totals).
+func (r Rope) RuneLen() int {
+	if r.root == nil {
+		return 0
+	}
+	return r.root.runeLen
+}
+
+// ByteOffsetForRune converts a rune offset into the byte offset Insert/
+// Delete/Slice actually take. O(log n): descends the tree comparing rune
+// counts (mirroring byteAt's own byte-offset descent) until it reaches
+// the one leaf runeOffset falls in, then decodes runes within just that
+// leaf (at most maxLeafBytes) to find the exact byte — never decodes or
+// materialises the rest of the document. Exists because doctext (this
+// package's caller) only ever receives rune offsets over the wire
+// (RFC-002's ops are rune-indexed, matching what a JS client's string
+// indices mean), while every rope operation is byte-indexed (Go strings
+// are UTF-8 bytes) — this is the one conversion point between the two.
+func (r Rope) ByteOffsetForRune(runeOffset int) (int, error) {
+	if runeOffset < 0 || runeOffset > r.RuneLen() {
+		return 0, ErrOutOfBounds
+	}
+	if r.root == nil {
+		return 0, nil
+	}
+	return byteOffsetForRune(r.root, runeOffset), nil
+}
+
+func byteOffsetForRune(n *node, runeOffset int) int {
+	byteOffset := 0
+	for !n.isLeaf() {
+		if runeOffset < n.runeWeight {
+			n = n.left
+		} else {
+			byteOffset += n.weight
+			runeOffset -= n.runeWeight
+			n = n.right
+		}
+	}
+	// runeOffset now indexes within this one leaf (at most maxLeafBytes) —
+	// decoding just its runes, not the whole document, is what makes this
+	// O(log n) overall instead of O(n).
+	i := 0
+	for range runeOffset {
+		_, size := utf8.DecodeRuneInString(n.text[i:])
+		i += size
+	}
+	return byteOffset + i
 }
 
 func (r Rope) String() string {
