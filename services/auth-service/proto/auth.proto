@@ -1,0 +1,48 @@
+// AuthService — see docs/api/auth.md, which this file matches
+// field-for-field. That doc is the source of truth for semantics;
+// this file is its wire encoding.
+syntax = "proto3";
+
+package marginal.auth.v1;
+
+option go_package = "marginal/auth-service/internal/genproto/authv1";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+
+service AuthService {
+  rpc Register     (RegisterRequest)     returns (TokenPair);
+  rpc Authenticate (AuthenticateRequest) returns (TokenPair);
+  rpc GetUser       (GetUserRequest)      returns (User);
+  rpc Refresh        (RefreshRequest)     returns (TokenPair);
+  rpc Revoke          (RevokeRequest)     returns (google.protobuf.Empty);
+  rpc RevokeAll       (RevokeAllRequest)  returns (google.protobuf.Empty);
+}
+
+message User {
+  string id           = 1; // UUIDv7
+  string email        = 2;
+  string display_name = 3;
+  string cursor_color = 4;
+  google.protobuf.Timestamp created_at = 5;
+}
+
+message TokenPair {
+  string access_token  = 1; // RS256 JWT
+  string refresh_token = 2; // opaque, random — never a JWT
+  int64 expires_in     = 3; // access token lifetime in seconds, from issuance
+}
+
+message RegisterRequest {
+  string email        = 1;
+  string password     = 2;
+  string display_name = 3;
+}
+message AuthenticateRequest { string email = 1; string password = 2; }
+message GetUserRequest      { string id = 1; }
+message RefreshRequest      { string refresh_token = 1; }
+message RevokeRequest {
+  string refresh_token         = 1;
+  optional string access_token = 2;
+}
+message RevokeAllRequest {}

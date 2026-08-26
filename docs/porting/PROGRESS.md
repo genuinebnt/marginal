@@ -242,7 +242,85 @@ under its own child correctly returns `FAILED_PRECONDITION`; promoting a
 page to root correctly clears its parent. `golangci-lint run ./...` still
 0 issues.
 
-**Next:** `auth-service` and `collaboration-service` still have no business
-logic. For document-service itself: the delete saga's cascade and wiring
-an outbox (`DATA_MODEL.md` §4's "owns its own outbox") are the remaining
-natural increments, per `ROADMAP.md`'s Track 1 order.
+---
+
+## 2026-08-26 — `auth-service` implemented: the whole `AuthService` contract
+
+A repo already existed for this: `docs/architecture/lld/auth-service.md`,
+written for the original Rust track, turned out to be extremely
+normative — RPC names, the claims shape, the full error-mapping table, the
+rotation state machine, the bootstrap race, every named invariant in its
+§9 algorithms table. None of that needed re-deriving; only the language
+changed. `docs/api/auth.md` fills the gaps it explicitly left open (exact
+message shapes, token lifetimes, Argon2id parameters, lockout thresholds,
+the cursor-color palette) grounded in OWASP/RFC citations for the
+security parameters and in what real collaborative editors (Notion,
+Google Docs) do for the product-facing ones.
+
+**`internal/domain`** — `Email`, `Password` (redacted `String()`/`GoString()`
+so an accidental `%v` on an enclosing struct can't leak it — the LLD's
+"single highest-consequence mistake available in this service"),
+`PasswordHash`, `UserID`, `Jti`, `DisplayName`, `CursorColor` +
+`AssignCursorColor` (deterministic on user id, from a fixed 8-color
+palette).
+
+**`internal/passwordhash`** — Argon2id, PHC-string encoded, constant-time
+`Verify` (`crypto/subtle`), and a `Dummy` — a real hash of a fixed string,
+computed once, verified against on every "unknown email" path so the
+timing is indistinguishable from a genuine wrong-password rejection. A
+timing test (named in the LLD, `TestUnknownEmailAndWrongPasswordTakeSimilarTime`)
+samples both paths and asserts the medians land within tolerance — it
+measured a 1.00 ratio on the first run.
+
+**`internal/keys`** — RS256 keypair + JWKS (RFC 7517, hand-encoded — the
+shape is a standard, not a decision). **`internal/sessions`** — `Claims`
+issuance/verification with `Validation` constructed explicitly (`jwt.WithValidMethods`
+pinning RS256, so the token's own header never gets a vote — the classic
+JWT alg-confusion hole; a test forges an `alg: none` token and confirms
+it's rejected) — and the rotation state machine: hash the presented
+token, and either it's unrecognized (nothing to revoke), expired
+(nothing to revoke), reused (**revoke the entire chain** — found by a
+recursive CTE walking `parent_id` up to the root, then a second one
+walking back down to every descendant), or a legitimate rotation (revoke
+the old row, insert a new one, same transaction).
+
+**`internal/lockout`** (Redis, per-account, not per-IP — "an attacker
+distributing attempts across many IPs defeats edge limiting entirely,"
+LLD §12) and **`internal/blocklist`** (Redis, `jwt:blocklist:{jti}`) are
+new — the LLD calls both out as this service's job, not the (nonexistent)
+gateway's.
+
+**`internal/authservice`** ties it together — the only layer that opens
+multi-table transactions (registration's user-insert + first-refresh-token
+insert; rotation's revoke-old + insert-new) and enforces the
+constant-time/lockout ordering. `Register` is also the bootstrap claim
+(LLD §7): a `pg_advisory_xact_lock`-guarded count-then-insert, so two
+concurrent claims on a fresh instance can't both create an administrator —
+verified with 10 concurrent goroutines racing to register, exactly one
+winning.
+
+**Verified:** unit tests for domain/passwordhash/keys/sessions (incl. the
+timing test and the alg-confusion rejection); 9 integration tests against
+real Postgres 18 + Redis via testcontainers-go (bootstrap + the concurrent
+race, unknown-email/wrong-password/lockout, rotation happy path, the LLD's
+named `reuse_of_a_rotated_token_revokes_the_whole_family` — rotate 3
+times, replay token #1, assert all 4 dead — revoke/revoke-all with
+session isolation); a live `grpcurl` smoke test against real Postgres +
+Redis exercising Register→Authenticate→Refresh→replay end-to-end,
+confirming the two `UNAUTHENTICATED` credential messages really are
+byte-identical. `golangci-lint run ./...` clean.
+
+**Deferred** (documented in `docs/api/auth.md` § 3, not silently
+dropped): per-IP rate limiting (gateway's job, no gateway exists here);
+JWKS key-rotation tooling (the `KeyStore` interface supports multiple
+verification keys, nothing drives an actual rotation yet — one signing
+key for the process lifetime); the `api-gateway`/cookie/CSRF boundary
+(refresh tokens return directly in `TokenPair`, not an `HttpOnly` cookie).
+
+**Not yet run:** `/security-review` — mandated by `CLAUDE.md` for any auth
+boundary, and the LLD calls this "the largest one in the project." Do this
+before treating auth-service as done, not after.
+
+**Next:** `/security-review` on this service. Then: `collaboration-service`
+still has no business logic; document-service's delete-saga cascade and
+outbox are still open; per `ROADMAP.md`'s Track 1 order.

@@ -1,0 +1,11 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    queries: "internal/authrepo/queries.sql"
+    schema: "internal/migrate/migrations"
+    gen:
+      go:
+        package: "authrepo"
+        out: "internal/authrepo/gen"
+        sql_package: "pgx/v5"
+        emit_pointers_for_null_types: true
