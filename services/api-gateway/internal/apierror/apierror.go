@@ -24,19 +24,19 @@ type Body struct {
 func WriteGRPCStatus(w http.ResponseWriter, err error) {
 	st, ok := status.FromError(err)
 	if !ok {
-		writeJSON(w, http.StatusInternalServerError, Body{Error: "internal_error", Message: "internal error"})
+		WriteJSON(w, http.StatusInternalServerError, Body{Error: "internal_error", Message: "internal error"})
 		return
 	}
 
 	httpStatus, code := httpStatusFor(st.Code())
-	writeJSON(w, httpStatus, Body{Error: code, Message: st.Message()})
+	WriteJSON(w, httpStatus, Body{Error: code, Message: st.Message()})
 }
 
 // WriteBadRequest is for errors this gateway detects itself before ever
 // calling a backend — a malformed path parameter or request body, which
 // has no gRPC status to translate.
 func WriteBadRequest(w http.ResponseWriter, message string) {
-	writeJSON(w, http.StatusUnprocessableEntity, Body{Error: "validation_failed", Message: message})
+	WriteJSON(w, http.StatusUnprocessableEntity, Body{Error: "validation_failed", Message: message})
 }
 
 // httpStatusFor is pages.md §2's table, plus auth.md §2's addition of
@@ -64,7 +64,12 @@ func httpStatusFor(c codes.Code) (int, string) {
 	}
 }
 
-func writeJSON(w http.ResponseWriter, status int, body Body) {
+// WriteJSON writes body as a JSON response with status — the one
+// implementation every REST handler package in this gateway calls,
+// rather than each declaring its own byte-for-byte-identical copy
+// (pagesrest and authrest both used to; CLAUDE.md's own "duplicate on
+// the second use, extract on the third" rule).
+func WriteJSON(w http.ResponseWriter, status int, body any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(body)

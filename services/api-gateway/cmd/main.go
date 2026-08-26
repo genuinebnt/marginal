@@ -15,8 +15,10 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -27,6 +29,28 @@ import (
 	"marginal/api-gateway/internal/authrest"
 	"marginal/api-gateway/internal/pagesrest"
 )
+
+// requestTimeout bounds every request this gateway handles, which in turn
+// bounds every outbound gRPC call made through actorctx.FromRequest — it
+// derives its context from r.Context(), and middleware.Timeout replaces
+// that with a context.WithTimeout-wrapped one before any handler runs.
+// Without this, a stuck document-service/auth-service call had no
+// deadline of its own and could hold the handler goroutine indefinitely.
+const requestTimeout = 15 * time.Second
+
+// maxRequestBodyBytes bounds every request body this gateway reads before
+// decoding it as JSON — generous for this API's actual payloads (a page
+// title alone is capped at 500 bytes, documentcore's maxTitleBytes) but
+// bounded, so an oversized or malicious body can't be read into memory
+// in full before json.Decode ever gets to reject it.
+const maxRequestBodyBytes = 1 << 20 // 1 MiB
+
+func limitRequestBody(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+		next.ServeHTTP(w, r)
+	})
+}
 
 func main() {
 	if err := run(); err != nil {
@@ -58,6 +82,8 @@ func run() error {
 	auth := authrest.NewHandler(authv1.NewAuthServiceClient(authConn))
 
 	r := chi.NewRouter()
+	r.Use(middleware.Timeout(requestTimeout))
+	r.Use(limitRequestBody)
 	r.Use(cors.Handler(cors.Options{
 		// A browser calling this gateway from web/ (a different origin —
 		// different port, same host in local dev) is a cross-origin

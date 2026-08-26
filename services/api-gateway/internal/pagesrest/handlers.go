@@ -58,7 +58,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		apierror.WriteGRPCStatus(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, toPageJSON(page))
+	apierror.WriteJSON(w, http.StatusCreated, toPageJSON(page))
 }
 
 func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
@@ -68,7 +68,7 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 		apierror.WriteGRPCStatus(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, toPageJSON(page))
+	apierror.WriteJSON(w, http.StatusOK, toPageJSON(page))
 }
 
 func (h *Handler) backlinks(w http.ResponseWriter, r *http.Request) {
@@ -78,7 +78,7 @@ func (h *Handler) backlinks(w http.ResponseWriter, r *http.Request) {
 		apierror.WriteGRPCStatus(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, toListBacklinksJSON(resp))
+	apierror.WriteJSON(w, http.StatusOK, toListBacklinksJSON(resp))
 }
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
@@ -105,7 +105,7 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 		apierror.WriteGRPCStatus(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, toListPagesJSON(resp))
+	apierror.WriteJSON(w, http.StatusOK, toListPagesJSON(resp))
 }
 
 type renamePageRequest struct {
@@ -127,7 +127,7 @@ func (h *Handler) rename(w http.ResponseWriter, r *http.Request) {
 		apierror.WriteGRPCStatus(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, toPageJSON(page))
+	apierror.WriteJSON(w, http.StatusOK, toPageJSON(page))
 }
 
 type reparentPageRequest struct {
@@ -151,7 +151,7 @@ func (h *Handler) reparent(w http.ResponseWriter, r *http.Request) {
 		apierror.WriteGRPCStatus(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, toPageJSON(page))
+	apierror.WriteJSON(w, http.StatusOK, toPageJSON(page))
 }
 
 func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
@@ -161,10 +161,4 @@ func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
-}
-
-func writeJSON(w http.ResponseWriter, status int, body any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(body)
 }

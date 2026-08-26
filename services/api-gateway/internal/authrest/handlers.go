@@ -52,7 +52,7 @@ func (h *Handler) register(w http.ResponseWriter, r *http.Request) {
 		apierror.WriteGRPCStatus(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, toTokenPairJSON(tokens))
+	apierror.WriteJSON(w, http.StatusCreated, toTokenPairJSON(tokens))
 }
 
 type loginRequest struct {
@@ -75,7 +75,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		apierror.WriteGRPCStatus(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, toTokenPairJSON(tokens))
+	apierror.WriteJSON(w, http.StatusOK, toTokenPairJSON(tokens))
 }
 
 func (h *Handler) getUser(w http.ResponseWriter, r *http.Request) {
@@ -84,7 +84,7 @@ func (h *Handler) getUser(w http.ResponseWriter, r *http.Request) {
 		apierror.WriteGRPCStatus(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, toUserJSON(user))
+	apierror.WriteJSON(w, http.StatusOK, toUserJSON(user))
 }
 
 type refreshRequest struct {
@@ -103,7 +103,7 @@ func (h *Handler) refresh(w http.ResponseWriter, r *http.Request) {
 		apierror.WriteGRPCStatus(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, toTokenPairJSON(tokens))
+	apierror.WriteJSON(w, http.StatusOK, toTokenPairJSON(tokens))
 }
 
 type revokeRequest struct {
@@ -136,10 +136,4 @@ func (h *Handler) revokeAll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
-}
-
-func writeJSON(w http.ResponseWriter, status int, body any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(body)
 }
