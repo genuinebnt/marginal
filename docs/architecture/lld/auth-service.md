@@ -243,6 +243,13 @@ Everything else is gRPC.
 
 ## 7. `bootstrap/` — the first-run claim
 
+**Reversed 2026-08-26, at explicit user request — see `docs/porting/PROGRESS.md`'s
+"A real, user-requested reversal" entry and `docs/api/auth.md`.** `Register`
+is now ordinary, repeatable signup: real multi-user use needs more than one
+person to get an account without an invitation flow this repo's scope
+never built. Everything below this paragraph describes the *original*
+design and is kept for history, not as the current contract.
+
 `ui-mockups/signin.html` asserts that a fresh instance's first screen is **not** a login. An
 instance with zero users offers to create the first administrator; after that, registration is
 invitation-only (ADR-001 — self-hosted, not a public sign-up).

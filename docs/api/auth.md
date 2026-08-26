@@ -8,9 +8,12 @@ tooling, per-IP rate limiting, the gateway/cookie boundary).
 JWKS) · `api-gateway` (REST translation, deferred — out of this repo's scope)
 **Related:** `docs/architecture/lld/auth-service.md` — the full design this
 contract implements, written for the original Rust track but normative
-regardless of language; `DATA_MODEL.md` §3 (schema); `ADR-007` (gRPC
-east-west); `docs/architecture/adr/ADR-001` (self-hosted, invitation-only
-after bootstrap, no public sign-up)
+regardless of language, **except §7's bootstrap-claim model — reversed,
+see below and `docs/porting/PROGRESS.md`**; `DATA_MODEL.md` §3 (schema);
+`ADR-007` (gRPC east-west). `docs/architecture/adr/ADR-001`'s
+"self-hosted, invitation-only, no public sign-up" clause no longer holds
+for `Register` specifically — everything else in that ADR (no
+multi-tenancy, one shared workspace) is unchanged.
 
 This doc fills the gaps the LLD explicitly left open (exact RPC/message
 shapes, token lifetimes, Argon2id parameters) and translates its Rust-shaped
@@ -64,13 +67,21 @@ message RevokeRequest       {
 message RevokeAllRequest    {} // the caller's own sessions only — see § actor identity
 ```
 
-**`Register` is also the bootstrap claim** (LLD §7) — there is no separate
-RPC. The first successful call, on an instance with zero users, creates the
-sole administrator under a `pg_advisory_xact_lock`-guarded transaction.
-Every call after that fails `FAILED_PRECONDITION` ("instance already
-claimed") — there is no invitation flow in this repo's scope (RBAC/invites
-are ADR-009, deferred past this track), so **`Register` is single-use for
-the lifetime of an instance**, not a general sign-up endpoint.
+**`Register` is ordinary, repeatable signup** — reversed from LLD §7's
+original bootstrap-claim design (there, the first successful call created
+a sole administrator and every later call failed `FAILED_PRECONDITION`).
+Real multi-user use (several distinct people, each with their own
+account, editing together — the actual Track 1 🏁) needs a way for more
+than one person to obtain an account without an operator running a
+side-channel tool for each one; there is still no invitation/RBAC flow
+(ADR-009, deferred past this track) to gate it with, so the pragmatic
+choice is what this heading says: `Register` just registers. Every
+account has identical standing — there is no "administrator" role
+distinguishing the first account from the rest, and no per-workspace
+isolation either (`ADR-001`'s "not multi-tenant" still holds: every
+account shares the one page space). Uniqueness is still enforced —
+`AlreadyExists` if the email is already registered (see the status table
+below).
 
 **`Revoke`'s `access_token` is optional but matters.** Revoking the refresh
 token chain stops *future* refreshes; it does nothing to the access token
@@ -113,7 +124,7 @@ actual source of `actor-id`.
 | Malformed email / weak password on register | `INVALID_ARGUMENT` | the specific rule that failed | not logged — caller's fault |
 | Expired refresh token | `UNAUTHENTICATED` | `"session expired"` | `info` |
 | **Refresh token reuse** | `UNAUTHENTICATED` | `"session expired"` — attacker learns nothing | **`warn`**, with user id and family id |
-| Instance already claimed | `FAILED_PRECONDITION` | `"instance already claimed"` | `warn` |
+| Email already registered | `ALREADY_EXISTS` | `"email already registered"` | not logged — caller's fault |
 | Database / hashing failure | `INTERNAL` | `"internal error"`, no detail | `error` |
 
 **The two `UNAUTHENTICATED` credential messages must be byte-identical, at
@@ -124,7 +135,60 @@ LLD §12) — deferred; see `docs/porting/PROGRESS.md`.
 
 ---
 
-## 2. Gaps the LLD left open, decided here
+## 2. Gateway REST mapping
+
+Same status as `pages.md`'s §2 — the projection a browser actually calls,
+implemented as a thin REST↔gRPC shim since no full `api-gateway` exists in
+this repo's scope (`ADR-011`). Semantics (idempotency, the actor-identity
+stand-in, the two-`UNAUTHENTICATED`-messages rule) belong to §1 and are
+inherited here, not restated.
+
+| Method | Path | RPC |
+|---|---|---|
+| `POST` | `/auth/register` | `Register` |
+| `POST` | `/auth/login` | `Authenticate` |
+| `GET` | `/auth/users/{id}` | `GetUser` |
+| `POST` | `/auth/refresh` | `Refresh` |
+| `POST` | `/auth/revoke` | `Revoke` |
+| `POST` | `/auth/revoke-all` | `RevokeAll` |
+
+`/auth/revoke-all`'s actor identity comes from the same `X-Actor-Id` header
+stand-in `pages.md`'s gateway shim reads (§ Actor identity above) — there
+is no session cookie or verified-token source to read it from instead
+until a real `api-gateway` exists.
+
+```json
+{
+  "access_token": "eyJhbGciOi...",
+  "refresh_token": "b64-opaque-random",
+  "expires_in": 900
+}
+```
+
+`GetUser`'s response omits `password_hash` (never leaves `auth-service` at
+all, on any transport) and reports timestamps as RFC 3339 UTC, same
+convention as `pages.md`.
+
+### Status translation
+
+Same table as `pages.md` §2, plus the one code that table doesn't need but
+this one does constantly:
+
+| gRPC | HTTP | `error` code | Retryable |
+|---|---|---|---|
+| `UNAUTHENTICATED` | 401 | `unauthenticated` | No — bad credentials, an expired/reused refresh token, or a missing actor-id stand-in header. **The response body must be byte-identical for "unknown email" and "wrong password"** (§1's status table) |
+| `INVALID_ARGUMENT` | 422 | `validation_failed` | No — fix the request |
+| `NOT_FOUND` | 404 | `not_found` | No |
+| `FAILED_PRECONDITION` | 409 | `conflict` | No — e.g. "instance already claimed" |
+| `INTERNAL`, `UNKNOWN` | 500 | `internal_error` | Yes, with backoff |
+| `UNAVAILABLE` | 503 | `unavailable` | Yes, with backoff |
+| `DEADLINE_EXCEEDED` | 504 | `timeout` | Yes, with backoff |
+
+Same one error shape as `pages.md`: `{ "error": "unauthenticated", "message": "invalid credentials" }`.
+
+---
+
+## 3. Gaps the LLD left open, decided here
 
 Two kinds of gap: security-engineering parameters (grounded in OWASP/RFCs,
 same as the LLD's own rule — not product-specific) and product-facing
@@ -150,7 +214,7 @@ Google Docs — actually does, since that's the product this is).
 | Refresh token lifetime | 30 days | Matches the "stay logged in across restarts" story (A-02) the way Notion/Google Workspace do: a trusted browser stays signed in for weeks without prompting, until explicit logout or the rotation chain is broken |
 | Cursor color palette | 8 fixed, visually-distinct hues (see `internal/domain`'s `CursorPalette`), assigned at registration by `hash(user_id) mod 8` | Matches the collaborative-cursor convention every multiplayer editor (Google Docs, Figma, Notion) uses: a small fixed palette, not an arbitrary color, so two collaborators' cursors are never confusingly similar. Deterministic on `user_id` rather than random so it's stable across sessions without needing to store a separate column beyond what `DATA_MODEL.md` §3 already has |
 
-## 3. Deferred, not built in this repo yet
+## 4. Deferred, not built in this repo yet
 
 - Per-IP rate limiting (LLD §12 calls this the gateway's job, Phase 9) —
   no gateway exists in this repo's scope. Per-account lockout (this
