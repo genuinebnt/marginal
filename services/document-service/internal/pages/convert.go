@@ -56,3 +56,7 @@ func pageFromListRow(r pagerepo.ListPagesRow) Page {
 func pageFromRenameRow(r pagerepo.RenamePageRow) Page {
 	return pageFromRow(r.ID, r.CreatedBy, r.ParentID, r.Title, r.Path, r.SortKey, r.LifecycleState, r.DeletedAt, r.CreatedAt, r.UpdatedAt)
 }
+
+func pageFromReparentRow(r pagerepo.ReparentPageRowRow) Page {
+	return pageFromRow(r.ID, r.CreatedBy, r.ParentID, r.Title, r.Path, r.SortKey, r.LifecycleState, r.DeletedAt, r.CreatedAt, r.UpdatedAt)
+}

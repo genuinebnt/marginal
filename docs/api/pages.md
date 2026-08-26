@@ -1,11 +1,10 @@
 # API — Pages
 
 **Status:** Implemented in Go (`services/document-service/internal/pages`) —
-CreatePage/GetPage/ListPages/RenamePage/DeletePage. **ReparentPage is not
-yet implemented** (`codes.Unimplemented`) — it needs a transactional
-subtree LTREE rewrite, a separate unit of work; see
-`docs/porting/PROGRESS.md`. DeletePage is a simple soft delete for now, not
-the full cascade-to-subtree saga (`ARCHITECTURE.md` §5).
+all six RPCs, including ReparentPage's transactional subtree LTREE
+rewrite. DeletePage is a simple soft delete for now, not the full
+cascade-to-subtree saga (`ARCHITECTURE.md` §5) — that's the remaining
+deferred piece; see `docs/porting/PROGRESS.md`.
 **Owners:** `document-service` (gRPC `PageService`) · `api-gateway` (REST translation)
 **Related:** ADR-007 (gRPC east-west) · `docs/architecture/lld/document-service.md` · `DATA_MODEL.md` §4
 

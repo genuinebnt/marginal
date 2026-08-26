@@ -206,8 +206,43 @@ the actual installed toolchain, not the `go` directive).
 `govulncheck` separately flags 1.26.1's own stdlib CVEs (fixed in 1.26.2)
 — a local Go upgrade to consider, unrelated to this repo's code.
 
+---
+
+## 2026-08-26 — `ReparentPage` implemented: the transactional subtree rewrite
+
+Closed the one RPC deferred from the previous entry. `internal/pages.Reparent`
+runs in a single `pgx.Tx`:
+
+1. Resolve the page being moved and (if a target parent is named) that
+   parent — reject with `ErrCycle` (`FAILED_PRECONDITION`) if the target is
+   the page itself or one of its own descendants (checked via LTREE path
+   prefix comparison in Go, not a special query).
+2. Compute the new `sort_key` via the same `nextSortKey` logic `Create`
+   uses, now parameterized with an `excludeID` so a page being reordered
+   among its current siblings doesn't find itself as its own neighbor.
+3. Update the page's own row (`parent_id`, `path`, `sort_key`).
+4. If the path actually changed (i.e. the parent changed — reordering
+   alone doesn't touch it), rewrite every descendant's path in the same
+   transaction (`RewriteDescendantPaths`, using LTREE's `subpath()` to
+   swap the old ancestor prefix for the new one while preserving each
+   descendant's own trailing labels) — docs/api/pages.md's "a concurrent
+   reader sees all old paths or all new ones, never a mixture."
+
+`ReparentPageRequest.parent_id`'s three-way optional (absent = leave
+alone, present-empty = promote to root, present-set = new parent) is
+modeled as `ParentChange{Change bool; ParentID *PageID}` rather than a
+bare `*PageID`, since a plain pointer can't distinguish "leave alone" from
+"promote to root" (both would otherwise look like `nil`).
+
+**Verified:** 4 new integration tests against real Postgres 18 (move to a
+new parent + descendant cascade, promote to root, reorder within the same
+parent, both cycle-rejection cases) — all passing alongside the 4 from the
+previous entry (8 total). Live smoke test via `grpcurl`: reparenting a page
+under its own child correctly returns `FAILED_PRECONDITION`; promoting a
+page to root correctly clears its parent. `golangci-lint run ./...` still
+0 issues.
+
 **Next:** `auth-service` and `collaboration-service` still have no business
-logic. For document-service itself: `ReparentPage`'s subtree rewrite, the
-delete saga's cascade, and wiring an outbox (`DATA_MODEL.md` §4's "owns its
-own outbox") are the natural next increments, per `ROADMAP.md`'s Track 1
-order.
+logic. For document-service itself: the delete saga's cascade and wiring
+an outbox (`DATA_MODEL.md` §4's "owns its own outbox") are the remaining
+natural increments, per `ROADMAP.md`'s Track 1 order.

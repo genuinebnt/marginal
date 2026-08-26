@@ -17,19 +17,24 @@ WHERE id = $1 AND deleted_at IS NULL;
 -- The sibling immediately after afterSortKey under the same parent (NULL
 -- parent_id means root pages) — used to bound a new page's fractional
 -- sort_key from above when it's inserted after a specific sibling.
+-- exclude_id skips the page being moved itself, for ReparentPage's
+-- reorder-within-the-same-parent case; Create passes it NULL.
 SELECT sort_key FROM docs.pages
 WHERE deleted_at IS NULL
   AND (parent_id = sqlc.narg(parent_id) OR (parent_id IS NULL AND sqlc.narg(parent_id) IS NULL))
   AND sort_key > @after_sort_key::text
+  AND (sqlc.narg(exclude_id)::uuid IS NULL OR id != sqlc.narg(exclude_id))
 ORDER BY sort_key ASC
 LIMIT 1;
 
 -- name: LastSiblingSortKey :one
 -- The highest sort_key among a parent's children (or root pages) — used
 -- as the lower bound when appending (CreatePageRequest.after omitted).
+-- exclude_id: see NextSiblingSortKey.
 SELECT sort_key FROM docs.pages
 WHERE deleted_at IS NULL
   AND (parent_id = sqlc.narg(parent_id) OR (parent_id IS NULL AND sqlc.narg(parent_id) IS NULL))
+  AND (sqlc.narg(exclude_id)::uuid IS NULL OR id != sqlc.narg(exclude_id))
 ORDER BY sort_key DESC
 LIMIT 1;
 
@@ -48,6 +53,28 @@ UPDATE docs.pages SET title = $2, updated_at = NOW()
 WHERE id = $1 AND deleted_at IS NULL
 RETURNING id, created_by, title, parent_id, path::text AS path, sort_key,
           lifecycle_state, deleted_at, created_at, updated_at;
+
+-- name: ReparentPageRow :one
+-- Moves a single page: new parent (nullable — NULL promotes it to root),
+-- new path, new sort_key. Descendants' paths are a separate statement
+-- (RewriteDescendantPaths) — both run in the same transaction
+-- (internal/pages's Reparent), so a concurrent reader sees all old paths
+-- or all new ones, never a mixture (docs/api/pages.md § Reparent).
+UPDATE docs.pages
+SET parent_id = sqlc.narg(parent_id), path = $2::ltree, sort_key = $3, updated_at = NOW()
+WHERE id = $1 AND deleted_at IS NULL
+RETURNING id, created_by, title, parent_id, path::text AS path, sort_key,
+          lifecycle_state, deleted_at, created_at, updated_at;
+
+-- name: RewriteDescendantPaths :execrows
+-- Replaces the old_prefix ancestry on every descendant of the page being
+-- moved with new_prefix, preserving each descendant's own trailing labels.
+-- subpath(path, nlevel(old_prefix)) strips exactly the old ancestor
+-- portion off the front of each descendant's path.
+UPDATE docs.pages
+SET path = @new_prefix::ltree || subpath(path, nlevel(@old_prefix::ltree)),
+    updated_at = NOW()
+WHERE path <@ @old_prefix::ltree AND id != @page_id;
 
 -- name: SoftDeletePage :execrows
 -- Simple soft delete only — no cascade to descendants and no saga

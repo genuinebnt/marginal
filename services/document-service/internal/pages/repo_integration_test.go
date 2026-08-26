@@ -134,3 +134,98 @@ func TestCreateAfterAnchorUnderWrongParentFails(t *testing.T) {
 	})
 	require.ErrorIs(t, err, pages.ErrAnchorMismatch)
 }
+
+func TestReparentMovesToNewParentAndRewritesDescendantPaths(t *testing.T) {
+	repo := newTestRepo(t)
+	ctx := context.Background()
+	owner := testUUID()
+
+	oldParent, err := repo.Create(ctx, pages.NewPage{CreatedBy: owner, Title: "Old parent"})
+	require.NoError(t, err)
+	oldParentID := oldParent.ID
+	newParent, err := repo.Create(ctx, pages.NewPage{CreatedBy: owner, Title: "New parent"})
+	require.NoError(t, err)
+	newParentID := newParent.ID
+
+	moved, err := repo.Create(ctx, pages.NewPage{CreatedBy: owner, Title: "Moved", ParentID: &oldParentID})
+	require.NoError(t, err)
+	movedID := moved.ID
+	grandchild, err := repo.Create(ctx, pages.NewPage{CreatedBy: owner, Title: "Grandchild", ParentID: &movedID})
+	require.NoError(t, err)
+
+	updated, err := repo.Reparent(ctx, movedID, pages.ParentChange{Change: true, ParentID: &newParentID}, nil)
+	require.NoError(t, err)
+	require.NotNil(t, updated.ParentID)
+	require.Equal(t, newParentID, *updated.ParentID)
+	require.Contains(t, updated.Path, newParent.Path)
+	require.NotContains(t, updated.Path, oldParent.Path)
+
+	gotGrandchild, err := repo.Get(ctx, grandchild.ID)
+	require.NoError(t, err)
+	require.Contains(t, gotGrandchild.Path, updated.Path, "descendant's path must follow the moved subtree, in the same transaction")
+	require.NotContains(t, gotGrandchild.Path, oldParent.Path)
+}
+
+func TestReparentPromoteToRoot(t *testing.T) {
+	repo := newTestRepo(t)
+	ctx := context.Background()
+	owner := testUUID()
+
+	parent, err := repo.Create(ctx, pages.NewPage{CreatedBy: owner, Title: "Parent"})
+	require.NoError(t, err)
+	parentID := parent.ID
+	child, err := repo.Create(ctx, pages.NewPage{CreatedBy: owner, Title: "Child", ParentID: &parentID})
+	require.NoError(t, err)
+
+	// parent_id present and empty: promote to root.
+	updated, err := repo.Reparent(ctx, child.ID, pages.ParentChange{Change: true, ParentID: nil}, nil)
+	require.NoError(t, err)
+	require.Nil(t, updated.ParentID)
+	require.NotContains(t, updated.Path, parent.Path)
+}
+
+func TestReparentReordersWithinSameParent(t *testing.T) {
+	repo := newTestRepo(t)
+	ctx := context.Background()
+	owner := testUUID()
+
+	a, err := repo.Create(ctx, pages.NewPage{CreatedBy: owner, Title: "A"})
+	require.NoError(t, err)
+	b, err := repo.Create(ctx, pages.NewPage{CreatedBy: owner, Title: "B"})
+	require.NoError(t, err)
+	c, err := repo.Create(ctx, pages.NewPage{CreatedBy: owner, Title: "C"})
+	require.NoError(t, err)
+
+	// Move A to be after C: leave parent alone (root, Change: false), reorder only.
+	cID := c.ID
+	_, err = repo.Reparent(ctx, a.ID, pages.ParentChange{}, &cID)
+	require.NoError(t, err)
+
+	list, err := repo.List(ctx, nil, "", 10)
+	require.NoError(t, err)
+	require.Len(t, list, 3)
+	require.Equal(t, b.ID, list[0].ID)
+	require.Equal(t, c.ID, list[1].ID)
+	require.Equal(t, a.ID, list[2].ID)
+}
+
+func TestReparentUnderSelfOrDescendantFails(t *testing.T) {
+	repo := newTestRepo(t)
+	ctx := context.Background()
+	owner := testUUID()
+
+	parent, err := repo.Create(ctx, pages.NewPage{CreatedBy: owner, Title: "Parent"})
+	require.NoError(t, err)
+	parentID := parent.ID
+	child, err := repo.Create(ctx, pages.NewPage{CreatedBy: owner, Title: "Child", ParentID: &parentID})
+	require.NoError(t, err)
+	childID := child.ID
+
+	// Under itself.
+	_, err = repo.Reparent(ctx, parent.ID, pages.ParentChange{Change: true, ParentID: &parent.ID}, nil)
+	require.ErrorIs(t, err, pages.ErrCycle)
+
+	// Under its own descendant.
+	_, err = repo.Reparent(ctx, parent.ID, pages.ParentChange{Change: true, ParentID: &childID}, nil)
+	require.ErrorIs(t, err, pages.ErrCycle)
+}

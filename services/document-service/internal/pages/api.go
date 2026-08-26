@@ -98,6 +98,8 @@ func toStatus(err error) error {
 		return status.Error(codes.NotFound, "page not found")
 	case errors.Is(err, ErrAnchorMismatch):
 		return status.Error(codes.FailedPrecondition, "anchor is not a child of the named parent")
+	case errors.Is(err, ErrCycle):
+		return status.Error(codes.FailedPrecondition, "cannot reparent a page under itself or its own descendant")
 	default:
 		var st interface{ GRPCStatus() *status.Status }
 		if errors.As(err, &st) {
@@ -244,7 +246,33 @@ func (s *Server) DeletePage(ctx context.Context, req *documentv1.DeletePageReque
 	return &emptypb.Empty{}, nil
 }
 
-// ReparentPage is not implemented in this first slice — it needs a
-// transactional subtree LTREE path rewrite (docs/api/pages.md § Reparent)
-// that's a larger, separate unit of work. Falls through to
-// UnimplementedPageServiceServer's codes.Unimplemented.
+func (s *Server) ReparentPage(ctx context.Context, req *documentv1.ReparentPageRequest) (*documentv1.Page, error) {
+	id, err := parsePageID(req.GetId())
+	if err != nil {
+		return nil, err
+	}
+
+	var parent ParentChange
+	if req.ParentId != nil {
+		parent.Change = true
+		if *req.ParentId != "" {
+			parentID, err := parsePageID(*req.ParentId)
+			if err != nil {
+				return nil, err
+			}
+			parent.ParentID = &parentID
+		}
+		// *req.ParentId == "" leaves parent.ParentID nil: promote to root.
+	}
+
+	after, err := parseOptionalPageID(req.After)
+	if err != nil {
+		return nil, err
+	}
+
+	page, err := s.Repo.Reparent(ctx, id, parent, after)
+	if err != nil {
+		return nil, toStatus(err)
+	}
+	return toProto(page), nil
+}

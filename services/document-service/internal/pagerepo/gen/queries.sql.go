@@ -110,14 +110,21 @@ const lastSiblingSortKey = `-- name: LastSiblingSortKey :one
 SELECT sort_key FROM docs.pages
 WHERE deleted_at IS NULL
   AND (parent_id = $1 OR (parent_id IS NULL AND $1 IS NULL))
+  AND ($2::uuid IS NULL OR id != $2)
 ORDER BY sort_key DESC
 LIMIT 1
 `
 
+type LastSiblingSortKeyParams struct {
+	ParentID  pgtype.UUID
+	ExcludeID pgtype.UUID
+}
+
 // The highest sort_key among a parent's children (or root pages) — used
 // as the lower bound when appending (CreatePageRequest.after omitted).
-func (q *Queries) LastSiblingSortKey(ctx context.Context, parentID pgtype.UUID) (string, error) {
-	row := q.db.QueryRow(ctx, lastSiblingSortKey, parentID)
+// exclude_id: see NextSiblingSortKey.
+func (q *Queries) LastSiblingSortKey(ctx context.Context, arg LastSiblingSortKeyParams) (string, error) {
+	row := q.db.QueryRow(ctx, lastSiblingSortKey, arg.ParentID, arg.ExcludeID)
 	var sort_key string
 	err := row.Scan(&sort_key)
 	return sort_key, err
@@ -189,6 +196,7 @@ SELECT sort_key FROM docs.pages
 WHERE deleted_at IS NULL
   AND (parent_id = $1 OR (parent_id IS NULL AND $1 IS NULL))
   AND sort_key > $2::text
+  AND ($3::uuid IS NULL OR id != $3)
 ORDER BY sort_key ASC
 LIMIT 1
 `
@@ -196,13 +204,16 @@ LIMIT 1
 type NextSiblingSortKeyParams struct {
 	ParentID     pgtype.UUID
 	AfterSortKey string
+	ExcludeID    pgtype.UUID
 }
 
 // The sibling immediately after afterSortKey under the same parent (NULL
 // parent_id means root pages) — used to bound a new page's fractional
 // sort_key from above when it's inserted after a specific sibling.
+// exclude_id skips the page being moved itself, for ReparentPage's
+// reorder-within-the-same-parent case; Create passes it NULL.
 func (q *Queries) NextSiblingSortKey(ctx context.Context, arg NextSiblingSortKeyParams) (string, error) {
-	row := q.db.QueryRow(ctx, nextSiblingSortKey, arg.ParentID, arg.AfterSortKey)
+	row := q.db.QueryRow(ctx, nextSiblingSortKey, arg.ParentID, arg.AfterSortKey, arg.ExcludeID)
 	var sort_key string
 	err := row.Scan(&sort_key)
 	return sort_key, err
@@ -249,6 +260,87 @@ func (q *Queries) RenamePage(ctx context.Context, arg RenamePageParams) (RenameP
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const reparentPageRow = `-- name: ReparentPageRow :one
+UPDATE docs.pages
+SET parent_id = $4, path = $2::ltree, sort_key = $3, updated_at = NOW()
+WHERE id = $1 AND deleted_at IS NULL
+RETURNING id, created_by, title, parent_id, path::text AS path, sort_key,
+          lifecycle_state, deleted_at, created_at, updated_at
+`
+
+type ReparentPageRowParams struct {
+	ID       pgtype.UUID
+	Column2  string
+	SortKey  string
+	ParentID pgtype.UUID
+}
+
+type ReparentPageRowRow struct {
+	ID             pgtype.UUID
+	CreatedBy      pgtype.UUID
+	Title          string
+	ParentID       pgtype.UUID
+	Path           string
+	SortKey        string
+	LifecycleState string
+	DeletedAt      pgtype.Timestamptz
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+}
+
+// Moves a single page: new parent (nullable — NULL promotes it to root),
+// new path, new sort_key. Descendants' paths are a separate statement
+// (RewriteDescendantPaths) — both run in the same transaction
+// (internal/pages's Reparent), so a concurrent reader sees all old paths
+// or all new ones, never a mixture (docs/api/pages.md § Reparent).
+func (q *Queries) ReparentPageRow(ctx context.Context, arg ReparentPageRowParams) (ReparentPageRowRow, error) {
+	row := q.db.QueryRow(ctx, reparentPageRow,
+		arg.ID,
+		arg.Column2,
+		arg.SortKey,
+		arg.ParentID,
+	)
+	var i ReparentPageRowRow
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedBy,
+		&i.Title,
+		&i.ParentID,
+		&i.Path,
+		&i.SortKey,
+		&i.LifecycleState,
+		&i.DeletedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const rewriteDescendantPaths = `-- name: RewriteDescendantPaths :execrows
+UPDATE docs.pages
+SET path = $1::ltree || subpath(path, nlevel($2::ltree)),
+    updated_at = NOW()
+WHERE path <@ $2::ltree AND id != $3
+`
+
+type RewriteDescendantPathsParams struct {
+	NewPrefix string
+	OldPrefix string
+	PageID    pgtype.UUID
+}
+
+// Replaces the old_prefix ancestry on every descendant of the page being
+// moved with new_prefix, preserving each descendant's own trailing labels.
+// subpath(path, nlevel(old_prefix)) strips exactly the old ancestor
+// portion off the front of each descendant's path.
+func (q *Queries) RewriteDescendantPaths(ctx context.Context, arg RewriteDescendantPathsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, rewriteDescendantPaths, arg.NewPrefix, arg.OldPrefix, arg.PageID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const softDeletePage = `-- name: SoftDeletePage :execrows
