@@ -1,0 +1,7 @@
+go 1.26.1
+
+use (
+	./services/auth-service
+	./services/collaboration-service
+	./services/document-service
+)
