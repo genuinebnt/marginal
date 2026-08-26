@@ -85,6 +85,43 @@ func TestConcurrentEditEndToEnd(t *testing.T) {
 	assert.Equal(t, "XYhe-llo", text.String(), "B's insert must land next to the character it anchored to, not at its stale offset")
 }
 
+func TestBoundariesOnEmptyTextIsNil(t *testing.T) {
+	text := New("actor-1")
+	assert.Nil(t, text.Boundaries())
+}
+
+func TestBoundariesSpansFirstToLastLiveCharacter(t *testing.T) {
+	text := New("actor-1")
+	ids, err := text.InsertAt(0, "hello")
+	require.NoError(t, err)
+
+	b := text.Boundaries()
+	require.NotNil(t, b)
+	assert.Equal(t, anchor.Anchor{Item: ids[0], Bias: anchor.Before}, b.Start)
+	assert.Equal(t, anchor.Anchor{Item: ids[4], Bias: anchor.After}, b.End)
+
+	// Deleting the whole thing via exactly this range must empty the text —
+	// the actual reason this method exists: a client with no other anchor
+	// can still name "everything" correctly.
+	start := text.Resolve(b.Start)
+	end := text.Resolve(b.End)
+	require.NoError(t, text.DeleteRange(start.Offset, end.Offset))
+	assert.Equal(t, "", text.String())
+	assert.Nil(t, text.Boundaries())
+}
+
+func TestBoundariesSkipsATombstonedFirstCharacter(t *testing.T) {
+	text := New("actor-1")
+	ids, err := text.InsertAt(0, "hello")
+	require.NoError(t, err)
+	require.NoError(t, text.DeleteRange(0, 1)) // tombstone 'h', leaving "ello"
+
+	b := text.Boundaries()
+	require.NotNil(t, b)
+	assert.Equal(t, anchor.Anchor{Item: ids[1], Bias: anchor.Before}, b.Start, "must be 'e', the first LIVE character, not the tombstoned 'h'")
+	assert.Equal(t, anchor.Anchor{Item: ids[4], Bias: anchor.After}, b.End)
+}
+
 func TestDeleteRejectsOutOfBoundsAndInvertedRange(t *testing.T) {
 	text := New("actor-1")
 	_, err := text.InsertAt(0, "hello")

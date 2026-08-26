@@ -119,6 +119,53 @@ func (t *Text) Resolve(a anchor.Anchor) anchor.Resolved {
 	return t.log.Resolve(a)
 }
 
+// Boundaries names the whole live document as one AnchorRange — nil if
+// empty. A caller that only knows rune offsets (a plain-text client with
+// no anchor of its own, e.g. internal/wsapi's document-boundary field —
+// see docs/api/collaboration.md) uses this to build a "delete the whole
+// document" op without needing every individual ItemID in between, the
+// same way DeleteText's own Range only ever names its first and last
+// item (internal/ops's own doc comment on DeleteText).
+func (t *Text) Boundaries() *anchor.AnchorRange {
+	n := t.RuneLen()
+	if n == 0 {
+		return nil
+	}
+	first, err := t.log.ItemAt(0)
+	if err != nil {
+		return nil // can't happen for n > 0, but never panic over a display hint
+	}
+	last, err := t.log.ItemAt(n - 1)
+	if err != nil {
+		return nil
+	}
+	return &anchor.AnchorRange{
+		Start: anchor.Anchor{Item: first, Bias: anchor.Before},
+		End:   anchor.Anchor{Item: last, Bias: anchor.After},
+	}
+}
+
+// Slice reads the runes in [start, end) without editing anything —
+// internal/ops uses this to capture a DeleteText op's deleted content,
+// which its own inverse (an InsertText) needs to carry.
+func (t *Text) Slice(start, end int) (string, error) {
+	if start > end {
+		return "", ErrInvertedRange
+	}
+	if start < 0 || end > t.RuneLen() {
+		return "", ErrOutOfBounds
+	}
+	startByte, err := t.byteOffsetForRuneOffset(start)
+	if err != nil {
+		return "", err
+	}
+	endByte, err := t.byteOffsetForRuneOffset(end)
+	if err != nil {
+		return "", err
+	}
+	return t.rope.Slice(startByte, endByte)
+}
+
 // byteOffsetForRuneOffset converts a rune count into the byte offset the
 // rope actually indexes by.
 //

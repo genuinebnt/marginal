@@ -30,6 +30,45 @@ func TestInsertThenResolveAt(t *testing.T) {
 	assert.Equal(t, Resolved{Kind: At, Offset: 3}, got)
 }
 
+func TestItemAtSkipsALeadingTombstoneRun(t *testing.T) {
+	// The exact scenario that broke a first attempt at ItemAt (reusing
+	// sliceIndexForLiveOffset, whose "insertion point before the pos-th
+	// live item" contract can land on a preceding tombstoned run): three
+	// items, the first tombstoned, and ItemAt(0) must return the second
+	// item's id — the actual first LIVE item — not the tombstoned one
+	// sitting at slice index 0.
+	log := NewLog()
+	gen := NewIDGenerator("actor-1")
+	ids := idsN(gen, 3)
+	require.NoError(t, log.InsertAt(0, ids))
+	require.NoError(t, log.Tombstone(0, 1)) // tombstone the first item only
+
+	got, err := log.ItemAt(0)
+	require.NoError(t, err)
+	assert.Equal(t, ids[1], got, "ItemAt(0) must be the first LIVE item, not the tombstoned one at slice index 0")
+
+	got, err = log.ItemAt(1)
+	require.NoError(t, err)
+	assert.Equal(t, ids[2], got)
+}
+
+func TestItemAtOutOfBounds(t *testing.T) {
+	log := NewLog()
+	gen := NewIDGenerator("actor-1")
+	require.NoError(t, log.InsertAt(0, idsN(gen, 2)))
+
+	_, err := log.ItemAt(2)
+	assert.ErrorIs(t, err, ErrOutOfBounds)
+	_, err = log.ItemAt(-1)
+	assert.ErrorIs(t, err, ErrOutOfBounds)
+}
+
+func TestItemAtOnEmptyLogIsOutOfBounds(t *testing.T) {
+	log := NewLog()
+	_, err := log.ItemAt(0)
+	assert.ErrorIs(t, err, ErrOutOfBounds)
+}
+
 func TestResolveUnknownItem(t *testing.T) {
 	log := NewLog()
 	got := log.Resolve(Anchor{Item: ItemID{Actor: "nobody", Counter: 1}})

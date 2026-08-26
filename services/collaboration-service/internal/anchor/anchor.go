@@ -19,12 +19,17 @@
 // looks like *now*, and that's the whole mechanism this needs.
 package anchor
 
+import (
+	"encoding/json"
+	"fmt"
+)
+
 // ItemID is a Lamport-style identity: which actor, and that actor's own
 // monotonic counter when it was assigned. Two actors can never produce
 // the same ItemID, and one actor's ids are totally ordered by Counter.
 type ItemID struct {
-	Actor   string
-	Counter uint64
+	Actor   string `json:"actor"`
+	Counter uint64 `json:"counter"`
 }
 
 // IDGenerator hands out this actor's next ItemID. Not safe for concurrent
@@ -53,17 +58,50 @@ const (
 	After
 )
 
+// MarshalJSON/UnmarshalJSON render Bias as "before"/"after" rather than a
+// raw 0/1 — this type crosses the browser-facing wire (collaboration's
+// WebSocket contract), and a named value is worth the few extra bytes
+// where documentcore's own wire types (BlockKind, MarkKind) already made
+// the same call.
+func (b Bias) MarshalJSON() ([]byte, error) {
+	switch b {
+	case Before:
+		return []byte(`"before"`), nil
+	case After:
+		return []byte(`"after"`), nil
+	default:
+		return nil, fmt.Errorf("anchor: unknown Bias %d", b)
+	}
+}
+
+func (b *Bias) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	switch s {
+	case "before":
+		*b = Before
+	case "after":
+		*b = After
+	default:
+		return fmt.Errorf("anchor: unknown Bias %q", s)
+	}
+	return nil
+}
+
 // Anchor is a stable position: stick to Item, on the Bias side of it.
 type Anchor struct {
-	Item ItemID
-	Bias Bias
+	Item ItemID `json:"item"`
+	Bias Bias   `json:"bias"`
 }
 
 // AnchorRange is a stable range — what a mark or comment's extent is
 // actually persisted as (RFC-001 §9), since a plain [start,end) offset
 // pair has the same problem a single offset does.
 type AnchorRange struct {
-	Start, End Anchor
+	Start Anchor `json:"start"`
+	End   Anchor `json:"end"`
 }
 
 // ResolvedKind is Resolve's outcome.

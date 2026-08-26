@@ -119,6 +119,37 @@ func (l *Log) Resolve(a Anchor) Resolved {
 	return Resolved{Kind: Detached, Offset: before}
 }
 
+// ItemAt returns the ItemID of the pos-th live item (0-indexed) — the
+// reverse of Resolve: "what identity lives at this offset" instead of
+// "what offset does this identity live at now." A client that only ever
+// sees rune offsets (a plain textarea, not this package's own Anchor
+// type) needs this to construct an Anchor for a position it observed
+// rather than one it already held an identity for — internal/ops has no
+// such caller yet (every op it builds already carries an Anchor from a
+// prior Resolve), but internal/wsapi's document-boundary lookup does.
+//
+// Deliberately its own scan, not a reuse of sliceIndexForLiveOffset:
+// that method's contract is "the insertion point before the pos-th live
+// item," which can legitimately land on a preceding tombstoned run — the
+// right answer for InsertAt, the wrong one here, where the item at the
+// returned index must itself be live.
+func (l *Log) ItemAt(pos int) (ItemID, error) {
+	if pos < 0 {
+		return ItemID{}, ErrOutOfBounds
+	}
+	live := 0
+	for _, it := range l.items {
+		if it.tombstoned {
+			continue
+		}
+		if live == pos {
+			return it.id, nil
+		}
+		live++
+	}
+	return ItemID{}, ErrOutOfBounds
+}
+
 // sliceIndexForLiveOffset finds the slice index of the pos-th live item
 // (0-indexed), or len(items) if pos equals the current live count
 // (inserting at the very end).
