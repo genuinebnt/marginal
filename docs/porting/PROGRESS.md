@@ -133,6 +133,81 @@ clean in `services/document-service` under the host `GOOS`/`GOARCH` *and*
 report it as unbuildable — the real implementation
 (`main.go`/`json.go`) is tagged `//go:build js && wasm`.
 
+---
+
+## 2026-08-26 — `PageService` implemented over real Postgres
+
+Continuing document-service: `docs.pages` (title, LTREE tree position,
+lifecycle) is now a working gRPC service, matching `docs/api/pages.md`
+field-for-field.
+
+**`internal/sortkey`** — fractional-index sort keys (`Between(prev, next)`),
+so a page is reordered by writing one row, never renumbering siblings.
+Two real bugs surfaced by testing before it was correct: appending a fixed
+filler digit after matching *prev's* own digit (not just next's) could
+silently regenerate the same key back (`Between("zi", "")` looping to
+`"zi"`); and the exhaustion check fired on seeing a single `'0'` digit
+instead of checking whether `next` had more room past it, wrongly
+rejecting legitimate keys like `Between("", "0i")`. Both pinned as
+regression tests; `TestPropertyBetweenOrdering` (rapid) checks the
+ordering law generatively.
+
+**`services/document-service/proto/document.proto`** — `PageService`,
+matching `docs/api/pages.md` exactly. Generated via `protoc` directly
+(`buf` isn't installed; for one proto file, `protoc` +
+`protoc-gen-go`/`protoc-gen-go-grpc` — already available — is a fine
+substitute). `scripts/gen-proto.sh` regenerates
+`internal/genproto/documentv1`.
+
+**`internal/pagerepo`** (sqlc-generated) + **`internal/pages`** (domain
+model, `Repo` port + Postgres adapter, gRPC `Server`) implement 5 of 6
+RPCs: `CreatePage`/`GetPage`/`ListPages`/`RenamePage`/`DeletePage`.
+**`ReparentPage` is deliberately deferred** — it needs a transactional
+subtree LTREE rewrite (`docs/api/pages.md` § Reparent: "every descendant's
+path is rewritten in the same transaction"), which is a large enough unit
+of work to be its own increment rather than rushed alongside the rest.
+`DeletePage` is a simple soft delete for now too, not the full
+cascade-to-subtree saga (`ARCHITECTURE.md` §5) — also deferred.
+
+Notable decisions:
+- `docs.pages.id` is generated **application-side** (`uuid.NewV7()`), not
+  by a Postgres default — the row's `path` needs the id as its own final
+  LTREE label, so it must be known before the `INSERT`, not after.
+- LTREE labels can't contain hyphens; a page's path label is `"p" +
+  hex(uuid without dashes)` — matches the convention `docs/api/pages.md`'s
+  own example already showed (`"path": "p018f2b1c..."`).
+- `pages.PageID` is its own type, not `documentcore.PageID` — pages
+  (metadata) and documentcore (block content) are separate bounded
+  contexts for now; sharing a type would couple them for no current
+  benefit (extraction is for the *second* consumer that actually needs it).
+- `api-gateway` doesn't exist in this repo's scope — `document-service`
+  reads `actor-id` directly off gRPC metadata as a stand-in, documented in
+  `docs/api/pages.md` as temporary scaffolding, not the real trust
+  boundary.
+- Migrations live at `internal/migrate/migrations/` (not a top-level
+  `migrations/`) so they can be `//go:embed`ded — the same schema a real
+  deployment applies at startup (`migrate.Up`) is what integration tests
+  run against.
+
+**Verified three ways:** `go test ./internal/pages/...` unit-level;
+`go test -tags=integration ./internal/pages/...` against real Postgres 18
+via testcontainers-go (4 tests: CRUD round trip, sibling ordering by
+sort_key, nested LTREE path on a child page, anchor-under-wrong-parent
+rejection) — all passing; and a live manual smoke test (`docker run
+postgres:18-alpine`, `go run ./cmd`, `grpcurl`) exercising
+Create→List→Rename→Delete→Get end-to-end, including the missing-`actor-id`
+`UNAUTHENTICATED` rejection and the post-delete `NOT_FOUND`. `golangci-lint
+run ./...` clean (0 issues) — `golangci-lint`/`staticcheck`/`govulncheck`
+needed reinstalling via `go install ...@latest` since the previously
+installed copies were built with an older Go than the local 1.26.1
+toolchain requires (a correction to an earlier commit's claim that pinning
+`go.mod`'s directive to 1.23 had fixed this — it hadn't; these tools check
+the actual installed toolchain, not the `go` directive).
+`govulncheck` separately flags 1.26.1's own stdlib CVEs (fixed in 1.26.2)
+— a local Go upgrade to consider, unrelated to this repo's code.
+
 **Next:** `auth-service` and `collaboration-service` still have no business
-logic — Phase 1 continues with document-service's HTTP/gRPC handlers and
-Postgres repo layer next, per `ROADMAP.md`'s Track 1 order.
+logic. For document-service itself: `ReparentPage`'s subtree rewrite, the
+delete saga's cascade, and wiring an outbox (`DATA_MODEL.md` §4's "owns its
+own outbox") are the natural next increments, per `ROADMAP.md`'s Track 1
+order.

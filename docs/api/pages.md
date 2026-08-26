@@ -1,6 +1,11 @@
 # API — Pages
 
-**Status:** Contract designed, unimplemented
+**Status:** Implemented in Go (`services/document-service/internal/pages`) —
+CreatePage/GetPage/ListPages/RenamePage/DeletePage. **ReparentPage is not
+yet implemented** (`codes.Unimplemented`) — it needs a transactional
+subtree LTREE rewrite, a separate unit of work; see
+`docs/porting/PROGRESS.md`. DeletePage is a simple soft delete for now, not
+the full cascade-to-subtree saga (`ARCHITECTURE.md` §5).
 **Owners:** `document-service` (gRPC `PageService`) · `api-gateway` (REST translation)
 **Related:** ADR-007 (gRPC east-west) · `docs/architecture/lld/document-service.md` · `DATA_MODEL.md` §4
 
@@ -11,7 +16,7 @@ Pages have **two contracts**, and they are not the same document:
             §2 below                      §1 below
 ```
 
-§1 is the real service contract — protobuf in `crates/proto/proto/document.proto`, the
+§1 is the real service contract — protobuf in `services/document-service/proto/document.proto`, the
 schema `document-service` is built and tested against. §2 is the gateway's REST
 projection of it, and it is what the generated TypeScript client is built from
 (`README.md` in this directory).
@@ -41,7 +46,7 @@ make the op compiler guess.
 
 ### The complete file
 
-`crates/proto/proto/document.proto` — the whole Phase 1 surface:
+`services/document-service/proto/document.proto` — the whole Phase 1 surface:
 
 ```protobuf
 syntax = "proto3";
@@ -109,8 +114,8 @@ message DeletePageRequest   { string id = 1; }
 a page to a root is `parent_id` present and empty. `optional` on a proto3 scalar gives
 explicit field presence, which is what makes that distinction expressible at all.
 
-The generated Rust crate is `marginal-proto`, module `document` — so
-`marginal_proto::document::page_service_client::PageServiceClient`.
+The generated Go package is `marginal/document-service/internal/genproto/documentv1`
+(`services/document-service/scripts/gen-proto.sh` regenerates it).
 
 ### The `Page` message
 
@@ -148,6 +153,11 @@ parse it.
 
 `created_by` is never taken from a request field. A client that could name its own author
 could forge authorship — the gateway is the only component that knows who the caller is.
+
+**No `api-gateway` exists in this repo's scope yet** — `document-service` reads
+`actor-id` directly off incoming gRPC metadata as a stand-in (`internal/pages/api.go`'s
+`actorID`), rejecting its absence with `UNAUTHENTICATED`. This is temporary scaffolding,
+not the real trust boundary; replace it, don't build on it, once a gateway exists.
 
 ### Status codes
 
