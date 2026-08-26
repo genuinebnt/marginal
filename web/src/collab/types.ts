@@ -1,0 +1,113 @@
+// Wire types for docs/api/collaboration.md — kept in sync with
+// services/collaboration-service/internal/{anchor,ops,oplog,wsapi,pageop}'s
+// own json tags by hand (this repo has no protobuf/OpenAPI generator for
+// the WebSocket contract, unlike pages.md/auth.md's REST surface), and
+// with services/documentcore's own op/kind JSON shapes for the block tier.
+
+import type { Mark } from "./marks";
+
+export interface ItemId {
+  actor: string;
+  counter: number;
+}
+
+export type Bias = "before" | "after";
+
+export interface Anchor {
+  item: ItemId;
+  bias: Bias;
+}
+
+export interface AnchorRange {
+  start: Anchor;
+  end: Anchor;
+}
+
+// Character-granular ops (internal/ops) — unchanged from before pageop
+// existed; scoped to one block's own live rope now instead of a
+// whole-page one.
+export type TextOp =
+  | { type: "InsertText"; at: Anchor | null; text: string }
+  | { type: "DeleteText"; range: AnchorRange; text: string };
+
+// Block-granular ops (documentcore.Op) — RFC-002 §2's structural tier.
+// Content/BlockKind match documentcore's own JSON shapes exactly
+// (block.go's blockKindJSON, page.go's Content).
+export type BlockKind =
+  | { tag: "paragraph" }
+  | { tag: "heading"; level: number }
+  | { tag: "quote" }
+  | { tag: "code_block"; language: string }
+  | { tag: "divider" };
+
+export interface Content {
+  text: string;
+  marks?: Mark[];
+}
+
+export type BlockOp =
+  | { type: "InsertBlock"; id: string; after: string | null; kind: BlockKind; content: Content }
+  | { type: "DeleteBlock"; tombstone: { id: string; kind: BlockKind; content: Content }; after: string | null }
+  | { type: "SetBlockKind"; id: string; from: BlockKind; to: BlockKind }
+  | { type: "SetBlockContent"; block: string; prev: Content; content: Content }
+  | { type: "SetTitle"; page: string; from: string; to: string }
+  | { type: "MoveBlock"; id: string; from: string | null; to: string | null };
+
+// pageop.Op's wire union (internal/pageop) — "scope" tells the two tiers
+// apart. A Block envelope merges BlockOp's own tagged fields directly (no
+// extra nesting level); a Text envelope nests TextOp under "op" alongside
+// which block it applies to.
+export type PageOp = ({ scope: "block" } & BlockOp) | { scope: "text"; block: string; op: TextOp };
+
+export interface LoggedOp {
+  id: string;
+  version: number;
+  page_id: string;
+  actor_id: string;
+  actor_kind: string;
+  undo_group?: string;
+  vector_clock: Record<string, number>;
+  op: PageOp;
+  created_at: string;
+}
+
+// session.BlockSnapshot/Snapshot — the "snapshot" frame's payload.
+export interface BlockSnapshot {
+  id: string;
+  kind: BlockKind;
+  text: string;
+  marks?: Mark[];
+  boundaries?: AnchorRange;
+}
+
+export interface PageSnapshot {
+  page_id: string;
+  title: string;
+  blocks: BlockSnapshot[];
+}
+
+// session.CursorEvent's wire shape (wsapi's cursorWire) — one actor's
+// current caret/selection. block_id null means "not focused in any block
+// right now" (they blurred everywhere); start/end are meaningless then
+// and typically omitted. start/end are rune offsets into that block's
+// live text (the same unit InsertText/DeleteText already use), not
+// UTF-16 code units — see useCollabPage's own note on where this
+// simplifies for multi-byte text, matching marks.ts's existing one.
+export interface CursorWire {
+  actor_id: string;
+  block_id: string | null;
+  start: number;
+  end: number;
+}
+
+export type ServerMessage =
+  | { type: "snapshot"; snapshot: PageSnapshot; present?: string[]; cursors?: CursorWire[] }
+  | { type: "ack"; op: LoggedOp; boundaries?: AnchorRange }
+  | { type: "broadcast"; op: LoggedOp; boundaries?: AnchorRange }
+  | { type: "presence"; actor_id: string; joined: boolean }
+  | { type: "cursor"; cursor: CursorWire }
+  | { type: "error"; message: string };
+
+export type ClientMessage =
+  | { type: "op"; op: PageOp }
+  | { type: "cursor"; cursor: { block_id: string | null; start: number; end: number } };
