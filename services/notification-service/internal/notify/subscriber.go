@@ -33,9 +33,18 @@ type wireEvent struct {
 	Payload json.RawMessage `json:"payload"`
 }
 
+// handleEventTimeout bounds one HandleUserRegistered call — see
+// document-service/internal/blockproj's identical constant and doc
+// comment for why a NATS delivery goroutine must never block forever on
+// a stuck DB write.
+const handleEventTimeout = 10 * time.Second
+
 // Subscribe registers a durable-ish NATS subscription (plain core NATS,
 // not JetStream — see the package README note below) that calls
-// HandleUserRegistered for each message. Returns an unsubscribe func.
+// HandleUserRegistered for each message. Returns the *nats.Subscription
+// itself, not a hand-rolled unsubscribe closure wrapping exactly one of
+// its methods — callers get the real object (Unsubscribe, but also
+// IsValid, Pending, etc.) for free instead of a narrower one-off shape.
 //
 // Plain core NATS, not JetStream: core NATS has no redelivery/durability
 // of its own — a message published while this service is down is lost,
@@ -44,14 +53,8 @@ type wireEvent struct {
 // added operational complexity (a stream, a consumer, ack semantics) for
 // a Track 1 demo. Revisit if a notification type is ever added whose loss
 // actually matters (CLAUDE.md's "ship minimal" — .agents/agents.md §2).
-// handleEventTimeout bounds one HandleUserRegistered call — see
-// document-service/internal/blockproj's identical constant and doc
-// comment for why a NATS delivery goroutine must never block forever on
-// a stuck DB write.
-const handleEventTimeout = 10 * time.Second
-
-func Subscribe(nc *nats.Conn, repo Repo) (unsubscribe func() error, err error) {
-	sub, err := nc.Subscribe(SubjectUserRegistered, func(msg *nats.Msg) {
+func Subscribe(nc *nats.Conn, repo Repo) (*nats.Subscription, error) {
+	return nc.Subscribe(SubjectUserRegistered, func(msg *nats.Msg) {
 		var evt wireEvent
 		if err := json.Unmarshal(msg.Data, &evt); err != nil {
 			slog.Error("notify: decoding auth.user_registered envelope", "err", err)
@@ -63,8 +66,4 @@ func Subscribe(nc *nats.Conn, repo Repo) (unsubscribe func() error, err error) {
 			slog.Error("notify: handling auth.user_registered", "event_id", evt.ID, "err", err)
 		}
 	})
-	if err != nil {
-		return nil, err
-	}
-	return sub.Unsubscribe, nil
 }

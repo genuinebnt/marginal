@@ -61,11 +61,11 @@ func run() error {
 	defer nc.Close()
 
 	repo := notify.NewPostgresRepo(pool)
-	unsubscribe, err := notify.Subscribe(nc, repo)
+	sub, err := notify.Subscribe(nc, repo)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = unsubscribe() }()
+	defer func() { _ = sub.Unsubscribe() }()
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {

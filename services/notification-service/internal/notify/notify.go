@@ -47,7 +47,19 @@ type Notification struct {
 }
 
 // Repo is notify's only port — small, declared at its point of use
-// (CLOUD_PORTABILITY.md).
+// (CLOUD_PORTABILITY.md), and unlike document-service's now-deleted
+// pages.Repo (one implementation, no test double), this one has a real
+// second implementation (fakeRepo, notify_test.go) exercising
+// HandleUserRegistered without Postgres.
+//
+// PORT-NOTE: every call site here resolves its Repo at compile time —
+// nothing ever holds a Repo value and switches implementations at
+// runtime. A Rust port should express this as a generic type parameter
+// bound (`fn handle_user_registered<R: Repo>(repo: &R, ...)`), not a
+// `dyn Trait` object — the dynamic dispatch a trait object buys has no
+// use here, and Go's own interface value already costs an allocation +
+// indirection this codebase pays for free under the GC; Rust doesn't
+// need to inherit that cost just because Go's version looks like this.
 type Repo interface {
 	// Create persists a notification, idempotent on sourceEventID —
 	// redelivering the same event must not create a duplicate. Returns

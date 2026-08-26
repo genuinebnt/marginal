@@ -132,9 +132,9 @@ func TestSubscribeEndToEnd(t *testing.T) {
 	repo := newTestRepo(t)
 	nc := newTestNATS(t)
 
-	unsubscribe, err := notify.Subscribe(nc, repo)
+	sub, err := notify.Subscribe(nc, repo)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = unsubscribe() })
+	t.Cleanup(func() { _ = sub.Unsubscribe() })
 
 	userID := uuid.Must(uuid.NewV7())
 	eventID := uuid.Must(uuid.NewV7())
