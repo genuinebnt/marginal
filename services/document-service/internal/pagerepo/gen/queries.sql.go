@@ -367,6 +367,28 @@ func (q *Queries) RewriteDescendantPaths(ctx context.Context, arg RewriteDescend
 	return result.RowsAffected(), nil
 }
 
+const softDeleteDescendants = `-- name: SoftDeleteDescendants :execrows
+UPDATE docs.pages SET lifecycle_state = 'deleting', deleted_at = NOW(), updated_at = NOW()
+WHERE path <@ $1::ltree AND id != $2 AND deleted_at IS NULL
+`
+
+type SoftDeleteDescendantsParams struct {
+	ParentPath string
+	PageID     pgtype.UUID
+}
+
+// The cascade half of Delete: every descendant of the deleted page (found
+// via the same path <@ pattern RewriteDescendantPaths uses) is
+// soft-deleted too. Excludes already-deleted rows so a repeated call
+// (idempotent Delete) touches nothing on the second pass.
+func (q *Queries) SoftDeleteDescendants(ctx context.Context, arg SoftDeleteDescendantsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, softDeleteDescendants, arg.ParentPath, arg.PageID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const softDeletePage = `-- name: SoftDeletePage :execrows
 UPDATE docs.pages SET lifecycle_state = 'deleting', deleted_at = NOW(), updated_at = NOW()
 WHERE id = $1 AND created_by = $2 AND deleted_at IS NULL
@@ -377,10 +399,9 @@ type SoftDeletePageParams struct {
 	CreatedBy pgtype.UUID
 }
 
-// Simple soft delete only — no cascade to descendants and no saga
-// completion step (ARCHITECTURE.md §5's delete saga is out of scope for
-// this first PageService slice; see docs/porting/PROGRESS.md).
-// owner_id: see GetPage.
+// owner_id: see GetPage. No saga completion step (ARCHITECTURE.md §5's
+// hard-delete-after-acks needs services outside this repo's scope;
+// docs/api/pages.md § Delete) — lifecycle_state stays 'deleting' forever.
 func (q *Queries) SoftDeletePage(ctx context.Context, arg SoftDeletePageParams) (int64, error) {
 	result, err := q.db.Exec(ctx, softDeletePage, arg.ID, arg.CreatedBy)
 	if err != nil {

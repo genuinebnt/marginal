@@ -2,9 +2,14 @@
 
 **Status:** Implemented in Go (`services/document-service/internal/pages`) —
 all six RPCs, including ReparentPage's transactional subtree LTREE
-rewrite. DeletePage is a simple soft delete for now, not the full
-cascade-to-subtree saga (`ARCHITECTURE.md` §5) — that's the remaining
-deferred piece; see `docs/porting/PROGRESS.md`.
+rewrite. DeletePage is a simple soft delete, and — unlike the earlier note
+here — **that's the terminal state for this repo, not a deferred step**:
+`ARCHITECTURE.md` §5's full saga coordinates with `search-service`,
+`diagnostics-service`, and `history-service`, none of which exist in this
+repo's scope (`ADR-011`; only `document-service`, `auth-service`,
+`collaboration-service` do). A saga can't meaningfully coordinate with
+participants that don't exist, so it isn't attempted here. See
+`docs/porting/PROGRESS.md` for the reasoning.
 **Owners:** `document-service` (gRPC `PageService`) · `api-gateway` (REST translation)
 **Related:** ADR-007 (gRPC east-west) · `docs/architecture/lld/document-service.md` · `DATA_MODEL.md` §4
 
@@ -294,11 +299,23 @@ transaction; a concurrent reader sees all old paths or all new ones, never a mix
 
 ### Delete
 
-Soft, and **cascades to the subtree** — descendants disappear with the parent.
+Soft, and **cascades to the subtree** — descendants disappear with the parent. The
+cascade itself is purely a `document-service`-internal LTREE operation (same
+`path <@ ...` pattern `RewriteDescendantPaths` uses for reparenting) and doesn't
+need any other service, so it's implemented in full here.
 
-**Idempotent.** Deleting an already-deleted page succeeds. This is deliberate: the delete
-is the first step of a saga (`ARCHITECTURE.md` §5) whose later steps can crash and resume,
-and a resumed saga must not fail on its own earlier work.
+**What's genuinely out of scope:** `ARCHITECTURE.md` §5's full choreographed saga —
+waiting for `collab.page_released`/`search.page_purged`/etc. acks before a final
+hard-delete — coordinates with `collaboration-service`, `search-service`,
+`diagnostics-service`, and `history-service`. Only the first of those exists in this
+repo. `lifecycle_state` stays `deleting` forever here (never progresses to
+`deleted`), since nothing in this repo's scope is positioned to be the thing that
+completes that transition. That's a real, structural gap for a production
+deployment, not a silently missing feature.
+
+**Idempotent.** Deleting an already-deleted (or already-`deleting`) page succeeds
+without changing anything — cascading again over descendants that are already
+`deleting` is a no-op, not an error.
 
 The row survives. `lifecycle_state` moves `active → deleting`; only the saga's final step
 sets `deleted`.

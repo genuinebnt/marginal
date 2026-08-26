@@ -73,6 +73,40 @@ func TestCreateGetRenameDeleteRoundTrip(t *testing.T) {
 	require.NoError(t, repo.Delete(ctx, owner, created.ID), "delete must be idempotent")
 }
 
+func TestDeleteCascadesToDescendants(t *testing.T) {
+	repo := newTestRepo(t)
+	ctx := context.Background()
+	owner := testUUID()
+
+	parent, err := repo.Create(ctx, pages.NewPage{CreatedBy: owner, Title: "Parent"})
+	require.NoError(t, err)
+	parentID := parent.ID
+	child, err := repo.Create(ctx, pages.NewPage{CreatedBy: owner, Title: "Child", ParentID: &parentID})
+	require.NoError(t, err)
+	childID := child.ID
+	grandchild, err := repo.Create(ctx, pages.NewPage{CreatedBy: owner, Title: "Grandchild", ParentID: &childID})
+	require.NoError(t, err)
+
+	// An unrelated sibling must survive.
+	sibling, err := repo.Create(ctx, pages.NewPage{CreatedBy: owner, Title: "Sibling"})
+	require.NoError(t, err)
+
+	require.NoError(t, repo.Delete(ctx, owner, parentID))
+
+	_, err = repo.Get(ctx, owner, parentID)
+	require.ErrorIs(t, err, pages.ErrNotFound)
+	_, err = repo.Get(ctx, owner, child.ID)
+	require.ErrorIs(t, err, pages.ErrNotFound, "child must be deleted along with its parent")
+	_, err = repo.Get(ctx, owner, grandchild.ID)
+	require.ErrorIs(t, err, pages.ErrNotFound, "grandchild must be deleted too — the whole subtree")
+
+	stillThere, err := repo.Get(ctx, owner, sibling.ID)
+	require.NoError(t, err, "an unrelated page must not be touched by the cascade")
+	require.Equal(t, pages.Active, stillThere.LifecycleState)
+
+	require.NoError(t, repo.Delete(ctx, owner, parentID), "cascading delete is idempotent too")
+}
+
 // TestPagesAreScopedToTheirOwner is the security-review finding this
 // covers: a page that exists but belongs to someone else must be
 // indistinguishable, at every RPC, from one that doesn't exist at all

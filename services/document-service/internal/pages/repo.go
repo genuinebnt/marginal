@@ -275,18 +275,47 @@ func (r *PostgresRepo) Reparent(ctx context.Context, owner uuid.UUID, id PageID,
 	return pageFromReparentRow(row), nil
 }
 
+// Delete soft-deletes id and cascades to every descendant (found via the
+// same path <@ pattern Reparent's descendant rewrite uses), all in one
+// transaction. A page that doesn't exist, isn't the caller's, or is
+// already deleted: zero rows affected, no error — idempotent
+// (docs/api/pages.md § Delete). No hard-delete-after-acks step —
+// ARCHITECTURE.md §5's full saga needs services outside this repo's
+// scope; lifecycle_state stays 'deleting' forever here.
 func (r *PostgresRepo) Delete(ctx context.Context, owner uuid.UUID, id PageID) error {
-	_, err := r.q.SoftDeletePage(ctx, pagerepo.SoftDeletePageParams{
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("pages: delete: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := r.q.WithTx(tx)
+
+	page, err := r.get(ctx, q, owner, id)
+	if errors.Is(err, ErrNotFound) {
+		// Nothing to delete or cascade — idempotent no-op, not an error.
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("pages: delete: resolving page: %w", err)
+	}
+
+	if _, err := q.SoftDeleteDescendants(ctx, pagerepo.SoftDeleteDescendantsParams{
+		ParentPath: page.Path,
+		PageID:     toPgUUID(uuid.UUID(id)),
+	}); err != nil {
+		return fmt.Errorf("pages: delete: cascading to descendants: %w", err)
+	}
+
+	if _, err := q.SoftDeletePage(ctx, pagerepo.SoftDeletePageParams{
 		ID:        toPgUUID(uuid.UUID(id)),
 		CreatedBy: toPgUUID(owner),
-	})
-	if err != nil {
+	}); err != nil {
 		return fmt.Errorf("pages: delete: %w", err)
 	}
-	// A rows-affected count of 0 is still success: deleting an
-	// already-deleted (or nonexistent, or not-yours) page is idempotent
-	// (docs/api/pages.md § Delete) — it doesn't distinguish those cases
-	// either, same reasoning as Get's NOT_FOUND.
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("pages: delete: commit: %w", err)
+	}
 	return nil
 }
 
