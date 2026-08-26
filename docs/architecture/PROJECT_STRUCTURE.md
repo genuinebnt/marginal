@@ -4,7 +4,7 @@
 **Principle:** keep the dependency rules, drop the ceremony.
 
 **Go/TS translation (ADR-011):** every principle below is language-agnostic and
-governs the Go+TS build unchanged — read `crate`/`crates/` as `package`/`go/services/<name>/internal/`,
+governs the Go+TS build unchanged — read `crate`/`crates/` as `package`/`services/<name>/internal/`,
 `trait` as a small Go interface declared at its point of use (or a TS type),
 and `Cargo.toml` workspace membership as a `go.work` module. The extraction
 triggers in §5/§7 (duplicate on the second use, extract on the third; a

@@ -9,7 +9,7 @@ duplicate it here; when the two disagree, `CLAUDE.md` and the ADRs win.
 **This is not mentor-mode.** Per `ADR-011`, Claude writes the Go and
 TypeScript implementation directly — services, tests, docs, the lot. The
 old scaffold-and-wait loop that governed the Rust attempt lives at
-`rust/agents.md` now, for the future Rust-port repo. Read
+`docs/rust/agents.md` now, for the future Rust-port repo. Read
 `docs/porting/PROGRESS.md` before doing anything else in a new or
 compacted session — it is the record of what's actually done, not what a
 stale summary implies.

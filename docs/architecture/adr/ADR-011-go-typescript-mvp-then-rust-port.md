@@ -97,7 +97,7 @@ full, unchanged, to the future Rust-port repo.
   vectors, matching module/service boundaries) and documentation, exactly
   the risk ADR-005 named about Go-shaped Rust, mirrored the other direction.
 - **The deleted Rust attempt is not a design to reproduce.** It had known-
-  wrong shapes its own open-decisions list (`rust/TASKS.md`) already
+  wrong shapes its own open-decisions list (`docs/rust/TASKS.md`) already
   flagged — `BlockId(u64)` instead of `Uuid`, `Op` variant names drifted
   from `RFC-002`'s ISA, unvalidated `Heading{level}`. The Go implementation
   follows the RFCs/DATA_MODEL directly, not the deleted draft.
@@ -110,9 +110,9 @@ full, unchanged, to the future Rust-port repo.
 
 ## Consequences
 
-- `rust/` in this repo holds documents only (the old `agents.md`, `learning/`,
-  `TASKS.md`) — a waypoint for whoever starts the future Rust-port repo, not
-  a spec the Go code has to match.
+- `docs/rust/` in this repo holds documents only (the old `agents.md`,
+  `learning/`, `TASKS.md`) — a waypoint for whoever starts the future
+  Rust-port repo, not a spec the Go code has to match.
 - `docs/porting/` tracks progress, open questions, and the porting approach
   as the MVP is built, so context survives session compaction without being
   re-derived or hallucinated.

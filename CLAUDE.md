@@ -6,7 +6,7 @@ Eleven microservices, event-sourced on a CRDT operation log.
 
 **Currently building the Track 1 MVP in Go + TypeScript** (`ADR-011`) — Claude
 writes the implementation directly. The eventual Rust port is a separate,
-later repo; see `rust/README.md` for what's archived there and why.
+later repo; see `docs/rust/README.md` for what's archived there and why.
 
 ## Rules
 
@@ -96,20 +96,20 @@ different noun is not sufficient (`ADR-001`, unchanged).
 ## Layout
 
 ```
-go/
-├── go.work
-└── services/
-    ├── document-service/       go.mod, cmd/main.go, internal/documentcore/, internal/...
-    ├── auth-service/
-    └── collaboration-service/
+go.work                         at repo root — one Go module per service, no wrapper directory
 
-web/                            React 19 + TS SPA + native TS document-core (Vite)
+services/                       backend, kept separate from web/
+├── document-service/           go.mod, cmd/main.go, internal/documentcore/, internal/...
+├── auth-service/
+└── collaboration-service/
+
+web/                            frontend — React 19 + TS SPA + native TS document-core (Vite)
 ├── src/document-core/          page.ts, block.ts, operation.ts, history.ts, inline.ts
 └── ...
 
 testdata/<module>/*.json        golden test vectors — shared behavior spec across languages
 
-rust/                           docs only, no code — the archived Rust-mentor track (see rust/README.md)
+docs/rust/                      docs only, no code — the archived Rust-mentor track (see docs/rust/README.md)
 
 docs/porting/                   PROGRESS.md, PORTING_GUIDE.md, OPEN_QUESTIONS.md, BENCHMARKS.md
 ```
@@ -144,7 +144,7 @@ backlog" principle as before.
 | `docs/porting/OPEN_QUESTIONS.md` | Still-open, language-independent product decisions |
 | `docs/api/README.md` | API documentation conventions |
 | `docs/ui-mockups/` | Static visual specs + editor/reader chrome spec |
-| `rust/README.md` | What's archived from the Rust attempt, and why |
+| `docs/rust/README.md` | What's archived from the Rust attempt, and why |
 | `docs/architecture/adr/` | 001 scope · ~~002 Rust depth~~ · 003 Postgres · ~~004 SPA~~ · ~~005 Go reference~~ · 007 gRPC east-west · 008 GCP + Terraform · 009 scope expansion · 010 cost-bounded cloud posture · **011 Go+TS MVP, Rust port later** |
 
 ---

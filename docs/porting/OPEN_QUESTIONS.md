@@ -1,6 +1,6 @@
 # Open Questions — product decisions, independent of language
 
-Carried forward from `rust/TASKS.md`'s open-decisions table. Some of that
+Carried forward from `docs/rust/TASKS.md`'s open-decisions table. Some of that
 table is already resolved by simply following the RFCs/DATA_MODEL directly
 in the Go implementation (see below); these are the ones still genuinely
 open.
