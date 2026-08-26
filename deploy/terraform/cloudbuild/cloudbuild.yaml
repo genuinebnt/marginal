@@ -1,0 +1,35 @@
+# Templated Cloud Build config, shared by all three services' triggers
+# (../modules/cloud-build/main.tf) rather than duplicated three times — each
+# trigger supplies _SERVICE_NAME (plus _REGION/_REPOSITORY) as a
+# per-trigger substitution. Referenced by each google_cloudbuild_trigger's
+# `filename`, so it must live at exactly this path (relative to the repo
+# root) in the connected git repo — Cloud Build reads it from the checked-
+# out source at build time, not from Terraform state.
+#
+# Will not build successfully until services/<name>/Dockerfile exists for
+# each service — that Dockerfile does not exist yet in this repo (see
+# deploy/terraform/README.md "Setup" §3 / "Known limitations"). Out of this
+# Terraform task's scope to add.
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE_NAME}:$SHORT_SHA
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE_NAME}:latest
+      - -f
+      - services/${_SERVICE_NAME}/Dockerfile
+      - services/${_SERVICE_NAME}
+
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE_NAME}:$SHORT_SHA
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE_NAME}:latest
+
+options:
+  # Not load-bearing today (only required when a trigger sets a custom
+  # serviceAccount, which these don't — they use Cloud Build's default SA),
+  # but an explicit, non-default-relying choice is cheap and avoids a
+  # surprise if a custom SA gets added to a trigger later.
+  logging: CLOUD_LOGGING_ONLY

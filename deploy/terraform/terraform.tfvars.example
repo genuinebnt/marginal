@@ -1,0 +1,26 @@
+# Copy to terraform.tfvars (gitignored) and fill in real values.
+# terraform.tfvars itself must never be committed — .gitignore in this
+# directory enforces that.
+
+project_id                 = "my-marginal-project"
+billing_account_id         = "0X0X0X-0X0X0X-0X0X0X" # gcloud billing accounts list
+budget_notification_email  = "you@example.com"
+
+# Build and push these first — no CI/build pipeline exists yet (ADR-011
+# scope). See README "Setup" for the docker build/push commands.
+document_service_image      = "us-central1-docker.pkg.dev/my-marginal-project/marginal/document-service:latest"
+auth_service_image          = "us-central1-docker.pkg.dev/my-marginal-project/marginal/auth-service:latest"
+collaboration_service_image = "us-central1-docker.pkg.dev/my-marginal-project/marginal/collaboration-service:latest"
+
+# Everything below has a sensible default in variables.tf — override only
+# if you need something different.
+
+# region = "us-central1"
+# zone   = "us-central1-a"
+# budget_amount_usd = 10
+# postgres_tier = "db-f1-micro"
+
+# frontend_bucket_name = ""            # defaults to "PROJECT_ID-web"
+# outbox_event_types   = ["collab.ops_flushed"]
+# github_owner         = "genuinebnt"  # this repo's actual GitHub org as of writing
+# github_repo_name     = "marginal"
