@@ -16,11 +16,6 @@ SELECT id, email, password_hash, display_name, cursor_color, created_at
 FROM auth.users
 WHERE id = $1;
 
--- name: CountUsers :one
--- Bootstrap only (internal/bootstrap) — always called inside the
--- pg_advisory_xact_lock transaction, never on its own.
-SELECT count(*) FROM auth.users;
-
 -- name: InsertRefreshToken :exec
 INSERT INTO auth.refresh_tokens (id, user_id, token_hash, parent_id, expires_at)
 VALUES ($1, $2, $3, sqlc.narg(parent_id), $4);
@@ -69,3 +64,25 @@ WHERE id IN (SELECT rt_id FROM descendants) AND revoked_at IS NULL;
 -- name: RevokeAllRefreshTokensForUser :execrows
 UPDATE auth.refresh_tokens SET revoked_at = NOW()
 WHERE user_id = $1 AND revoked_at IS NULL;
+
+-- name: InsertOutboxEvent :one
+-- id is generated application-side, same reasoning as every other id in
+-- this repo.
+INSERT INTO auth.outbox (id, aggregate_id, event_type, payload)
+VALUES ($1, $2, $3, $4)
+RETURNING *;
+
+-- name: ClaimUnpublishedOutboxEvents :many
+-- FOR UPDATE SKIP LOCKED (DATA_MODEL.md § Outbox): a second poller
+-- instance skips rows the first already claimed instead of blocking on
+-- them, so at-least-once delivery holds even with more than one replica
+-- of this service running the poller loop.
+SELECT * FROM auth.outbox
+WHERE published_at IS NULL
+ORDER BY created_at ASC
+LIMIT $1
+FOR UPDATE SKIP LOCKED;
+
+-- name: MarkOutboxEventsPublished :exec
+UPDATE auth.outbox SET published_at = NOW()
+WHERE id = ANY(sqlc.arg(ids)::uuid[]);

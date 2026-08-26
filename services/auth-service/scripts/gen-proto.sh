@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Regenerates internal/genproto/authv1 from proto/auth.proto.
+# Regenerates genproto/authv1 from proto/auth.proto. Not under internal/ — api-gateway (a separate Go module) needs to import the generated client stub, and Go's internal-package visibility rule would block that across module boundaries.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -15,4 +15,4 @@ protoc \
   --go-grpc_out=. --go-grpc_opt=module=marginal/auth-service \
   proto/auth.proto
 
-echo "regenerated internal/genproto/authv1"
+echo "regenerated genproto/authv1"

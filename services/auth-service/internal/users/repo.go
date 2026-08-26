@@ -68,16 +68,6 @@ func FindByID(ctx context.Context, q *authrepo.Queries, id domain.UserID) (User,
 	return fromRow(row), nil
 }
 
-// Count is bootstrap-only (internal/authservice's Register), always
-// called inside the pg_advisory_xact_lock transaction, never on its own.
-func Count(ctx context.Context, q *authrepo.Queries) (int64, error) {
-	n, err := q.CountUsers(ctx)
-	if err != nil {
-		return 0, fmt.Errorf("users: count: %w", err)
-	}
-	return n, nil
-}
-
 func fromRow(row authrepo.AuthUser) User {
 	return User{
 		ID:           domain.UserID(fromPgUUID(row.ID)),

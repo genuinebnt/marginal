@@ -5,7 +5,7 @@ syntax = "proto3";
 
 package marginal.auth.v1;
 
-option go_package = "marginal/auth-service/internal/genproto/authv1";
+option go_package = "marginal/auth-service/genproto/authv1";
 
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/empty.proto";

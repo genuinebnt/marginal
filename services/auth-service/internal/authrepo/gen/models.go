@@ -8,6 +8,15 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AuthOutbox struct {
+	ID          pgtype.UUID
+	AggregateID pgtype.UUID
+	EventType   string
+	Payload     []byte
+	PublishedAt pgtype.Timestamptz
+	CreatedAt   pgtype.Timestamptz
+}
+
 type AuthRefreshToken struct {
 	ID        pgtype.UUID
 	UserID    pgtype.UUID

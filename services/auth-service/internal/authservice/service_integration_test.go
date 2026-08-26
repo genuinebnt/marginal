@@ -5,6 +5,7 @@ package authservice_test
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -15,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/redis/go-redis/v9"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	tcredis "github.com/testcontainers/testcontainers-go/modules/redis"
@@ -27,6 +29,7 @@ import (
 	"marginal/auth-service/internal/migrate"
 	"marginal/auth-service/internal/passwordhash"
 	"marginal/auth-service/internal/sessions"
+	"marginal/auth-service/internal/users"
 )
 
 // Real Postgres 18 + Redis via testcontainers-go — never a mock
@@ -43,6 +46,7 @@ type harness struct {
 	*authservice.Service
 	rdb  *redis.Client
 	keys keys.Store
+	pool *pgxpool.Pool
 }
 
 func newTestService(t *testing.T) *harness {
@@ -86,7 +90,7 @@ func newTestService(t *testing.T) *harness {
 
 	logger := slog.New(slog.NewTextHandler(testWriter{t}, nil))
 	svc := authservice.New(pool, keyStore, testParams, dummy, blocklist.New(rdb), lockout.New(rdb), logger)
-	return &harness{Service: svc, rdb: rdb, keys: keyStore}
+	return &harness{Service: svc, rdb: rdb, keys: keyStore, pool: pool}
 }
 
 // testWriter routes the service's slog output through t.Log so a failing
@@ -119,21 +123,79 @@ func mustDisplayName(t *testing.T, raw string) domain.DisplayName {
 	return d
 }
 
-func TestRegisterIsBootstrapOnly(t *testing.T) {
+// TestRegisterAllowsMultipleDistinctUsers pins the current model: ordinary,
+// repeatable signup (docs/porting/PROGRESS.md), reversed from the earlier
+// one-time-bootstrap-administrator design — real multi-user collaboration
+// needs more than one person to be able to get an account without an
+// operator running a side-channel tool per person.
+func TestRegisterAllowsMultipleDistinctUsers(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
 
-	user, pair, err := svc.Register(ctx, mustEmail(t, "admin@example.com"), mustPassword(t, "correct horse battery staple"), mustDisplayName(t, "Admin"))
+	first, pair, err := svc.Register(ctx, mustEmail(t, "first@example.com"), mustPassword(t, "correct horse battery staple"), mustDisplayName(t, "First"))
 	require.NoError(t, err)
 	require.NotEmpty(t, pair.AccessToken)
 	require.NotEmpty(t, pair.RefreshToken)
-	require.Equal(t, "admin@example.com", user.Email.String())
+	require.Equal(t, "first@example.com", first.Email.String())
 
-	_, _, err = svc.Register(ctx, mustEmail(t, "second@example.com"), mustPassword(t, "another long passphrase"), mustDisplayName(t, "Second"))
-	require.ErrorIs(t, err, authservice.ErrInstanceAlreadyClaimed)
+	second, _, err := svc.Register(ctx, mustEmail(t, "second@example.com"), mustPassword(t, "another long passphrase"), mustDisplayName(t, "Second"))
+	require.NoError(t, err, "a second, distinct person must be able to register their own account")
+	require.Equal(t, "second@example.com", second.Email.String())
+	require.NotEqual(t, first.ID, second.ID)
 }
 
-func TestConcurrentRegisterClaimsOnlyOneAdmin(t *testing.T) {
+func TestRegisterRejectsDuplicateEmail(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	_, _, err := svc.Register(ctx, mustEmail(t, "same@example.com"), mustPassword(t, "correct horse battery staple"), mustDisplayName(t, "First"))
+	require.NoError(t, err)
+
+	_, _, err = svc.Register(ctx, mustEmail(t, "same@example.com"), mustPassword(t, "a different passphrase"), mustDisplayName(t, "Impostor"))
+	require.ErrorIs(t, err, users.ErrEmailTaken)
+}
+
+// TestRegisterWritesUserRegisteredOutboxEvent confirms outbox.WriteUserRegistered
+// actually lands in the same transaction as the user insert — not just
+// that it compiles, but that a real row with the right shape exists
+// afterward, unpublished, ready for the poller.
+func TestRegisterWritesUserRegisteredOutboxEvent(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	user, _, err := svc.Register(ctx, mustEmail(t, "admin@example.com"), mustPassword(t, "correct horse battery staple"), mustDisplayName(t, "Admin"))
+	require.NoError(t, err)
+
+	var eventType string
+	var aggregateID string
+	var publishedAt *string
+	var payload []byte
+	err = svc.pool.QueryRow(ctx,
+		`SELECT event_type, aggregate_id::text, published_at::text, payload FROM auth.outbox WHERE aggregate_id = $1`,
+		user.ID.String(),
+	).Scan(&eventType, &aggregateID, &publishedAt, &payload)
+	require.NoError(t, err)
+
+	require.Equal(t, "auth.user_registered", eventType)
+	require.Equal(t, user.ID.String(), aggregateID)
+	require.Nil(t, publishedAt, "must start unpublished — the poller's job, not Register's")
+
+	var decoded struct {
+		UserID      string `json:"user_id"`
+		Email       string `json:"email"`
+		DisplayName string `json:"display_name"`
+	}
+	require.NoError(t, json.Unmarshal(payload, &decoded))
+	assert.Equal(t, user.ID.String(), decoded.UserID)
+	assert.Equal(t, "admin@example.com", decoded.Email)
+	assert.Equal(t, "Admin", decoded.DisplayName)
+}
+
+// TestConcurrentRegisterWithDistinctEmailsAllSucceed is the new model's
+// version of the old bootstrap race test: many people signing up at once
+// must all get their own account — nothing should serialize them onto a
+// single winner anymore.
+func TestConcurrentRegisterWithDistinctEmailsAllSucceed(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
 
@@ -150,14 +212,45 @@ func TestConcurrentRegisterClaimsOnlyOneAdmin(t *testing.T) {
 				mustDisplayName(t, "Claimant"))
 			if err == nil {
 				succeeded.Add(1)
-			} else if !errors.Is(err, authservice.ErrInstanceAlreadyClaimed) {
+			} else {
 				t.Errorf("unexpected error: %v", err)
 			}
 		}(i)
 	}
 	wg.Wait()
 
-	require.EqualValues(t, 1, succeeded.Load(), "exactly one concurrent claim must win")
+	require.EqualValues(t, attempts, succeeded.Load(), "every distinct-email registration must succeed")
+}
+
+// TestConcurrentRegisterWithSameEmailAllowsOnlyOne proves the UNIQUE(email)
+// constraint itself still serializes the one case that must never double
+// up — two people (or one person double-submitting) racing to claim the
+// same email.
+func TestConcurrentRegisterWithSameEmailAllowsOnlyOne(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	const attempts = 10
+	var succeeded atomic.Int32
+	var wg sync.WaitGroup
+	wg.Add(attempts)
+	for i := 0; i < attempts; i++ {
+		go func() {
+			defer wg.Done()
+			_, _, err := svc.Register(ctx,
+				mustEmail(t, "contested@example.com"),
+				mustPassword(t, "correct horse battery staple"),
+				mustDisplayName(t, "Claimant"))
+			if err == nil {
+				succeeded.Add(1)
+			} else if !errors.Is(err, users.ErrEmailTaken) {
+				t.Errorf("unexpected error: %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+
+	require.EqualValues(t, 1, succeeded.Load(), "exactly one registration for the same email must win")
 }
 
 func TestAuthenticateWrongPasswordAndUnknownEmailBothFail(t *testing.T) {

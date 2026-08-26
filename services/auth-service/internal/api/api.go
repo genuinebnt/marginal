@@ -7,6 +7,7 @@ package api
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 
 	"google.golang.org/grpc/codes"
@@ -15,9 +16,9 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	authv1 "marginal/auth-service/genproto/authv1"
 	"marginal/auth-service/internal/authservice"
 	"marginal/auth-service/internal/domain"
-	authv1 "marginal/auth-service/internal/genproto/authv1"
 	"marginal/auth-service/internal/users"
 )
 
@@ -136,20 +137,21 @@ func toStatus(err error) error {
 		return status.Error(codes.Unauthenticated, "invalid credentials")
 	case errors.Is(err, authservice.ErrSessionExpired):
 		return status.Error(codes.Unauthenticated, "session expired")
-	case errors.Is(err, authservice.ErrInstanceAlreadyClaimed):
-		return status.Error(codes.FailedPrecondition, "instance already claimed")
 	case errors.Is(err, users.ErrNotFound):
 		return status.Error(codes.NotFound, "user not found")
 	case errors.Is(err, users.ErrEmailTaken):
-		// Only reachable outside the bootstrap path (Register always
-		// finds count==0 first) — kept for completeness, not currently a
-		// live path since registration is bootstrap-only in this repo.
+		// A real, live path now that Register is ordinary repeatable
+		// signup, not a one-time bootstrap claim (docs/porting/PROGRESS.md).
 		return status.Error(codes.AlreadyExists, "email already registered")
 	default:
 		var st interface{ GRPCStatus() *status.Status }
 		if errors.As(err, &st) {
 			return err
 		}
+		// auth.md's status table says every INTERNAL is "logged as: error"
+		// — the client only ever sees "internal error", no detail, but
+		// this is the one place the real cause isn't lost entirely.
+		slog.Error("auth-service: unmapped internal error", "err", err)
 		return status.Error(codes.Internal, "internal error")
 	}
 }

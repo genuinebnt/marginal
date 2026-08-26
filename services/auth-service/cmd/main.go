@@ -21,17 +21,19 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/nats-io/nats.go"
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 
+	authv1 "marginal/auth-service/genproto/authv1"
 	"marginal/auth-service/internal/api"
 	"marginal/auth-service/internal/authservice"
 	"marginal/auth-service/internal/blocklist"
-	authv1 "marginal/auth-service/internal/genproto/authv1"
 	"marginal/auth-service/internal/keys"
 	"marginal/auth-service/internal/lockout"
 	"marginal/auth-service/internal/migrate"
+	"marginal/auth-service/internal/outbox"
 	"marginal/auth-service/internal/passwordhash"
 )
 
@@ -72,6 +74,18 @@ func run() error {
 	if err := rdb.Ping(ctx).Err(); err != nil {
 		return err
 	}
+
+	natsURL := envOr("NATS_URL", nats.DefaultURL)
+	nc, err := nats.Connect(natsURL)
+	if err != nil {
+		return err
+	}
+	defer nc.Close()
+
+	poller := outbox.NewPoller(pool, nc)
+	go poller.Run(ctx, func(err error) {
+		slog.Error("auth-service: outbox poller", "err", err)
+	})
 
 	keyStore, err := keys.NewInMemoryStore()
 	if err != nil {

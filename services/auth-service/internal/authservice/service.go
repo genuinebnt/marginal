@@ -22,15 +22,13 @@ import (
 	"marginal/auth-service/internal/domain"
 	"marginal/auth-service/internal/keys"
 	"marginal/auth-service/internal/lockout"
+	"marginal/auth-service/internal/outbox"
 	"marginal/auth-service/internal/passwordhash"
 	"marginal/auth-service/internal/sessions"
 	"marginal/auth-service/internal/users"
 )
 
 var (
-	// ErrInstanceAlreadyClaimed is docs/architecture/lld/auth-service.md
-	// §7's bootstrap invariant — Register is single-use per instance.
-	ErrInstanceAlreadyClaimed = errors.New("authservice: instance already claimed")
 	// ErrInvalidCredentials covers unknown email, wrong password, and a
 	// locked account alike — deliberately one error, one message
 	// (docs/api/auth.md § Status codes: the two UNAUTHENTICATED cases
@@ -43,11 +41,6 @@ var (
 	// legitimately expired session would also show.
 	ErrSessionExpired = errors.New("authservice: session expired")
 )
-
-// bootstrapLockKey is an arbitrary constant — pg_advisory_xact_lock's
-// keyspace is just an int8 the caller picks; it only needs to be unique
-// to this use within the database.
-const bootstrapLockKey = 727384910
 
 type Service struct {
 	pool         *pgxpool.Pool
@@ -85,13 +78,14 @@ type TokenPair struct {
 	ExpiresIn    int64 // seconds
 }
 
-// Register is also the bootstrap claim (LLD §7) — the first call on an
-// instance with zero users creates the sole administrator; every call
-// after that fails ErrInstanceAlreadyClaimed. The count check and the
-// insert run under one pg_advisory_xact_lock-guarded transaction so two
-// concurrent claims on a fresh instance can't both succeed (LLD: "a
-// TOCTOU bug that grants a second administrator to whoever arrives during
-// the window").
+// Register is ordinary, repeatable signup (ADR-011 addendum: shared
+// single workspace, real multi-user, not the earlier one-time-bootstrap-
+// administrator model — every account this creates has identical
+// standing, there is no "admin"; see docs/porting/PROGRESS.md for why
+// that changed). Uniqueness is enforced by auth.users' own UNIQUE(email)
+// constraint (users.Insert maps a collision to ErrEmailTaken) — no
+// upfront existence check first, which would be a second, redundant
+// round trip and a TOCTOU window of its own.
 func (s *Service) Register(ctx context.Context, email domain.Email, password domain.Password, displayName domain.DisplayName) (users.User, TokenPair, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -104,19 +98,7 @@ func (s *Service) Register(ctx context.Context, email domain.Email, password dom
 		}
 	}()
 
-	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock($1)", bootstrapLockKey); err != nil {
-		return users.User{}, TokenPair{}, fmt.Errorf("authservice: register: bootstrap lock: %w", err)
-	}
-
 	q := authrepo.New(tx)
-	count, err := users.Count(ctx, q)
-	if err != nil {
-		return users.User{}, TokenPair{}, err
-	}
-	if count > 0 {
-		s.log.Warn("register: instance already claimed")
-		return users.User{}, TokenPair{}, ErrInstanceAlreadyClaimed
-	}
 
 	hash, err := passwordhash.Hash(password, s.argon2Params)
 	if err != nil {
@@ -137,6 +119,10 @@ func (s *Service) Register(ctx context.Context, email domain.Email, password dom
 
 	pair, err := issueTokenPair(ctx, q, s.keys, id)
 	if err != nil {
+		return users.User{}, TokenPair{}, err
+	}
+
+	if err := outbox.WriteUserRegistered(ctx, q, uuid.UUID(id), email.String(), displayName.String()); err != nil {
 		return users.User{}, TokenPair{}, err
 	}
 

@@ -11,17 +11,43 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const countUsers = `-- name: CountUsers :one
-SELECT count(*) FROM auth.users
+const claimUnpublishedOutboxEvents = `-- name: ClaimUnpublishedOutboxEvents :many
+SELECT id, aggregate_id, event_type, payload, published_at, created_at FROM auth.outbox
+WHERE published_at IS NULL
+ORDER BY created_at ASC
+LIMIT $1
+FOR UPDATE SKIP LOCKED
 `
 
-// Bootstrap only (internal/bootstrap) — always called inside the
-// pg_advisory_xact_lock transaction, never on its own.
-func (q *Queries) CountUsers(ctx context.Context) (int64, error) {
-	row := q.db.QueryRow(ctx, countUsers)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
+// FOR UPDATE SKIP LOCKED (DATA_MODEL.md § Outbox): a second poller
+// instance skips rows the first already claimed instead of blocking on
+// them, so at-least-once delivery holds even with more than one replica
+// of this service running the poller loop.
+func (q *Queries) ClaimUnpublishedOutboxEvents(ctx context.Context, limit int32) ([]AuthOutbox, error) {
+	rows, err := q.db.Query(ctx, claimUnpublishedOutboxEvents, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AuthOutbox
+	for rows.Next() {
+		var i AuthOutbox
+		if err := rows.Scan(
+			&i.ID,
+			&i.AggregateID,
+			&i.EventType,
+			&i.Payload,
+			&i.PublishedAt,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const findRefreshTokenByHash = `-- name: FindRefreshTokenByHash :one
@@ -111,6 +137,40 @@ func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (AuthUser, er
 	return i, err
 }
 
+const insertOutboxEvent = `-- name: InsertOutboxEvent :one
+INSERT INTO auth.outbox (id, aggregate_id, event_type, payload)
+VALUES ($1, $2, $3, $4)
+RETURNING id, aggregate_id, event_type, payload, published_at, created_at
+`
+
+type InsertOutboxEventParams struct {
+	ID          pgtype.UUID
+	AggregateID pgtype.UUID
+	EventType   string
+	Payload     []byte
+}
+
+// id is generated application-side, same reasoning as every other id in
+// this repo.
+func (q *Queries) InsertOutboxEvent(ctx context.Context, arg InsertOutboxEventParams) (AuthOutbox, error) {
+	row := q.db.QueryRow(ctx, insertOutboxEvent,
+		arg.ID,
+		arg.AggregateID,
+		arg.EventType,
+		arg.Payload,
+	)
+	var i AuthOutbox
+	err := row.Scan(
+		&i.ID,
+		&i.AggregateID,
+		&i.EventType,
+		&i.Payload,
+		&i.PublishedAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const insertRefreshToken = `-- name: InsertRefreshToken :exec
 INSERT INTO auth.refresh_tokens (id, user_id, token_hash, parent_id, expires_at)
 VALUES ($1, $2, $3, $5, $4)
@@ -170,6 +230,16 @@ func (q *Queries) InsertUser(ctx context.Context, arg InsertUserParams) (AuthUse
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const markOutboxEventsPublished = `-- name: MarkOutboxEventsPublished :exec
+UPDATE auth.outbox SET published_at = NOW()
+WHERE id = ANY($1::uuid[])
+`
+
+func (q *Queries) MarkOutboxEventsPublished(ctx context.Context, ids []pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, markOutboxEventsPublished, ids)
+	return err
 }
 
 const revokeAllRefreshTokensForUser = `-- name: RevokeAllRefreshTokensForUser :execrows

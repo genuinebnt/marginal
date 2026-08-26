@@ -491,7 +491,7 @@ const file_auth_proto_rawDesc = "" +
 	"\aGetUser\x12 .marginal.auth.v1.GetUserRequest\x1a\x16.marginal.auth.v1.User\x12H\n" +
 	"\aRefresh\x12 .marginal.auth.v1.RefreshRequest\x1a\x1b.marginal.auth.v1.TokenPair\x12A\n" +
 	"\x06Revoke\x12\x1f.marginal.auth.v1.RevokeRequest\x1a\x16.google.protobuf.Empty\x12G\n" +
-	"\tRevokeAll\x12\".marginal.auth.v1.RevokeAllRequest\x1a\x16.google.protobuf.EmptyB0Z.marginal/auth-service/internal/genproto/authv1b\x06proto3"
+	"\tRevokeAll\x12\".marginal.auth.v1.RevokeAllRequest\x1a\x16.google.protobuf.EmptyB'Z%marginal/auth-service/genproto/authv1b\x06proto3"
 
 var (
 	file_auth_proto_rawDescOnce sync.Once
