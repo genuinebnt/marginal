@@ -47,8 +47,8 @@ Two transports fall outside it, and both need hand-written contracts documented 
 
 | Transport | Contract | Where documented |
 |---|---|---|
-| **WebSocket** (`/collab/pages/:id`) | Op frames, presence, acks | `rfc/RFC-002` — the op ISA *is* the wire contract |
-| **gRPC** (internal, east-west) | Four service pairs | `crates/proto/proto/*.proto` — protobuf is already a schema |
+| **WebSocket** (`/collab/pages/:id`) | Op frames, snapshot, acks, broadcast (no presence yet) | `collaboration.md` — the full wire contract; `rfc/RFC-002` for the op ISA itself |
+| **gRPC** (internal, east-west) | `PageService`, `AuthService` | `services/*/proto/*.proto` — protobuf is already a schema |
 
 The op frame encoding is versioned (`RFC-002` §4) because it is persisted as well as transmitted. OpenAPI covers only the REST surface the browser calls.
 
@@ -60,11 +60,11 @@ Written here per feature as it is built — request/response shapes, status code
 
 | Area | Status |
 |---|---|
-| Pages | ⬜ Phase 1 |
-| Blocks | ⬜ Phase 1 |
-| Files (presigned upload) | ⬜ Phase 1 |
-| Auth | ⬜ Phase 2 |
-| Collaboration (WebSocket) | ⬜ Phase 3 — see RFC-002 |
-| Diagnostics | ⬜ Phase 4 |
-| History | ⬜ Phase 6 |
-| Search & backlinks | ⬜ Phase 7 |
+| Pages | ✅ implemented — see `pages.md` |
+| Blocks | ✅ implemented as part of `document-core` (page/block ops); no separate REST surface — see `pages.md` |
+| Files (presigned upload) | ⬜ not in Track 1 scope (`ADR-011`) |
+| Auth | ✅ implemented — see `auth.md` |
+| Collaboration (WebSocket) | ✅ implemented — see `collaboration.md` |
+| Diagnostics | ⬜ not in Track 1 scope (`ADR-011`) |
+| History | ⬜ not in Track 1 scope (`ADR-011`) |
+| Search & backlinks | ⬜ not in Track 1 scope (`ADR-011`) |
