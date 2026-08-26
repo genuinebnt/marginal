@@ -78,7 +78,7 @@ func run() error {
 	httpAddr := envOr("DOCUMENT_SERVICE_HTTP_ADDR", ":8001")
 
 	grpcServer := grpc.NewServer()
-	documentv1.RegisterPageServiceServer(grpcServer, &pages.Server{Repo: pages.NewPostgresRepo(pool)})
+	documentv1.RegisterPageServiceServer(grpcServer, pages.NewServer(pages.NewPostgresRepo(pool)))
 	reflection.Register(grpcServer) // lets grpcurl/grpcui introspect without a .proto file, local dev only
 
 	lis, err := net.Listen("tcp", grpcAddr)

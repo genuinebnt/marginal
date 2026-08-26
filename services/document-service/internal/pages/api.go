@@ -3,6 +3,7 @@ package pages
 import (
 	"context"
 	"errors"
+	"fmt"
 	"unicode"
 	"unicode/utf8"
 
@@ -18,14 +19,39 @@ import (
 
 const maxTitleBytes = 500
 
-// Server implements documentv1.PageServiceServer over a Repo — the
-// translation layer docs/api/pages.md describes: proto <-> domain types,
-// domain errors <-> gRPC status codes. No business logic of its own; see
-// Repo for that.
+// Domain-level validation errors for this translation layer — actorID,
+// validateTitle, and parsePageID used to construct gRPC status.Error
+// values directly, which meant they weren't validating anything, they
+// were doing transport-layer work from inside a plain helper function.
+// That forced toStatus (meant to be the ONE place a gRPC status gets
+// built) to special-case "this error might already be a status error"
+// via an errors.As escape hatch, since it could no longer assume every
+// error crossing it was a still-untranslated domain error. Returning
+// plain errors here and pushing every status.Error construction through
+// toStatus removes that escape hatch entirely.
+var (
+	ErrMissingActorID = errors.New("pages: missing actor-id")
+	ErrInvalidActorID = errors.New("pages: invalid actor-id")
+	ErrInvalidTitle   = errors.New("pages: invalid title")
+)
+
+// InvalidPageIDError reports a page id string that isn't a valid UUID.
+type InvalidPageIDError struct{ Value string }
+
+func (e *InvalidPageIDError) Error() string {
+	return fmt.Sprintf("pages: invalid id %q", e.Value)
+}
+
+// Server implements documentv1.PageServiceServer over a *PostgresRepo —
+// the translation layer docs/api/pages.md describes: proto <-> domain
+// types, domain errors <-> gRPC status codes. No business logic of its
+// own; see PostgresRepo for that.
 type Server struct {
 	documentv1.UnimplementedPageServiceServer
-	Repo Repo
+	repo *PostgresRepo
 }
+
+func NewServer(repo *PostgresRepo) *Server { return &Server{repo: repo} }
 
 // actorID reads the caller's identity from gRPC metadata. In the full
 // design this is set by api-gateway after RS256 verification
@@ -36,32 +62,32 @@ type Server struct {
 func actorID(ctx context.Context) (uuid.UUID, error) {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
-		return uuid.UUID{}, status.Error(codes.Unauthenticated, "missing actor-id")
+		return uuid.UUID{}, ErrMissingActorID
 	}
 	values := md.Get("actor-id")
 	if len(values) == 0 || values[0] == "" {
-		return uuid.UUID{}, status.Error(codes.Unauthenticated, "missing actor-id")
+		return uuid.UUID{}, ErrMissingActorID
 	}
 	id, err := uuid.Parse(values[0])
 	if err != nil {
-		return uuid.UUID{}, status.Error(codes.Unauthenticated, "invalid actor-id")
+		return uuid.UUID{}, ErrInvalidActorID
 	}
 	return id, nil
 }
 
 func validateTitle(title string) error {
 	if title == "" {
-		return status.Error(codes.InvalidArgument, "title must not be empty")
+		return fmt.Errorf("%w: must not be empty", ErrInvalidTitle)
 	}
 	if len(title) > maxTitleBytes {
-		return status.Errorf(codes.InvalidArgument, "title must not exceed %d bytes", maxTitleBytes)
+		return fmt.Errorf("%w: must not exceed %d bytes", ErrInvalidTitle, maxTitleBytes)
 	}
 	if !utf8.ValidString(title) {
-		return status.Error(codes.InvalidArgument, "title must be valid UTF-8")
+		return fmt.Errorf("%w: must be valid UTF-8", ErrInvalidTitle)
 	}
 	for _, r := range title {
 		if unicode.IsControl(r) {
-			return status.Error(codes.InvalidArgument, "title must not contain control characters")
+			return fmt.Errorf("%w: must not contain control characters", ErrInvalidTitle)
 		}
 	}
 	return nil
@@ -70,7 +96,7 @@ func validateTitle(title string) error {
 func parsePageID(s string) (PageID, error) {
 	id, err := uuid.Parse(s)
 	if err != nil {
-		return PageID{}, status.Errorf(codes.InvalidArgument, "invalid id %q", s)
+		return PageID{}, &InvalidPageIDError{Value: s}
 	}
 	return PageID(id), nil
 }
@@ -86,10 +112,12 @@ func parseOptionalPageID(s *string) (*PageID, error) {
 	return &id, nil
 }
 
-// toStatus translates a Repo error into the gRPC status docs/api/pages.md
-// § Status codes specifies. Anything unrecognized is INTERNAL with no
-// detail — the cause belongs in the log inside the request span, per that
-// same section.
+// toStatus is the only place in this package that constructs a gRPC
+// status error — every domain/validation error (PostgresRepo's, and
+// actorID/validateTitle/parsePageID's own) passes through here exactly
+// once docs/api/pages.md § Status codes specifies. Anything unrecognized
+// is INTERNAL with no detail — the cause belongs in the log inside the
+// request span, per that same section.
 func toStatus(err error) error {
 	switch {
 	case err == nil:
@@ -100,10 +128,14 @@ func toStatus(err error) error {
 		return status.Error(codes.FailedPrecondition, "anchor is not a child of the named parent")
 	case errors.Is(err, ErrCycle):
 		return status.Error(codes.FailedPrecondition, "cannot reparent a page under itself or its own descendant")
+	case errors.Is(err, ErrMissingActorID), errors.Is(err, ErrInvalidActorID):
+		return status.Error(codes.Unauthenticated, err.Error())
+	case errors.Is(err, ErrInvalidTitle):
+		return status.Error(codes.InvalidArgument, err.Error())
 	default:
-		var st interface{ GRPCStatus() *status.Status }
-		if errors.As(err, &st) {
-			return err // already a status error (validation, actorID, ...)
+		var invalidID *InvalidPageIDError
+		if errors.As(err, &invalidID) {
+			return status.Error(codes.InvalidArgument, err.Error())
 		}
 		return status.Error(codes.Internal, "internal error")
 	}
@@ -145,22 +177,22 @@ func toProtoLifecycle(s LifecycleState) documentv1.LifecycleState {
 
 func (s *Server) CreatePage(ctx context.Context, req *documentv1.CreatePageRequest) (*documentv1.Page, error) {
 	if err := validateTitle(req.GetTitle()); err != nil {
-		return nil, err
+		return nil, toStatus(err)
 	}
 	createdBy, err := actorID(ctx)
 	if err != nil {
-		return nil, err
+		return nil, toStatus(err)
 	}
 	parentID, err := parseOptionalPageID(req.ParentId)
 	if err != nil {
-		return nil, err
+		return nil, toStatus(err)
 	}
 	after, err := parseOptionalPageID(req.After)
 	if err != nil {
-		return nil, err
+		return nil, toStatus(err)
 	}
 
-	page, err := s.Repo.Create(ctx, NewPage{
+	page, err := s.repo.Create(ctx, NewPage{
 		CreatedBy: createdBy,
 		Title:     req.GetTitle(),
 		ParentID:  parentID,
@@ -174,13 +206,13 @@ func (s *Server) CreatePage(ctx context.Context, req *documentv1.CreatePageReque
 
 func (s *Server) GetPage(ctx context.Context, req *documentv1.GetPageRequest) (*documentv1.Page, error) {
 	if _, err := actorID(ctx); err != nil {
-		return nil, err
+		return nil, toStatus(err)
 	}
 	id, err := parsePageID(req.GetId())
 	if err != nil {
-		return nil, err
+		return nil, toStatus(err)
 	}
-	page, err := s.Repo.Get(ctx, id)
+	page, err := s.repo.Get(ctx, id)
 	if err != nil {
 		return nil, toStatus(err)
 	}
@@ -194,11 +226,11 @@ const (
 
 func (s *Server) ListPages(ctx context.Context, req *documentv1.ListPagesRequest) (*documentv1.ListPagesResponse, error) {
 	if _, err := actorID(ctx); err != nil {
-		return nil, err
+		return nil, toStatus(err)
 	}
 	parentID, err := parseOptionalPageID(req.ParentId)
 	if err != nil {
-		return nil, err
+		return nil, toStatus(err)
 	}
 
 	limit := int32(defaultListLimit)
@@ -210,7 +242,7 @@ func (s *Server) ListPages(ctx context.Context, req *documentv1.ListPagesRequest
 	}
 
 	after := req.GetAfter()
-	pagesList, err := s.Repo.List(ctx, parentID, after, limit)
+	pagesList, err := s.repo.List(ctx, parentID, after, limit)
 	if err != nil {
 		return nil, toStatus(err)
 	}
@@ -228,16 +260,16 @@ func (s *Server) ListPages(ctx context.Context, req *documentv1.ListPagesRequest
 
 func (s *Server) RenamePage(ctx context.Context, req *documentv1.RenamePageRequest) (*documentv1.Page, error) {
 	if _, err := actorID(ctx); err != nil {
-		return nil, err
+		return nil, toStatus(err)
 	}
 	if err := validateTitle(req.GetTitle()); err != nil {
-		return nil, err
+		return nil, toStatus(err)
 	}
 	id, err := parsePageID(req.GetId())
 	if err != nil {
-		return nil, err
+		return nil, toStatus(err)
 	}
-	page, err := s.Repo.Rename(ctx, id, req.GetTitle())
+	page, err := s.repo.Rename(ctx, id, req.GetTitle())
 	if err != nil {
 		return nil, toStatus(err)
 	}
@@ -246,13 +278,13 @@ func (s *Server) RenamePage(ctx context.Context, req *documentv1.RenamePageReque
 
 func (s *Server) DeletePage(ctx context.Context, req *documentv1.DeletePageRequest) (*emptypb.Empty, error) {
 	if _, err := actorID(ctx); err != nil {
-		return nil, err
+		return nil, toStatus(err)
 	}
 	id, err := parsePageID(req.GetId())
 	if err != nil {
-		return nil, err
+		return nil, toStatus(err)
 	}
-	if err := s.Repo.Delete(ctx, id); err != nil {
+	if err := s.repo.Delete(ctx, id); err != nil {
 		return nil, toStatus(err)
 	}
 	return &emptypb.Empty{}, nil
@@ -260,11 +292,11 @@ func (s *Server) DeletePage(ctx context.Context, req *documentv1.DeletePageReque
 
 func (s *Server) ReparentPage(ctx context.Context, req *documentv1.ReparentPageRequest) (*documentv1.Page, error) {
 	if _, err := actorID(ctx); err != nil {
-		return nil, err
+		return nil, toStatus(err)
 	}
 	id, err := parsePageID(req.GetId())
 	if err != nil {
-		return nil, err
+		return nil, toStatus(err)
 	}
 
 	var parent ParentChange
@@ -273,7 +305,7 @@ func (s *Server) ReparentPage(ctx context.Context, req *documentv1.ReparentPageR
 		if *req.ParentId != "" {
 			parentID, err := parsePageID(*req.ParentId)
 			if err != nil {
-				return nil, err
+				return nil, toStatus(err)
 			}
 			parent.ParentID = &parentID
 		}
@@ -282,10 +314,10 @@ func (s *Server) ReparentPage(ctx context.Context, req *documentv1.ReparentPageR
 
 	after, err := parseOptionalPageID(req.After)
 	if err != nil {
-		return nil, err
+		return nil, toStatus(err)
 	}
 
-	page, err := s.Repo.Reparent(ctx, id, parent, after)
+	page, err := s.repo.Reparent(ctx, id, parent, after)
 	if err != nil {
 		return nil, toStatus(err)
 	}
@@ -293,21 +325,22 @@ func (s *Server) ReparentPage(ctx context.Context, req *documentv1.ReparentPageR
 }
 
 // ListBacklinks confirms the target page exists (and isn't soft-deleted)
-// via Repo.Get before reading docs.page_links. No ownership check — pages
-// carry no access control on this instance (Repo.Get's own doc comment).
+// via PostgresRepo.Get before reading docs.page_links. No ownership check —
+// pages carry no access control on this instance (PostgresRepo's own doc
+// comment).
 func (s *Server) ListBacklinks(ctx context.Context, req *documentv1.ListBacklinksRequest) (*documentv1.ListBacklinksResponse, error) {
 	if _, err := actorID(ctx); err != nil {
-		return nil, err
+		return nil, toStatus(err)
 	}
 	id, err := parsePageID(req.GetPageId())
 	if err != nil {
-		return nil, err
+		return nil, toStatus(err)
 	}
-	if _, err := s.Repo.Get(ctx, id); err != nil {
+	if _, err := s.repo.Get(ctx, id); err != nil {
 		return nil, toStatus(err)
 	}
 
-	links, err := s.Repo.ListBacklinks(ctx, id)
+	links, err := s.repo.ListBacklinks(ctx, id)
 	if err != nil {
 		return nil, toStatus(err)
 	}

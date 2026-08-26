@@ -136,6 +136,36 @@ func TestInsertBlockThenTextOpMaterializesContent(t *testing.T) {
 	assert.Equal(t, "hello world", blocks[0].Text)
 }
 
+// TestDeleteTextAndNoOpDoNotWipeProjectedText pins a real bug: applyTextOp
+// used to treat any non-InsertText op (including NoOp, and DeleteText
+// before its paired InsertText arrives) as "clear this block's text to
+// empty." A DeleteText that isn't immediately followed by a real
+// InsertText (e.g. a delete-only op the client never completed with a
+// non-empty replacement) or a genuine NoOp event left the projection
+// permanently blank with no later event to correct it.
+func TestDeleteTextAndNoOpDoNotWipeProjectedText(t *testing.T) {
+	pool := newTestPool(t)
+	pageID := createTestPage(t, pool, "Test Page 5")
+	proj := blockproj.New(pool)
+	ctx := context.Background()
+
+	blockID := documentcore.BlockID(uuid.Must(uuid.NewV7()))
+	require.NoError(t, proj.HandleEvent(ctx, pageID, blockOpJSON(t, documentcore.InsertBlock{
+		ID: blockID, Kind: documentcore.NewParagraph(),
+	})))
+	require.NoError(t, proj.HandleEvent(ctx, pageID, textOpJSON(t, blockID, "InsertText", "hello")))
+
+	require.NoError(t, proj.HandleEvent(ctx, pageID, textOpJSON(t, blockID, "DeleteText", "")))
+	blocks := listBlocks(t, pool, pageID)
+	require.Len(t, blocks, 1)
+	assert.Equal(t, "hello", blocks[0].Text, "a bare DeleteText must not wipe the projected text")
+
+	require.NoError(t, proj.HandleEvent(ctx, pageID, textOpJSON(t, blockID, "NoOp", "")))
+	blocks = listBlocks(t, pool, pageID)
+	require.Len(t, blocks, 1)
+	assert.Equal(t, "hello", blocks[0].Text, "a NoOp must not wipe the projected text")
+}
+
 func TestSetBlockKindAndMoveBlockReflectInProjection(t *testing.T) {
 	pool := newTestPool(t)
 	pageID := createTestPage(t, pool, "Test Page 2")

@@ -37,9 +37,14 @@ type ParentChange struct {
 	ParentID *PageID
 }
 
-// Repo is document-service's only port onto docs.pages — small, declared
-// at its point of use, per CLOUD_PORTABILITY.md's ports-and-adapters
-// convention. The Postgres implementation lives in this same file.
+// PostgresRepo is document-service's only port onto docs.pages. Server
+// (api.go) depends on this concrete type directly rather than a Repo
+// interface — an earlier version declared one, but it had exactly one
+// implementation and no test double ever used it; CLOUD_PORTABILITY.md's
+// "small interface at the point of use" convention means declaring one
+// when something actually needs to vary, not preemptively (see
+// api-gateway's internal/pagesrest.Handler for the same concrete-type,
+// unexported-field-plus-constructor shape this now matches).
 //
 // No method scopes reads/writes by owner (reversed 2026-08-26, at
 // explicit user request — docs/porting/PROGRESS.md): every page on this
@@ -49,16 +54,6 @@ type ParentChange struct {
 // a page), just no longer an access filter — api.go's actorID(ctx) still
 // enforces that the caller is authenticated at all, just not that they
 // own the specific page.
-type Repo interface {
-	Create(ctx context.Context, np NewPage) (Page, error)
-	Get(ctx context.Context, id PageID) (Page, error)
-	List(ctx context.Context, parentID *PageID, after string, limit int32) ([]Page, error)
-	Rename(ctx context.Context, id PageID, title string) (Page, error)
-	Reparent(ctx context.Context, id PageID, parent ParentChange, after *PageID) (Page, error)
-	Delete(ctx context.Context, id PageID) error
-	ListBacklinks(ctx context.Context, id PageID) ([]Backlink, error)
-}
-
 type PostgresRepo struct {
 	q    *pagerepo.Queries
 	pool *pgxpool.Pool
@@ -94,7 +89,7 @@ func (r *PostgresRepo) Create(ctx context.Context, np NewPage) (Page, error) {
 		ID:        toPgUUID(uuid.UUID(id)),
 		CreatedBy: toPgUUID(np.CreatedBy),
 		Title:     np.Title,
-		Column4:   path,
+		Path:      path,
 		SortKey:   sortKey,
 		ParentID:  toPgUUIDPtr(np.ParentID),
 	})
@@ -246,7 +241,7 @@ func (r *PostgresRepo) Reparent(ctx context.Context, id PageID, parent ParentCha
 
 	row, err := q.ReparentPageRow(ctx, pagerepo.ReparentPageRowParams{
 		ID:       toPgUUID(uuid.UUID(id)),
-		Column2:  newPath,
+		Path:     newPath,
 		SortKey:  sortKey,
 		ParentID: toPgUUIDPtr(targetParentID),
 	})

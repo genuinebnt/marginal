@@ -3,7 +3,7 @@
 -- database default: the row's own path needs the id as its final LTREE
 -- label, so it has to be known before the INSERT, not after.
 INSERT INTO docs.pages (id, created_by, title, parent_id, path, sort_key)
-VALUES ($1, $2, $3, sqlc.narg(parent_id), $4::ltree, $5)
+VALUES (@id, @created_by, @title, sqlc.narg(parent_id), @path::ltree, @sort_key)
 RETURNING id, created_by, title, parent_id, path::text AS path, sort_key,
           lifecycle_state, deleted_at, created_at, updated_at;
 
@@ -72,8 +72,8 @@ RETURNING id, created_by, title, parent_id, path::text AS path, sort_key,
 -- or all new ones, never a mixture (docs/api/pages.md § Reparent).
 -- No owner scoping — see GetPage.
 UPDATE docs.pages
-SET parent_id = sqlc.narg(parent_id), path = $2::ltree, sort_key = $3, updated_at = NOW()
-WHERE id = $1 AND deleted_at IS NULL
+SET parent_id = sqlc.narg(parent_id), path = @path::ltree, sort_key = @sort_key, updated_at = NOW()
+WHERE id = @id AND deleted_at IS NULL
 RETURNING id, created_by, title, parent_id, path::text AS path, sort_key,
           lifecycle_state, deleted_at, created_at, updated_at;
 

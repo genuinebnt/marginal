@@ -13,7 +13,7 @@ import (
 
 const createPage = `-- name: CreatePage :one
 INSERT INTO docs.pages (id, created_by, title, parent_id, path, sort_key)
-VALUES ($1, $2, $3, $6, $4::ltree, $5)
+VALUES ($1, $2, $3, $4, $5::ltree, $6)
 RETURNING id, created_by, title, parent_id, path::text AS path, sort_key,
           lifecycle_state, deleted_at, created_at, updated_at
 `
@@ -22,9 +22,9 @@ type CreatePageParams struct {
 	ID        pgtype.UUID
 	CreatedBy pgtype.UUID
 	Title     string
-	Column4   string
-	SortKey   string
 	ParentID  pgtype.UUID
+	Path      string
+	SortKey   string
 }
 
 type CreatePageRow struct {
@@ -48,9 +48,9 @@ func (q *Queries) CreatePage(ctx context.Context, arg CreatePageParams) (CreateP
 		arg.ID,
 		arg.CreatedBy,
 		arg.Title,
-		arg.Column4,
-		arg.SortKey,
 		arg.ParentID,
+		arg.Path,
+		arg.SortKey,
 	)
 	var i CreatePageRow
 	err := row.Scan(
@@ -274,17 +274,17 @@ func (q *Queries) RenamePage(ctx context.Context, arg RenamePageParams) (RenameP
 
 const reparentPageRow = `-- name: ReparentPageRow :one
 UPDATE docs.pages
-SET parent_id = $4, path = $2::ltree, sort_key = $3, updated_at = NOW()
-WHERE id = $1 AND deleted_at IS NULL
+SET parent_id = $1, path = $2::ltree, sort_key = $3, updated_at = NOW()
+WHERE id = $4 AND deleted_at IS NULL
 RETURNING id, created_by, title, parent_id, path::text AS path, sort_key,
           lifecycle_state, deleted_at, created_at, updated_at
 `
 
 type ReparentPageRowParams struct {
-	ID       pgtype.UUID
-	Column2  string
-	SortKey  string
 	ParentID pgtype.UUID
+	Path     string
+	SortKey  string
+	ID       pgtype.UUID
 }
 
 type ReparentPageRowRow struct {
@@ -308,10 +308,10 @@ type ReparentPageRowRow struct {
 // No owner scoping — see GetPage.
 func (q *Queries) ReparentPageRow(ctx context.Context, arg ReparentPageRowParams) (ReparentPageRowRow, error) {
 	row := q.db.QueryRow(ctx, reparentPageRow,
-		arg.ID,
-		arg.Column2,
-		arg.SortKey,
 		arg.ParentID,
+		arg.Path,
+		arg.SortKey,
+		arg.ID,
 	)
 	var i ReparentPageRowRow
 	err := row.Scan(

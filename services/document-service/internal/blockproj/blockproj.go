@@ -33,6 +33,7 @@ import (
 	"log/slog"
 	"regexp"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -54,10 +55,18 @@ const SubjectOpsFlushed = "collab.ops_flushed"
 // publishes (internal/outbox.wireEvent there) — AggregateID is the page
 // id; collab.outbox.payload is only ever the op itself; nothing in it
 // names which page it belongs to on its own.
+//
+// Payload is json.RawMessage, not []byte: encoding/json base64-encodes a
+// plain []byte field, which round-trips fine between two Go processes
+// (both sides use the same package) but produces a wire message whose
+// "payload" field is an opaque base64 string, not the readable nested
+// JSON object it actually is — a trap for any non-Go consumer, a human
+// inspecting the NATS message, or the future Rust port. json.RawMessage
+// passes the bytes through verbatim instead.
 type wireEvent struct {
-	ID          uuid.UUID `json:"id"`
-	AggregateID uuid.UUID `json:"aggregate_id"`
-	Payload     []byte    `json:"payload"`
+	ID          uuid.UUID       `json:"id"`
+	AggregateID uuid.UUID       `json:"aggregate_id"`
+	Payload     json.RawMessage `json:"payload"`
 }
 
 // pageLinkPattern matches [[Page Title]] — RFC-003 §2's PageLink mark,
@@ -204,25 +213,33 @@ func applyBlockOp(ps *pageState, payload []byte) error {
 	case documentcore.SetTitle:
 		// Not projected — docs.pages.title (RenamePage) is already the
 		// source of truth for a page's title; nothing here duplicates it.
+	default:
+		return fmt.Errorf("blockproj: unknown block op type %T", op)
 	}
 	return nil
 }
 
 // applyTextOp treats the most recent InsertText's text as blockID's
 // current full content — see the package doc comment for why this
-// reproduces the correct end state without anchor resolution. An unknown
-// block id (a redelivered event for a block deleted since) is silently
-// ignored, matching can_apply's authorization having already run upstream.
+// reproduces the correct end state without anchor resolution. DeleteText
+// and NoOp leave the block's projected text untouched: DeleteText is
+// always immediately followed by the InsertText that supplies the block's
+// new full content (the whole-block-replace strategy), and NoOp carries
+// no content change at all — treating either as "clear to empty" wiped a
+// block's projected text to "" with no following event to correct it
+// whenever the replace's insert half was itself empty, or the op really
+// was a no-op. An unknown block id (a redelivered event for a block
+// deleted since) is silently ignored, matching can_apply's authorization
+// having already run upstream.
 func applyTextOp(ps *pageState, blockID documentcore.BlockID, opType, text string) {
+	if opType != "InsertText" {
+		return
+	}
 	b, ok := ps.blocks[blockID]
 	if !ok {
 		return
 	}
-	if opType == "InsertText" {
-		b.text = text
-	} else {
-		b.text = ""
-	}
+	b.text = text
 }
 
 func indexOf(ps *pageState, id documentcore.BlockID) int {
@@ -347,6 +364,14 @@ func extractLinkTitles(text string) []string {
 func toPgUUID(id uuid.UUID) pgtype.UUID   { return pgtype.UUID{Bytes: id, Valid: true} }
 func fromPgUUID(id pgtype.UUID) uuid.UUID { return uuid.UUID(id.Bytes) }
 
+// handleEventTimeout bounds one HandleEvent call — the DB write inside it
+// must not hang the NATS delivery goroutine forever on a stuck connection;
+// see the package doc comment on why a missed/late event here is already
+// an accepted gap at this repo's scope, so this timeout errs toward "give
+// up and let the next event resync via a full loadPageState," not toward
+// retrying indefinitely.
+const handleEventTimeout = 10 * time.Second
+
 // Subscribe registers a NATS subscription that calls proj.HandleEvent for
 // each collab.ops_flushed message. Returns an unsubscribe func. See the
 // package doc comment for the plain-core-NATS gap this inherits.
@@ -357,7 +382,9 @@ func Subscribe(nc *nats.Conn, proj *Projector) (unsubscribe func() error, err er
 			slog.Error("blockproj: decoding collab.ops_flushed envelope", "err", err)
 			return
 		}
-		if err := proj.HandleEvent(context.Background(), evt.AggregateID, evt.Payload); err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), handleEventTimeout)
+		defer cancel()
+		if err := proj.HandleEvent(ctx, evt.AggregateID, evt.Payload); err != nil {
 			slog.Error("blockproj: handling event", "page_id", evt.AggregateID, "event_id", evt.ID, "err", err)
 		}
 	})
