@@ -6,4 +6,5 @@ use (
 	./services/auth-service
 	./services/collaboration-service
 	./services/document-service
+	./services/notification-service
 )
