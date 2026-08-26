@@ -1,8 +1,12 @@
 # ADR-004 — React SPA with a Rust Editor Core
 
 **Date:** 2026-08-06
-**Status:** Accepted
-**Related:** ADR-002 (Rust depth), RFC-001 (document model)
+**Status:** Superseded by ADR-011 for the editor-core-language question — the
+editor core is native TypeScript in this repo's build, no `wasm32` boundary.
+This ADR itself says "revisit only after the 🏁, never before"; ADR-011
+overrides that clause explicitly rather than ignoring it. The React SPA
+choice (this ADR's other half) stands unchanged.
+**Related:** ADR-002 (Rust depth), RFC-001 (document model), ADR-011 (Go+TS MVP, Rust port later)
 **Deciders:** @genuinebasilnt
 
 ---

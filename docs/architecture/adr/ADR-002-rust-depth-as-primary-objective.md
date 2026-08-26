@@ -1,8 +1,10 @@
 # ADR-002 — Rust Depth as the Primary Objective
 
 **Date:** 2026-08-06
-**Status:** Accepted
-**Related:** ADR-001 (scope), ADR-005 (Go reference), ADR-004 (React SPA)
+**Status:** Superseded by ADR-011 for the Go+TS-then-port track — Rust depth is not
+this repo's objective while that track runs. Not invalidated: the objective
+resumes, unchanged, in the future Rust-port repo.
+**Related:** ADR-001 (scope), ADR-005 (Go reference), ADR-004 (React SPA), ADR-011 (Go+TS MVP, Rust port later)
 **Deciders:** @genuinebasilnt
 
 ---

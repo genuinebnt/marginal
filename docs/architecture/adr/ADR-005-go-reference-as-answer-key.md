@@ -1,8 +1,12 @@
 # ADR-005 — Go Reference Implementations as an Answer Key
 
 **Date:** 2026-08-06
-**Status:** Accepted
-**Related:** ADR-002 (Rust depth primary)
+**Status:** Superseded by ADR-011 — the "whole product ported later" model this
+ADR rejected is now the plan. ADR-011 answers this ADR's three objections
+(DSA-shape-not-reasoning, GC-has-nothing-to-port-for-the-hardest-work,
+reading-a-port-is-slower-than-designing-one) directly rather than
+overriding them silently.
+**Related:** ADR-002 (Rust depth primary), ADR-011 (Go+TS MVP, Rust port later)
 **Deciders:** @genuinebasilnt
 
 ---
