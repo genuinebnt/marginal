@@ -24,26 +24,32 @@ the future Rust-port repo.
 
 ## Core Principles
 
-### 1. Idiomatic Go/TS first — portability comes from behavior, not shape
+### 1. Business logic lives in Go once; TypeScript is views + a JSON bridge
 
-Portability is **not** achieved by contorting Go or TypeScript into
-Rust-shaped code. Write the idiom the language actually wants:
+Per `ADR-011`'s addendum: **all document-core logic is Go**, compiled to
+`GOOS=js GOARCH=wasm` for the browser (`services/document-service/cmd/wasm`)
+and used server-side as an ordinary package. TypeScript never reimplements
+it — `web/src/document-core/` is wire types (`types.ts`), the wasm loader
+(`wasm.ts`), and thin bookkeeping (`history.ts`'s undo/redo stacks — two
+arrays, no semantics of its own). If a view needs a document-core behavior
+that doesn't exist yet, the fix is a new exported Go function compiled into
+the wasm module, never a parallel TS implementation.
 
-- Go errors are `(T, error)` returns, not a hand-rolled `Result[T]`.
+Within Go, write idiomatic Go — not Rust-shaped Go:
+
+- Errors are `(T, error)` returns, not a hand-rolled `Result[T]`.
 - Interfaces are small, declared at their point of use (consumer side),
   colocated per `CLOUD_PORTABILITY.md`'s port-and-adapter convention — not
   one interface mirroring one future Rust trait.
-- TypeScript uses discriminated unions and exhaustiveness checks for the
-  `Op`/`BlockKind` sum types, not a class hierarchy imitating a Rust enum.
 - No abstraction exists solely because "Rust will need this later." If Go
   doesn't need a seam, don't build one.
 
 Portability for the future Rust port comes from three things instead:
-**shared behavior** (golden JSON test vectors under `testdata/`, consumed
-by every language's test suite — see §3), **matching module/service
-boundaries** (same seams as `ARCHITECTURE.md`/`DATA_MODEL.md` describe,
-language-agnostic by design), and **documentation** (§4's doc-comment and
-`PORT-NOTE` conventions).
+**one wasm boundary already in the right shape** (recompile
+`internal/documentcore` to `wasm32-unknown-unknown` instead of `js/wasm` —
+the JSON-in/JSON-out contract barely changes), **golden JSON test vectors**
+under `testdata/` (§ Testing Philosophy), and **documentation** (§4's
+doc-comment and `PORT-NOTE` conventions).
 
 ### 2. Ship minimal, refactor on friction — carried over unchanged
 
@@ -74,23 +80,30 @@ golden path and its real edge cases work, not that corners are cut.
 The goal: a Rust port later can reuse the *test cases*, not the test code.
 
 - **Golden test vectors** (`testdata/<module>/*.json`) encode input →
-  expected-output as data, not code. Every language's test suite loads the
-  same files and asserts against them. Write these for anything with pure
-  logic and no I/O — `document-core`'s `Page`/`Op`/`Content`/`History` is
-  the first and clearest case.
-- **Property-based tests** for algebraic laws that must hold regardless of
-  language: `apply(invert(op), apply(op, page)) == page` for every op,
-  every page (`RFC-002` §3's invertibility law). Use `pgregory.net/rapid` in
-  Go, `fast-check` in TypeScript — both generate cases, both check the same
-  law, independently of each other's syntax.
+  expected-output as data, not code, and are consumed by Go's test suite
+  today, the Rust port's later. Write these for anything with pure logic
+  and no I/O — `document-core`'s `Page`/`Op`/`Content`/`History` is the
+  first and clearest case. TypeScript does **not** get its own copy of
+  these tests — it has no reimplementation to test against them; see §1.
+- **Property-based tests** in Go (`pgregory.net/rapid`) for algebraic laws:
+  `apply(invert(op), apply(op, page)) == page` for every op, every page
+  (`RFC-002` §3's invertibility law).
 - **Contract-level tests** for anything crossing a service boundary: assert
   against the `.proto`/OpenAPI contract (request in, response out), not
   against internal implementation details. These port almost unchanged —
   a Rust gRPC client hitting the same contract is testing the same thing.
-- **Unit tests** for everything else, in each language's native style
-  (table-driven Go, Vitest describe/it TS) — these won't port 1:1, but the
-  *scenarios* they encode do; keep test names descriptive enough that a
-  human can read the list and know what to re-verify in Rust.
+- **WASM bridge integration tests** (`web/src/document-core/wasm.test.ts`,
+  Vitest, runs against the real compiled `.wasm`) prove the TS↔Go boundary
+  works — JSON marshaling, error propagation — not the document-core
+  behavior itself, which is already pinned Go-side. Don't duplicate a
+  behavior assertion here that a Go test already makes.
+- **Unit tests** for everything else, Go table-driven style. `cmd/wasm` has
+  none of its own — it's a thin `syscall/js` adapter with no branching
+  logic worth a unit test; `go vet`/`go build` under `GOOS=js GOARCH=wasm`
+  is the check. (Note: `go build ./...`/`go test ./...` from the module
+  root, run under the host `GOOS`/`GOARCH`, correctly report `cmd/wasm` as
+  unbuildable — that's expected, not a regression; use
+  `scripts/build-wasm.sh` or `GOOS=js GOARCH=wasm go vet ./cmd/wasm/...`.)
 - **Never mock infrastructure.** `testcontainers-go` against real Postgres/
   NATS, same rule the Rust track had.
 

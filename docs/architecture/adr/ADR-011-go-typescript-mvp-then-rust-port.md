@@ -126,3 +126,54 @@ Same as ADR-005's, now aimed at Go/TS instead of the crib-sheet role:
 [Effective Go](https://go.dev/doc/effective_go) for the idiom this decision
 insists on keeping; the RFCs and `DATA_MODEL.md` as the specs that didn't
 change; `docs/porting/PORTING_GUIDE.md` for the future hand-port's approach.
+
+---
+
+## Addendum — the editor core is Go compiled to wasm, not native TypeScript
+
+**Added 2026-08-26, same day, after further discussion.**
+
+The decision above originally said the editor core is native TypeScript,
+"no `wasm32` for this track — `ADR-011` overrides `ADR-004`." That's
+narrowed: **all business logic, including the editor core, is written once,
+in Go — `services/document-service/internal/documentcore` — and compiled to
+`GOOS=js GOARCH=wasm` for browser use. TypeScript is views and a thin JSON
+bridge only, never a second implementation of the logic.**
+
+**Why this is better than the plan it replaces.** The original plan had
+document-core implemented twice — once in Go (for document-service),
+once natively in TypeScript (for the browser) — kept in sync only by
+running the same `testdata/document-core/*.json` golden vectors against
+both. That's real duplication risk: two implementations of mark
+coalescing, op preconditions, and invertibility, agreeing only as long as
+someone remembers to keep both updated. Compiling the one Go
+implementation to wasm removes the second implementation entirely — there
+is exactly one `Page.Apply`, one `Content.AddMark`, and both
+document-service and the browser call it.
+
+**This also un-loses something ADR-011's original text traded away.**
+ADR-004 always specified the editor core compiles to `wasm32` — that was
+true for the Rust design and stays true here, just with `GOOS=js` (Go's
+wasm target) standing in for `wasm32-unknown-unknown` (Rust's) until the
+port happens. The wasm boundary itself was never the thing being removed;
+only its source language changed, temporarily. Porting to Rust later means
+recompiling `internal/documentcore` to `wasm32-unknown-unknown` instead of
+`js/wasm` — the JS-side loader (`web/src/document-core/wasm.ts`) needs
+minimal changes, since it already treats the module as "JSON in, JSON out"
+rather than assuming anything Go-specific about it.
+
+**The JSON boundary is deliberately stringly-typed, not a rich `js.Value`
+marshaling scheme** (`cmd/wasm/main.go`) — every exported function takes
+and returns JSON strings, `{value, error}` envelopes. That's the same
+shape a real HTTP/gRPC call to document-service would use, so views never
+need to know whether they're calling local wasm or the network — and it's
+the shape that will still make sense once the wasm module is Rust instead
+of Go.
+
+**What stays thin on the TypeScript side, and why that's not "logic
+creeping back into TS":** `web/src/document-core/history.ts`'s undo/redo
+stacks are two arrays and push/pop — bookkeeping, not an implementation of
+undo/redo *semantics* (every apply and invert call still goes through the
+wasm module). `types.ts`'s object-literal builders (`paragraph()`,
+`bold()`, ...) are shape declarations with no validation — Go's
+`Page.Apply` is the only place a `Heading{level: 0}` gets rejected.

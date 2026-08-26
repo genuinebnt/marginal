@@ -69,7 +69,7 @@ truth for what's implemented and what's next.
 | Search | deferred — out of Track 1 scope |
 | gRPC | `google.golang.org/grpc` + `buf` — **the east-west default**, REST only at the gateway |
 | Frontend | React 19 + TypeScript SPA (Vite), Tailwind v4, Radix UI |
-| **Editor core** | **Native TypeScript** — document model, marks, selection, ops (no `wasm32` for this track — `ADR-011` overrides `ADR-004`) |
+| **Editor core** | **Go, compiled to `GOOS=js GOARCH=wasm`** — `internal/documentcore`; TS is views + a JSON bridge only, never a second implementation (`ADR-011` addendum; keeps ADR-004's wasm boundary, source language differs for now) |
 | API contract | Hand-maintained OpenAPI in `docs/api/` → `openapi-typescript` |
 | IaC / hosting | Terraform (HCL) → Google Cloud — deferred until a service is ready to deploy |
 | Observability | OpenTelemetry → Jaeger/Cloud Trace + Prometheus + Grafana — deferred |
@@ -99,15 +99,19 @@ different noun is not sufficient (`ADR-001`, unchanged).
 go.work                         at repo root — one Go module per service, no wrapper directory
 
 services/                       backend, kept separate from web/
-├── document-service/           go.mod, cmd/main.go, internal/documentcore/, internal/...
+├── document-service/
+│   ├── go.mod, cmd/main.go
+│   ├── cmd/wasm/                GOOS=js GOARCH=wasm entrypoint — the editor core's browser build
+│   └── internal/documentcore/   business logic, once — page.go, block.go, operation.go, history.go, inline.go
 ├── auth-service/
 └── collaboration-service/
 
-web/                            frontend — React 19 + TS SPA + native TS document-core (Vite)
-├── src/document-core/          page.ts, block.ts, operation.ts, history.ts, inline.ts
+web/                            frontend — React 19 + TS SPA (Vite); views only, no document-core logic
+├── public/documentcore.wasm     built by services/document-service/scripts/build-wasm.sh, gitignored
+├── src/document-core/           types.ts (wire types) + wasm.ts (the JSON bridge) + history.ts (thin undo/redo bookkeeping)
 └── ...
 
-testdata/<module>/*.json        golden test vectors — shared behavior spec across languages
+testdata/document-core/*.json   golden test vectors for internal/documentcore — Go today, Rust later
 
 docs/rust/                      docs only, no code — the archived Rust-mentor track (see docs/rust/README.md)
 
