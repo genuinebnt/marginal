@@ -317,10 +317,43 @@ verification keys, nothing drives an actual rotation yet — one signing
 key for the process lifetime); the `api-gateway`/cookie/CSRF boundary
 (refresh tokens return directly in `TokenPair`, not an `HttpOnly` cookie).
 
-**Not yet run:** `/security-review` — mandated by `CLAUDE.md` for any auth
-boundary, and the LLD calls this "the largest one in the project." Do this
-before treating auth-service as done, not after.
+---
 
-**Next:** `/security-review` on this service. Then: `collaboration-service`
-still has no business logic; document-service's delete-saga cascade and
-outbox are still open; per `ROADMAP.md`'s Track 1 order.
+## 2026-08-26 — `/security-review` run; one real finding, fixed
+
+Reviewed auth-service (the mandated boundary) and, incidentally,
+document-service's actor-id stand-in while checking RBAC-adjacent items.
+
+**Real finding, not hypothetical:** document-service's `GetPage`/
+`ListPages`/`RenamePage`/`DeletePage`/`ReparentPage` never checked a
+page's `created_by` against the calling actor at all — any caller could
+read, rename, delete, or reparent any page, and `ListPages` returned
+every page in the system regardless of owner. Directly violated user
+story A-04. Fixed by scoping `created_by` into the `WHERE` clause of every
+affected query (not an application-level check after fetching) —
+see `docs/api/pages.md`'s new section and the two new integration tests
+(`TestPagesAreScopedToTheirOwner`, `TestCreateCannotNestUnderAnotherActorsPage`).
+
+**Minor test-coverage gap, fixed:** the alg-confusion test only forged an
+`alg: none` token, not the more specific HS256-signed-with-the-RSA-public-
+key-bytes attack the LLD actually names. Added
+`TestVerifyRejectsHS256SignedWithThePublicKeyBytes` — confirms
+`jwt.WithValidMethods` rejects it regardless of keyfunc behavior.
+
+**Checked and already correct, no changes needed:** Argon2id-only password
+storage, RS256 + explicit claim validation, constant-time password/dummy-hash
+comparison (`crypto/subtle`), refresh-token single-use + family revocation,
+blocklist TTL matching actual remaining token lifetime, parameterized SQL
+throughout (no string-built queries anywhere), LTREE labels derived only
+from internally-generated UUIDs (never from user text, so no path-injection
+surface), no email/password/token ever logged.
+
+**Confirmed, already documented, not fixed (correctly out of scope for
+this repo):** no per-IP/distributed-attempt rate limiting (gateway's job,
+no gateway exists); JWKS key-rotation tooling; the api-gateway/cookie/CSRF
+boundary. These remain real gaps for a production deployment, not silent
+ones — `docs/api/auth.md` §3 already named them before this review ran.
+
+**Next:** `collaboration-service` still has no business logic;
+document-service's delete-saga cascade and outbox are still open; per
+`ROADMAP.md`'s Track 1 order.
