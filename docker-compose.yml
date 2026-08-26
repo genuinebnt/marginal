@@ -1,0 +1,195 @@
+# Local dev stack — brings up all five Track 1 services plus their own
+# Postgres (one per service, matching DATA_MODEL.md's "database per
+# service" — mirrored here rather than one shared instance, same posture
+# deploy/terraform/modules/postgres uses for the cloud), one shared Redis
+# (auth-service's lockout/blocklist), and one shared NATS (the local
+# EventBus adapter, CLAUDE.md's stack table — auth-service's outbox poller
+# publishes auth.user_registered, notification-service consumes it; see
+# docs/porting/PROGRESS.md's notification-service entry). Not a production
+# deployment — no TLS, no secrets management, plaintext dev passwords
+# below on purpose.
+#
+# Usage:
+#   docker compose up --build
+#   open http://localhost:8000/health         # api-gateway
+#   open http://localhost:5173                # web (Vite dev server)
+#
+# api-gateway is the browser's entry point for REST (docs/api/pages.md,
+# docs/api/auth.md). collaboration-service's WebSocket
+# (docs/api/collaboration.md) is reached directly at :8002 — it isn't
+# proxied through the gateway (see api-gateway's own package doc comment).
+
+services:
+  doc-db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: document_service
+      POSTGRES_PASSWORD: dev-only-not-a-real-secret
+      POSTGRES_DB: document_service
+    volumes:
+      - doc-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U document_service"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  auth-db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: auth_service
+      POSTGRES_PASSWORD: dev-only-not-a-real-secret
+      POSTGRES_DB: auth_service
+    volumes:
+      - auth-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U auth_service"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  collab-db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: collaboration_service
+      POSTGRES_PASSWORD: dev-only-not-a-real-secret
+      POSTGRES_DB: collaboration_service
+    volumes:
+      - collab-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U collaboration_service"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  notification-db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: notification_service
+      POSTGRES_PASSWORD: dev-only-not-a-real-secret
+      POSTGRES_DB: notification_service
+    volumes:
+      - notification-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U notification_service"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  nats:
+    image: nats:2-alpine
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8222/healthz"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    command: ["-m", "8222"] # monitoring endpoint, for the healthcheck above
+
+  document-service:
+    build:
+      context: . # repo root — see services/document-service/Dockerfile's own comment on why
+      dockerfile: services/document-service/Dockerfile
+    environment:
+      DATABASE_URL: postgres://document_service:dev-only-not-a-real-secret@doc-db:5432/document_service?sslmode=disable
+      NATS_URL: nats://nats:4222
+    ports:
+      - "8001:8001" # health
+      - "9001:9001" # gRPC PageService — api-gateway's target; exposed to host too, for grpcurl debugging
+    depends_on:
+      doc-db:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+
+  auth-service:
+    build:
+      context: services/auth-service
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgres://auth_service:dev-only-not-a-real-secret@auth-db:5432/auth_service?sslmode=disable
+      REDIS_ADDR: redis:6379
+      NATS_URL: nats://nats:4222
+    ports:
+      - "8006:8006" # health + /.well-known/jwks.json
+      - "9006:9006" # gRPC AuthService — api-gateway's target
+    depends_on:
+      auth-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+
+  collaboration-service:
+    build:
+      context: . # repo root — see services/collaboration-service/Dockerfile's own comment on why
+      dockerfile: services/collaboration-service/Dockerfile
+    environment:
+      DATABASE_URL: postgres://collaboration_service:dev-only-not-a-real-secret@collab-db:5432/collaboration_service?sslmode=disable
+      COLLAB_WAL_DIR: /data/collab-wal
+      NATS_URL: nats://nats:4222
+    volumes:
+      - collab-wal-data:/data/collab-wal
+    ports:
+      - "8002:8002" # health + WebSocket /collab/pages/{id} — reached directly by the browser
+    depends_on:
+      collab-db:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+
+  notification-service:
+    build:
+      context: services/notification-service
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgres://notification_service:dev-only-not-a-real-secret@notification-db:5432/notification_service?sslmode=disable
+      NATS_URL: nats://nats:4222
+    ports:
+      - "8007:8007" # health + GET /notifications — reached directly by the browser, not proxied (docs/api/collaboration.md's convention for the same reason)
+    depends_on:
+      notification-db:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+
+  api-gateway:
+    build:
+      context: . # repo root — see services/api-gateway/Dockerfile's own comment on why
+      dockerfile: services/api-gateway/Dockerfile
+    environment:
+      DOCUMENT_SERVICE_GRPC_ADDR: document-service:9001
+      AUTH_SERVICE_GRPC_ADDR: auth-service:9006
+    ports:
+      - "8000:8000" # the browser's entry point for REST
+    depends_on:
+      - document-service
+      - auth-service
+
+  web:
+    image: node:22-alpine
+    working_dir: /app
+    volumes:
+      - ./web:/app
+      - web-node-modules:/app/node_modules # named volume, not bind-mounted from the host — host and container architectures can differ, and native deps built for one won't load in the other
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api-gateway
+
+volumes:
+  doc-db-data:
+  auth-db-data:
+  collab-db-data:
+  notification-db-data:
+  collab-wal-data:
+  web-node-modules:
