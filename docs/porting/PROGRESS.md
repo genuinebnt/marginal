@@ -420,9 +420,53 @@ it should be faster.
 
 `golangci-lint` clean.
 
+---
+
+## 2026-08-26 — `collaboration-service`: Anchors, and the rope+identity integration
+
+Corrected the stated order from the last entry: character-granular ops
+reference `Anchor`/`AnchorRange` directly in their own field types
+(RFC-002 §2), so Anchors had to come before them, not after.
+
+**`internal/anchor`** — RFC-001 §9's stable-position scheme: `ItemID`
+(Lamport `{actor, counter}`, permanent once assigned), `Bias`
+(`Before`/`After`, disambiguating which side of an item a position sits
+on), `Anchor`, `AnchorRange`, and `Resolved` (`At`/`Detached`/`Unknown`).
+`Log` tracks every character ever inserted, live or tombstoned, and
+answers "what live offset is this `ItemID` at now" — deliberately
+correctness-first (O(n) per operation, a full index rebuild on mutation),
+with the exact, narrow optimization path named in its own doc comment
+(an order-statistics/Fenwick-tree rank query) for when that's actually
+measured to matter, not before (`.agents/agents.md` §2's "ship minimal").
+
+Scoped to this repo's actual architecture, not full Yjs/Automerge-style
+peer-to-peer merge: `collaboration-service` is one doc-actor per page
+(`ARCHITECTURE.md` — "one document, one owner, at any time"), so every
+concurrent client's op is applied by a single serializing process, not
+merged across replicas that never talked to each other. Anchors here only
+need to resolve against *current* state, not reconcile divergent
+histories — a materially smaller problem, and the package doc comment
+says so explicitly rather than silently under-delivering against what
+"CRDT" usually implies.
+
+**`internal/doctext`** integrates `rope` (content) with `anchor.Log`
+(identity) into what a live session actually edits: rune-offset
+`InsertAt`/`DeleteRange`, `Resolve`. Rune offsets, not byte offsets — a
+cursor position is conceptually "the Nth character," and a byte offset
+could split one; the rope stays byte-indexed internally (matching
+document-service's stored spans) with a documented, deliberately-O(n)-for-now
+conversion at the boundary, same tradeoff and same reasoning as `Log`'s.
+
+**Verified:** a property test for `Log` (rapid, 3000 iterations, against a
+plain reference model — same differential-testing approach the rope's
+own tests use) and end-to-end tests proving the actual point of this
+subsystem: an anchor composed against the document *before* a concurrent
+edit lands still resolves to the right character *after* that edit lands,
+and a subsequent insert positioned via that resolved offset lands in the
+right place. `golangci-lint` clean throughout.
+
 **Next:** character-granular `Op` (`InsertText`/`DeleteText`/`SetMark`,
-RFC-002 §2's Phase-3 tier) over the rope, then Anchors (RFC-001 §9,
-Yjs/Peritext-style `ItemId`+`Bias` — needed so a mark or comment survives
-concurrent edits around it), then the WAL framing and `collab.ops`
-persistence, then the session/WebSocket layer. In that order — each piece
-needs the one before it to mean anything.
+RFC-002 §2's Phase-3 tier) as a real Op type with `Invert()`, built on top
+of `doctext.Text` — mirroring `document-core`'s `Op`/`Invert` shape but
+character-granular. Then WAL framing and `collab.ops` persistence, then
+the session/WebSocket layer.
