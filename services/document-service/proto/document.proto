@@ -1,0 +1,78 @@
+// PageService — the gRPC contract for page metadata (create/get/list/
+// rename/reparent/delete). See docs/api/pages.md, which this file matches
+// field-for-field — that doc is the source of truth for semantics; this
+// file is its wire encoding.
+//
+// This is deliberately NOT where block content changes go — those are
+// documentcore Ops (services/document-service/internal/documentcore),
+// applied through a separate surface once one exists. PageService only
+// owns the page row: title, tree position, lifecycle.
+syntax = "proto3";
+
+package marginal.document.v1;
+
+option go_package = "marginal/document-service/internal/genproto/documentv1";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+
+service PageService {
+  rpc CreatePage   (CreatePageRequest)   returns (Page);
+  rpc GetPage      (GetPageRequest)      returns (Page);
+  rpc ListPages    (ListPagesRequest)    returns (ListPagesResponse);
+  rpc RenamePage   (RenamePageRequest)   returns (Page);
+  rpc ReparentPage (ReparentPageRequest) returns (Page);
+  rpc DeletePage   (DeletePageRequest)   returns (google.protobuf.Empty);
+}
+
+enum LifecycleState {
+  LIFECYCLE_STATE_UNSPECIFIED = 0;
+  LIFECYCLE_STATE_ACTIVE      = 1;
+  LIFECYCLE_STATE_DELETING    = 2;
+  LIFECYCLE_STATE_DELETED     = 3;
+}
+
+message Page {
+  string id                     = 1; // UUIDv7
+  string created_by             = 2;
+  string title                  = 3;
+  optional string parent_id     = 4;
+  string path                   = 5; // materialised LTREE ancestry
+  string sort_key               = 6; // opaque, lexicographic
+  LifecycleState lifecycle_state = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp updated_at = 9;
+  optional google.protobuf.Timestamp deleted_at = 10;
+}
+
+message CreatePageRequest {
+  string title = 1;
+  optional string parent_id = 2;
+  optional string after = 3;
+}
+
+message GetPageRequest { string id = 1; }
+
+message ListPagesRequest {
+  optional string parent_id = 1;
+  optional string after = 2;
+  optional int32 limit = 3;
+}
+
+message ListPagesResponse {
+  repeated Page pages = 1;
+  optional string next_cursor = 2;
+}
+
+message RenamePageRequest {
+  string id = 1;
+  string title = 2;
+}
+
+message ReparentPageRequest {
+  string id = 1;
+  optional string parent_id = 2;
+  optional string after = 3;
+}
+
+message DeletePageRequest { string id = 1; }

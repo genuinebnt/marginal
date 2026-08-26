@@ -27,6 +27,10 @@ docker-data/
 # Node
 node_modules/
 
+# Go — pgregory.net/rapid saves failing-case repro files here on a
+# property-test failure; regenerable, not something to commit.
+testdata/rapid/
+
 # Generated PDF artifacts (regeneratable from scripts/)
 BitTree-Feature-Roadmap.html
 
