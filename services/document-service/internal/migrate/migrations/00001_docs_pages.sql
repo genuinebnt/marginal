@@ -3,7 +3,11 @@ CREATE SCHEMA IF NOT EXISTS docs;
 CREATE EXTENSION IF NOT EXISTS ltree;
 
 CREATE TABLE docs.pages (
-    id              UUID PRIMARY KEY DEFAULT uuidv7(),
+    -- Generated application-side (uuid.Must(uuid.NewV7())) — repo.Create
+    -- needs the id before the INSERT to compute path's own final LTREE
+    -- label, and a Postgres-side DEFAULT would also tie this schema to
+    -- PG18's native uuidv7(), which Cloud SQL doesn't offer (deploy/terraform).
+    id              UUID PRIMARY KEY,
     created_by      UUID NOT NULL, -- auth.users(id); no FK, cross-schema (DATA_MODEL.md §1)
     title           TEXT NOT NULL,
     parent_id       UUID REFERENCES docs.pages(id),

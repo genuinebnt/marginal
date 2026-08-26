@@ -30,12 +30,13 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	PageService_CreatePage_FullMethodName   = "/marginal.document.v1.PageService/CreatePage"
-	PageService_GetPage_FullMethodName      = "/marginal.document.v1.PageService/GetPage"
-	PageService_ListPages_FullMethodName    = "/marginal.document.v1.PageService/ListPages"
-	PageService_RenamePage_FullMethodName   = "/marginal.document.v1.PageService/RenamePage"
-	PageService_ReparentPage_FullMethodName = "/marginal.document.v1.PageService/ReparentPage"
-	PageService_DeletePage_FullMethodName   = "/marginal.document.v1.PageService/DeletePage"
+	PageService_CreatePage_FullMethodName    = "/marginal.document.v1.PageService/CreatePage"
+	PageService_GetPage_FullMethodName       = "/marginal.document.v1.PageService/GetPage"
+	PageService_ListPages_FullMethodName     = "/marginal.document.v1.PageService/ListPages"
+	PageService_RenamePage_FullMethodName    = "/marginal.document.v1.PageService/RenamePage"
+	PageService_ReparentPage_FullMethodName  = "/marginal.document.v1.PageService/ReparentPage"
+	PageService_DeletePage_FullMethodName    = "/marginal.document.v1.PageService/DeletePage"
+	PageService_ListBacklinks_FullMethodName = "/marginal.document.v1.PageService/ListBacklinks"
 )
 
 // PageServiceClient is the client API for PageService service.
@@ -48,6 +49,12 @@ type PageServiceClient interface {
 	RenamePage(ctx context.Context, in *RenamePageRequest, opts ...grpc.CallOption) (*Page, error)
 	ReparentPage(ctx context.Context, in *ReparentPageRequest, opts ...grpc.CallOption) (*Page, error)
 	DeletePage(ctx context.Context, in *DeletePageRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	// ListBacklinks reads docs.page_links (internal/blockproj's projection
+	// of collab.ops_flushed, not a page property PageService itself owns) —
+	// it lives on this service purely because that table is in this
+	// service's own database, not because it's page metadata like the rest
+	// of this RPC set.
+	ListBacklinks(ctx context.Context, in *ListBacklinksRequest, opts ...grpc.CallOption) (*ListBacklinksResponse, error)
 }
 
 type pageServiceClient struct {
@@ -118,6 +125,16 @@ func (c *pageServiceClient) DeletePage(ctx context.Context, in *DeletePageReques
 	return out, nil
 }
 
+func (c *pageServiceClient) ListBacklinks(ctx context.Context, in *ListBacklinksRequest, opts ...grpc.CallOption) (*ListBacklinksResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListBacklinksResponse)
+	err := c.cc.Invoke(ctx, PageService_ListBacklinks_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // PageServiceServer is the server API for PageService service.
 // All implementations must embed UnimplementedPageServiceServer
 // for forward compatibility.
@@ -128,6 +145,12 @@ type PageServiceServer interface {
 	RenamePage(context.Context, *RenamePageRequest) (*Page, error)
 	ReparentPage(context.Context, *ReparentPageRequest) (*Page, error)
 	DeletePage(context.Context, *DeletePageRequest) (*emptypb.Empty, error)
+	// ListBacklinks reads docs.page_links (internal/blockproj's projection
+	// of collab.ops_flushed, not a page property PageService itself owns) —
+	// it lives on this service purely because that table is in this
+	// service's own database, not because it's page metadata like the rest
+	// of this RPC set.
+	ListBacklinks(context.Context, *ListBacklinksRequest) (*ListBacklinksResponse, error)
 	mustEmbedUnimplementedPageServiceServer()
 }
 
@@ -155,6 +178,9 @@ func (UnimplementedPageServiceServer) ReparentPage(context.Context, *ReparentPag
 }
 func (UnimplementedPageServiceServer) DeletePage(context.Context, *DeletePageRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method DeletePage not implemented")
+}
+func (UnimplementedPageServiceServer) ListBacklinks(context.Context, *ListBacklinksRequest) (*ListBacklinksResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListBacklinks not implemented")
 }
 func (UnimplementedPageServiceServer) mustEmbedUnimplementedPageServiceServer() {}
 func (UnimplementedPageServiceServer) testEmbeddedByValue()                     {}
@@ -285,6 +311,24 @@ func _PageService_DeletePage_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _PageService_ListBacklinks_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListBacklinksRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PageServiceServer).ListBacklinks(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PageService_ListBacklinks_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PageServiceServer).ListBacklinks(ctx, req.(*ListBacklinksRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // PageService_ServiceDesc is the grpc.ServiceDesc for PageService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -315,6 +359,10 @@ var PageService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeletePage",
 			Handler:    _PageService_DeletePage_Handler,
+		},
+		{
+			MethodName: "ListBacklinks",
+			Handler:    _PageService_ListBacklinks_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

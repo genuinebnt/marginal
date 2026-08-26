@@ -20,7 +20,7 @@ package main
 import (
 	"syscall/js"
 
-	"marginal/document-service/internal/documentcore"
+	"marginal/documentcore"
 )
 
 // jsonArg reads args[i] as a JSON string. Every exported function takes and

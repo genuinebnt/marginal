@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# Regenerates internal/genproto/documentv1 from proto/document.proto.
+# Regenerates genproto/documentv1 from proto/document.proto. Not under
+# internal/ — api-gateway (a separate Go module) needs to import the
+# generated client stub, and Go's internal-package visibility rule would
+# block that across module boundaries.
 # Requires protoc, protoc-gen-go, and protoc-gen-go-grpc on PATH
 # (`go install google.golang.org/protobuf/cmd/protoc-gen-go@latest` and
 # `go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest`).
@@ -20,4 +23,4 @@ protoc \
   --go-grpc_out=. --go-grpc_opt=module=marginal/document-service \
   proto/document.proto
 
-echo "regenerated internal/genproto/documentv1"
+echo "regenerated genproto/documentv1"

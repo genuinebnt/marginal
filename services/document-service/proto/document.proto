@@ -11,7 +11,7 @@ syntax = "proto3";
 
 package marginal.document.v1;
 
-option go_package = "marginal/document-service/internal/genproto/documentv1";
+option go_package = "marginal/document-service/genproto/documentv1";
 
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/empty.proto";
@@ -23,6 +23,12 @@ service PageService {
   rpc RenamePage   (RenamePageRequest)   returns (Page);
   rpc ReparentPage (ReparentPageRequest) returns (Page);
   rpc DeletePage   (DeletePageRequest)   returns (google.protobuf.Empty);
+  // ListBacklinks reads docs.page_links (internal/blockproj's projection
+  // of collab.ops_flushed, not a page property PageService itself owns) —
+  // it lives on this service purely because that table is in this
+  // service's own database, not because it's page metadata like the rest
+  // of this RPC set.
+  rpc ListBacklinks(ListBacklinksRequest) returns (ListBacklinksResponse);
 }
 
 enum LifecycleState {
@@ -76,3 +82,14 @@ message ReparentPageRequest {
 }
 
 message DeletePageRequest { string id = 1; }
+
+message ListBacklinksRequest { string page_id = 1; }
+
+message ListBacklinksResponse { repeated Backlink backlinks = 1; }
+
+message Backlink {
+  string from_page = 1;
+  string from_page_title = 2;
+  bool from_page_deleted = 3; // linking page's own lifecycle — a backlink from a since-deleted page is still worth showing as such
+  string target_title = 4;    // the literal text written, e.g. "Backlink Target" — may differ in case from this page's own title
+}

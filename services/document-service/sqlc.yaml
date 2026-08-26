@@ -12,3 +12,12 @@ sql:
         overrides:
           - db_type: "ltree"
             go_type: "string"
+  - engine: "postgresql"
+    queries: "internal/blockrepo/queries.sql"
+    schema: "internal/migrate/migrations"
+    gen:
+      go:
+        package: "blockrepo"
+        out: "internal/blockrepo/gen"
+        sql_package: "pgx/v5"
+        emit_pointers_for_null_types: true

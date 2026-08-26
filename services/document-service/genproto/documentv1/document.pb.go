@@ -573,6 +573,162 @@ func (x *DeletePageRequest) GetId() string {
 	return ""
 }
 
+type ListBacklinksRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	PageId        string                 `protobuf:"bytes,1,opt,name=page_id,json=pageId,proto3" json:"page_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListBacklinksRequest) Reset() {
+	*x = ListBacklinksRequest{}
+	mi := &file_document_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListBacklinksRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListBacklinksRequest) ProtoMessage() {}
+
+func (x *ListBacklinksRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_document_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListBacklinksRequest.ProtoReflect.Descriptor instead.
+func (*ListBacklinksRequest) Descriptor() ([]byte, []int) {
+	return file_document_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *ListBacklinksRequest) GetPageId() string {
+	if x != nil {
+		return x.PageId
+	}
+	return ""
+}
+
+type ListBacklinksResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Backlinks     []*Backlink            `protobuf:"bytes,1,rep,name=backlinks,proto3" json:"backlinks,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListBacklinksResponse) Reset() {
+	*x = ListBacklinksResponse{}
+	mi := &file_document_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListBacklinksResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListBacklinksResponse) ProtoMessage() {}
+
+func (x *ListBacklinksResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_document_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListBacklinksResponse.ProtoReflect.Descriptor instead.
+func (*ListBacklinksResponse) Descriptor() ([]byte, []int) {
+	return file_document_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *ListBacklinksResponse) GetBacklinks() []*Backlink {
+	if x != nil {
+		return x.Backlinks
+	}
+	return nil
+}
+
+type Backlink struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	FromPage        string                 `protobuf:"bytes,1,opt,name=from_page,json=fromPage,proto3" json:"from_page,omitempty"`
+	FromPageTitle   string                 `protobuf:"bytes,2,opt,name=from_page_title,json=fromPageTitle,proto3" json:"from_page_title,omitempty"`
+	FromPageDeleted bool                   `protobuf:"varint,3,opt,name=from_page_deleted,json=fromPageDeleted,proto3" json:"from_page_deleted,omitempty"` // linking page's own lifecycle — a backlink from a since-deleted page is still worth showing as such
+	TargetTitle     string                 `protobuf:"bytes,4,opt,name=target_title,json=targetTitle,proto3" json:"target_title,omitempty"`                // the literal text written, e.g. "Backlink Target" — may differ in case from this page's own title
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *Backlink) Reset() {
+	*x = Backlink{}
+	mi := &file_document_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Backlink) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Backlink) ProtoMessage() {}
+
+func (x *Backlink) ProtoReflect() protoreflect.Message {
+	mi := &file_document_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Backlink.ProtoReflect.Descriptor instead.
+func (*Backlink) Descriptor() ([]byte, []int) {
+	return file_document_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *Backlink) GetFromPage() string {
+	if x != nil {
+		return x.FromPage
+	}
+	return ""
+}
+
+func (x *Backlink) GetFromPageTitle() string {
+	if x != nil {
+		return x.FromPageTitle
+	}
+	return ""
+}
+
+func (x *Backlink) GetFromPageDeleted() bool {
+	if x != nil {
+		return x.FromPageDeleted
+	}
+	return false
+}
+
+func (x *Backlink) GetTargetTitle() string {
+	if x != nil {
+		return x.TargetTitle
+	}
+	return ""
+}
+
 var File_document_proto protoreflect.FileDescriptor
 
 const file_document_proto_rawDesc = "" +
@@ -630,12 +786,21 @@ const file_document_proto_rawDesc = "" +
 	"_parent_idB\b\n" +
 	"\x06_after\"#\n" +
 	"\x11DeletePageRequest\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id*\x88\x01\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\"/\n" +
+	"\x14ListBacklinksRequest\x12\x17\n" +
+	"\apage_id\x18\x01 \x01(\tR\x06pageId\"U\n" +
+	"\x15ListBacklinksResponse\x12<\n" +
+	"\tbacklinks\x18\x01 \x03(\v2\x1e.marginal.document.v1.BacklinkR\tbacklinks\"\x9e\x01\n" +
+	"\bBacklink\x12\x1b\n" +
+	"\tfrom_page\x18\x01 \x01(\tR\bfromPage\x12&\n" +
+	"\x0ffrom_page_title\x18\x02 \x01(\tR\rfromPageTitle\x12*\n" +
+	"\x11from_page_deleted\x18\x03 \x01(\bR\x0ffromPageDeleted\x12!\n" +
+	"\ftarget_title\x18\x04 \x01(\tR\vtargetTitle*\x88\x01\n" +
 	"\x0eLifecycleState\x12\x1f\n" +
 	"\x1bLIFECYCLE_STATE_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16LIFECYCLE_STATE_ACTIVE\x10\x01\x12\x1c\n" +
 	"\x18LIFECYCLE_STATE_DELETING\x10\x02\x12\x1b\n" +
-	"\x17LIFECYCLE_STATE_DELETED\x10\x032\x84\x04\n" +
+	"\x17LIFECYCLE_STATE_DELETED\x10\x032\xee\x04\n" +
 	"\vPageService\x12Q\n" +
 	"\n" +
 	"CreatePage\x12'.marginal.document.v1.CreatePageRequest\x1a\x1a.marginal.document.v1.Page\x12K\n" +
@@ -645,7 +810,8 @@ const file_document_proto_rawDesc = "" +
 	"RenamePage\x12'.marginal.document.v1.RenamePageRequest\x1a\x1a.marginal.document.v1.Page\x12U\n" +
 	"\fReparentPage\x12).marginal.document.v1.ReparentPageRequest\x1a\x1a.marginal.document.v1.Page\x12M\n" +
 	"\n" +
-	"DeletePage\x12'.marginal.document.v1.DeletePageRequest\x1a\x16.google.protobuf.EmptyB8Z6marginal/document-service/internal/genproto/documentv1b\x06proto3"
+	"DeletePage\x12'.marginal.document.v1.DeletePageRequest\x1a\x16.google.protobuf.Empty\x12h\n" +
+	"\rListBacklinks\x12*.marginal.document.v1.ListBacklinksRequest\x1a+.marginal.document.v1.ListBacklinksResponseB/Z-marginal/document-service/genproto/documentv1b\x06proto3"
 
 var (
 	file_document_proto_rawDescOnce sync.Once
@@ -660,7 +826,7 @@ func file_document_proto_rawDescGZIP() []byte {
 }
 
 var file_document_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_document_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_document_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_document_proto_goTypes = []any{
 	(LifecycleState)(0),           // 0: marginal.document.v1.LifecycleState
 	(*Page)(nil),                  // 1: marginal.document.v1.Page
@@ -671,32 +837,38 @@ var file_document_proto_goTypes = []any{
 	(*RenamePageRequest)(nil),     // 6: marginal.document.v1.RenamePageRequest
 	(*ReparentPageRequest)(nil),   // 7: marginal.document.v1.ReparentPageRequest
 	(*DeletePageRequest)(nil),     // 8: marginal.document.v1.DeletePageRequest
-	(*timestamppb.Timestamp)(nil), // 9: google.protobuf.Timestamp
-	(*emptypb.Empty)(nil),         // 10: google.protobuf.Empty
+	(*ListBacklinksRequest)(nil),  // 9: marginal.document.v1.ListBacklinksRequest
+	(*ListBacklinksResponse)(nil), // 10: marginal.document.v1.ListBacklinksResponse
+	(*Backlink)(nil),              // 11: marginal.document.v1.Backlink
+	(*timestamppb.Timestamp)(nil), // 12: google.protobuf.Timestamp
+	(*emptypb.Empty)(nil),         // 13: google.protobuf.Empty
 }
 var file_document_proto_depIdxs = []int32{
 	0,  // 0: marginal.document.v1.Page.lifecycle_state:type_name -> marginal.document.v1.LifecycleState
-	9,  // 1: marginal.document.v1.Page.created_at:type_name -> google.protobuf.Timestamp
-	9,  // 2: marginal.document.v1.Page.updated_at:type_name -> google.protobuf.Timestamp
-	9,  // 3: marginal.document.v1.Page.deleted_at:type_name -> google.protobuf.Timestamp
+	12, // 1: marginal.document.v1.Page.created_at:type_name -> google.protobuf.Timestamp
+	12, // 2: marginal.document.v1.Page.updated_at:type_name -> google.protobuf.Timestamp
+	12, // 3: marginal.document.v1.Page.deleted_at:type_name -> google.protobuf.Timestamp
 	1,  // 4: marginal.document.v1.ListPagesResponse.pages:type_name -> marginal.document.v1.Page
-	2,  // 5: marginal.document.v1.PageService.CreatePage:input_type -> marginal.document.v1.CreatePageRequest
-	3,  // 6: marginal.document.v1.PageService.GetPage:input_type -> marginal.document.v1.GetPageRequest
-	4,  // 7: marginal.document.v1.PageService.ListPages:input_type -> marginal.document.v1.ListPagesRequest
-	6,  // 8: marginal.document.v1.PageService.RenamePage:input_type -> marginal.document.v1.RenamePageRequest
-	7,  // 9: marginal.document.v1.PageService.ReparentPage:input_type -> marginal.document.v1.ReparentPageRequest
-	8,  // 10: marginal.document.v1.PageService.DeletePage:input_type -> marginal.document.v1.DeletePageRequest
-	1,  // 11: marginal.document.v1.PageService.CreatePage:output_type -> marginal.document.v1.Page
-	1,  // 12: marginal.document.v1.PageService.GetPage:output_type -> marginal.document.v1.Page
-	5,  // 13: marginal.document.v1.PageService.ListPages:output_type -> marginal.document.v1.ListPagesResponse
-	1,  // 14: marginal.document.v1.PageService.RenamePage:output_type -> marginal.document.v1.Page
-	1,  // 15: marginal.document.v1.PageService.ReparentPage:output_type -> marginal.document.v1.Page
-	10, // 16: marginal.document.v1.PageService.DeletePage:output_type -> google.protobuf.Empty
-	11, // [11:17] is the sub-list for method output_type
-	5,  // [5:11] is the sub-list for method input_type
-	5,  // [5:5] is the sub-list for extension type_name
-	5,  // [5:5] is the sub-list for extension extendee
-	0,  // [0:5] is the sub-list for field type_name
+	11, // 5: marginal.document.v1.ListBacklinksResponse.backlinks:type_name -> marginal.document.v1.Backlink
+	2,  // 6: marginal.document.v1.PageService.CreatePage:input_type -> marginal.document.v1.CreatePageRequest
+	3,  // 7: marginal.document.v1.PageService.GetPage:input_type -> marginal.document.v1.GetPageRequest
+	4,  // 8: marginal.document.v1.PageService.ListPages:input_type -> marginal.document.v1.ListPagesRequest
+	6,  // 9: marginal.document.v1.PageService.RenamePage:input_type -> marginal.document.v1.RenamePageRequest
+	7,  // 10: marginal.document.v1.PageService.ReparentPage:input_type -> marginal.document.v1.ReparentPageRequest
+	8,  // 11: marginal.document.v1.PageService.DeletePage:input_type -> marginal.document.v1.DeletePageRequest
+	9,  // 12: marginal.document.v1.PageService.ListBacklinks:input_type -> marginal.document.v1.ListBacklinksRequest
+	1,  // 13: marginal.document.v1.PageService.CreatePage:output_type -> marginal.document.v1.Page
+	1,  // 14: marginal.document.v1.PageService.GetPage:output_type -> marginal.document.v1.Page
+	5,  // 15: marginal.document.v1.PageService.ListPages:output_type -> marginal.document.v1.ListPagesResponse
+	1,  // 16: marginal.document.v1.PageService.RenamePage:output_type -> marginal.document.v1.Page
+	1,  // 17: marginal.document.v1.PageService.ReparentPage:output_type -> marginal.document.v1.Page
+	13, // 18: marginal.document.v1.PageService.DeletePage:output_type -> google.protobuf.Empty
+	10, // 19: marginal.document.v1.PageService.ListBacklinks:output_type -> marginal.document.v1.ListBacklinksResponse
+	13, // [13:20] is the sub-list for method output_type
+	6,  // [6:13] is the sub-list for method input_type
+	6,  // [6:6] is the sub-list for extension type_name
+	6,  // [6:6] is the sub-list for extension extendee
+	0,  // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_document_proto_init() }
@@ -715,7 +887,7 @@ func file_document_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_document_proto_rawDesc), len(file_document_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   8,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

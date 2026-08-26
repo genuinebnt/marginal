@@ -19,10 +19,12 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/nats-io/nats.go"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 
-	documentv1 "marginal/document-service/internal/genproto/documentv1"
+	documentv1 "marginal/document-service/genproto/documentv1"
+	"marginal/document-service/internal/blockproj"
 	"marginal/document-service/internal/migrate"
 	"marginal/document-service/internal/pages"
 )
@@ -57,6 +59,20 @@ func run() error {
 		return err
 	}
 	defer pool.Close()
+
+	natsURL := envOr("NATS_URL", nats.DefaultURL)
+	nc, err := nats.Connect(natsURL)
+	if err != nil {
+		return err
+	}
+	defer nc.Close()
+
+	proj := blockproj.New(pool)
+	unsubscribe, err := blockproj.Subscribe(nc, proj)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = unsubscribe() }()
 
 	grpcAddr := envOr("DOCUMENT_SERVICE_GRPC_ADDR", ":9001")
 	httpAddr := envOr("DOCUMENT_SERVICE_HTTP_ADDR", ":8001")

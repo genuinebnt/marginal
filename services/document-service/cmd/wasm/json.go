@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 
 	"github.com/google/uuid"
-	"marginal/document-service/internal/documentcore"
+	"marginal/documentcore"
 )
 
 func marshal(v any) ([]byte, error) { return json.Marshal(v) }
