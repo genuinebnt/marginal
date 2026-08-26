@@ -8,10 +8,16 @@ RETURNING id, created_by, title, parent_id, path::text AS path, sort_key,
           lifecycle_state, deleted_at, created_at, updated_at;
 
 -- name: GetPage :one
+-- owner_id scopes every read to its caller (docs/api/pages.md § Get: "only
+-- I can read or change my pages" — user story A-04). A page that exists
+-- but belongs to someone else returns zero rows here, which the caller
+-- maps to the identical NOT_FOUND a truly nonexistent page would — the
+-- WHERE clause is what makes "doesn't reveal whether the page exists"
+-- true, not an application-level check after the fact.
 SELECT id, created_by, title, parent_id, path::text AS path, sort_key,
        lifecycle_state, deleted_at, created_at, updated_at
 FROM docs.pages
-WHERE id = $1 AND deleted_at IS NULL;
+WHERE id = $1 AND created_by = $2 AND deleted_at IS NULL;
 
 -- name: NextSiblingSortKey :one
 -- The sibling immediately after afterSortKey under the same parent (NULL
@@ -39,18 +45,21 @@ ORDER BY sort_key DESC
 LIMIT 1;
 
 -- name: ListPages :many
+-- owner_id: see GetPage — a list is scoped to the caller's own pages,
+-- never a cross-user listing.
 SELECT id, created_by, title, parent_id, path::text AS path, sort_key,
        lifecycle_state, deleted_at, created_at, updated_at
 FROM docs.pages
-WHERE deleted_at IS NULL
+WHERE created_by = $2 AND deleted_at IS NULL
   AND (parent_id = sqlc.narg(parent_id) OR (parent_id IS NULL AND sqlc.narg(parent_id) IS NULL))
   AND (sqlc.narg(after)::text IS NULL OR sort_key > sqlc.narg(after))
 ORDER BY sort_key ASC
 LIMIT $1;
 
 -- name: RenamePage :one
+-- owner_id: see GetPage.
 UPDATE docs.pages SET title = $2, updated_at = NOW()
-WHERE id = $1 AND deleted_at IS NULL
+WHERE id = $1 AND created_by = $3 AND deleted_at IS NULL
 RETURNING id, created_by, title, parent_id, path::text AS path, sort_key,
           lifecycle_state, deleted_at, created_at, updated_at;
 
@@ -60,9 +69,10 @@ RETURNING id, created_by, title, parent_id, path::text AS path, sort_key,
 -- (RewriteDescendantPaths) — both run in the same transaction
 -- (internal/pages's Reparent), so a concurrent reader sees all old paths
 -- or all new ones, never a mixture (docs/api/pages.md § Reparent).
+-- owner_id: see GetPage.
 UPDATE docs.pages
 SET parent_id = sqlc.narg(parent_id), path = $2::ltree, sort_key = $3, updated_at = NOW()
-WHERE id = $1 AND deleted_at IS NULL
+WHERE id = $1 AND created_by = $4 AND deleted_at IS NULL
 RETURNING id, created_by, title, parent_id, path::text AS path, sort_key,
           lifecycle_state, deleted_at, created_at, updated_at;
 
@@ -80,5 +90,6 @@ WHERE path <@ @old_prefix::ltree AND id != @page_id;
 -- Simple soft delete only — no cascade to descendants and no saga
 -- completion step (ARCHITECTURE.md §5's delete saga is out of scope for
 -- this first PageService slice; see docs/porting/PROGRESS.md).
+-- owner_id: see GetPage.
 UPDATE docs.pages SET lifecycle_state = 'deleting', deleted_at = NOW(), updated_at = NOW()
-WHERE id = $1 AND deleted_at IS NULL;
+WHERE id = $1 AND created_by = $2 AND deleted_at IS NULL;

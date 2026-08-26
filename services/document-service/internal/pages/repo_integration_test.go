@@ -48,28 +48,82 @@ func newTestRepo(t *testing.T) *pages.PostgresRepo {
 func TestCreateGetRenameDeleteRoundTrip(t *testing.T) {
 	repo := newTestRepo(t)
 	ctx := context.Background()
+	owner := testUUID()
 
-	created, err := repo.Create(ctx, pages.NewPage{CreatedBy: testUUID(), Title: "Architecture"})
+	created, err := repo.Create(ctx, pages.NewPage{CreatedBy: owner, Title: "Architecture"})
 	require.NoError(t, err)
 	require.Equal(t, "Architecture", created.Title)
 	require.Equal(t, pages.Active, created.LifecycleState)
 
-	got, err := repo.Get(ctx, created.ID)
+	got, err := repo.Get(ctx, owner, created.ID)
 	require.NoError(t, err)
 	require.Equal(t, created.ID, got.ID)
 	require.Equal(t, created.SortKey, got.SortKey)
 
-	renamed, err := repo.Rename(ctx, created.ID, "Architecture v2")
+	renamed, err := repo.Rename(ctx, owner, created.ID, "Architecture v2")
 	require.NoError(t, err)
 	require.Equal(t, "Architecture v2", renamed.Title)
 	require.True(t, renamed.UpdatedAt.After(created.UpdatedAt) || renamed.UpdatedAt.Equal(created.UpdatedAt))
 
-	require.NoError(t, repo.Delete(ctx, created.ID))
+	require.NoError(t, repo.Delete(ctx, owner, created.ID))
 
-	_, err = repo.Get(ctx, created.ID)
+	_, err = repo.Get(ctx, owner, created.ID)
 	require.ErrorIs(t, err, pages.ErrNotFound, "a soft-deleted page must not be gettable — docs/api/pages.md doesn't distinguish deleted from nonexistent")
 
-	require.NoError(t, repo.Delete(ctx, created.ID), "delete must be idempotent")
+	require.NoError(t, repo.Delete(ctx, owner, created.ID), "delete must be idempotent")
+}
+
+// TestPagesAreScopedToTheirOwner is the security-review finding this
+// covers: a page that exists but belongs to someone else must be
+// indistinguishable, at every RPC, from one that doesn't exist at all
+// (docs/api/pages.md, user story A-04 — "only I can read or change my
+// pages," and refusal "does not reveal whether the page exists").
+func TestPagesAreScopedToTheirOwner(t *testing.T) {
+	repo := newTestRepo(t)
+	ctx := context.Background()
+	owner := testUUID()
+	other := testUUID()
+
+	page, err := repo.Create(ctx, pages.NewPage{CreatedBy: owner, Title: "Owner's page"})
+	require.NoError(t, err)
+
+	_, err = repo.Get(ctx, other, page.ID)
+	require.ErrorIs(t, err, pages.ErrNotFound, "another actor's Get must not see it")
+
+	_, err = repo.Rename(ctx, other, page.ID, "Hijacked")
+	require.ErrorIs(t, err, pages.ErrNotFound, "another actor's Rename must not touch it")
+
+	require.NoError(t, repo.Delete(ctx, other, page.ID), "Delete is idempotent even for a page that isn't the caller's — no error, but nothing happens")
+	stillThere, err := repo.Get(ctx, owner, page.ID)
+	require.NoError(t, err, "the real owner's page must survive another actor's Delete attempt")
+	require.Equal(t, pages.Active, stillThere.LifecycleState)
+
+	_, err = repo.Reparent(ctx, other, page.ID, pages.ParentChange{Change: true, ParentID: nil}, nil)
+	require.ErrorIs(t, err, pages.ErrNotFound, "another actor's Reparent must not touch it")
+
+	list, err := repo.List(ctx, other, nil, "", 10)
+	require.NoError(t, err)
+	require.Empty(t, list, "List must never surface another actor's pages")
+}
+
+// TestCreateCannotNestUnderAnotherActorsPage covers the same principle
+// from the other direction: naming someone else's page as a new parent or
+// "after" anchor must fail the same as naming a page that doesn't exist.
+func TestCreateCannotNestUnderAnotherActorsPage(t *testing.T) {
+	repo := newTestRepo(t)
+	ctx := context.Background()
+	owner := testUUID()
+	other := testUUID()
+
+	theirPage, err := repo.Create(ctx, pages.NewPage{CreatedBy: other, Title: "Someone else's page"})
+	require.NoError(t, err)
+	theirPageID := theirPage.ID
+
+	_, err = repo.Create(ctx, pages.NewPage{CreatedBy: owner, Title: "Should fail", ParentID: &theirPageID})
+	require.Error(t, err)
+
+	_, err = repo.Create(ctx, pages.NewPage{CreatedBy: owner, Title: "Should also fail", After: &theirPageID})
+	require.Error(t, err)
 }
 
 func TestCreateOrdersSiblingsBySortKey(t *testing.T) {
@@ -87,7 +141,7 @@ func TestCreateOrdersSiblingsBySortKey(t *testing.T) {
 	middle, err := repo.Create(ctx, pages.NewPage{CreatedBy: owner, Title: "Middle", After: &afterFirst})
 	require.NoError(t, err)
 
-	list, err := repo.List(ctx, nil, "", 10)
+	list, err := repo.List(ctx, owner, nil, "", 10)
 	require.NoError(t, err)
 	require.Len(t, list, 3)
 	require.Equal(t, first.ID, list[0].ID)
@@ -153,14 +207,14 @@ func TestReparentMovesToNewParentAndRewritesDescendantPaths(t *testing.T) {
 	grandchild, err := repo.Create(ctx, pages.NewPage{CreatedBy: owner, Title: "Grandchild", ParentID: &movedID})
 	require.NoError(t, err)
 
-	updated, err := repo.Reparent(ctx, movedID, pages.ParentChange{Change: true, ParentID: &newParentID}, nil)
+	updated, err := repo.Reparent(ctx, owner, movedID, pages.ParentChange{Change: true, ParentID: &newParentID}, nil)
 	require.NoError(t, err)
 	require.NotNil(t, updated.ParentID)
 	require.Equal(t, newParentID, *updated.ParentID)
 	require.Contains(t, updated.Path, newParent.Path)
 	require.NotContains(t, updated.Path, oldParent.Path)
 
-	gotGrandchild, err := repo.Get(ctx, grandchild.ID)
+	gotGrandchild, err := repo.Get(ctx, owner, grandchild.ID)
 	require.NoError(t, err)
 	require.Contains(t, gotGrandchild.Path, updated.Path, "descendant's path must follow the moved subtree, in the same transaction")
 	require.NotContains(t, gotGrandchild.Path, oldParent.Path)
@@ -178,7 +232,7 @@ func TestReparentPromoteToRoot(t *testing.T) {
 	require.NoError(t, err)
 
 	// parent_id present and empty: promote to root.
-	updated, err := repo.Reparent(ctx, child.ID, pages.ParentChange{Change: true, ParentID: nil}, nil)
+	updated, err := repo.Reparent(ctx, owner, child.ID, pages.ParentChange{Change: true, ParentID: nil}, nil)
 	require.NoError(t, err)
 	require.Nil(t, updated.ParentID)
 	require.NotContains(t, updated.Path, parent.Path)
@@ -198,10 +252,10 @@ func TestReparentReordersWithinSameParent(t *testing.T) {
 
 	// Move A to be after C: leave parent alone (root, Change: false), reorder only.
 	cID := c.ID
-	_, err = repo.Reparent(ctx, a.ID, pages.ParentChange{}, &cID)
+	_, err = repo.Reparent(ctx, owner, a.ID, pages.ParentChange{}, &cID)
 	require.NoError(t, err)
 
-	list, err := repo.List(ctx, nil, "", 10)
+	list, err := repo.List(ctx, owner, nil, "", 10)
 	require.NoError(t, err)
 	require.Len(t, list, 3)
 	require.Equal(t, b.ID, list[0].ID)
@@ -222,10 +276,10 @@ func TestReparentUnderSelfOrDescendantFails(t *testing.T) {
 	childID := child.ID
 
 	// Under itself.
-	_, err = repo.Reparent(ctx, parent.ID, pages.ParentChange{Change: true, ParentID: &parent.ID}, nil)
+	_, err = repo.Reparent(ctx, owner, parent.ID, pages.ParentChange{Change: true, ParentID: &parent.ID}, nil)
 	require.ErrorIs(t, err, pages.ErrCycle)
 
 	// Under its own descendant.
-	_, err = repo.Reparent(ctx, parent.ID, pages.ParentChange{Change: true, ParentID: &childID}, nil)
+	_, err = repo.Reparent(ctx, owner, parent.ID, pages.ParentChange{Change: true, ParentID: &childID}, nil)
 	require.ErrorIs(t, err, pages.ErrCycle)
 }

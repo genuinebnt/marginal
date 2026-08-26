@@ -1,6 +1,7 @@
 package sessions
 
 import (
+	"crypto/x509"
 	"testing"
 	"time"
 
@@ -81,6 +82,34 @@ func TestVerifyRejectsAlgorithmConfusion(t *testing.T) {
 
 	none := jwt.NewWithClaims(jwt.SigningMethodNone, claims)
 	signed, err := none.SignedString(jwt.UnsafeAllowNoneSignatureType)
+	require.NoError(t, err)
+
+	_, err = Verify(store, signed)
+	assert.ErrorIs(t, err, ErrInvalidToken)
+}
+
+// TestVerifyRejectsHS256SignedWithThePublicKeyBytes is the named attack
+// itself, not just the "none" variant above: if a verifier ever read alg
+// from the token and dispatched on it, signing an HS256 token using the
+// RSA public key's own bytes as the HMAC secret would verify successfully
+// against a keyfunc that just returns "the key for this kid" — because
+// jwt.WithValidMethods pins RS256 before the keyfunc callback is ever
+// consulted for this token, it must be rejected regardless.
+func TestVerifyRejectsHS256SignedWithThePublicKeyBytes(t *testing.T) {
+	store := mustStore(t)
+	private, kid := store.SigningKey()
+	pubDER := x509.MarshalPKCS1PublicKey(&private.PublicKey)
+
+	claims := jwtClaims{RegisteredClaims: jwt.RegisteredClaims{
+		Subject:   domain.NewUserID().String(),
+		ID:        domain.NewJti().String(),
+		IssuedAt:  jwt.NewNumericDate(time.Now()),
+		NotBefore: jwt.NewNumericDate(time.Now()),
+		ExpiresAt: jwt.NewNumericDate(time.Now().Add(AccessTokenLifetime)),
+	}}
+	forged := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	forged.Header["kid"] = kid
+	signed, err := forged.SignedString(pubDER)
 	require.NoError(t, err)
 
 	_, err = Verify(store, signed)

@@ -158,6 +158,21 @@ could forge authorship — the gateway is the only component that knows who the 
 `actorID`), rejecting its absence with `UNAUTHENTICATED`. This is temporary scaffolding,
 not the real trust boundary; replace it, don't build on it, once a gateway exists.
 
+**Every page read or write is scoped to its `created_by`, in the query itself** —
+`GetPage`/`ListPages`/`RenamePage`/`DeletePage`/`ReparentPage` all filter on
+`created_by = <actor>` in the `WHERE` clause (`internal/pagerepo/queries.sql`), not
+via an application-level check after fetching. A page that exists but belongs to
+someone else returns exactly `NOT_FOUND` — the same as a page that doesn't exist —
+which is what makes user story A-04 ("refusal does not reveal whether the page
+exists") true by construction rather than by a check that could be forgotten on a
+new RPC. `CreatePage`'s `parent_id`/`after` and `ReparentPage`'s new parent are
+resolved through the same owner-scoped lookup, so nesting or positioning relative to
+another actor's page fails the same way. This was a real gap in an earlier revision
+of this implementation (ownership wasn't checked at all) — caught by
+`/security-review`, fixed with the `WHERE`-clause scoping described here, and locked
+in by `TestPagesAreScopedToTheirOwner`/`TestCreateCannotNestUnderAnotherActorsPage`
+in `internal/pages/repo_integration_test.go`.
+
 ### Status codes
 
 | Situation | gRPC status |

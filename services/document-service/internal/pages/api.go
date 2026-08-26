@@ -173,11 +173,15 @@ func (s *Server) CreatePage(ctx context.Context, req *documentv1.CreatePageReque
 }
 
 func (s *Server) GetPage(ctx context.Context, req *documentv1.GetPageRequest) (*documentv1.Page, error) {
+	owner, err := actorID(ctx)
+	if err != nil {
+		return nil, err
+	}
 	id, err := parsePageID(req.GetId())
 	if err != nil {
 		return nil, err
 	}
-	page, err := s.Repo.Get(ctx, id)
+	page, err := s.Repo.Get(ctx, owner, id)
 	if err != nil {
 		return nil, toStatus(err)
 	}
@@ -190,6 +194,10 @@ const (
 )
 
 func (s *Server) ListPages(ctx context.Context, req *documentv1.ListPagesRequest) (*documentv1.ListPagesResponse, error) {
+	owner, err := actorID(ctx)
+	if err != nil {
+		return nil, err
+	}
 	parentID, err := parseOptionalPageID(req.ParentId)
 	if err != nil {
 		return nil, err
@@ -204,7 +212,7 @@ func (s *Server) ListPages(ctx context.Context, req *documentv1.ListPagesRequest
 	}
 
 	after := req.GetAfter()
-	pagesList, err := s.Repo.List(ctx, parentID, after, limit)
+	pagesList, err := s.Repo.List(ctx, owner, parentID, after, limit)
 	if err != nil {
 		return nil, toStatus(err)
 	}
@@ -221,6 +229,10 @@ func (s *Server) ListPages(ctx context.Context, req *documentv1.ListPagesRequest
 }
 
 func (s *Server) RenamePage(ctx context.Context, req *documentv1.RenamePageRequest) (*documentv1.Page, error) {
+	owner, err := actorID(ctx)
+	if err != nil {
+		return nil, err
+	}
 	if err := validateTitle(req.GetTitle()); err != nil {
 		return nil, err
 	}
@@ -228,7 +240,7 @@ func (s *Server) RenamePage(ctx context.Context, req *documentv1.RenamePageReque
 	if err != nil {
 		return nil, err
 	}
-	page, err := s.Repo.Rename(ctx, id, req.GetTitle())
+	page, err := s.Repo.Rename(ctx, owner, id, req.GetTitle())
 	if err != nil {
 		return nil, toStatus(err)
 	}
@@ -236,17 +248,25 @@ func (s *Server) RenamePage(ctx context.Context, req *documentv1.RenamePageReque
 }
 
 func (s *Server) DeletePage(ctx context.Context, req *documentv1.DeletePageRequest) (*emptypb.Empty, error) {
+	owner, err := actorID(ctx)
+	if err != nil {
+		return nil, err
+	}
 	id, err := parsePageID(req.GetId())
 	if err != nil {
 		return nil, err
 	}
-	if err := s.Repo.Delete(ctx, id); err != nil {
+	if err := s.Repo.Delete(ctx, owner, id); err != nil {
 		return nil, toStatus(err)
 	}
 	return &emptypb.Empty{}, nil
 }
 
 func (s *Server) ReparentPage(ctx context.Context, req *documentv1.ReparentPageRequest) (*documentv1.Page, error) {
+	owner, err := actorID(ctx)
+	if err != nil {
+		return nil, err
+	}
 	id, err := parsePageID(req.GetId())
 	if err != nil {
 		return nil, err
@@ -270,7 +290,7 @@ func (s *Server) ReparentPage(ctx context.Context, req *documentv1.ReparentPageR
 		return nil, err
 	}
 
-	page, err := s.Repo.Reparent(ctx, id, parent, after)
+	page, err := s.Repo.Reparent(ctx, owner, id, parent, after)
 	if err != nil {
 		return nil, toStatus(err)
 	}
