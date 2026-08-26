@@ -184,6 +184,28 @@ func TestSetBlockContentThenInvertRestoresOldContent(t *testing.T) {
 	assertRoundTrips(t, &page, SetBlockContent{Block: id, Prev: PlainContent(""), Content: newContent})
 }
 
+// TestSetBlockContentPreconditionTreatsNilAndEmptyMarksAsEqual pins a
+// real bug: the precondition check used to be reflect.DeepEqual, which
+// treats a nil Marks slice and a non-nil empty one as unequal. A block
+// inserted with a bare Content{Text: s} literal (nil Marks, as an
+// unmarshaled JSON payload with no "marks" field would also produce) has
+// to be a valid Prev for a SetBlockContent whose actual current content
+// came from PlainContent (always a non-nil empty slice) — the two are
+// the same content, zero marks, constructed two different legitimate
+// ways.
+func TestSetBlockContentPreconditionTreatsNilAndEmptyMarksAsEqual(t *testing.T) {
+	page := NewPage(newTestPageID(), "Title")
+	id := newTestBlockID()
+	// Content{Text: "hello"} — Marks is nil, not PlainContent's non-nil []Mark{}.
+	require.NoError(t, page.Apply(InsertBlock{ID: id, Kind: NewParagraph(), Content: Content{Text: "hello"}}))
+
+	// Prev names PlainContent's shape (non-nil empty Marks) — must still
+	// match the block's actual (nil-Marks) current content.
+	err := page.Apply(SetBlockContent{Block: id, Prev: PlainContent("hello"), Content: PlainContent("hello world")})
+	require.NoError(t, err, "nil Marks and non-nil empty Marks must compare equal — same content, no marks, two legitimate constructions")
+	assert.Equal(t, "hello world", page.Blocks[0].Content.Text)
+}
+
 func TestSetTitleThenInvertRestoresOldTitle(t *testing.T) {
 	page := NewPage(newTestPageID(), "Original")
 

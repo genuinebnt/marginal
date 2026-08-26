@@ -1,9 +1,11 @@
 package documentcore
 
 import (
+	"bytes"
+	"cmp"
 	"encoding/json"
 	"fmt"
-	"sort"
+	"slices"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
@@ -133,6 +135,33 @@ type Content struct {
 // non-nil empty slice, not nil — so JSON encoding always produces
 // "marks":[] rather than "marks":null across the WASM/JS boundary.
 func PlainContent(text string) Content { return Content{Text: text, Marks: []Mark{}} }
+
+// Equal reports whether c and other hold the same text and the same
+// marks in the same order — Page.Apply's SetBlockContent precondition
+// check (RFC-002 §1) uses this instead of reflect.DeepEqual, which
+// treats a nil Marks slice and an empty non-nil one as unequal. Both
+// occur legitimately in this codebase (PlainContent always constructs a
+// non-nil empty slice; a JSON-decoded Content with an absent/null
+// "marks" field, or one built as a bare Content{Text: s} literal, gets
+// nil) — reflect.DeepEqual made a real SetBlockContent op fail its
+// precondition depending purely on which construction path produced the
+// value being compared against, not on any actual difference in marks.
+// Mark (and MarkKind inside it) is a plain comparable struct — no
+// reflection needed, and no allocation either.
+func (c Content) Equal(other Content) bool {
+	if c.Text != other.Text {
+		return false
+	}
+	if len(c.Marks) != len(other.Marks) {
+		return false
+	}
+	for i := range c.Marks {
+		if c.Marks[i] != other.Marks[i] {
+			return false
+		}
+	}
+	return true
+}
 
 // OutOfBoundsError reports an offset beyond the content's byte length.
 type OutOfBoundsError struct {
@@ -271,8 +300,8 @@ func (c *Content) normalise() {
 	}
 
 	merged := make([]Mark, 0, len(c.Marks))
-	for kind, ms := range byKind {
-		sort.Slice(ms, func(i, j int) bool { return ms[i].Start < ms[j].Start })
+	for _, ms := range byKind {
+		slices.SortFunc(ms, func(a, b Mark) int { return cmp.Compare(a.Start, b.Start) })
 		run := ms[0]
 		for _, m := range ms[1:] {
 			if m.Start <= run.End { // overlaps or touches the current run
@@ -285,21 +314,25 @@ func (c *Content) normalise() {
 			run = m
 		}
 		merged = append(merged, run)
-		_ = kind // kind is implicit in run.Kind; kept for clarity of the loop
 	}
 
-	sort.Slice(merged, func(i, j int) bool {
-		a, b := merged[i], merged[j]
+	slices.SortFunc(merged, func(a, b Mark) int {
 		if a.Start != b.Start {
-			return a.Start < b.Start
+			return cmp.Compare(a.Start, b.Start)
 		}
 		if a.Kind.Tag != b.Kind.Tag {
-			return a.Kind.Tag < b.Kind.Tag
+			return cmp.Compare(a.Kind.Tag, b.Kind.Tag)
 		}
 		if a.Kind.URL != b.Kind.URL {
-			return a.Kind.URL < b.Kind.URL
+			return cmp.Compare(a.Kind.URL, b.Kind.URL)
 		}
-		return a.Kind.Page.String() < b.Kind.Page.String()
+		// bytes.Compare on the raw [16]byte UUID, not a and b.Kind.Page.String()
+		// — PageID.String() formats a UUID (two allocations) on every
+		// comparison, run O(n log n) times per mark mutation; the two
+		// arrays compare just as correctly, and totally-ordered, without
+		// allocating anything.
+		ap, bp := uuid.UUID(a.Kind.Page), uuid.UUID(b.Kind.Page)
+		return bytes.Compare(ap[:], bp[:])
 	})
 	c.Marks = merged
 }

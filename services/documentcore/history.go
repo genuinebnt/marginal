@@ -10,6 +10,10 @@ type History struct {
 	maxDepth int
 }
 
+// NewHistory. maxDepth <= 0 means "record nothing" (every Record call is
+// then a no-op, and Undo/Redo stay permanently empty) — a valid choice
+// for a caller that wants Page.Apply's other behavior without paying for
+// an undo stack, not a footgun to guard against.
 func NewHistory(maxDepth int) *History {
 	return &History{maxDepth: maxDepth}
 }
@@ -21,10 +25,22 @@ func (h *History) RedoDepth() int { return len(h.redo) }
 // invalidates whatever branch redo was pointing at. If maxDepth is
 // exceeded, the oldest recorded op is evicted.
 func (h *History) Record(op Op) {
+	if h.maxDepth <= 0 {
+		return
+	}
 	h.undo = append(h.undo, op)
 	h.redo = nil
 	if len(h.undo) > h.maxDepth {
-		h.undo = h.undo[1:]
+		// copy+reslice, not h.undo[1:]: slicing off the front advances
+		// the slice header but keeps referencing the same backing array,
+		// so append at the tail keeps writing past where the array
+		// already is — over a long session the backing array (and every
+		// evicted Op it's still holding onto — Content strings, Block
+		// tombstones, not free) grows without bound even though len stays
+		// capped at maxDepth. Shifting the live window down to index 0
+		// lets the evicted entry's own storage actually be reclaimed.
+		copy(h.undo, h.undo[1:])
+		h.undo = h.undo[:h.maxDepth]
 	}
 }
 

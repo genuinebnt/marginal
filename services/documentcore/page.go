@@ -2,7 +2,7 @@ package documentcore
 
 import (
 	"fmt"
-	"reflect"
+	"slices"
 )
 
 // Page is a page's title and its blocks, in display order. The order is
@@ -113,10 +113,7 @@ func (p *Page) insertIndexAfter(after *BlockID) (int, error) {
 
 // insertAt inserts block into blocks at idx, shifting later elements right.
 func insertAt(blocks []Block, idx int, block Block) []Block {
-	blocks = append(blocks, Block{})
-	copy(blocks[idx+1:], blocks[idx:])
-	blocks[idx] = block
-	return blocks
+	return slices.Insert(blocks, idx, block)
 }
 
 // Apply mutates the page according to op, or leaves it unchanged and
@@ -145,7 +142,7 @@ func (p *Page) Apply(op Op) error {
 		if got := p.predecessorOf(i); !blockIDPtrEqual(got, op.After) {
 			return &PositionMismatchError{ID: op.Tombstone.ID, Want: op.After, Got: got}
 		}
-		p.Blocks = append(p.Blocks[:i], p.Blocks[i+1:]...)
+		p.Blocks = slices.Delete(p.Blocks, i, i+1)
 		return nil
 
 	case SetBlockKind:
@@ -164,7 +161,7 @@ func (p *Page) Apply(op Op) error {
 		if !ok {
 			return &BlockNotFoundError{ID: op.Block}
 		}
-		if !reflect.DeepEqual(p.Blocks[i].Content, op.Prev) {
+		if !p.Blocks[i].Content.Equal(op.Prev) {
 			return &PreconditionError{Target: op.Block.String(), Field: "content"}
 		}
 		p.Blocks[i].Content = op.Content
@@ -185,8 +182,19 @@ func (p *Page) Apply(op Op) error {
 		if got := p.predecessorOf(i); !blockIDPtrEqual(got, op.From) {
 			return &PositionMismatchError{ID: op.ID, Want: op.From, Got: got}
 		}
+		// block is a value copy of the Block struct at p.Blocks[i], taken
+		// before the delete below touches p.Blocks' own (outer) backing
+		// array — slices.Delete only shifts *Block* entries around,
+		// never reaches into any one Block's own Content.Marks slice, so
+		// block.Content.Marks stays exactly what it was regardless.
+		// Deleting in place here (not the forced-copy full slice
+		// expression, p.Blocks[:i:i], an earlier version used) matches
+		// DeleteBlock's own approach just above — nothing outside this
+		// one Apply call ever holds a reference to p.Blocks' pre-mutation
+		// slice value, so the two cases have no actual aliasing
+		// difference to justify treating them differently.
 		block := p.Blocks[i]
-		withoutBlock := append(p.Blocks[:i:i], p.Blocks[i+1:]...)
+		withoutBlock := slices.Delete(p.Blocks, i, i+1)
 		idx, err := insertIndexAfter(withoutBlock, op.To)
 		if err != nil {
 			return err
