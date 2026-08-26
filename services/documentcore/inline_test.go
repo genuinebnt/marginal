@@ -51,7 +51,7 @@ type markQuery struct {
 
 func loadMarkVectors(t *testing.T) []markVector {
 	t.Helper()
-	data, err := os.ReadFile("../../../../testdata/document-core/marks.json")
+	data, err := os.ReadFile("../../testdata/document-core/marks.json")
 	require.NoError(t, err)
 	var vectors []markVector
 	require.NoError(t, json.Unmarshal(data, &vectors))
