@@ -8,6 +8,15 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type DocsBlock struct {
+	ID        pgtype.UUID
+	PageID    pgtype.UUID
+	Position  int32
+	Kind      []byte
+	Content   []byte
+	UpdatedAt pgtype.Timestamptz
+}
+
 type DocsPage struct {
 	ID             pgtype.UUID
 	CreatedBy      pgtype.UUID
@@ -19,4 +28,12 @@ type DocsPage struct {
 	DeletedAt      pgtype.Timestamptz
 	CreatedAt      pgtype.Timestamptz
 	UpdatedAt      pgtype.Timestamptz
+}
+
+type DocsPageLink struct {
+	ID          pgtype.UUID
+	FromPage    pgtype.UUID
+	FromBlock   pgtype.UUID
+	TargetTitle string
+	TargetPage  pgtype.UUID
 }

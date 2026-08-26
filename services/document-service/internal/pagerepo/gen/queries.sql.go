@@ -72,13 +72,8 @@ const getPage = `-- name: GetPage :one
 SELECT id, created_by, title, parent_id, path::text AS path, sort_key,
        lifecycle_state, deleted_at, created_at, updated_at
 FROM docs.pages
-WHERE id = $1 AND created_by = $2 AND deleted_at IS NULL
+WHERE id = $1 AND deleted_at IS NULL
 `
-
-type GetPageParams struct {
-	ID        pgtype.UUID
-	CreatedBy pgtype.UUID
-}
 
 type GetPageRow struct {
 	ID             pgtype.UUID
@@ -93,14 +88,15 @@ type GetPageRow struct {
 	UpdatedAt      pgtype.Timestamptz
 }
 
-// owner_id scopes every read to its caller (docs/api/pages.md § Get: "only
-// I can read or change my pages" — user story A-04). A page that exists
-// but belongs to someone else returns zero rows here, which the caller
-// maps to the identical NOT_FOUND a truly nonexistent page would — the
-// WHERE clause is what makes "doesn't reveal whether the page exists"
-// true, not an application-level check after the fact.
-func (q *Queries) GetPage(ctx context.Context, arg GetPageParams) (GetPageRow, error) {
-	row := q.db.QueryRow(ctx, getPage, arg.ID, arg.CreatedBy)
+// No owner scoping — every page on this instance is visible to every
+// authenticated actor (docs/porting/PROGRESS.md's "shared workspace, not
+// multi-tenant" reversal, the same one Register's own registration model
+// already made: real multi-user collaboration needs a second person to
+// actually see the first person's pages, not just edit their live
+// content). created_by is still recorded — who made a page — just no
+// longer an access filter.
+func (q *Queries) GetPage(ctx context.Context, id pgtype.UUID) (GetPageRow, error) {
+	row := q.db.QueryRow(ctx, getPage, id)
 	var i GetPageRow
 	err := row.Scan(
 		&i.ID,
@@ -145,18 +141,17 @@ const listPages = `-- name: ListPages :many
 SELECT id, created_by, title, parent_id, path::text AS path, sort_key,
        lifecycle_state, deleted_at, created_at, updated_at
 FROM docs.pages
-WHERE created_by = $2 AND deleted_at IS NULL
-  AND (parent_id = $3 OR (parent_id IS NULL AND $3 IS NULL))
-  AND ($4::text IS NULL OR sort_key > $4)
+WHERE deleted_at IS NULL
+  AND (parent_id = $2 OR (parent_id IS NULL AND $2 IS NULL))
+  AND ($3::text IS NULL OR sort_key > $3)
 ORDER BY sort_key ASC
 LIMIT $1
 `
 
 type ListPagesParams struct {
-	Limit     int32
-	CreatedBy pgtype.UUID
-	ParentID  pgtype.UUID
-	After     *string
+	Limit    int32
+	ParentID pgtype.UUID
+	After    *string
 }
 
 type ListPagesRow struct {
@@ -172,15 +167,10 @@ type ListPagesRow struct {
 	UpdatedAt      pgtype.Timestamptz
 }
 
-// owner_id: see GetPage — a list is scoped to the caller's own pages,
-// never a cross-user listing.
+// No owner scoping — see GetPage. Lists every page on the instance
+// matching parent_id, not just the caller's own.
 func (q *Queries) ListPages(ctx context.Context, arg ListPagesParams) ([]ListPagesRow, error) {
-	rows, err := q.db.Query(ctx, listPages,
-		arg.Limit,
-		arg.CreatedBy,
-		arg.ParentID,
-		arg.After,
-	)
+	rows, err := q.db.Query(ctx, listPages, arg.Limit, arg.ParentID, arg.After)
 	if err != nil {
 		return nil, err
 	}
@@ -240,15 +230,14 @@ func (q *Queries) NextSiblingSortKey(ctx context.Context, arg NextSiblingSortKey
 
 const renamePage = `-- name: RenamePage :one
 UPDATE docs.pages SET title = $2, updated_at = NOW()
-WHERE id = $1 AND created_by = $3 AND deleted_at IS NULL
+WHERE id = $1 AND deleted_at IS NULL
 RETURNING id, created_by, title, parent_id, path::text AS path, sort_key,
           lifecycle_state, deleted_at, created_at, updated_at
 `
 
 type RenamePageParams struct {
-	ID        pgtype.UUID
-	Title     string
-	CreatedBy pgtype.UUID
+	ID    pgtype.UUID
+	Title string
 }
 
 type RenamePageRow struct {
@@ -264,9 +253,9 @@ type RenamePageRow struct {
 	UpdatedAt      pgtype.Timestamptz
 }
 
-// owner_id: see GetPage.
+// No owner scoping — see GetPage.
 func (q *Queries) RenamePage(ctx context.Context, arg RenamePageParams) (RenamePageRow, error) {
-	row := q.db.QueryRow(ctx, renamePage, arg.ID, arg.Title, arg.CreatedBy)
+	row := q.db.QueryRow(ctx, renamePage, arg.ID, arg.Title)
 	var i RenamePageRow
 	err := row.Scan(
 		&i.ID,
@@ -285,18 +274,17 @@ func (q *Queries) RenamePage(ctx context.Context, arg RenamePageParams) (RenameP
 
 const reparentPageRow = `-- name: ReparentPageRow :one
 UPDATE docs.pages
-SET parent_id = $5, path = $2::ltree, sort_key = $3, updated_at = NOW()
-WHERE id = $1 AND created_by = $4 AND deleted_at IS NULL
+SET parent_id = $4, path = $2::ltree, sort_key = $3, updated_at = NOW()
+WHERE id = $1 AND deleted_at IS NULL
 RETURNING id, created_by, title, parent_id, path::text AS path, sort_key,
           lifecycle_state, deleted_at, created_at, updated_at
 `
 
 type ReparentPageRowParams struct {
-	ID        pgtype.UUID
-	Column2   string
-	SortKey   string
-	CreatedBy pgtype.UUID
-	ParentID  pgtype.UUID
+	ID       pgtype.UUID
+	Column2  string
+	SortKey  string
+	ParentID pgtype.UUID
 }
 
 type ReparentPageRowRow struct {
@@ -317,13 +305,12 @@ type ReparentPageRowRow struct {
 // (RewriteDescendantPaths) — both run in the same transaction
 // (internal/pages's Reparent), so a concurrent reader sees all old paths
 // or all new ones, never a mixture (docs/api/pages.md § Reparent).
-// owner_id: see GetPage.
+// No owner scoping — see GetPage.
 func (q *Queries) ReparentPageRow(ctx context.Context, arg ReparentPageRowParams) (ReparentPageRowRow, error) {
 	row := q.db.QueryRow(ctx, reparentPageRow,
 		arg.ID,
 		arg.Column2,
 		arg.SortKey,
-		arg.CreatedBy,
 		arg.ParentID,
 	)
 	var i ReparentPageRowRow
@@ -391,19 +378,14 @@ func (q *Queries) SoftDeleteDescendants(ctx context.Context, arg SoftDeleteDesce
 
 const softDeletePage = `-- name: SoftDeletePage :execrows
 UPDATE docs.pages SET lifecycle_state = 'deleting', deleted_at = NOW(), updated_at = NOW()
-WHERE id = $1 AND created_by = $2 AND deleted_at IS NULL
+WHERE id = $1 AND deleted_at IS NULL
 `
 
-type SoftDeletePageParams struct {
-	ID        pgtype.UUID
-	CreatedBy pgtype.UUID
-}
-
-// owner_id: see GetPage. No saga completion step (ARCHITECTURE.md §5's
-// hard-delete-after-acks needs services outside this repo's scope;
+// No owner scoping — see GetPage. No saga completion step (ARCHITECTURE.md
+// §5's hard-delete-after-acks needs services outside this repo's scope;
 // docs/api/pages.md § Delete) — lifecycle_state stays 'deleting' forever.
-func (q *Queries) SoftDeletePage(ctx context.Context, arg SoftDeletePageParams) (int64, error) {
-	result, err := q.db.Exec(ctx, softDeletePage, arg.ID, arg.CreatedBy)
+func (q *Queries) SoftDeletePage(ctx context.Context, id pgtype.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, softDeletePage, id)
 	if err != nil {
 		return 0, err
 	}

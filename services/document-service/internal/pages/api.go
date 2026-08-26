@@ -13,7 +13,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	documentv1 "marginal/document-service/internal/genproto/documentv1"
+	documentv1 "marginal/document-service/genproto/documentv1"
 )
 
 const maxTitleBytes = 500
@@ -173,15 +173,14 @@ func (s *Server) CreatePage(ctx context.Context, req *documentv1.CreatePageReque
 }
 
 func (s *Server) GetPage(ctx context.Context, req *documentv1.GetPageRequest) (*documentv1.Page, error) {
-	owner, err := actorID(ctx)
-	if err != nil {
+	if _, err := actorID(ctx); err != nil {
 		return nil, err
 	}
 	id, err := parsePageID(req.GetId())
 	if err != nil {
 		return nil, err
 	}
-	page, err := s.Repo.Get(ctx, owner, id)
+	page, err := s.Repo.Get(ctx, id)
 	if err != nil {
 		return nil, toStatus(err)
 	}
@@ -194,8 +193,7 @@ const (
 )
 
 func (s *Server) ListPages(ctx context.Context, req *documentv1.ListPagesRequest) (*documentv1.ListPagesResponse, error) {
-	owner, err := actorID(ctx)
-	if err != nil {
+	if _, err := actorID(ctx); err != nil {
 		return nil, err
 	}
 	parentID, err := parseOptionalPageID(req.ParentId)
@@ -212,7 +210,7 @@ func (s *Server) ListPages(ctx context.Context, req *documentv1.ListPagesRequest
 	}
 
 	after := req.GetAfter()
-	pagesList, err := s.Repo.List(ctx, owner, parentID, after, limit)
+	pagesList, err := s.Repo.List(ctx, parentID, after, limit)
 	if err != nil {
 		return nil, toStatus(err)
 	}
@@ -229,8 +227,7 @@ func (s *Server) ListPages(ctx context.Context, req *documentv1.ListPagesRequest
 }
 
 func (s *Server) RenamePage(ctx context.Context, req *documentv1.RenamePageRequest) (*documentv1.Page, error) {
-	owner, err := actorID(ctx)
-	if err != nil {
+	if _, err := actorID(ctx); err != nil {
 		return nil, err
 	}
 	if err := validateTitle(req.GetTitle()); err != nil {
@@ -240,7 +237,7 @@ func (s *Server) RenamePage(ctx context.Context, req *documentv1.RenamePageReque
 	if err != nil {
 		return nil, err
 	}
-	page, err := s.Repo.Rename(ctx, owner, id, req.GetTitle())
+	page, err := s.Repo.Rename(ctx, id, req.GetTitle())
 	if err != nil {
 		return nil, toStatus(err)
 	}
@@ -248,23 +245,21 @@ func (s *Server) RenamePage(ctx context.Context, req *documentv1.RenamePageReque
 }
 
 func (s *Server) DeletePage(ctx context.Context, req *documentv1.DeletePageRequest) (*emptypb.Empty, error) {
-	owner, err := actorID(ctx)
-	if err != nil {
+	if _, err := actorID(ctx); err != nil {
 		return nil, err
 	}
 	id, err := parsePageID(req.GetId())
 	if err != nil {
 		return nil, err
 	}
-	if err := s.Repo.Delete(ctx, owner, id); err != nil {
+	if err := s.Repo.Delete(ctx, id); err != nil {
 		return nil, toStatus(err)
 	}
 	return &emptypb.Empty{}, nil
 }
 
 func (s *Server) ReparentPage(ctx context.Context, req *documentv1.ReparentPageRequest) (*documentv1.Page, error) {
-	owner, err := actorID(ctx)
-	if err != nil {
+	if _, err := actorID(ctx); err != nil {
 		return nil, err
 	}
 	id, err := parsePageID(req.GetId())
@@ -290,9 +285,40 @@ func (s *Server) ReparentPage(ctx context.Context, req *documentv1.ReparentPageR
 		return nil, err
 	}
 
-	page, err := s.Repo.Reparent(ctx, owner, id, parent, after)
+	page, err := s.Repo.Reparent(ctx, id, parent, after)
 	if err != nil {
 		return nil, toStatus(err)
 	}
 	return toProto(page), nil
+}
+
+// ListBacklinks confirms the target page exists (and isn't soft-deleted)
+// via Repo.Get before reading docs.page_links. No ownership check — pages
+// carry no access control on this instance (Repo.Get's own doc comment).
+func (s *Server) ListBacklinks(ctx context.Context, req *documentv1.ListBacklinksRequest) (*documentv1.ListBacklinksResponse, error) {
+	if _, err := actorID(ctx); err != nil {
+		return nil, err
+	}
+	id, err := parsePageID(req.GetPageId())
+	if err != nil {
+		return nil, err
+	}
+	if _, err := s.Repo.Get(ctx, id); err != nil {
+		return nil, toStatus(err)
+	}
+
+	links, err := s.Repo.ListBacklinks(ctx, id)
+	if err != nil {
+		return nil, toStatus(err)
+	}
+	out := make([]*documentv1.Backlink, len(links))
+	for i, l := range links {
+		out[i] = &documentv1.Backlink{
+			FromPage:        l.FromPage.String(),
+			FromPageTitle:   l.FromPageTitle,
+			FromPageDeleted: l.FromPageDeleted,
+			TargetTitle:     l.TargetTitle,
+		}
+	}
+	return &documentv1.ListBacklinksResponse{Backlinks: out}, nil
 }

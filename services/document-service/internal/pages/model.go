@@ -42,6 +42,16 @@ type Page struct {
 	UpdatedAt      time.Time
 }
 
+// Backlink is one page linking into another — docs.page_links
+// (internal/blockproj's projection), read-only here: nothing in this
+// package writes that table.
+type Backlink struct {
+	FromPage        PageID
+	FromPageTitle   string
+	FromPageDeleted bool
+	TargetTitle     string
+}
+
 // NewPage is Create's input. After names the sibling the new page
 // follows; nil means append at the end (docs/api/pages.md § Create).
 type NewPage struct {

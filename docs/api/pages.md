@@ -1,8 +1,12 @@
 # API — Pages
 
 **Status:** Implemented in Go (`services/document-service/internal/pages`) —
-all six RPCs, including ReparentPage's transactional subtree LTREE
-rewrite. DeletePage is a simple soft delete, and — unlike the earlier note
+all six page-metadata RPCs, including ReparentPage's transactional subtree LTREE
+rewrite, plus a seventh, `ListBacklinks`, reading `docs.page_links`
+(`internal/blockproj`'s projection of `collab.ops_flushed` — see
+`docs/porting/PROGRESS.md`'s backlinks entries), not page metadata like
+the rest of this contract; kept on this service only because that table
+lives in this service's own database. DeletePage is a simple soft delete, and — unlike the earlier note
 here — **that's the terminal state for this repo, not a deferred step**:
 `ARCHITECTURE.md` §5's full saga coordinates with `search-service`,
 `diagnostics-service`, and `history-service`, none of which exist in this
@@ -40,6 +44,7 @@ service PageService {
   rpc RenamePage   (RenamePageRequest)   returns (Page);
   rpc ReparentPage (ReparentPageRequest) returns (Page);
   rpc DeletePage   (DeletePageRequest)   returns (google.protobuf.Empty);
+  rpc ListBacklinks(ListBacklinksRequest) returns (ListBacklinksResponse);
 }
 ```
 
@@ -67,6 +72,7 @@ service PageService {
   rpc RenamePage   (RenamePageRequest)   returns (Page);
   rpc ReparentPage (ReparentPageRequest) returns (Page);
   rpc DeletePage   (DeletePageRequest)   returns (google.protobuf.Empty);
+  rpc ListBacklinks(ListBacklinksRequest) returns (ListBacklinksResponse);
 }
 
 enum LifecycleState {
@@ -96,6 +102,15 @@ message ListPagesResponse   { repeated Page pages = 1; optional string next_curs
 message RenamePageRequest   { string id = 1; string title = 2; }
 message ReparentPageRequest { string id = 1; optional string parent_id = 2; optional string after = 3; }
 message DeletePageRequest   { string id = 1; }
+
+message ListBacklinksRequest  { string page_id = 1; }
+message ListBacklinksResponse { repeated Backlink backlinks = 1; }
+message Backlink {
+  string from_page          = 1;
+  string from_page_title    = 2;
+  bool from_page_deleted    = 3;
+  string target_title       = 4;
+}
 ```
 
 The enum's zero value is `UNSPECIFIED`, not `ACTIVE`. proto3 cannot distinguish an unset
@@ -112,14 +127,23 @@ message ListPagesResponse   { repeated Page pages = 1; optional string next_curs
 message RenamePageRequest   { string id = 1; string title = 2; }
 message ReparentPageRequest { string id = 1; optional string parent_id = 2; optional string after = 3; }
 message DeletePageRequest   { string id = 1; }
+message ListBacklinksRequest  { string page_id = 1; }
+message ListBacklinksResponse { repeated Backlink backlinks = 1; }
+message Backlink {
+  string from_page = 1;
+  string from_page_title = 2;
+  bool from_page_deleted = 3;
+  string target_title = 4;
+}
 ```
 
 `ReparentPageRequest.parent_id` being **absent** means "leave the parent alone"; promoting
 a page to a root is `parent_id` present and empty. `optional` on a proto3 scalar gives
 explicit field presence, which is what makes that distinction expressible at all.
 
-The generated Go package is `marginal/document-service/internal/genproto/documentv1`
-(`services/document-service/scripts/gen-proto.sh` regenerates it).
+The generated Go package is `marginal/document-service/genproto/documentv1` — NOT
+under `internal/`, so `api-gateway` (a separate module) can import the client stub
+across module boundaries (`services/document-service/scripts/gen-proto.sh` regenerates it).
 
 ### The `Page` message
 
@@ -163,20 +187,29 @@ could forge authorship — the gateway is the only component that knows who the 
 `actorID`), rejecting its absence with `UNAUTHENTICATED`. This is temporary scaffolding,
 not the real trust boundary; replace it, don't build on it, once a gateway exists.
 
-**Every page read or write is scoped to its `created_by`, in the query itself** —
-`GetPage`/`ListPages`/`RenamePage`/`DeletePage`/`ReparentPage` all filter on
-`created_by = <actor>` in the `WHERE` clause (`internal/pagerepo/queries.sql`), not
-via an application-level check after fetching. A page that exists but belongs to
-someone else returns exactly `NOT_FOUND` — the same as a page that doesn't exist —
-which is what makes user story A-04 ("refusal does not reveal whether the page
-exists") true by construction rather than by a check that could be forgotten on a
-new RPC. `CreatePage`'s `parent_id`/`after` and `ReparentPage`'s new parent are
-resolved through the same owner-scoped lookup, so nesting or positioning relative to
-another actor's page fails the same way. This was a real gap in an earlier revision
-of this implementation (ownership wasn't checked at all) — caught by
-`/security-review`, fixed with the `WHERE`-clause scoping described here, and locked
-in by `TestPagesAreScopedToTheirOwner`/`TestCreateCannotNestUnderAnotherActorsPage`
-in `internal/pages/repo_integration_test.go`.
+**No page read or write is scoped by `created_by` — reversed 2026-08-26** (see
+`docs/porting/PROGRESS.md`). An earlier revision filtered every query on
+`created_by = <actor>` (user story A-04's "only I can read or change my pages"),
+which directly contradicted the "shared workspace, not multi-tenant" model
+`Register`'s own reversal already established (`docs/api/auth.md`): a second
+registered user's `actor-id` never matches the first user's `created_by`, so
+every one of that first user's pages silently `NOT_FOUND`ed for them — a page
+list stuck empty and a shared link stuck loading forever, found via live testing
+with a second real account, not by inspection. `GetPage`/`ListPages`/`RenamePage`/
+`DeletePage`/`ReparentPage`/`ListBacklinks` now filter only on `id`/`parent_id`/
+`deleted_at` (`internal/pagerepo/queries.sql`) — every page on the instance is
+visible to and editable by every authenticated actor. `created_by` is still
+recorded on `CreatePage` (who authored a page) and still comes only from
+`actor-id` metadata, never a request field (forgeable authorship is still not
+allowed) — it's just no longer an access filter. `CreatePage`'s `parent_id`/
+`after` and `ReparentPage`'s new parent resolve the same way: naming *any*
+existing page succeeds, not just one the caller made themselves. `actorID(ctx)`
+is still called on every RPC — the caller must still be authenticated, just not
+the resource's own author. Locked in by `TestPagesAreVisibleToEveryActor`/
+`TestCreateCanNestUnderAnyExistingPage` in `internal/pages/repo_integration_test.go`
+(these replace the old `TestPagesAreScopedToTheirOwner`/
+`TestCreateCannotNestUnderAnotherActorsPage`, which asserted the now-reversed
+behavior). User story A-04 no longer holds as written — see `docs/porting/PROGRESS.md`.
 
 ### Status codes
 
@@ -206,6 +239,7 @@ span, correlated by trace id.
 | `PATCH` | `/pages/{id}/title` | `RenamePage` |
 | `PATCH` | `/pages/{id}/parent` | `ReparentPage` |
 | `DELETE` | `/pages/{id}` | `DeletePage` |
+| `GET` | `/pages/{id}/backlinks` | `ListBacklinks` |
 
 ```json
 {
@@ -228,6 +262,7 @@ are RFC 3339 UTC — `google.protobuf.Timestamp` on the wire, formatted at the g
 
 | gRPC | HTTP | `error` code | Retryable |
 |---|---|---|---|
+| `UNAUTHENTICATED` | 401 | `unauthenticated` | No — missing/invalid `actor-id` (§ temporary scaffolding above) |
 | `INVALID_ARGUMENT` | 422 | `validation_failed` | No — fix the request |
 | `NOT_FOUND` | 404 | `not_found` | No |
 | `FAILED_PRECONDITION` | 409 | `conflict` | No — contradicts current state |
