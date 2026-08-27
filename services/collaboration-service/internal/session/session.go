@@ -129,6 +129,7 @@ type CursorEvent struct {
 // correct: nothing else in this session ever changes them out from under it.
 type BlockSnapshot struct {
 	ID         documentcore.BlockID   `json:"id"`
+	Parent     *documentcore.BlockID  `json:"parent"`
 	Kind       documentcore.BlockKind `json:"kind"`
 	Text       string                 `json:"text"`
 	Marks      []documentcore.Mark    `json:"marks,omitempty"`
@@ -631,11 +632,12 @@ func (s *Session) snapshotLocked() Snapshot {
 		// for a snapshot.
 		text := s.blocks[b.ID]
 		if text == nil {
-			blocks[i] = BlockSnapshot{ID: b.ID, Kind: b.Kind, Marks: b.Content.Marks}
+			blocks[i] = BlockSnapshot{ID: b.ID, Parent: b.Parent, Kind: b.Kind, Marks: b.Content.Marks}
 			continue
 		}
 		blocks[i] = BlockSnapshot{
 			ID:         b.ID,
+			Parent:     b.Parent,
 			Kind:       b.Kind,
 			Text:       text.String(),
 			Marks:      b.Content.Marks,
