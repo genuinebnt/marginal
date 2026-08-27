@@ -60,12 +60,17 @@ feature of its own — and are treated the same way, not given their own minor.
 notifications need comments, publishing needs RBAC, plugins need the diagnostics engine,
 and the assistant needs the search index"), and every one of those holds across the
 `v2`→`v4` boundary in the right direction: `v2.2.0` (Diagnostics) comes before `v4.2.0`
-(Plugins, which needs it); `v2.4.0` (Search) comes before `v4.3.0` (Assistant, which
+(Plugins, which needs it); `v2.4.0` (Search) comes before `v4.4.0` (Assistant, which
 needs the index); `v3.1.0` (RBAC) comes before `v4.1.0` (Publishing, which needs it);
 `v3.2.0` (Comments) comes before `v3.3.0` (Notifications, which needs it), both inside
-the same major. If a future session's own judgment says a different cut fits the
-porting goal better once a major is actually underway, that judgment wins over this
-table — the table is a plan, not a constraint on it.
+the same major. `v4.3.0`/`v4.4.0`'s own order (Graph Explorer & Related Content before
+Assistant) is deliberately the other way around from a naive "AI last" reading: the
+graph-algorithm and lexical-similarity work in `v4.3.0` needs no embedding index at all,
+so it ships first; `v4.4.0`'s embedding index then completes `v4.3.0`'s Discover panel
+with real semantic similarity as a staged enhancement, not a second version of the same
+screen. If a future session's own judgment says a different cut fits the porting goal
+better once a major is actually underway, that judgment wins over this table — the
+table is a plan, not a constraint on it.
 
 **On the full `v3` grammar (RFC-001 §10):** the target is full coverage, not the subset
 that was easy. The one carve-out is `Table`/`CommTable` and the four cross-page query
@@ -105,8 +110,12 @@ distributed-systems scaling.*
 ## `v3.0.0` — Multi-User Platform
 
 *Milestone claim: Marginal stops being one shared workspace and becomes a real
-multi-tenant platform — spaces, permissions, discussion, a finished editor, and an
-admin surface that can actually see what the system is doing.*
+multi-user platform — many people, spaces, permissions, discussion, a finished
+editor, and an admin surface that can actually see what the system is doing.
+Still one self-hosted instance, one database — not multi-tenancy (`ADR-001`
+cuts that; `CLAUDE.md`'s hosted-tier note is unchanged: hosted means one
+single-tenant deployment per customer, and shared tenancy needs its own ADR
+first, `tenant_id`-on-every-table work `v3.1.0` deliberately does not do).*
 
 | Version | Feature | Ships | Source | Status |
 |---|---|---|---|---|
@@ -128,8 +137,8 @@ remaining work.*
 |---|---|---|---|---|
 | `v4.1.0` | **Publishing, Distribution & Workspace Analytics** | Public pages via static pre-render, a feed, a sitemap — a page becomes a thing you can share outside the login wall (`home.html`'s pitch, `reader.html`'s published badge). `analytics.html` becomes real: workspace analytics where the sketches *are* the privacy mechanism — HyperLogLog, Count-Min Sketch, and a t-digest, each computed live over the real event stream and shown beside its exact answer and error, not a canned example. | Phase 17 | planned |
 | `v4.2.0` | **Plugins & Extensibility** | A real plugin surface: custom block kinds and custom diagnostic analyzers, sandboxed. Go substitution note: `wazero` (a pure-Go WebAssembly runtime, no cgo) stands in for `wasmtime` — same component-model/capability-based-security shape RFC-005 (once written) should specify, different host embedding. | Phase 18 | planned |
-| `v4.3.0` | **Assistant & Semantic Search** | An assistant that edits by emitting real `Op`s (never raw text — per-actor undo, collaboration, and audit all come free that way), backed by one embedding index (`pgvector`) serving both this and `v4.4.0`. Local embeddings (no required API key) for the self-hosted build. `discover.html` becomes real: an HNSW index actually built and queried in Go — layer assignment, greedy descent, `Mmax` pruning — with recall@5 measured live against brute force, not asserted. | Phase 19 | planned |
-| `v4.4.0` | **Related Content / Discover** | "You may have already written this" while typing, and a Discover panel ranking related pages — lexical similarity (SimHash+LSH), semantic similarity (the `v4.3.0` embedding index), and graph centrality (PageRank), fused into one ranked surface. `graph.html`'s remaining rows become real here too: Betti numbers (β₁ from the GF(2) rank of the triangle boundary map, β₂ from the Euler characteristic) and the graph's Voronoi territory view (exact Voronoi by half-plane intersection, Delaunay dual read back off the cells) — plus the similar-block hint, merge assistant, bridge suggestions, reading order, and minimum reading set that `ROADMAP.md` § Not Drawn Yet lists against this same phase. | Phase 21 | planned |
+| `v4.3.0` | **Graph Explorer & Related Content** | `graph.html`'s remaining rows become real: Betti numbers (β₁ from the GF(2) rank of the triangle boundary map, β₂ from the Euler characteristic) and the graph's Voronoi territory view (exact Voronoi by half-plane intersection, Delaunay dual read back off the cells). A Discover panel ranking related pages by what's available *without* an embedding index yet — lexical similarity (SimHash+LSH) and graph centrality (PageRank) — plus the similar-block hint, merge assistant, bridge suggestions, reading order, and minimum reading set that `ROADMAP.md` § Not Drawn Yet lists against this same phase. Semantic similarity is layered into this same panel once `v4.4.0` ships its embedding index — staged, not blocked on it. | Phase 21 | planned |
+| `v4.4.0` | **Assistant & Semantic Search** | An assistant that edits by emitting real `Op`s (never raw text — per-actor undo, collaboration, and audit all come free that way), backed by one embedding index (`pgvector`) that also completes `v4.3.0`'s Discover panel with real semantic similarity. Local embeddings (no required API key) for the self-hosted build. `discover.html` becomes fully real: an HNSW index actually built and queried in Go — layer assignment, greedy descent, `Mmax` pruning — with recall@5 measured live against brute force, not asserted. | Phase 19 | planned |
 | `v4.5.0` | **Structured & Query Blocks** | `Table`/`CommTable` and the cross-page query kinds (`TableOfContents`, `FeaturedArticles`, `FeaturedProjects`, `PortfolioProjects`) — the last of RFC-001 §10's v3 grammar. First deliverable is the ADR this repo's own "Still Out" rule requires: fixed row/cell arity under concurrent edits, and exactly where cross-page aggregation gets an owner without becoming the "databases/rollups" boundary `DATA_MODEL.md` already draws. Only after that ADR lands does block-kind work start. | RFC-001 §10.4 (documented-but-not-recommended, pending this ADR) | planned |
 
 ---
