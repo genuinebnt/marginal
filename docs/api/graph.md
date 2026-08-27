@@ -58,6 +58,18 @@ over the whole graph:
 - `diameter` — the longest shortest path between any two pages in the
   same component (all-pairs BFS, undirected); disconnected pairs are
   skipped, not treated as infinite.
+- `betti` — graph-algorithms.html's own topology panel
+  (`internal/graphalgo.Betti`): `b0`/`b1` are properties of the graph
+  itself (components; cycle rank `E − V + b0`, an exact independent-loop
+  count). `b1_clique`/`b2`/`chi`/`triangles`/`rank2` are properties of a
+  **chosen** complex — filling every 3-clique (three mutually-citing
+  pages) as a 2-simplex is a modelling decision, not a graph fact:
+  `rank2` is the GF(2) rank of the triangle boundary map (how many
+  independent loops those filled triangles kill), `b1_clique` is what
+  survives (`b1 − rank2`), and `b2` (enclosed voids — a hollow
+  tetrahedron, four pages whose every triangle is filled but whose
+  interior isn't) comes free from the Euler characteristic
+  (`chi − b0 + b1_clique`), no second elimination pass needed.
 
 **`GraphNeighborhood`** — the one parameterized view, from one chosen
 `source_page_id`:
@@ -93,7 +105,8 @@ over the whole graph:
   "component_of": { "<page-id>": 0 },
   "orphan_components": [1],
   "cycle": ["<page-id>", "<page-id>", "<page-id>"],
-  "diameter": 4
+  "diameter": 4,
+  "betti": { "b0": 1, "b1": 3, "b1_clique": 0, "b2": 1, "chi": 2, "triangles": 4, "rank2": 3 }
 }
 
 // GET /graph/neighborhood/{id}

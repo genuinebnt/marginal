@@ -109,6 +109,7 @@ func TestAnalyzeGraphTranslatesComponentsAndCycle(t *testing.T) {
 				OrphanComponents: []int32{0},
 				Cycle:            []string{"a", "b", "a"},
 				Diameter:         1,
+				Betti:            &documentv1.BettiNumbers{B0: 1, B1: 1, Triangles: 1, Rank2: 1},
 			}, nil
 		},
 	}
@@ -124,12 +125,22 @@ func TestAnalyzeGraphTranslatesComponentsAndCycle(t *testing.T) {
 		OrphanComponents []int32          `json:"orphan_components"`
 		Cycle            []string         `json:"cycle"`
 		Diameter         int32            `json:"diameter"`
+		Betti            struct {
+			B0        int32 `json:"b0"`
+			B1        int32 `json:"b1"`
+			B1Clique  int32 `json:"b1_clique"`
+			Triangles int32 `json:"triangles"`
+			Rank2     int32 `json:"rank2"`
+		} `json:"betti"`
 	}
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
 	assert.Equal(t, int32(0), body.ComponentOf["a"])
 	assert.Equal(t, []int32{0}, body.OrphanComponents)
 	assert.Equal(t, []string{"a", "b", "a"}, body.Cycle)
 	assert.Equal(t, int32(1), body.Diameter)
+	assert.Equal(t, int32(1), body.Betti.B0)
+	assert.Equal(t, int32(1), body.Betti.Triangles)
+	assert.Equal(t, int32(1), body.Betti.Rank2)
 }
 
 func TestAnalyzeGraphAcyclicHasEmptyNotNullCycle(t *testing.T) {

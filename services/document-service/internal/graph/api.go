@@ -65,11 +65,22 @@ func (s *Server) AnalyzeGraph(ctx context.Context, _ *documentv1.AnalyzeGraphReq
 		}
 	}
 
+	betti := graphalgo.Betti(g.Graph)
+
 	return &documentv1.GraphAnalysis{
 		ComponentOf:      componentOf,
 		OrphanComponents: orphanComponents,
 		Cycle:            cycle,
 		Diameter:         int32(graphalgo.Diameter(g.Graph)),
+		Betti: &documentv1.BettiNumbers{
+			B0:        int32(betti.B0),
+			B1:        int32(betti.B1),
+			B1Clique:  int32(betti.B1Clique),
+			B2:        int32(betti.B2),
+			Chi:       int32(betti.Chi),
+			Triangles: int32(betti.Triangles),
+			Rank2:     int32(betti.Rank2),
+		},
 	}, nil
 }
 

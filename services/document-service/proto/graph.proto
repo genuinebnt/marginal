@@ -66,6 +66,21 @@ message GraphAnalysis {
   // (first == last) — empty if the graph is acyclic.
   repeated string cycle = 3;
   int32 diameter = 4;
+  // betti is graph-algorithms.html's own topology panel
+  // (internal/graphalgo.Betti) — see BettiNumbers' own field comments for
+  // why some of these are graph facts and some are a stated modelling
+  // choice (filling every triangle).
+  BettiNumbers betti = 5;
+}
+
+message BettiNumbers {
+  int32 b0 = 1;         // components
+  int32 b1 = 2;         // cycle rank of the plain graph: E - V + b0
+  int32 b1_clique = 3;  // b1 minus rank(boundary map ∂2) — the loops surviving after every triangle is filled
+  int32 b2 = 4;         // chi - b0 + b1_clique, read off the Euler characteristic for free
+  int32 chi = 5;        // Euler characteristic of the clique complex: V - E + F
+  int32 triangles = 6;  // |F| — how many 3-cliques were filled
+  int32 rank2 = 7;      // rank(∂2) over GF(2) — exactly the loops triangles killed
 }
 
 message GraphNeighborhoodRequest { string source_page_id = 1; }
