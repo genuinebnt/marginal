@@ -29,6 +29,7 @@ import (
 	documentv1 "marginal/document-service/genproto/documentv1"
 
 	"marginal/api-gateway/internal/authrest"
+	"marginal/api-gateway/internal/graphrest"
 	"marginal/api-gateway/internal/pagesrest"
 )
 
@@ -81,6 +82,7 @@ func run() error {
 	defer func() { _ = authConn.Close() }()
 
 	pages := pagesrest.NewHandler(documentv1.NewPageServiceClient(documentConn))
+	graphHandler := graphrest.NewHandler(documentv1.NewGraphServiceClient(documentConn))
 	auth := authrest.NewHandler(authv1.NewAuthServiceClient(authConn))
 
 	r := chi.NewRouter()
@@ -111,6 +113,7 @@ func run() error {
 		_, _ = w.Write([]byte("ok"))
 	})
 	pages.Mount(r)
+	graphHandler.Mount(r)
 	auth.Mount(r)
 
 	addr := envconfig.EnvOr("API_GATEWAY_HTTP_ADDR", ":8000")
