@@ -41,6 +41,8 @@ BlockKind ::= Paragraph
             | Toggle
             | Image
             | Divider
+            | Callout
+            | Aside
 
 Paragraph ::= Spans
 Heading   ::= Level Spans
@@ -62,6 +64,16 @@ RawText   ::= String
 
 Image     ::= FileId Caption?
 Caption   ::= Spans
+
+Callout     ::= Icon? CalloutTone? Spans Block*
+Icon        ::= Emoji                       (* Icon ::= Emoji | FileId in §10's target grammar — only
+                                                Emoji is implemented; a file-backed icon has the same
+                                                "no asset pipeline yet" gap Image's FileId already has *)
+CalloutTone ::= note | info | tip | warn | danger | success   (* "warn" is the default *)
+
+Aside       ::= Emoji Spans Block*
+
+Emoji     ::= String
 
 Spans     ::= Run*
 Run       ::= RunText MarkRange*
@@ -87,7 +99,9 @@ Rules that fall out of writing it down:
 
 - **`Code` has no `Spans`** — code is never bold.
 - **Toggle collapse is view state, not model state** — it must not be stored in the block or it becomes a collaborative edit when someone expands a toggle.
-- **`Quote`, `Toggle`, `List`, and `ListItem` are the only container kinds** — every other `BlockKind` is a leaf and can never have children. `documentcore` enforces this as a real precondition (`NotAContainerError`), not a convention callers are trusted to follow.
+- **`Quote`, `Toggle`, `List`, `ListItem`, `Callout`, and `Aside` are the only container kinds** — every other `BlockKind` is a leaf and can never have children. `documentcore` enforces this as a real precondition (`NotAContainerError`), not a convention callers are trusted to follow.
+- **`Callout` and `Aside` accept any child kind**, the same as `Quote`/`Toggle` — only a `ListItem` parent restricts its children's kind (the `ListChild` rule above).
+- **`CalloutTone` is adopted from `genuine-folio`'s own six semantic tones** (`§10`'s source grammar) — not the larger Notion-palette superset `§10.2` describes and declines to adopt, since nothing in Marginal imports or exports Notion content.
 - **`List` is two nesting levels, not one**: a `List` block's children (via the same containment mechanism every other container uses) are `ListItem` blocks; a `ListItem`'s own children are, per `ListChild`, restricted to `List` (a nested sub-list) or `Paragraph` (continuation text under that item) — `documentcore` checks this restriction specifically for `ListItem` parents, where every other container accepts any block kind as a child.
 - **`Checked` lives on the `ListItem`, not the `List`** — each item tracks its own completion; it's meaningful only when the enclosing `List`'s `ListKind` is `todo`, the same "field meaningful only for one tag" shape `Level`/`Language` already have on `Heading`/`Code`.
 - **`Image`'s `Caption` is the block's own `Content`** — reuses the exact mechanism `Quote`/`Toggle`'s own inline text already uses, not a second text-storage path.
@@ -866,11 +880,12 @@ ConceptDomain ::= dist | sysdes | micro | rust | perf | dsa
 Not an exhaustive per-kind ledger — just where the line is drawn today and
 why, so a future session doesn't have to re-derive it:
 
-- **Zero-new-mechanism containers** (`Callout`, `Aside`): the exact same
-  shape `Quote`/`Toggle` already have — `BlockTag.IsContainer()` extended
-  by two entries, a `CalloutTone`/`Icon`/`Emoji` field each following the
-  existing `Level`/`Language`/`ListKindOf` "meaningful only for one tag"
-  pattern. The natural next slice.
+- **Zero-new-mechanism containers — done** (`Callout`, `Aside`): the exact
+  same shape `Quote`/`Toggle` already have — `BlockTag.IsContainer()`
+  extended by two entries, a `CalloutTone`/`Icon`/`Emoji` field each
+  following the existing `Level`/`Language`/`ListKindOf` "meaningful only
+  for one tag" pattern. Implemented, tested, and promoted to §1's own
+  grammar (the actual, current contract) — no longer aspirational.
 - **Structured collections shaped like `List`/`ListItem`** (`Timeline`,
   `Grid`, `IconCards`, `Signals`, `Tabs`, `Accordion`, `ServiceCards`,
   `SignalList`, `Stack`, `MetaPills`, `FooterLinks`, `UsesSection`): each
