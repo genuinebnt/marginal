@@ -3124,5 +3124,131 @@ three disconnected screens. Also reiterated: whatever ships must match
 its mockup 1:1, not just cover the same feature loosely.
 
 **`v2.1.0` is complete and shipped**: Undo/Redo (`b9c61fe`, `15335c8`)
-plus this trace backend. Per `RELEASES.md`'s dependency-checked order,
-`v2.2.0` (Diagnostics & the fact graph) is next.
+plus this trace backend. Merged to `master` and tagged `v2.1.0-release`.
+
+---
+
+## 2026-08-27 — RELEASES.md reordered: Graph Explorer pulled forward to v2.2.0
+
+Two corrections, live, before `v2.2.0` work started: `graph.html`'s
+remaining rows (Betti numbers, Voronoi) were about to ship in `v4.3.0`,
+after Assistant — moved earlier instead (`v4.3.0`/`v4.4.0` swapped:
+lexical+graph-centrality ranking needs no embedding index, so it ships
+first; semantic similarity layers in once Assistant's index exists).
+Separately: **all** of `graph.html`/`graph-algorithms.html` — components,
+cycles, shortest path, wavefront, blast radius, Betti, Voronoi — was
+pulled forward from four scattered later minors into its own `v2.2.0`,
+immediately after Undo/Redo, per explicit request (highest DSA-learning
+density per unit of build effort, fastest ROI, no real dependency on
+anything past `v1.0.0`'s own link graph). `v3.0.0`'s milestone claim also
+had its "multi-tenant" wording removed — contradicted ADR-001 and
+CLAUDE.md's own hosted-tier note; reworded to "multi-user." Full detail in
+`RELEASES.md`'s own diff; v2.x renumbered accordingly (Diagnostics -> 2.3,
+History/Trace/Diff -> 2.4, Search -> 2.5, Page-Delete Saga -> 2.6).
+
+## 2026-08-27 — v2.2.0: Graph Explorer, backend complete
+
+Branch `v2.2.0`, cut from `master` after tagging `v2.1.0-release`.
+
+**`internal/graphalgo`** (new module-free package, document-service):
+pure functions over an in-memory graph, no I/O — `Components` (flood
+fill, undirected), `Orphans` (component containing none of a root set —
+graph-algorithms.html's own "a mutually-linked pair with nothing pointing
+in is still orphaned" argument, not `backlinks == 0`), `DetectCycle`
+(three-colour DFS, directed — pinned against a diamond shape a plain
+visited set would false-positive on), `BFS`/`ShortestPath` (undirected
+link-distance — the same distance map, grouped by value, is the
+"wavefront" animation, no separate algorithm needed), `ForwardReachable`
+(directed, outbound-only — blast radius), `Diameter` (all-pairs BFS). 22
+tests, each pinning one of the mockup's own stated claims. Commit `98d20ef`.
+
+**`internal/graph` + `internal/graphrepo`** (document-service): a new
+`GraphService` gRPC surface (`GetLinkGraph`, `AnalyzeGraph`,
+`GraphNeighborhood`) registered alongside `PageService` on the same
+listener — same deployable, same scaling profile, not a new service per
+ADR-001. Two sqlc queries build the graph from `docs.pages`/
+`docs.page_links` (deliberately not one join — a linkless page still
+needs to appear as a node). Verified against real Postgres via
+testcontainers-go. Commit `c76dace`.
+
+**`internal/graphrest`** (api-gateway) + `docs/api/graph.md`: the REST
+mapping (`GET /graph`, `/graph/analysis`, `/graph/neighborhood/{id}`),
+same shape as `pagesrest`. Commit `215efa4`.
+
+Betti numbers landed next: `graphalgo.Betti` (β₀/β₁ as graph facts;
+β₁-of-the-clique-complex/β₂/χ/triangles/rank(∂₂) as properties of a
+*chosen* complex, stated as such per the mockup's own argument) —
+GF(2) Gaussian elimination on `math/big.Int` rows (no 64-edge ceiling,
+unlike the mockup's own BigInt-in-JS). Verified against the mockup's own
+headline example (a hollow tetrahedron, K4 with all four faces filled,
+scoring the textbook 2-sphere result β₀=1/β₁_clique=0/β₂=1) plus a
+`rapid` property test pinning a real algebraic fact (`B1Clique` can never
+go negative — `∂₁∘∂₂ = 0` in any chain complex) across 100 random graphs.
+Wired through `GraphAnalysis.betti`, `graphrest`, `docs/api/graph.md`,
+and a real Postgres end-to-end integration test. Commits `2d098eb`,
+`5b7f4d0`.
+
+Voronoi/Delaunay landed next: `graphalgo.Voronoi`/`Delaunay`, ported
+field-for-field from `graph.html`'s own half-plane-intersection
+implementation (Sutherland-Hodgman clipping, the dual read straight off
+shared cell edges, including its exact numeric tolerances). Verified via
+the actual defining property of a Voronoi diagram — every cell's area
+sums to exactly the bounding rectangle's, checked by hand and via a
+`rapid` property test across 100 random configurations. Commit `3c8851d`.
+
+Then the seeded force-directed layout: `graphalgo.LayoutTick`/
+`NextAlpha`/`SeededRNG`/`SeedPositions`, ported field-for-field from
+`graph.html`'s own `tick()`/`reheat()`/`rnd()` — same repulsion/spring/
+center/damp physics, same `ALPHA_MIN`/`ALPHA_DECAY` cooling constants,
+same linear congruential generator (so the same seed always produces the
+same initial scatter). This completes `internal/graphalgo`'s whole
+algorithm surface for `v2.2.0`. Commit `2429d40`.
+
+Then `cmd/graphwasm` + `web/src/graph-core/`: the layout and Voronoi/
+Delaunay compiled to `GOOS=js/wasm` (mirroring `documentcore`'s own
+bridge) and a TS loader, since these two specifically need interactive
+60fps client-side response to dragging — every one-shot algorithm
+(components/cycles/BFS/diameter/Betti) stays server-side only, reached
+over `docs/api/graph.md`. 4 wasm-bridge integration tests prove real Go
+physics/geometry runs through the actual boundary. Commit `59408b2`.
+
+The frontend landed last: `GraphScreen.tsx`/`GraphAlgorithmsScreen.tsx`,
+canvas-rendered, driven by a shared `useForceLayout` animation-loop hook
+(every tick a real `graphLayoutTick` wasm call — the hook holds no
+physics of its own). `GraphScreen` adds the Territory toggle (real
+Voronoi/Delaunay, recomputed live as nodes are dragged); `GraphAlgorithmsScreen`
+adds a lens picker (components/cycle/wavefront/blast) reading
+`AnalyzeGraph`/`GraphNeighborhood` plus the Betti-numbers panel. Commit
+`a7f9694`.
+
+**`scripts/seed-graph-demo.mjs`** (new, root-level dev tool): the first
+seed data built through the *real* live pipeline — REST page creation,
+then a real WebSocket connection per page writing `[[Page Title]]` text
+into an actual block, the same path collaboration-service ->
+collab.ops_flushed -> blockproj -> docs.page_links takes for a real
+user's typing. Deliberately shaped (a hub, a plain triangle, a plain
+square, a hollow tetrahedron, a 5-step chain, an orphaned pair, an
+isolated page) to exercise every graphalgo algorithm with something
+genuinely there to find. Run after `docker compose down -v && up
+--build` (a full local data wipe, done this session at explicit
+request) — the resulting analysis matched hand-derived expectations
+exactly (4 components, the pair+isolated page correctly flagged
+orphaned, one example cycle found, diameter 8, and Betti numbers — 5
+triangles = the tetrahedron's 4 plus the plain triangle's 1, β₁_clique=1
+for the unfilled square's surviving loop, β₂=1 for the tetrahedron's
+own void).
+
+Live-verified end to end via Playwright against this real seeded stack:
+the force layout settles into the expected shape, Territory mode renders
+a real Voronoi tiling with its Delaunay dual, the components lens
+correctly grays out the orphaned pair/isolated page, and the cycle lens
+highlights exactly the seeded triangle.
+
+**`v2.2.0` (Graph Explorer) is complete and shipped** — every row of
+`graph.html`/`graph-algorithms.html` is real: components, orphans,
+cycles, BFS/shortest-path/wavefront, forward reachability, diameter,
+Betti numbers, exact Voronoi/Delaunay, and the seeded force layout, all
+the way from `internal/graphalgo` through `GraphService`, `graphrest`,
+the wasm bridge, and both frontend screens. Per `RELEASES.md`'s
+dependency-checked order, `v2.3.0` (Diagnostics & the fact graph) is
+next.

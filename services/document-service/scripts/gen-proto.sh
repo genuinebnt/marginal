@@ -21,6 +21,6 @@ protoc \
   -I "$PROTOBUF_INCLUDE" \
   --go_out=. --go_opt=module=marginal/document-service \
   --go-grpc_out=. --go-grpc_opt=module=marginal/document-service \
-  proto/document.proto
+  proto/document.proto proto/graph.proto
 
 echo "regenerated genproto/documentv1"

@@ -105,7 +105,7 @@ truth for what's implemented and what's next.
 
 | Service | Port | Boundary justification |
 |---|---|---|
-| `document-service` | 8001 | Stateless; owns pages, blocks, **its own** outbox. gRPC `PageService`; HTTP probes only |
+| `document-service` | 8001 | Stateless; owns pages, blocks, **its own** outbox. gRPC `PageService` + `GraphService` (read-only graph algorithms over `docs.page_links`, `v2.2.0`); HTTP probes only |
 | `auth-service` | 8006 | Distinct security surface; also users, roles, preferences |
 | `collaboration-service` | 8002 | **Stateful** — rope per doc, scales on connection count. **Owns `collab`** — the op log and its outbox |
 | `notification-service` | 8007 | Pulled back into scope 2026-08-26 — real logic now: consumes `auth.user_registered` (`DATA_MODEL.md` §10, the one event topic Track 1 can actually produce) over NATS, persists a welcome notification, serves `GET /notifications` directly (not proxied — same convention as `collaboration-service`'s WebSocket). Every other notification-worthy topic still needs a feature that's out of scope (mentions/comments, sharing, RBAC) |
@@ -214,6 +214,7 @@ open indefinitely (no idle-eviction), matching this repo's demo scale.
 | `docs/architecture/rfc/RFC-003-diagnostics-engine.md` | Analyzers, symbol table, incrementality (`v2.2.0`, `RELEASES.md`) |
 | `docs/architecture/lld/document-service.md` | Module map, type contracts, invariants, build order |
 | `docs/api/pages.md` | Pages contract — gRPC `PageService` §1 + the gateway's REST mapping §2 |
+| `docs/api/graph.md` | Graph Explorer contract — gRPC `GraphService` §1 + the gateway's REST mapping §2 (`v2.2.0`) |
 | `docs/api/auth.md` | Auth contract — gRPC `AuthService` §1 + the gateway's REST mapping §2 |
 | `docs/api/collaboration.md` | Collaboration contract — the WebSocket wire format (one contract, no REST projection) |
 | `docs/architecture/ARCHITECTURE.md` | Service map, event bus, request flows |

@@ -1,5 +1,5 @@
 import { useEffect, useState, type SyntheticEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { createPage, listPages, type Page } from "../api/pages";
 import { listNotifications, type Notification } from "../api/notifications";
@@ -75,6 +75,7 @@ export function DashboardScreen() {
             </div>
           )}
         </div>
+        <Link className="btn" to="/graph">Graph</Link>
         <button className="btn" onClick={logout}>Sign out</button>
       </header>
 

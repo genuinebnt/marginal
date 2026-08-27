@@ -1,0 +1,97 @@
+// GraphService — the gRPC contract for the real [[link]] graph
+// (docs/ui-mockups/graph.html, graph-algorithms.html). See
+// docs/api/graph.md, which this file matches field-for-field.
+//
+// Read-only and parameter-light on purpose: every algorithm here
+// (internal/graphalgo) is a pure function over docs.pages/docs.page_links
+// as of right now, computed fresh per request — there is no persisted
+// "graph" state of its own to keep consistent, unlike PageService's own
+// rows.
+syntax = "proto3";
+
+package marginal.document.v1;
+
+option go_package = "marginal/document-service/genproto/documentv1";
+
+service GraphService {
+  // GetLinkGraph is every live page (a node, even with zero links) and
+  // every resolved [[link]] (an edge) — raw data for the client to
+  // render (force layout, drawing), never itself an algorithm result.
+  rpc GetLinkGraph(GetLinkGraphRequest) returns (LinkGraph);
+
+  // AnalyzeGraph runs every parameter-free algorithm once, over the whole
+  // graph: connected components, orphan detection, cycle detection, and
+  // diameter (internal/graphalgo).
+  rpc AnalyzeGraph(AnalyzeGraphRequest) returns (GraphAnalysis);
+
+  // GraphNeighborhood is the one parameterized view: BFS shortest-path
+  // distances (undirected — "link distance" doesn't care which way a
+  // link points) and forward reachability ("blast radius," directed —
+  // outbound links only) from one chosen source page.
+  rpc GraphNeighborhood(GraphNeighborhoodRequest) returns (GraphNeighborhoodResponse);
+}
+
+message GetLinkGraphRequest {}
+
+message LinkGraph {
+  repeated GraphNode nodes = 1;
+  repeated GraphEdge edges = 2;
+}
+
+message GraphNode {
+  string id = 1;
+  string title = 2;
+  // is_root mirrors internal/graphalgo.Orphans' own root set: a page
+  // with no parent, reachable without already knowing another page's
+  // title exists.
+  bool is_root = 3;
+}
+
+message GraphEdge {
+  string from_page = 1;
+  string to_page = 2;
+}
+
+message AnalyzeGraphRequest {}
+
+message GraphAnalysis {
+  // component_of maps every page id to its connected-component id
+  // (internal/graphalgo.Components, over the undirected projection).
+  map<string, int32> component_of = 1;
+  // orphan_components are component ids containing none of the root
+  // pages — graph-algorithms.html's own "a mutually-linked pair with
+  // nothing pointing in is still orphaned" argument.
+  repeated int32 orphan_components = 2;
+  // cycle is one example cycle, as an ordered, closed list of page ids
+  // (first == last) — empty if the graph is acyclic.
+  repeated string cycle = 3;
+  int32 diameter = 4;
+  // betti is graph-algorithms.html's own topology panel
+  // (internal/graphalgo.Betti) — see BettiNumbers' own field comments for
+  // why some of these are graph facts and some are a stated modelling
+  // choice (filling every triangle).
+  BettiNumbers betti = 5;
+}
+
+message BettiNumbers {
+  int32 b0 = 1;         // components
+  int32 b1 = 2;         // cycle rank of the plain graph: E - V + b0
+  int32 b1_clique = 3;  // b1 minus rank(boundary map ∂2) — the loops surviving after every triangle is filled
+  int32 b2 = 4;         // chi - b0 + b1_clique, read off the Euler characteristic for free
+  int32 chi = 5;        // Euler characteristic of the clique complex: V - E + F
+  int32 triangles = 6;  // |F| — how many 3-cliques were filled
+  int32 rank2 = 7;      // rank(∂2) over GF(2) — exactly the loops triangles killed
+}
+
+message GraphNeighborhoodRequest { string source_page_id = 1; }
+
+message GraphNeighborhoodResponse {
+  // undirected_distance: link-distance BFS from source_page_id — the
+  // page-by-page "wavefront" a client animates one distance value at a
+  // time. Absent from the map means unreachable.
+  map<string, int32> undirected_distance = 1;
+  // forward_reachable: directed BFS from source_page_id, outbound links
+  // only — the blast radius a cascading delete starting there would take
+  // with it.
+  map<string, int32> forward_reachable = 2;
+}
