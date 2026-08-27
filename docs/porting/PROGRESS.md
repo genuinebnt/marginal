@@ -3095,3 +3095,34 @@ this and future feature branches build on top of it.
 **Next:** the other half of `v2.1.0` per `RELEASES.md` — making
 `trace.html` real: a live op-log view where every `apply`/`invert` runs for
 real and the invertibility law is re-checked on every step, not asserted.
+
+---
+
+## 2026-08-27 — trace.html's backend lands; regrouped into History (v2.3.0)
+
+Built `internal/session.Trace` + `GET /collab/pages/{id}/trace`: replays
+a page's real confirmed op log and, per step, computes the op's inverse
+and re-verifies RFC-002 §3's invertibility law by actually replaying
+(twice per step — once through it, once stopping short — rather than
+building a `Clone()` for `documentcore.Page`/`doctext.Text` that nothing
+else needs), never asserting it the way the mockup's own fixed nine-op
+sequence does. Each step also carries `after`: the whole document once
+that step applied (`session.Snapshot`, via a new free `buildSnapshot`
+`snapshotLocked` now delegates to) — so a future client renders "the
+document at step N" by picking one precomputed entry, never by
+re-running `apply()` itself. Commit `9f7cd27`.
+
+**Mid-build correction (user, live):** `trace.html`'s own nav links back
+to History ("Product · Op trace"), and the user caught that building it
+as a page bolted onto the editor would fragment it from `history.html`/
+`diff.html`, which belong to the same feature. `RELEASES.md` updated:
+`v2.1.0` is Undo/Redo only (already shipped); `trace.html`'s **backend**
+lands now anyway, as reusable op-log infrastructure that doesn't depend
+on the rest of History — but its UI ships together with the scrubber and
+the LCS diff, as one `v2.3.0` ("History, Trace & Diff") feature, not
+three disconnected screens. Also reiterated: whatever ships must match
+its mockup 1:1, not just cover the same feature loosely.
+
+**`v2.1.0` is complete and shipped**: Undo/Redo (`b9c61fe`, `15335c8`)
+plus this trace backend. Per `RELEASES.md`'s dependency-checked order,
+`v2.2.0` (Diagnostics & the fact graph) is next.
