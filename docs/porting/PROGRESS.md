@@ -2826,3 +2826,50 @@ collaboration-service (`InsertBlock` + `InsertText` → collab outbox →
 `outboxpoll.Poller` → NATS → document-service's `blockproj`), confirming
 the materialised block's text and kind in `docs.blocks` matched exactly
 what was sent.
+
+---
+
+## 2026-08-27 — RFC-001 §1 nesting, Stage 1: documentcore
+
+Implemented real block nesting in `documentcore` — `List`, `ListItem`,
+`Toggle`, `Image` as real `BlockTag`s, `Quote`/`Toggle`/`List`/`ListItem`
+as real containers (a `Parent *BlockID` field on `Block`, kept in
+depth-first order). `InsertBlock` gained `Parent`; `MoveBlock` gained
+`FromParent`/`ToParent` and now relocates a whole subtree as one unit
+when the moved block is a non-empty container — the only op that can
+touch more than one block per call. New invariants: no cycles
+(`CycleError`), a container must be empty to delete or convert to a leaf
+(`ContainerNotEmptyError`), a `ListItem`'s child must be `List` or
+`Paragraph` (`InvalidListChildError`). RFC-001 §1 and `DATA_MODEL.md`'s
+Blocks section (also corrected to match the real `pgx`/`sqlc`-based
+schema, which had drifted from `DATA_MODEL.md`'s pre-`ADR-011` sqlx-era
+sketch) are updated. Full detail, including the design reasoning, in
+commit `67c903d`'s own message.
+
+**Stage 1 only — explicitly not yet done, and documentcore alone doesn't
+break anything by landing without them:**
+
+- **`document-service`'s `internal/blockproj`** still assumes a flat
+  tree — `pageState`/`blockState` have no `parent` field, and
+  `applyBlockOp`'s `InsertBlock`/`MoveBlock` cases ignore
+  `op.Parent`/`op.FromParent`/`op.ToParent` entirely. A nested op applied
+  today would materialise into `docs.blocks` as if every block were
+  top-level, and a subtree `MoveBlock` would orphan the moved block's
+  children at their old position. Needs: a `parent` field on
+  `blockState`, parent-scoped order tracking (mirroring `Page`'s own
+  depth-first-order approach), and the `parent_id`/`path` columns
+  `DATA_MODEL.md` now documents but the actual migration doesn't have yet.
+- **`collaboration-service`** needs no changes for correctness —
+  `session.Session` calls `documentcore.Page.Apply` directly with no
+  special-casing of block structure, so live nested editing already
+  works end-to-end at the CRDT/session layer; only the read-model
+  projection downstream is behind.
+- **`web/`'s editor** has no rendering, insertion UI, or drag-and-drop
+  for `List`/`Toggle`/`Image` yet — `RichEditorPane`'s block-kind set is
+  still the pre-nesting five.
+- **`Image`'s `FileId`** has no backing upload/asset pipeline in this
+  repo at all (stated in RFC-001 §1 itself, not a silent gap).
+
+Next, in order: `blockproj` + the `docs.blocks` migration (Stage 2, the
+one piece required before nested blocks are queryable/durable at all),
+then frontend rendering (Stage 3).
