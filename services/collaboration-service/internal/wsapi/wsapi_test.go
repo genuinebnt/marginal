@@ -604,3 +604,76 @@ func TestUnknownMessageTypeGetsAnErrorFrameNotADisconnect(t *testing.T) {
 	require.NoError(t, wsjson.Read(ctx, conn, &ack))
 	assert.Equal(t, "ack", ack.Type)
 }
+
+// TestUndoOverTheWireActsLikeTheClientResubmittedAnOp is
+// docs/api/collaboration.md §2.1's own claim: "from every other client's
+// point of view, an undo is indistinguishable from the sender submitting N
+// ordinary ops, because it is one" — verified here against a real
+// WebSocket round trip, not just Session.Undo directly (session_test.go's
+// own undo_test.go already covers the grouping/replay logic itself).
+func TestUndoOverTheWireActsLikeTheClientResubmittedAnOp(t *testing.T) {
+	srv, _ := newTestServer(t)
+	pageID := uuid.Must(uuid.NewV7())
+
+	connA, closeA := dial(t, srv, pageID, uuid.Must(uuid.NewV7()))
+	defer closeA()
+	connB, closeB := dial(t, srv, pageID, uuid.Must(uuid.NewV7()))
+	defer closeB()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	var snap serverMessage
+	require.NoError(t, wsjson.Read(ctx, connA, &snap))
+	require.NoError(t, wsjson.Read(ctx, connB, &snap))
+	var presence serverMessage
+	require.NoError(t, wsjson.Read(ctx, connA, &presence))
+
+	blockID := insertBlock(t, ctx, connA)
+	var blockBroadcast serverMessage
+	require.NoError(t, wsjson.Read(ctx, connB, &blockBroadcast))
+
+	require.NoError(t, wsjson.Write(ctx, connA, clientMessage{Type: "undo"}))
+
+	var undoAck serverMessage
+	require.NoError(t, wsjson.Read(ctx, connA, &undoAck))
+	require.Equal(t, "ack", undoAck.Type, "undo's own effect is acked to the sender exactly like a normal op")
+	require.NotNil(t, undoAck.Op)
+	blockOp, ok := undoAck.Op.Op.(pageop.Block)
+	require.True(t, ok, "undo's ack must carry a block-tier op, got %T", undoAck.Op.Op)
+	_, ok = blockOp.Op.(documentcore.DeleteBlock)
+	assert.True(t, ok, "undoing an InsertBlock must commit its inverse, DeleteBlock — got %T", blockOp.Op)
+
+	var undoBroadcast serverMessage
+	require.NoError(t, wsjson.Read(ctx, connB, &undoBroadcast))
+	assert.Equal(t, "broadcast", undoBroadcast.Type, "B sees the undo's own op broadcast, indistinguishable from an ordinary edit")
+	assert.Equal(t, undoAck.Op.ID, undoBroadcast.Op.ID)
+
+	require.NoError(t, wsjson.Write(ctx, connA, clientMessage{Type: "redo"}))
+	var redoAck serverMessage
+	require.NoError(t, wsjson.Read(ctx, connA, &redoAck))
+	assert.Equal(t, "ack", redoAck.Type)
+	_ = blockID
+}
+
+func TestUndoWithNothingToUndoIsANoOpNotAnErrorFrame(t *testing.T) {
+	srv, _ := newTestServer(t)
+	conn, closeConn := dial(t, srv, uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7()))
+	defer closeConn()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	var snap serverMessage
+	require.NoError(t, wsjson.Read(ctx, conn, &snap))
+
+	require.NoError(t, wsjson.Write(ctx, conn, clientMessage{Type: "undo"}))
+
+	// Nothing to undo produces no frame at all (an empty ack list) — prove
+	// the connection is still alive and responsive with a real follow-up op,
+	// the same way TestUnknownMessageTypeGetsAnErrorFrameNotADisconnect does.
+	blockID := insertBlock(t, ctx, conn)
+	require.NoError(t, wsjson.Write(ctx, conn, clientMessage{Type: "op", Op: insertTextOp(blockID, "x")}))
+	var ack serverMessage
+	require.NoError(t, wsjson.Read(ctx, conn, &ack))
+	assert.Equal(t, "ack", ack.Type)
+}

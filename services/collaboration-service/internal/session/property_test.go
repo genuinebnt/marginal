@@ -50,7 +50,7 @@ func TestConcurrentApplyClientOpSerializesCorrectly(t *testing.T) {
 			for i := 0; i < opsPerGoroutine; i++ {
 				text := fmt.Sprintf("g%di%d;", g, i)
 				result, err := s.ApplyClientOp(context.Background(), actor, oplog.ActorUser,
-					pageop.Text{BlockID: blockID, Op: ops.InsertText{At: nil, Text: text}}, subIDs[g])
+					pageop.Text{BlockID: blockID, Op: ops.InsertText{At: nil, Text: text}}, nil, subIDs[g])
 				require.NoError(t, err)
 				allIDs[g][i] = result.Op.ID
 				atomic.AddInt64(&wantRunes, int64(len([]rune(text))))
