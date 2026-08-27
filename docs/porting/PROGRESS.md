@@ -3212,10 +3212,43 @@ bridge) and a TS loader, since these two specifically need interactive
 over `docs/api/graph.md`. 4 wasm-bridge integration tests prove real Go
 physics/geometry runs through the actual boundary. Commit `59408b2`.
 
-**Still open for `v2.2.0`**: the frontend Graph Explorer screen(s)
-themselves — `web/src/screens/GraphScreen.tsx` (force layout, territory
-view, legend/filters) and `GraphAlgorithmsScreen.tsx` (components/cycles/
-shortest-path/wavefront/blast-radius/diameter/Betti panels), matching
-`graph.html`/`graph-algorithms.html` 1:1, wired to the real
-`GraphService` REST endpoints (`docs/api/graph.md`) and the two new wasm
-calls. This is the last piece before `v2.2.0` ships end-to-end.
+The frontend landed last: `GraphScreen.tsx`/`GraphAlgorithmsScreen.tsx`,
+canvas-rendered, driven by a shared `useForceLayout` animation-loop hook
+(every tick a real `graphLayoutTick` wasm call — the hook holds no
+physics of its own). `GraphScreen` adds the Territory toggle (real
+Voronoi/Delaunay, recomputed live as nodes are dragged); `GraphAlgorithmsScreen`
+adds a lens picker (components/cycle/wavefront/blast) reading
+`AnalyzeGraph`/`GraphNeighborhood` plus the Betti-numbers panel. Commit
+`a7f9694`.
+
+**`scripts/seed-graph-demo.mjs`** (new, root-level dev tool): the first
+seed data built through the *real* live pipeline — REST page creation,
+then a real WebSocket connection per page writing `[[Page Title]]` text
+into an actual block, the same path collaboration-service ->
+collab.ops_flushed -> blockproj -> docs.page_links takes for a real
+user's typing. Deliberately shaped (a hub, a plain triangle, a plain
+square, a hollow tetrahedron, a 5-step chain, an orphaned pair, an
+isolated page) to exercise every graphalgo algorithm with something
+genuinely there to find. Run after `docker compose down -v && up
+--build` (a full local data wipe, done this session at explicit
+request) — the resulting analysis matched hand-derived expectations
+exactly (4 components, the pair+isolated page correctly flagged
+orphaned, one example cycle found, diameter 8, and Betti numbers — 5
+triangles = the tetrahedron's 4 plus the plain triangle's 1, β₁_clique=1
+for the unfilled square's surviving loop, β₂=1 for the tetrahedron's
+own void).
+
+Live-verified end to end via Playwright against this real seeded stack:
+the force layout settles into the expected shape, Territory mode renders
+a real Voronoi tiling with its Delaunay dual, the components lens
+correctly grays out the orphaned pair/isolated page, and the cycle lens
+highlights exactly the seeded triangle.
+
+**`v2.2.0` (Graph Explorer) is complete and shipped** — every row of
+`graph.html`/`graph-algorithms.html` is real: components, orphans,
+cycles, BFS/shortest-path/wavefront, forward reachability, diameter,
+Betti numbers, exact Voronoi/Delaunay, and the seeded force layout, all
+the way from `internal/graphalgo` through `GraphService`, `graphrest`,
+the wasm bridge, and both frontend screens. Per `RELEASES.md`'s
+dependency-checked order, `v2.3.0` (Diagnostics & the fact graph) is
+next.
