@@ -342,3 +342,51 @@ fresh snapshot).
 
 There is no explicit ping/pong or idle-timeout policy documented yet —
 left to `coder/websocket`'s defaults for now.
+
+---
+
+## 5. `GET /collab/pages/{id}/trace` — the op-log debugger's data source
+
+Plain HTTP, not a WebSocket — "give me the whole confirmed replay once,"
+not a live session. Backs `docs/ui-mockups/trace.html`'s "real ops, real
+inverses" claim against an actual page's actual op log
+(`internal/session.Trace`), rather than that mockup's own synthetic,
+fixed nine-op sequence. Read-only: never touches a live `Session`, so it's
+safe to call for a page someone else has open right now, and it only ever
+sees ops that have already reached `collab.ops` (a session's own
+not-yet-flushed WAL tail is invisible to it, same as any other reader of
+the confirmed log).
+
+```
+GET /collab/pages/{id}/trace
+```
+
+```json
+{
+  "steps": [
+    {
+      "op": { /* the full oplog.LoggedOp — §3's "the committed op" shape, unchanged */ },
+      "inverse": { /* that op's own inverse, in the same "scope"-tagged pageop.Op envelope */ },
+      "law_holds": true,
+      "after": { /* session.Snapshot — the whole document once this step's op has been applied */ }
+    }
+  ]
+}
+```
+
+One entry per confirmed op, oldest first. `law_holds` is
+`apply(invert(op), apply(op, doc)) == doc`, **checked for real** by
+replaying the log a second time and comparing observable document state
+(title, block order/containment/kind/text/marks — not raw CRDT tombstone
+bookkeeping, which can legitimately differ between "never touched" and
+"deleted then reinserted" while meaning the same thing), not asserted from
+`Invert()`'s own claim — `docs/ui-mockups/README.md`'s own principle for
+this page: "the badge turns amber the moment it fails," not "the badge
+always says holds." `after` is *the whole document*, not a diff — a
+client renders "the document at step N" by picking one precomputed entry,
+never by re-running `apply()` itself: the algorithm lives in Go
+(`ADR-012`), the client only draws what Go already computed.
+
+A malformed or corrupt log entry (one that fails to even replay) is a
+`500` — this endpoint has no partial-result contract; either the whole
+log replays cleanly and every step is reported, or none are.

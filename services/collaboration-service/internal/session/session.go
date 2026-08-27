@@ -812,20 +812,28 @@ func (s *Session) Snapshot() Snapshot {
 // same instant as Present/Cursors, not a second, separately-locked read
 // that could race a commit landing in between).
 func (s *Session) snapshotLocked() Snapshot {
-	blocks := make([]BlockSnapshot, len(s.page.Blocks))
-	for i, b := range s.page.Blocks {
+	return buildSnapshot(s.page, s.blocks)
+}
+
+// buildSnapshot is snapshotLocked's body, as a free function over any
+// page/blocks pair rather than a live Session's own fields — so Trace can
+// build the same shape at every replay step without a Session to call it
+// through (its own doc comment has the "why free function" reasoning).
+func buildSnapshot(page documentcore.Page, blocks map[documentcore.BlockID]*doctext.Text) Snapshot {
+	out := make([]BlockSnapshot, len(page.Blocks))
+	for i, b := range page.Blocks {
 		// text == nil should be unreachable now that applyBlockOp seeds a
 		// block's rope before, not after, admitting it into page.Blocks —
 		// kept as a defence-in-depth guard against that invariant
 		// (spanning two separate data structures) breaking again, rather
 		// than a nil-pointer panic taking down whichever connection asked
 		// for a snapshot.
-		text := s.blocks[b.ID]
+		text := blocks[b.ID]
 		if text == nil {
-			blocks[i] = BlockSnapshot{ID: b.ID, Parent: b.Parent, Kind: b.Kind, Marks: b.Content.Marks}
+			out[i] = BlockSnapshot{ID: b.ID, Parent: b.Parent, Kind: b.Kind, Marks: b.Content.Marks}
 			continue
 		}
-		blocks[i] = BlockSnapshot{
+		out[i] = BlockSnapshot{
 			ID:         b.ID,
 			Parent:     b.Parent,
 			Kind:       b.Kind,
@@ -834,7 +842,7 @@ func (s *Session) snapshotLocked() Snapshot {
 			Boundaries: text.Boundaries(),
 		}
 	}
-	return Snapshot{PageID: s.page.ID, Title: s.page.Title, Blocks: blocks}
+	return Snapshot{PageID: page.ID, Title: page.Title, Blocks: out}
 }
 
 // Close stops the flush loop (draining whatever is already buffered, per

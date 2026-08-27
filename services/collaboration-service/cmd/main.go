@@ -107,6 +107,7 @@ func run() error {
 		_, _ = w.Write([]byte("ok"))
 	})
 	mux.HandleFunc("/collab/pages/{id}", wsapi.NewHandler(manager, wsAcceptOptions()).ServeHTTP)
+	mux.HandleFunc("/collab/pages/{id}/trace", wsapi.NewTraceHandler(repo, serverActor))
 
 	httpServer := &http.Server{Addr: httpAddr, Handler: mux}
 

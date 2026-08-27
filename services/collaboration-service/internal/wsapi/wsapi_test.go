@@ -2,6 +2,7 @@ package wsapi
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -18,6 +19,7 @@ import (
 	"marginal/documentcore"
 
 	"marginal/collaboration-service/internal/anchor"
+	"marginal/collaboration-service/internal/flush"
 	"marginal/collaboration-service/internal/oplog"
 	"marginal/collaboration-service/internal/ops"
 	"marginal/collaboration-service/internal/pageop"
@@ -72,14 +74,28 @@ func newTestServer(t *testing.T) (*httptest.Server, *session.Manager) {
 
 func newTestServerWithAcceptOptions(t *testing.T, opts *websocket.AcceptOptions) (*httptest.Server, *session.Manager) {
 	t.Helper()
-	mgr := session.NewManager(newFakeRepo(), t.TempDir(), "server-actor")
+	srv, mgr, _ := newTestServerWithRepo(t, opts)
+	return srv, mgr
+}
+
+// newTestServerWithRepo also exposes the fakeRepo backing the server, for
+// tests that need to read confirmed ops directly — TestTraceEndpoint*
+// below, which calls GET .../trace against the exact same store the
+// WebSocket connections it made ops through just wrote into (matching
+// cmd/main.go's own wiring: one repo, handed to both the Manager and
+// NewTraceHandler).
+func newTestServerWithRepo(t *testing.T, opts *websocket.AcceptOptions) (*httptest.Server, *session.Manager, *fakeRepo) {
+	t.Helper()
+	repo := newFakeRepo()
+	mgr := session.NewManager(repo, t.TempDir(), "server-actor", session.WithFlushOptions(flush.WithBatchSize(1), flush.WithInterval(time.Hour)))
 	t.Cleanup(func() { _ = mgr.CloseAll() })
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/collab/pages/{id}", NewHandler(mgr, opts).ServeHTTP)
+	mux.HandleFunc("/collab/pages/{id}/trace", NewTraceHandler(repo, "server-actor"))
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
-	return srv, mgr
+	return srv, mgr, repo
 }
 
 // dialWithOrigin sets a specific Origin header — httptest.Server's own
@@ -676,4 +692,55 @@ func TestUndoWithNothingToUndoIsANoOpNotAnErrorFrame(t *testing.T) {
 	var ack serverMessage
 	require.NoError(t, wsjson.Read(ctx, conn, &ack))
 	assert.Equal(t, "ack", ack.Type)
+}
+
+// TestTraceEndpointReplaysARealSequence hits GET .../trace over real HTTP
+// against ops a real WebSocket connection just committed — docs/ui-mockups/
+// trace.html's "real ops, real inverses" claim, end to end through the
+// actual wire this repo serves, not just session.Trace called directly
+// (already covered by trace_test.go).
+func TestTraceEndpointReplaysARealSequence(t *testing.T) {
+	srv, _, repo := newTestServerWithRepo(t, nil)
+	pageID := uuid.Must(uuid.NewV7())
+	conn, closeConn := dial(t, srv, pageID, uuid.Must(uuid.NewV7()))
+	defer closeConn()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	var snap serverMessage
+	require.NoError(t, wsjson.Read(ctx, conn, &snap))
+
+	blockID := insertBlock(t, ctx, conn)
+	require.NoError(t, wsjson.Write(ctx, conn, clientMessage{Type: "op", Op: insertTextOp(blockID, "hi")}))
+	var ack serverMessage
+	require.NoError(t, wsjson.Read(ctx, conn, &ack))
+
+	require.Eventually(t, func() bool {
+		got, _ := repo.ListForPage(context.Background(), pageID)
+		return len(got) == 2
+	}, time.Second, time.Millisecond, "both ops must have flushed before the trace endpoint reads them")
+
+	resp, err := http.Get(srv.URL + "/collab/pages/" + pageID.String() + "/trace")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var body struct {
+		Steps []struct {
+			LawHolds bool `json:"law_holds"`
+		} `json:"steps"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	require.Len(t, body.Steps, 2, "InsertBlock and InsertText")
+	for i, step := range body.Steps {
+		assert.True(t, step.LawHolds, "step %d must satisfy the invertibility law", i)
+	}
+}
+
+func TestTraceEndpointRejectsAnInvalidPageID(t *testing.T) {
+	srv, _, _ := newTestServerWithRepo(t, nil)
+	resp, err := http.Get(srv.URL + "/collab/pages/not-a-uuid/trace")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 }
