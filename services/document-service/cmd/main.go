@@ -27,6 +27,7 @@ import (
 
 	documentv1 "marginal/document-service/genproto/documentv1"
 	"marginal/document-service/internal/blockproj"
+	"marginal/document-service/internal/graph"
 	"marginal/document-service/internal/migrate"
 	"marginal/document-service/internal/pages"
 )
@@ -81,6 +82,7 @@ func run() error {
 
 	grpcServer := grpc.NewServer()
 	documentv1.RegisterPageServiceServer(grpcServer, pages.NewServer(pages.NewPostgresRepo(pool)))
+	documentv1.RegisterGraphServiceServer(grpcServer, graph.NewServer(graph.NewPostgresRepo(pool)))
 	reflection.Register(grpcServer) // lets grpcurl/grpcui introspect without a .proto file, local dev only
 
 	lis, err := net.Listen("tcp", grpcAddr)

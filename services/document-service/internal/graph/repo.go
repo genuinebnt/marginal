@@ -1,0 +1,85 @@
+// Package graph is GraphService's translation layer: load the live link
+// graph from Postgres (docs.pages, docs.page_links), run
+// internal/graphalgo's pure algorithms over it, translate the result to
+// documentv1's proto types. No algorithm lives in this package — that's
+// graphalgo's whole reason to exist as its own dependency-free package;
+// this one only does I/O and wire translation, the same split
+// internal/pages already draws between repo.go and api.go.
+package graph
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"marginal/document-service/internal/graphalgo"
+	"marginal/document-service/internal/graphrepo/gen"
+)
+
+// Node is one page as graph.LoadGraph reads it: identity, title, and
+// whether it's a root (no parent) — internal/graphalgo.Orphans' own root
+// set is built from exactly this flag.
+type Node struct {
+	ID     uuid.UUID
+	Title  string
+	IsRoot bool
+}
+
+// LinkGraph is what LoadGraph returns: the graphalgo.Graph ready to feed
+// into any of that package's algorithms, plus the node metadata
+// (title, is_root) graphalgo's own NodeID-keyed maps don't carry.
+type LinkGraph struct {
+	Graph graphalgo.Graph
+	Nodes map[graphalgo.NodeID]Node
+	Roots []graphalgo.NodeID
+}
+
+// PostgresRepo is GraphService's only port onto docs.pages/docs.page_links.
+type PostgresRepo struct {
+	q *graphrepo.Queries
+}
+
+func NewPostgresRepo(pool *pgxpool.Pool) *PostgresRepo {
+	return &PostgresRepo{q: graphrepo.New(pool)}
+}
+
+// LoadGraph reads every live page and every resolved [[link]] and builds
+// the in-memory graph graphalgo operates on. Two queries, not a join —
+// a page with zero links still needs to appear as a Graph node (so
+// orphan detection can see it sitting alone), which an INNER JOIN against
+// page_links would silently drop.
+func (r *PostgresRepo) LoadGraph(ctx context.Context) (LinkGraph, error) {
+	pageRows, err := r.q.ListPagesForGraph(ctx)
+	if err != nil {
+		return LinkGraph{}, fmt.Errorf("graph: loading pages: %w", err)
+	}
+	linkRows, err := r.q.ListResolvedLinksForGraph(ctx)
+	if err != nil {
+		return LinkGraph{}, fmt.Errorf("graph: loading links: %w", err)
+	}
+
+	g := LinkGraph{
+		Nodes: make(map[graphalgo.NodeID]Node, len(pageRows)),
+	}
+	g.Graph.Nodes = make([]graphalgo.NodeID, 0, len(pageRows))
+	for _, p := range pageRows {
+		id := graphalgo.NodeID(uuid.UUID(p.ID.Bytes).String())
+		isRoot := !p.ParentID.Valid
+		g.Graph.Nodes = append(g.Graph.Nodes, id)
+		g.Nodes[id] = Node{ID: uuid.UUID(p.ID.Bytes), Title: p.Title, IsRoot: isRoot}
+		if isRoot {
+			g.Roots = append(g.Roots, id)
+		}
+	}
+
+	g.Graph.Edges = make([]graphalgo.Edge, 0, len(linkRows))
+	for _, l := range linkRows {
+		from := graphalgo.NodeID(uuid.UUID(l.FromPage.Bytes).String())
+		to := graphalgo.NodeID(uuid.UUID(l.TargetPage.Bytes).String())
+		g.Graph.Edges = append(g.Graph.Edges, graphalgo.Edge{From: from, To: to})
+	}
+
+	return g, nil
+}
