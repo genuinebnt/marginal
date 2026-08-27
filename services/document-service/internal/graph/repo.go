@@ -14,8 +14,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"marginal/graphalgo"
 	"marginal/document-service/internal/graphrepo/gen"
+	"marginal/graphalgo"
 )
 
 // Node is one page as graph.LoadGraph reads it: identity, title, and

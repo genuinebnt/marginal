@@ -729,6 +729,162 @@ func (x *Backlink) GetTargetTitle() string {
 	return ""
 }
 
+type ListBlocksRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	PageId        string                 `protobuf:"bytes,1,opt,name=page_id,json=pageId,proto3" json:"page_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListBlocksRequest) Reset() {
+	*x = ListBlocksRequest{}
+	mi := &file_document_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListBlocksRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListBlocksRequest) ProtoMessage() {}
+
+func (x *ListBlocksRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_document_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListBlocksRequest.ProtoReflect.Descriptor instead.
+func (*ListBlocksRequest) Descriptor() ([]byte, []int) {
+	return file_document_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *ListBlocksRequest) GetPageId() string {
+	if x != nil {
+		return x.PageId
+	}
+	return ""
+}
+
+type ListBlocksResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Blocks        []*Block               `protobuf:"bytes,1,rep,name=blocks,proto3" json:"blocks,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListBlocksResponse) Reset() {
+	*x = ListBlocksResponse{}
+	mi := &file_document_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListBlocksResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListBlocksResponse) ProtoMessage() {}
+
+func (x *ListBlocksResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_document_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListBlocksResponse.ProtoReflect.Descriptor instead.
+func (*ListBlocksResponse) Descriptor() ([]byte, []int) {
+	return file_document_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *ListBlocksResponse) GetBlocks() []*Block {
+	if x != nil {
+		return x.Blocks
+	}
+	return nil
+}
+
+type Block struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	ParentId      *string                `protobuf:"bytes,2,opt,name=parent_id,json=parentId,proto3,oneof" json:"parent_id,omitempty"`
+	KindJson      string                 `protobuf:"bytes,3,opt,name=kind_json,json=kindJson,proto3" json:"kind_json,omitempty"`          // documentcore.BlockKind's own tagged-object JSON
+	ContentJson   string                 `protobuf:"bytes,4,opt,name=content_json,json=contentJson,proto3" json:"content_json,omitempty"` // documentcore.Content's own JSON ({text, marks})
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Block) Reset() {
+	*x = Block{}
+	mi := &file_document_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Block) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Block) ProtoMessage() {}
+
+func (x *Block) ProtoReflect() protoreflect.Message {
+	mi := &file_document_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Block.ProtoReflect.Descriptor instead.
+func (*Block) Descriptor() ([]byte, []int) {
+	return file_document_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *Block) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *Block) GetParentId() string {
+	if x != nil && x.ParentId != nil {
+		return *x.ParentId
+	}
+	return ""
+}
+
+func (x *Block) GetKindJson() string {
+	if x != nil {
+		return x.KindJson
+	}
+	return ""
+}
+
+func (x *Block) GetContentJson() string {
+	if x != nil {
+		return x.ContentJson
+	}
+	return ""
+}
+
 var File_document_proto protoreflect.FileDescriptor
 
 const file_document_proto_rawDesc = "" +
@@ -795,12 +951,23 @@ const file_document_proto_rawDesc = "" +
 	"\tfrom_page\x18\x01 \x01(\tR\bfromPage\x12&\n" +
 	"\x0ffrom_page_title\x18\x02 \x01(\tR\rfromPageTitle\x12*\n" +
 	"\x11from_page_deleted\x18\x03 \x01(\bR\x0ffromPageDeleted\x12!\n" +
-	"\ftarget_title\x18\x04 \x01(\tR\vtargetTitle*\x88\x01\n" +
+	"\ftarget_title\x18\x04 \x01(\tR\vtargetTitle\",\n" +
+	"\x11ListBlocksRequest\x12\x17\n" +
+	"\apage_id\x18\x01 \x01(\tR\x06pageId\"I\n" +
+	"\x12ListBlocksResponse\x123\n" +
+	"\x06blocks\x18\x01 \x03(\v2\x1b.marginal.document.v1.BlockR\x06blocks\"\x87\x01\n" +
+	"\x05Block\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12 \n" +
+	"\tparent_id\x18\x02 \x01(\tH\x00R\bparentId\x88\x01\x01\x12\x1b\n" +
+	"\tkind_json\x18\x03 \x01(\tR\bkindJson\x12!\n" +
+	"\fcontent_json\x18\x04 \x01(\tR\vcontentJsonB\f\n" +
+	"\n" +
+	"_parent_id*\x88\x01\n" +
 	"\x0eLifecycleState\x12\x1f\n" +
 	"\x1bLIFECYCLE_STATE_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16LIFECYCLE_STATE_ACTIVE\x10\x01\x12\x1c\n" +
 	"\x18LIFECYCLE_STATE_DELETING\x10\x02\x12\x1b\n" +
-	"\x17LIFECYCLE_STATE_DELETED\x10\x032\xee\x04\n" +
+	"\x17LIFECYCLE_STATE_DELETED\x10\x032\xcf\x05\n" +
 	"\vPageService\x12Q\n" +
 	"\n" +
 	"CreatePage\x12'.marginal.document.v1.CreatePageRequest\x1a\x1a.marginal.document.v1.Page\x12K\n" +
@@ -811,7 +978,9 @@ const file_document_proto_rawDesc = "" +
 	"\fReparentPage\x12).marginal.document.v1.ReparentPageRequest\x1a\x1a.marginal.document.v1.Page\x12M\n" +
 	"\n" +
 	"DeletePage\x12'.marginal.document.v1.DeletePageRequest\x1a\x16.google.protobuf.Empty\x12h\n" +
-	"\rListBacklinks\x12*.marginal.document.v1.ListBacklinksRequest\x1a+.marginal.document.v1.ListBacklinksResponseB/Z-marginal/document-service/genproto/documentv1b\x06proto3"
+	"\rListBacklinks\x12*.marginal.document.v1.ListBacklinksRequest\x1a+.marginal.document.v1.ListBacklinksResponse\x12_\n" +
+	"\n" +
+	"ListBlocks\x12'.marginal.document.v1.ListBlocksRequest\x1a(.marginal.document.v1.ListBlocksResponseB/Z-marginal/document-service/genproto/documentv1b\x06proto3"
 
 var (
 	file_document_proto_rawDescOnce sync.Once
@@ -826,7 +995,7 @@ func file_document_proto_rawDescGZIP() []byte {
 }
 
 var file_document_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_document_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_document_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_document_proto_goTypes = []any{
 	(LifecycleState)(0),           // 0: marginal.document.v1.LifecycleState
 	(*Page)(nil),                  // 1: marginal.document.v1.Page
@@ -840,35 +1009,41 @@ var file_document_proto_goTypes = []any{
 	(*ListBacklinksRequest)(nil),  // 9: marginal.document.v1.ListBacklinksRequest
 	(*ListBacklinksResponse)(nil), // 10: marginal.document.v1.ListBacklinksResponse
 	(*Backlink)(nil),              // 11: marginal.document.v1.Backlink
-	(*timestamppb.Timestamp)(nil), // 12: google.protobuf.Timestamp
-	(*emptypb.Empty)(nil),         // 13: google.protobuf.Empty
+	(*ListBlocksRequest)(nil),     // 12: marginal.document.v1.ListBlocksRequest
+	(*ListBlocksResponse)(nil),    // 13: marginal.document.v1.ListBlocksResponse
+	(*Block)(nil),                 // 14: marginal.document.v1.Block
+	(*timestamppb.Timestamp)(nil), // 15: google.protobuf.Timestamp
+	(*emptypb.Empty)(nil),         // 16: google.protobuf.Empty
 }
 var file_document_proto_depIdxs = []int32{
 	0,  // 0: marginal.document.v1.Page.lifecycle_state:type_name -> marginal.document.v1.LifecycleState
-	12, // 1: marginal.document.v1.Page.created_at:type_name -> google.protobuf.Timestamp
-	12, // 2: marginal.document.v1.Page.updated_at:type_name -> google.protobuf.Timestamp
-	12, // 3: marginal.document.v1.Page.deleted_at:type_name -> google.protobuf.Timestamp
+	15, // 1: marginal.document.v1.Page.created_at:type_name -> google.protobuf.Timestamp
+	15, // 2: marginal.document.v1.Page.updated_at:type_name -> google.protobuf.Timestamp
+	15, // 3: marginal.document.v1.Page.deleted_at:type_name -> google.protobuf.Timestamp
 	1,  // 4: marginal.document.v1.ListPagesResponse.pages:type_name -> marginal.document.v1.Page
 	11, // 5: marginal.document.v1.ListBacklinksResponse.backlinks:type_name -> marginal.document.v1.Backlink
-	2,  // 6: marginal.document.v1.PageService.CreatePage:input_type -> marginal.document.v1.CreatePageRequest
-	3,  // 7: marginal.document.v1.PageService.GetPage:input_type -> marginal.document.v1.GetPageRequest
-	4,  // 8: marginal.document.v1.PageService.ListPages:input_type -> marginal.document.v1.ListPagesRequest
-	6,  // 9: marginal.document.v1.PageService.RenamePage:input_type -> marginal.document.v1.RenamePageRequest
-	7,  // 10: marginal.document.v1.PageService.ReparentPage:input_type -> marginal.document.v1.ReparentPageRequest
-	8,  // 11: marginal.document.v1.PageService.DeletePage:input_type -> marginal.document.v1.DeletePageRequest
-	9,  // 12: marginal.document.v1.PageService.ListBacklinks:input_type -> marginal.document.v1.ListBacklinksRequest
-	1,  // 13: marginal.document.v1.PageService.CreatePage:output_type -> marginal.document.v1.Page
-	1,  // 14: marginal.document.v1.PageService.GetPage:output_type -> marginal.document.v1.Page
-	5,  // 15: marginal.document.v1.PageService.ListPages:output_type -> marginal.document.v1.ListPagesResponse
-	1,  // 16: marginal.document.v1.PageService.RenamePage:output_type -> marginal.document.v1.Page
-	1,  // 17: marginal.document.v1.PageService.ReparentPage:output_type -> marginal.document.v1.Page
-	13, // 18: marginal.document.v1.PageService.DeletePage:output_type -> google.protobuf.Empty
-	10, // 19: marginal.document.v1.PageService.ListBacklinks:output_type -> marginal.document.v1.ListBacklinksResponse
-	13, // [13:20] is the sub-list for method output_type
-	6,  // [6:13] is the sub-list for method input_type
-	6,  // [6:6] is the sub-list for extension type_name
-	6,  // [6:6] is the sub-list for extension extendee
-	0,  // [0:6] is the sub-list for field type_name
+	14, // 6: marginal.document.v1.ListBlocksResponse.blocks:type_name -> marginal.document.v1.Block
+	2,  // 7: marginal.document.v1.PageService.CreatePage:input_type -> marginal.document.v1.CreatePageRequest
+	3,  // 8: marginal.document.v1.PageService.GetPage:input_type -> marginal.document.v1.GetPageRequest
+	4,  // 9: marginal.document.v1.PageService.ListPages:input_type -> marginal.document.v1.ListPagesRequest
+	6,  // 10: marginal.document.v1.PageService.RenamePage:input_type -> marginal.document.v1.RenamePageRequest
+	7,  // 11: marginal.document.v1.PageService.ReparentPage:input_type -> marginal.document.v1.ReparentPageRequest
+	8,  // 12: marginal.document.v1.PageService.DeletePage:input_type -> marginal.document.v1.DeletePageRequest
+	9,  // 13: marginal.document.v1.PageService.ListBacklinks:input_type -> marginal.document.v1.ListBacklinksRequest
+	12, // 14: marginal.document.v1.PageService.ListBlocks:input_type -> marginal.document.v1.ListBlocksRequest
+	1,  // 15: marginal.document.v1.PageService.CreatePage:output_type -> marginal.document.v1.Page
+	1,  // 16: marginal.document.v1.PageService.GetPage:output_type -> marginal.document.v1.Page
+	5,  // 17: marginal.document.v1.PageService.ListPages:output_type -> marginal.document.v1.ListPagesResponse
+	1,  // 18: marginal.document.v1.PageService.RenamePage:output_type -> marginal.document.v1.Page
+	1,  // 19: marginal.document.v1.PageService.ReparentPage:output_type -> marginal.document.v1.Page
+	16, // 20: marginal.document.v1.PageService.DeletePage:output_type -> google.protobuf.Empty
+	10, // 21: marginal.document.v1.PageService.ListBacklinks:output_type -> marginal.document.v1.ListBacklinksResponse
+	13, // 22: marginal.document.v1.PageService.ListBlocks:output_type -> marginal.document.v1.ListBlocksResponse
+	15, // [15:23] is the sub-list for method output_type
+	7,  // [7:15] is the sub-list for method input_type
+	7,  // [7:7] is the sub-list for extension type_name
+	7,  // [7:7] is the sub-list for extension extendee
+	0,  // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_document_proto_init() }
@@ -881,13 +1056,14 @@ func file_document_proto_init() {
 	file_document_proto_msgTypes[3].OneofWrappers = []any{}
 	file_document_proto_msgTypes[4].OneofWrappers = []any{}
 	file_document_proto_msgTypes[6].OneofWrappers = []any{}
+	file_document_proto_msgTypes[13].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_document_proto_rawDesc), len(file_document_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   11,
+			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

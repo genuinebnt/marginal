@@ -355,3 +355,38 @@ func (s *Server) ListBacklinks(ctx context.Context, req *documentv1.ListBacklink
 	}
 	return &documentv1.ListBacklinksResponse{Backlinks: out}, nil
 }
+
+// ListBlocks is ListBacklinks' own twin for docs.blocks — same existence
+// check, same "no ownership check on this instance" reasoning.
+func (s *Server) ListBlocks(ctx context.Context, req *documentv1.ListBlocksRequest) (*documentv1.ListBlocksResponse, error) {
+	if _, err := actorID(ctx); err != nil {
+		return nil, toStatus(err)
+	}
+	id, err := parsePageID(req.GetPageId())
+	if err != nil {
+		return nil, toStatus(err)
+	}
+	if _, err := s.repo.Get(ctx, id); err != nil {
+		return nil, toStatus(err)
+	}
+
+	blocks, err := s.repo.ListBlocks(ctx, id)
+	if err != nil {
+		return nil, toStatus(err)
+	}
+	out := make([]*documentv1.Block, len(blocks))
+	for i, b := range blocks {
+		var parentID *string
+		if b.ParentID != nil {
+			s := b.ParentID.String()
+			parentID = &s
+		}
+		out[i] = &documentv1.Block{
+			Id:          b.ID.String(),
+			ParentId:    parentID,
+			KindJson:    string(b.KindJSON),
+			ContentJson: string(b.ContentJSON),
+		}
+	}
+	return &documentv1.ListBlocksResponse{Blocks: out}, nil
+}

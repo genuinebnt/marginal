@@ -52,6 +52,28 @@ type Backlink struct {
 	TargetTitle     string
 }
 
+// BlockID is documentcore.BlockID's own identity, re-declared here rather
+// than imported — this package (pages) doesn't otherwise depend on
+// documentcore, and a raw uuid.UUID already carries everything ListBlocks'
+// callers need; see PageID's own doc comment for the same reasoning.
+type BlockID uuid.UUID
+
+func (id BlockID) String() string { return uuid.UUID(id).String() }
+
+// Block is one page's block, read-only here — docs.blocks
+// (internal/blockproj's projection), the same "not this package's to
+// write" boundary as Backlink above. KindJSON/ContentJSON are
+// documentcore.BlockKind/Content's own JSON shapes, passed through as
+// raw bytes rather than parsed: this package has no reason to understand
+// block content, only to read it back out for a caller (diagnostics-service,
+// v2.3.0) that does.
+type Block struct {
+	ID          BlockID
+	ParentID    *BlockID
+	KindJSON    []byte
+	ContentJSON []byte
+}
+
 // NewPage is Create's input. After names the sibling the new page
 // follows; nil means append at the end (docs/api/pages.md § Create).
 type NewPage struct {
