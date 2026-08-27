@@ -18,8 +18,8 @@ var (
 )
 
 const insertBlockBatch = `-- name: InsertBlockBatch :batchexec
-INSERT INTO docs.blocks (id, page_id, position, kind, content)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO docs.blocks (id, page_id, parent_id, path, position, kind, content)
+VALUES ($1, $2, $3, $4::ltree, $5, $6, $7)
 `
 
 type InsertBlockBatchBatchResults struct {
@@ -31,6 +31,8 @@ type InsertBlockBatchBatchResults struct {
 type InsertBlockBatchParams struct {
 	ID       pgtype.UUID
 	PageID   pgtype.UUID
+	ParentID pgtype.UUID
+	Path     string
 	Position int32
 	Kind     []byte
 	Content  []byte
@@ -45,6 +47,8 @@ func (q *Queries) InsertBlockBatch(ctx context.Context, arg []InsertBlockBatchPa
 		vals := []interface{}{
 			a.ID,
 			a.PageID,
+			a.ParentID,
+			a.Path,
 			a.Position,
 			a.Kind,
 			a.Content,

@@ -8,15 +8,15 @@
 DELETE FROM docs.blocks WHERE page_id = $1;
 
 -- name: InsertBlock :exec
-INSERT INTO docs.blocks (id, page_id, position, kind, content)
-VALUES ($1, $2, $3, $4, $5);
+INSERT INTO docs.blocks (id, page_id, parent_id, path, position, kind, content)
+VALUES (@id, @page_id, sqlc.narg(parent_id), @path::ltree, @position, @kind, @content);
 
 -- name: InsertBlockBatch :batchexec
 -- Same statement as InsertBlock, queued via pgx.Batch — one pipelined
 -- round trip for however many blocks a page has, same reasoning as
 -- collaboration-service's own InsertOpBatch.
-INSERT INTO docs.blocks (id, page_id, position, kind, content)
-VALUES ($1, $2, $3, $4, $5);
+INSERT INTO docs.blocks (id, page_id, parent_id, path, position, kind, content)
+VALUES (@id, @page_id, sqlc.narg(parent_id), @path::ltree, @position, @kind, @content);
 
 -- name: ReplacePageLinksForPage :exec
 DELETE FROM docs.page_links WHERE from_page = $1;
@@ -49,7 +49,7 @@ VALUES (
 );
 
 -- name: ListBlocksForPage :many
-SELECT id, page_id, position, kind, content, updated_at
+SELECT id, page_id, parent_id, path::text AS path, position, kind, content, updated_at
 FROM docs.blocks
 WHERE page_id = $1
 ORDER BY position;

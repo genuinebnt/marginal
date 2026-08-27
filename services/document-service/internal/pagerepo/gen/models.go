@@ -15,6 +15,8 @@ type DocsBlock struct {
 	Kind      []byte
 	Content   []byte
 	UpdatedAt pgtype.Timestamptz
+	ParentID  pgtype.UUID
+	Path      *string
 }
 
 type DocsPage struct {

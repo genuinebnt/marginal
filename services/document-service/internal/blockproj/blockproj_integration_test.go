@@ -91,28 +91,34 @@ func textOpJSON(t *testing.T, blockID documentcore.BlockID, opType, text string)
 }
 
 func listBlocks(t *testing.T, pool *pgxpool.Pool, pageID uuid.UUID) []struct {
-	ID   uuid.UUID
-	Kind string
-	Text string
+	ID       uuid.UUID
+	Kind     string
+	Text     string
+	ParentID *uuid.UUID
+	Path     string
 } {
 	t.Helper()
 	rows, err := pool.Query(context.Background(),
-		`SELECT id, kind->>'tag', content->>'text' FROM docs.blocks WHERE page_id = $1 ORDER BY position`, pageID)
+		`SELECT id, kind->>'tag', content->>'text', parent_id, path::text FROM docs.blocks WHERE page_id = $1 ORDER BY position`, pageID)
 	require.NoError(t, err)
 	defer rows.Close()
 
 	var out []struct {
-		ID   uuid.UUID
-		Kind string
-		Text string
+		ID       uuid.UUID
+		Kind     string
+		Text     string
+		ParentID *uuid.UUID
+		Path     string
 	}
 	for rows.Next() {
 		var r struct {
-			ID   uuid.UUID
-			Kind string
-			Text string
+			ID       uuid.UUID
+			Kind     string
+			Text     string
+			ParentID *uuid.UUID
+			Path     string
 		}
-		require.NoError(t, rows.Scan(&r.ID, &r.Kind, &r.Text))
+		require.NoError(t, rows.Scan(&r.ID, &r.Kind, &r.Text, &r.ParentID, &r.Path))
 		out = append(out, r)
 	}
 	return out
@@ -164,6 +170,102 @@ func TestDeleteTextAndNoOpDoNotWipeProjectedText(t *testing.T) {
 	blocks = listBlocks(t, pool, pageID)
 	require.Len(t, blocks, 1)
 	assert.Equal(t, "hello", blocks[0].Text, "a NoOp must not wipe the projected text")
+}
+
+// TestInsertBlockUnderContainerMaterialisesParentIDAndPath pins RFC-001
+// §1's containment through the whole projection: a child block's
+// parent_id and its LTREE path (the quote's own path, plus the child's
+// label) must both land in docs.blocks, not just its position order.
+func TestInsertBlockUnderContainerMaterialisesParentIDAndPath(t *testing.T) {
+	pool := newTestPool(t)
+	pageID := createTestPage(t, pool, "Nested Page")
+	proj := blockproj.New(pool)
+	ctx := context.Background()
+
+	quote := documentcore.BlockID(uuid.Must(uuid.NewV7()))
+	require.NoError(t, proj.HandleEvent(ctx, pageID, blockOpJSON(t, documentcore.InsertBlock{
+		ID: quote, Kind: documentcore.NewQuote(),
+	})))
+	child := documentcore.BlockID(uuid.Must(uuid.NewV7()))
+	require.NoError(t, proj.HandleEvent(ctx, pageID, blockOpJSON(t, documentcore.InsertBlock{
+		ID: child, Parent: &quote, Kind: documentcore.NewParagraph(),
+	})))
+	require.NoError(t, proj.HandleEvent(ctx, pageID, textOpJSON(t, child, "InsertText", "inside the quote")))
+
+	blocks := listBlocks(t, pool, pageID)
+	require.Len(t, blocks, 2)
+	assert.Equal(t, uuid.UUID(quote), blocks[0].ID)
+	assert.Nil(t, blocks[0].ParentID)
+	assert.Equal(t, uuid.UUID(child), blocks[1].ID)
+	require.NotNil(t, blocks[1].ParentID)
+	assert.Equal(t, uuid.UUID(quote), *blocks[1].ParentID)
+	assert.Equal(t, "inside the quote", blocks[1].Text)
+	assert.True(t, strings.HasPrefix(blocks[1].Path, blocks[0].Path+"."),
+		"child's path %q must extend the parent's own path %q", blocks[1].Path, blocks[0].Path)
+}
+
+// TestMoveBlockReparentsWholeSubtreeInProjection confirms the same
+// whole-subtree relocation Page.Apply's own MoveBlock case implements
+// (documentcore/page_test.go's TestMoveBlockRelocatesWholeSubtreeAsOneUnit)
+// survives the projector round trip: a container's child stays put,
+// still parented to it, after the container itself moves.
+func TestMoveBlockReparentsWholeSubtreeInProjection(t *testing.T) {
+	pool := newTestPool(t)
+	pageID := createTestPage(t, pool, "Reparent Page")
+	proj := blockproj.New(pool)
+	ctx := context.Background()
+
+	quote := documentcore.BlockID(uuid.Must(uuid.NewV7()))
+	require.NoError(t, proj.HandleEvent(ctx, pageID, blockOpJSON(t, documentcore.InsertBlock{ID: quote, Kind: documentcore.NewQuote()})))
+	child := documentcore.BlockID(uuid.Must(uuid.NewV7()))
+	require.NoError(t, proj.HandleEvent(ctx, pageID, blockOpJSON(t, documentcore.InsertBlock{ID: child, Parent: &quote, Kind: documentcore.NewParagraph()})))
+	target := documentcore.BlockID(uuid.Must(uuid.NewV7()))
+	require.NoError(t, proj.HandleEvent(ctx, pageID, blockOpJSON(t, documentcore.InsertBlock{ID: target, After: &quote, Kind: documentcore.NewToggle()})))
+
+	require.NoError(t, proj.HandleEvent(ctx, pageID, blockOpJSON(t, documentcore.MoveBlock{
+		ID: quote, FromParent: nil, From: nil, ToParent: &target, To: nil,
+	})))
+
+	blocks := listBlocks(t, pool, pageID)
+	require.Len(t, blocks, 3)
+	assert.Equal(t, []uuid.UUID{uuid.UUID(target), uuid.UUID(quote), uuid.UUID(child)},
+		[]uuid.UUID{blocks[0].ID, blocks[1].ID, blocks[2].ID})
+	require.NotNil(t, blocks[1].ParentID)
+	assert.Equal(t, uuid.UUID(target), *blocks[1].ParentID, "the moved subtree's own root is reparented")
+	require.NotNil(t, blocks[2].ParentID)
+	assert.Equal(t, uuid.UUID(quote), *blocks[2].ParentID, "its child keeps its existing parent")
+}
+
+// TestProjectorRehydratesNestingFromPersistedState confirms a fresh
+// Projector (a process restart) reconstructs Parent from parent_id
+// correctly, not just each block's own kind/content — the nested
+// counterpart to TestProjectorRehydratesFromPersistedStateAfterRestart.
+func TestProjectorRehydratesNestingFromPersistedState(t *testing.T) {
+	pool := newTestPool(t)
+	pageID := createTestPage(t, pool, "Rehydrate Nested Page")
+	ctx := context.Background()
+
+	first := blockproj.New(pool)
+	quote := documentcore.BlockID(uuid.Must(uuid.NewV7()))
+	require.NoError(t, first.HandleEvent(ctx, pageID, blockOpJSON(t, documentcore.InsertBlock{ID: quote, Kind: documentcore.NewQuote()})))
+	child := documentcore.BlockID(uuid.Must(uuid.NewV7()))
+	require.NoError(t, first.HandleEvent(ctx, pageID, blockOpJSON(t, documentcore.InsertBlock{ID: child, Parent: &quote, Kind: documentcore.NewParagraph()})))
+
+	// A brand new Projector, as a process restart would create — it must
+	// rehydrate quote/child's parent relationship from docs.blocks before
+	// accepting a further op that depends on it (inserting a second
+	// child after the first, which needs to know the first's real
+	// parent/position to place the new one correctly).
+	second := blockproj.New(pool)
+	grandchild := documentcore.BlockID(uuid.Must(uuid.NewV7()))
+	require.NoError(t, second.HandleEvent(ctx, pageID, blockOpJSON(t, documentcore.InsertBlock{ID: grandchild, Parent: &quote, After: &child, Kind: documentcore.NewParagraph()})))
+
+	blocks := listBlocks(t, pool, pageID)
+	require.Len(t, blocks, 3)
+	assert.Equal(t, []uuid.UUID{uuid.UUID(quote), uuid.UUID(child), uuid.UUID(grandchild)},
+		[]uuid.UUID{blocks[0].ID, blocks[1].ID, blocks[2].ID})
+	require.NotNil(t, blocks[2].ParentID)
+	assert.Equal(t, uuid.UUID(quote), *blocks[2].ParentID)
 }
 
 func TestSetBlockKindAndMoveBlockReflectInProjection(t *testing.T) {

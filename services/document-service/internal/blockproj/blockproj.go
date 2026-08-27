@@ -13,8 +13,11 @@
 // treating the most recent InsertText.text as a block's current full
 // content reproduces the same end state a true anchor-resolving replay
 // would, without needing that machinery duplicated here. Structural ops
-// (documentcore.Op) are decoded and applied via the shared documentcore
-// module directly — no second implementation of Page.Apply.
+// (documentcore.Op) hold a real documentcore.Page and apply via
+// Page.Apply directly — RFC-001 §1's containment (Quote/Toggle/List/
+// ListItem nesting) needs the same depth-first-order/cycle/container
+// bookkeeping Page.Apply already implements and tests, so this package
+// doesn't reimplement any of it a second time.
 //
 // Plain core NATS, not JetStream, same accepted gap as
 // notification-service's auth.user_registered consumer: an event
@@ -32,6 +35,7 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -75,30 +79,20 @@ type wireEvent struct {
 // enough to build real backlinks now without waiting on marks to exist.
 var pageLinkPattern = regexp.MustCompile(`\[\[([^\[\]]+)\]\]`)
 
-type blockState struct {
-	kind documentcore.BlockKind
-	text string
-}
-
-type pageState struct {
-	order  []documentcore.BlockID
-	blocks map[documentcore.BlockID]*blockState
-}
-
-// Projector holds one pageState per page touched since this process
-// started, hydrated lazily from docs.blocks on first touch (never from
-// collab.ops directly — this service has no access to that database,
-// ADR-003). Safe for concurrent use; NATS delivers to one handler
-// goroutine at a time per subscription, but a mutex costs nothing and
-// removes any doubt.
+// Projector holds one documentcore.Page per page touched since this
+// process started, hydrated lazily from docs.blocks on first touch
+// (never from collab.ops directly — this service has no access to that
+// database, ADR-003). Safe for concurrent use; NATS delivers to one
+// handler goroutine at a time per subscription, but a mutex costs
+// nothing and removes any doubt.
 type Projector struct {
 	mu    sync.Mutex
 	pool  *pgxpool.Pool
-	pages map[uuid.UUID]*pageState
+	pages map[uuid.UUID]*documentcore.Page
 }
 
 func New(pool *pgxpool.Pool) *Projector {
-	return &Projector{pool: pool, pages: make(map[uuid.UUID]*pageState)}
+	return &Projector{pool: pool, pages: make(map[uuid.UUID]*documentcore.Page)}
 }
 
 // HandleEvent applies one collab.ops_flushed event to pageID's projection
@@ -109,14 +103,14 @@ func (p *Projector) HandleEvent(ctx context.Context, pageID uuid.UUID, payload [
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	ps, ok := p.pages[pageID]
+	page, ok := p.pages[pageID]
 	if !ok {
-		loaded, err := p.loadPageState(ctx, pageID)
+		loaded, err := p.loadPage(ctx, pageID)
 		if err != nil {
 			return fmt.Errorf("blockproj: loading existing state for %s: %w", pageID, err)
 		}
-		ps = loaded
-		p.pages[pageID] = ps
+		page = loaded
+		p.pages[pageID] = page
 	}
 
 	var envelope struct {
@@ -128,7 +122,7 @@ func (p *Projector) HandleEvent(ctx context.Context, pageID uuid.UUID, payload [
 
 	switch envelope.Scope {
 	case "block":
-		if err := applyBlockOp(ps, payload); err != nil {
+		if err := applyBlockOp(page, payload); err != nil {
 			return fmt.Errorf("blockproj: applying block op: %w", err)
 		}
 	case "text":
@@ -146,77 +140,73 @@ func (p *Projector) HandleEvent(ctx context.Context, pageID uuid.UUID, payload [
 		if err != nil {
 			return fmt.Errorf("blockproj: invalid block id %q: %w", t.Block, err)
 		}
-		applyTextOp(ps, documentcore.BlockID(blockID), t.Op.Type, t.Op.Text)
+		applyTextOp(page, documentcore.BlockID(blockID), t.Op.Type, t.Op.Text)
 	default:
 		return fmt.Errorf("blockproj: unknown op scope %q", envelope.Scope)
 	}
 
-	return p.persist(ctx, pageID, ps)
+	return p.persist(ctx, pageID, page)
 }
 
-func (p *Projector) loadPageState(ctx context.Context, pageID uuid.UUID) (*pageState, error) {
+func (p *Projector) loadPage(ctx context.Context, pageID uuid.UUID) (*documentcore.Page, error) {
 	q := blockrepo.New(p.pool)
 	rows, err := q.ListBlocksForPage(ctx, toPgUUID(pageID))
 	if err != nil {
 		return nil, err
 	}
-	ps := &pageState{blocks: make(map[documentcore.BlockID]*blockState, len(rows))}
+	// title is unused — docs.pages.title (RenamePage) is the real source
+	// of truth (see applyBlockOp's SetTitle case); this Page only ever
+	// needs its Blocks.
+	page := documentcore.NewPage(documentcore.PageID(pageID), "")
+	// rows are already position-ordered (ListBlocksForPage's own ORDER
+	// BY), and position is always written as this page's depth-first
+	// order (persist, below) — appending in that same order reconstructs
+	// Page.Blocks' own required invariant without re-sorting.
+	page.Blocks = make([]documentcore.Block, 0, len(rows))
 	for _, r := range rows {
 		var kind documentcore.BlockKind
 		if err := json.Unmarshal(r.Kind, &kind); err != nil {
 			return nil, fmt.Errorf("decoding stored kind: %w", err)
 		}
-		var content struct {
-			Text string `json:"text"`
-		}
+		var content documentcore.Content
 		if err := json.Unmarshal(r.Content, &content); err != nil {
 			return nil, fmt.Errorf("decoding stored content: %w", err)
 		}
-		id := documentcore.BlockID(fromPgUUID(r.ID))
-		ps.order = append(ps.order, id)
-		ps.blocks[id] = &blockState{kind: kind, text: content.Text}
+		page.Blocks = append(page.Blocks, documentcore.Block{
+			ID:      documentcore.BlockID(fromPgUUID(r.ID)),
+			Parent:  fromPgUUIDPtr(r.ParentID),
+			Kind:    kind,
+			Content: content,
+		})
 	}
-	return ps, nil
+	return &page, nil
 }
 
 // applyBlockOp decodes a "block"-scope payload directly via
 // documentcore.UnmarshalOp (the same type-tagged envelope
 // documentcore.MarshalOp produces; the extra "scope" field is simply
-// ignored by encoding/json) and applies it to ps's order/blocks —
-// mirroring documentcore.Page.Apply's own switch, but without its
-// precondition checks: those already ran, authoritatively, in
-// collaboration-service before this op was ever committed. A projector's
-// job is to reflect current state, not re-validate it.
-func applyBlockOp(ps *pageState, payload []byte) error {
+// ignored by encoding/json) and applies it via page.Apply itself — no
+// second implementation of the block tree's own order/containment
+// logic. Page.Apply's preconditions run again here too, unlike this
+// package's earlier design (which skipped them, trusting collaboration-
+// service's own authoritative check): harmless when they hold, which
+// they always should since the op already committed upstream, and a
+// strictly better failure mode when they somehow don't — a named, typed
+// error instead of a silently wrong projection.
+func applyBlockOp(page *documentcore.Page, payload []byte) error {
 	op, err := documentcore.UnmarshalOp(payload)
 	if err != nil {
 		return err
 	}
-	switch op := op.(type) {
-	case documentcore.InsertBlock:
-		insertAfter(ps, op.ID, op.After)
-		ps.blocks[op.ID] = &blockState{kind: op.Kind, text: op.Content.Text}
-	case documentcore.DeleteBlock:
-		removeFromOrder(ps, op.Tombstone.ID)
-		delete(ps.blocks, op.Tombstone.ID)
-	case documentcore.SetBlockKind:
-		if b, ok := ps.blocks[op.ID]; ok {
-			b.kind = op.To
-		}
-	case documentcore.SetBlockContent:
-		if b, ok := ps.blocks[op.Block]; ok {
-			b.text = op.Content.Text
-		}
-	case documentcore.MoveBlock:
-		removeFromOrder(ps, op.ID)
-		insertAfter(ps, op.ID, op.To)
-	case documentcore.SetTitle:
+	if _, ok := op.(documentcore.SetTitle); ok {
 		// Not projected — docs.pages.title (RenamePage) is already the
 		// source of truth for a page's title; nothing here duplicates it.
-	default:
-		return fmt.Errorf("blockproj: unknown block op type %T", op)
+		// (Applying it against this Page's own always-empty Title would
+		// also just fail Page.Apply's own precondition check every time,
+		// since nothing here ever keeps that shadow field in sync.)
+		return nil
 	}
-	return nil
+	return page.Apply(op)
 }
 
 // applyTextOp treats the most recent InsertText's text as blockID's
@@ -228,55 +218,50 @@ func applyBlockOp(ps *pageState, payload []byte) error {
 // no content change at all — treating either as "clear to empty" wiped a
 // block's projected text to "" with no following event to correct it
 // whenever the replace's insert half was itself empty, or the op really
-// was a no-op. An unknown block id (a redelivered event for a block
-// deleted since) is silently ignored, matching can_apply's authorization
-// having already run upstream.
-func applyTextOp(ps *pageState, blockID documentcore.BlockID, opType, text string) {
+// was a no-op. Only Text (not Marks) is ever touched here — a block that
+// has acquired any mark switches to SetBlockContent for every future
+// edit (web/src/collab/marks.ts's own doc comment), so a block still
+// receiving character-level InsertText never has marks to begin with.
+// An unknown block id (a redelivered event for a block deleted since) is
+// silently ignored, matching can_apply's authorization having already
+// run upstream.
+func applyTextOp(page *documentcore.Page, blockID documentcore.BlockID, opType, text string) {
 	if opType != "InsertText" {
 		return
 	}
-	b, ok := ps.blocks[blockID]
-	if !ok {
-		return
+	if i, ok := indexOfBlock(page, blockID); ok {
+		page.Blocks[i].Content.Text = text
 	}
-	b.text = text
 }
 
-func indexOf(ps *pageState, id documentcore.BlockID) int {
-	for i, x := range ps.order {
-		if x == id {
-			return i
+func indexOfBlock(page *documentcore.Page, id documentcore.BlockID) (int, bool) {
+	for i := range page.Blocks {
+		if page.Blocks[i].ID == id {
+			return i, true
 		}
 	}
-	return -1
+	return -1, false
 }
 
-func removeFromOrder(ps *pageState, id documentcore.BlockID) {
-	if i := indexOf(ps, id); i >= 0 {
-		ps.order = append(ps.order[:i], ps.order[i+1:]...)
-	}
-}
-
-// insertAfter places id immediately after afterID's current position (nil
-// after means the document start) — mirrors documentcore.Page's own
-// After-pointer semantics for InsertBlock/MoveBlock.
-func insertAfter(ps *pageState, id documentcore.BlockID, after *documentcore.BlockID) {
-	idx := 0
-	if after != nil {
-		if i := indexOf(ps, *after); i >= 0 {
-			idx = i + 1
-		}
-	}
-	ps.order = append(ps.order, documentcore.BlockID{})
-	copy(ps.order[idx+1:], ps.order[idx:])
-	ps.order[idx] = id
+// blockPathLabel is docs.blocks.path's LTREE label for a block — same
+// convention as internal/pages.pathLabel (a "b" prefix here, not "p",
+// purely for readability when debugging a row; the two tables' paths
+// never mix), since LTREE labels may only contain letters, digits, and
+// underscores.
+func blockPathLabel(id documentcore.BlockID) string {
+	return "b" + strings.ReplaceAll(uuid.UUID(id).String(), "-", "")
 }
 
 // persist rewrites pageID's whole docs.blocks/docs.page_links projection
-// from ps — one transaction, delete-then-bulk-insert both tables (the
+// from page — one transaction, delete-then-bulk-insert both tables (the
 // package doc comment explains why a full rewrite is the right amount of
-// simplicity for a rebuildable read model at this repo's scale).
-func (p *Projector) persist(ctx context.Context, pageID uuid.UUID, ps *pageState) error {
+// simplicity for a rebuildable read model at this repo's scale). Each
+// block's path is computed here, not carried on documentcore.Block
+// itself — RFC-001 §1 "Persisted form is not the in-memory form":
+// materialising the full ancestry is this projection's job, done in one
+// forward pass since page.Blocks is already depth-first-ordered (a
+// parent always appears before its own children).
+func (p *Projector) persist(ctx context.Context, pageID uuid.UUID, page *documentcore.Page) error {
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin: %w", err)
@@ -288,32 +273,39 @@ func (p *Projector) persist(ctx context.Context, pageID uuid.UUID, ps *pageState
 		return fmt.Errorf("clearing existing blocks: %w", err)
 	}
 
-	blockParams := make([]blockrepo.InsertBlockBatchParams, 0, len(ps.order))
+	paths := make(map[documentcore.BlockID]string, len(page.Blocks))
+	blockParams := make([]blockrepo.InsertBlockBatchParams, 0, len(page.Blocks))
 	seenLinks := make(map[string]bool) // dedupes (block, title) within this one page — docs.page_links' UNIQUE constraint
 	linkParams := make([]blockrepo.InsertPageLinkBatchParams, 0)
-	for i, id := range ps.order {
-		b := ps.blocks[id]
-		kindJSON, err := json.Marshal(b.kind)
-		if err != nil {
-			return fmt.Errorf("marshaling kind for block %s: %w", id, err)
+	for i, b := range page.Blocks {
+		path := blockPathLabel(b.ID)
+		if b.Parent != nil {
+			path = paths[*b.Parent] + "." + path
 		}
-		contentJSON, err := json.Marshal(documentcore.Content{Text: b.text})
+		paths[b.ID] = path
+
+		kindJSON, err := json.Marshal(b.Kind)
 		if err != nil {
-			return fmt.Errorf("marshaling content for block %s: %w", id, err)
+			return fmt.Errorf("marshaling kind for block %s: %w", b.ID, err)
+		}
+		contentJSON, err := json.Marshal(b.Content)
+		if err != nil {
+			return fmt.Errorf("marshaling content for block %s: %w", b.ID, err)
 		}
 		blockParams = append(blockParams, blockrepo.InsertBlockBatchParams{
-			ID: toPgUUID(uuid.UUID(id)), PageID: toPgUUID(pageID), Position: int32(i), Kind: kindJSON, Content: contentJSON,
+			ID: toPgUUID(uuid.UUID(b.ID)), PageID: toPgUUID(pageID), ParentID: toPgUUIDPtr(b.Parent),
+			Path: path, Position: int32(i), Kind: kindJSON, Content: contentJSON,
 		})
 
-		for _, title := range extractLinkTitles(b.text) {
-			key := id.String() + "\x00" + title
+		for _, title := range extractLinkTitles(b.Content.Text) {
+			key := b.ID.String() + "\x00" + title
 			if seenLinks[key] {
 				continue
 			}
 			seenLinks[key] = true
 			linkID := uuid.Must(uuid.NewV7())
 			linkParams = append(linkParams, blockrepo.InsertPageLinkBatchParams{
-				ID: toPgUUID(linkID), FromPage: toPgUUID(pageID), FromBlock: toPgUUID(uuid.UUID(id)),
+				ID: toPgUUID(linkID), FromPage: toPgUUID(pageID), FromBlock: toPgUUID(uuid.UUID(b.ID)),
 				TargetTitle: title, TargetTitleForLookup: title,
 			})
 		}
@@ -364,11 +356,26 @@ func extractLinkTitles(text string) []string {
 func toPgUUID(id uuid.UUID) pgtype.UUID   { return pgtype.UUID{Bytes: id, Valid: true} }
 func fromPgUUID(id pgtype.UUID) uuid.UUID { return uuid.UUID(id.Bytes) }
 
+func toPgUUIDPtr(id *documentcore.BlockID) pgtype.UUID {
+	if id == nil {
+		return pgtype.UUID{Valid: false}
+	}
+	return toPgUUID(uuid.UUID(*id))
+}
+
+func fromPgUUIDPtr(id pgtype.UUID) *documentcore.BlockID {
+	if !id.Valid {
+		return nil
+	}
+	b := documentcore.BlockID(fromPgUUID(id))
+	return &b
+}
+
 // handleEventTimeout bounds one HandleEvent call — the DB write inside it
 // must not hang the NATS delivery goroutine forever on a stuck connection;
 // see the package doc comment on why a missed/late event here is already
 // an accepted gap at this repo's scope, so this timeout errs toward "give
-// up and let the next event resync via a full loadPageState," not toward
+// up and let the next event resync via a full loadPage," not toward
 // retrying indefinitely.
 const handleEventTimeout = 10 * time.Second
 

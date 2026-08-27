@@ -12,13 +12,15 @@ import (
 )
 
 const insertBlock = `-- name: InsertBlock :exec
-INSERT INTO docs.blocks (id, page_id, position, kind, content)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO docs.blocks (id, page_id, parent_id, path, position, kind, content)
+VALUES ($1, $2, $3, $4::ltree, $5, $6, $7)
 `
 
 type InsertBlockParams struct {
 	ID       pgtype.UUID
 	PageID   pgtype.UUID
+	ParentID pgtype.UUID
+	Path     string
 	Position int32
 	Kind     []byte
 	Content  []byte
@@ -28,6 +30,8 @@ func (q *Queries) InsertBlock(ctx context.Context, arg InsertBlockParams) error 
 	_, err := q.db.Exec(ctx, insertBlock,
 		arg.ID,
 		arg.PageID,
+		arg.ParentID,
+		arg.Path,
 		arg.Position,
 		arg.Kind,
 		arg.Content,
@@ -119,24 +123,37 @@ func (q *Queries) ListBacklinksForPage(ctx context.Context, targetPage pgtype.UU
 }
 
 const listBlocksForPage = `-- name: ListBlocksForPage :many
-SELECT id, page_id, position, kind, content, updated_at
+SELECT id, page_id, parent_id, path::text AS path, position, kind, content, updated_at
 FROM docs.blocks
 WHERE page_id = $1
 ORDER BY position
 `
 
-func (q *Queries) ListBlocksForPage(ctx context.Context, pageID pgtype.UUID) ([]DocsBlock, error) {
+type ListBlocksForPageRow struct {
+	ID        pgtype.UUID
+	PageID    pgtype.UUID
+	ParentID  pgtype.UUID
+	Path      string
+	Position  int32
+	Kind      []byte
+	Content   []byte
+	UpdatedAt pgtype.Timestamptz
+}
+
+func (q *Queries) ListBlocksForPage(ctx context.Context, pageID pgtype.UUID) ([]ListBlocksForPageRow, error) {
 	rows, err := q.db.Query(ctx, listBlocksForPage, pageID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []DocsBlock
+	var items []ListBlocksForPageRow
 	for rows.Next() {
-		var i DocsBlock
+		var i ListBlocksForPageRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.PageID,
+			&i.ParentID,
+			&i.Path,
 			&i.Position,
 			&i.Kind,
 			&i.Content,
