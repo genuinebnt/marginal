@@ -18,6 +18,7 @@
 package main
 
 import (
+	"fmt"
 	"syscall/js"
 
 	"marginal/documentcore"
@@ -30,6 +31,20 @@ import (
 // between "local wasm call" and "network call to the real service."
 func jsonArg(args []js.Value, i int) []byte {
 	return []byte(args[i].String())
+}
+
+// requireArgs validates that an exported function was called with
+// exactly n arguments before any jsonArg call indexes into args — a
+// malformed call (a JS-side bug passing too few arguments) would
+// otherwise panic on an out-of-range index, and an unrecovered panic
+// inside a js.Func callback aborts the entire wasm module (one Go
+// runtime per loaded module), not just this one call, silently breaking
+// every future call the page makes for the rest of its session.
+func requireArgs(name string, args []js.Value, n int) error {
+	if len(args) != n {
+		return fmt.Errorf("wasm: %s: expected %d argument(s), got %d", name, n, len(args))
+	}
+	return nil
 }
 
 // result builds the {value, error} envelope every exported function
@@ -49,6 +64,9 @@ func result(value []byte, err error) js.Value {
 }
 
 func newPage(this js.Value, args []js.Value) any {
+	if err := requireArgs("documentcoreNewPage", args, 1); err != nil {
+		return result(nil, err)
+	}
 	var req struct {
 		ID    string `json:"id"`
 		Title string `json:"title"`
@@ -66,6 +84,9 @@ func newPage(this js.Value, args []js.Value) any {
 }
 
 func applyOp(this js.Value, args []js.Value) any {
+	if err := requireArgs("documentcoreApplyOp", args, 2); err != nil {
+		return result(nil, err)
+	}
 	var page documentcore.Page
 	if err := unmarshal(jsonArg(args, 0), &page); err != nil {
 		return result(nil, err)
@@ -82,6 +103,9 @@ func applyOp(this js.Value, args []js.Value) any {
 }
 
 func invertOp(this js.Value, args []js.Value) any {
+	if err := requireArgs("documentcoreInvertOp", args, 1); err != nil {
+		return result(nil, err)
+	}
 	op, err := documentcore.UnmarshalOp(jsonArg(args, 0))
 	if err != nil {
 		return result(nil, err)
