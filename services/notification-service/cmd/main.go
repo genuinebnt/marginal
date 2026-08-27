@@ -18,6 +18,8 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/nats-io/nats.go"
 
+	"marginal/envconfig"
+
 	"marginal/notification-service/internal/migrate"
 	"marginal/notification-service/internal/notify"
 )
@@ -33,9 +35,9 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	databaseURL := os.Getenv("DATABASE_URL")
-	if databaseURL == "" {
-		return errRequiredEnv("DATABASE_URL")
+	databaseURL, err := envconfig.RequiredEnv("DATABASE_URL")
+	if err != nil {
+		return err
 	}
 
 	sqlDB, err := sql.Open("pgx", databaseURL)
@@ -53,7 +55,7 @@ func run() error {
 	}
 	defer pool.Close()
 
-	natsURL := envOr("NATS_URL", nats.DefaultURL)
+	natsURL := envconfig.EnvOr("NATS_URL", nats.DefaultURL)
 	nc, err := nats.Connect(natsURL)
 	if err != nil {
 		return err
@@ -74,7 +76,7 @@ func run() error {
 	})
 	notify.NewHandler(repo).Mount(mux)
 
-	addr := envOr("NOTIFICATION_SERVICE_HTTP_ADDR", ":8007")
+	addr := envconfig.EnvOr("NOTIFICATION_SERVICE_HTTP_ADDR", ":8007")
 	httpServer := &http.Server{Addr: addr, Handler: withCORS(mux)}
 
 	errCh := make(chan error, 1)
@@ -101,7 +103,7 @@ func run() error {
 // wildcard origin could leak (auth is the bearer-less header/query
 // stand-in pages.md/auth.md/collaboration.md all document).
 func withCORS(next http.Handler) http.Handler {
-	origin := envOr("CORS_ALLOWED_ORIGIN", "*")
+	origin := envconfig.EnvOr("CORS_ALLOWED_ORIGIN", "*")
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
@@ -113,14 +115,3 @@ func withCORS(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
-
-func envOr(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return fallback
-}
-
-type errRequiredEnv string
-
-func (e errRequiredEnv) Error() string { return "missing required env var: " + string(e) }

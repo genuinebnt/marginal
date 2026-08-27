@@ -23,6 +23,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 
+	"marginal/envconfig"
+
 	documentv1 "marginal/document-service/genproto/documentv1"
 	"marginal/document-service/internal/blockproj"
 	"marginal/document-service/internal/migrate"
@@ -40,9 +42,9 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	databaseURL := os.Getenv("DATABASE_URL")
-	if databaseURL == "" {
-		return errRequiredEnv("DATABASE_URL")
+	databaseURL, err := envconfig.RequiredEnv("DATABASE_URL")
+	if err != nil {
+		return err
 	}
 
 	sqlDB, err := sql.Open("pgx", databaseURL)
@@ -60,7 +62,7 @@ func run() error {
 	}
 	defer pool.Close()
 
-	natsURL := envOr("NATS_URL", nats.DefaultURL)
+	natsURL := envconfig.EnvOr("NATS_URL", nats.DefaultURL)
 	nc, err := nats.Connect(natsURL)
 	if err != nil {
 		return err
@@ -74,8 +76,8 @@ func run() error {
 	}
 	defer func() { _ = unsubscribe() }()
 
-	grpcAddr := envOr("DOCUMENT_SERVICE_GRPC_ADDR", ":9001")
-	httpAddr := envOr("DOCUMENT_SERVICE_HTTP_ADDR", ":8001")
+	grpcAddr := envconfig.EnvOr("DOCUMENT_SERVICE_GRPC_ADDR", ":9001")
+	httpAddr := envconfig.EnvOr("DOCUMENT_SERVICE_HTTP_ADDR", ":8001")
 
 	grpcServer := grpc.NewServer()
 	documentv1.RegisterPageServiceServer(grpcServer, pages.NewServer(pages.NewPostgresRepo(pool)))
@@ -116,14 +118,3 @@ func healthMux() *http.ServeMux {
 	})
 	return mux
 }
-
-func envOr(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return fallback
-}
-
-type errRequiredEnv string
-
-func (e errRequiredEnv) Error() string { return "missing required env var: " + string(e) }

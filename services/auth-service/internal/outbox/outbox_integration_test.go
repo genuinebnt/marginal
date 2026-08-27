@@ -19,6 +19,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
+	"marginal/outboxpoll"
+
 	"marginal/auth-service/internal/authrepo/gen"
 	"marginal/auth-service/internal/migrate"
 	"marginal/auth-service/internal/outbox"
@@ -87,7 +89,7 @@ func TestPollerPublishesAndMarksPublished(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = sub.Unsubscribe() })
 
-	poller := outbox.NewPoller(pool, nc, outbox.WithInterval(20*time.Millisecond))
+	poller := outbox.NewPoller(pool, nc, outboxpoll.WithInterval(20*time.Millisecond))
 	pollCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	go poller.Run(pollCtx, func(err error) { t.Logf("poller error: %v", err) })
@@ -137,7 +139,7 @@ func TestPollerSkipsAlreadyPublishedRows(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = sub.Unsubscribe() })
 
-	poller := outbox.NewPoller(pool, nc, outbox.WithInterval(20*time.Millisecond))
+	poller := outbox.NewPoller(pool, nc, outboxpoll.WithInterval(20*time.Millisecond))
 	pollCtx, cancel := context.WithCancel(ctx)
 	go poller.Run(pollCtx, func(err error) { t.Logf("poller error: %v", err) })
 

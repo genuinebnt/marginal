@@ -25,6 +25,8 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/nats-io/nats.go"
 
+	"marginal/envconfig"
+
 	"marginal/collaboration-service/internal/migrate"
 	"marginal/collaboration-service/internal/opstore"
 	"marginal/collaboration-service/internal/outbox"
@@ -43,9 +45,9 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	databaseURL := os.Getenv("DATABASE_URL")
-	if databaseURL == "" {
-		return errRequiredEnv("DATABASE_URL")
+	databaseURL, err := envconfig.RequiredEnv("DATABASE_URL")
+	if err != nil {
+		return err
 	}
 
 	sqlDB, err := sql.Open("pgx", databaseURL)
@@ -63,7 +65,7 @@ func run() error {
 	}
 	defer pool.Close()
 
-	natsURL := envOr("NATS_URL", nats.DefaultURL)
+	natsURL := envconfig.EnvOr("NATS_URL", nats.DefaultURL)
 	nc, err := nats.Connect(natsURL)
 	if err != nil {
 		return err
@@ -79,7 +81,7 @@ func run() error {
 	// deploy/terraform/README.md's "known limitations" on what an
 	// abrupt (not orderly) loss of this directory costs. A plain local
 	// dir is the right default for local dev and this repo's demo scale.
-	walDir := envOr("COLLAB_WAL_DIR", "./data/collab-wal")
+	walDir := envconfig.EnvOr("COLLAB_WAL_DIR", "./data/collab-wal")
 	if err := os.MkdirAll(walDir, 0o700); err != nil {
 		return err
 	}
@@ -98,7 +100,7 @@ func run() error {
 		}
 	}()
 
-	httpAddr := envOr("COLLABORATION_SERVICE_HTTP_ADDR", ":8002")
+	httpAddr := envconfig.EnvOr("COLLABORATION_SERVICE_HTTP_ADDR", ":8002")
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -144,14 +146,3 @@ func wsAcceptOptions() *websocket.AcceptOptions {
 	}
 	return &websocket.AcceptOptions{OriginPatterns: patterns}
 }
-
-func envOr(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return fallback
-}
-
-type errRequiredEnv string
-
-func (e errRequiredEnv) Error() string { return "missing required env var: " + string(e) }

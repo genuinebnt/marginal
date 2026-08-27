@@ -26,6 +26,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 
+	"marginal/envconfig"
+
 	authv1 "marginal/auth-service/genproto/authv1"
 	"marginal/auth-service/internal/api"
 	"marginal/auth-service/internal/authservice"
@@ -48,11 +50,11 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	databaseURL := os.Getenv("DATABASE_URL")
-	if databaseURL == "" {
-		return errRequiredEnv("DATABASE_URL")
+	databaseURL, err := envconfig.RequiredEnv("DATABASE_URL")
+	if err != nil {
+		return err
 	}
-	redisAddr := envOr("REDIS_ADDR", "localhost:6379")
+	redisAddr := envconfig.EnvOr("REDIS_ADDR", "localhost:6379")
 
 	sqlDB, err := sql.Open("pgx", databaseURL)
 	if err != nil {
@@ -75,7 +77,7 @@ func run() error {
 		return err
 	}
 
-	natsURL := envOr("NATS_URL", nats.DefaultURL)
+	natsURL := envconfig.EnvOr("NATS_URL", nats.DefaultURL)
 	nc, err := nats.Connect(natsURL)
 	if err != nil {
 		return err
@@ -107,8 +109,8 @@ func run() error {
 		Logger:       logger,
 	})
 
-	grpcAddr := envOr("AUTH_SERVICE_GRPC_ADDR", ":9006")
-	httpAddr := envOr("AUTH_SERVICE_HTTP_ADDR", ":8006")
+	grpcAddr := envconfig.EnvOr("AUTH_SERVICE_GRPC_ADDR", ":9006")
+	httpAddr := envconfig.EnvOr("AUTH_SERVICE_HTTP_ADDR", ":8006")
 
 	grpcServer := grpc.NewServer()
 	authv1.RegisterAuthServiceServer(grpcServer, &api.Server{Service: svc})
@@ -153,14 +155,3 @@ func httpMux(keyStore keys.Store) *http.ServeMux {
 	})
 	return mux
 }
-
-func envOr(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return fallback
-}
-
-type errRequiredEnv string
-
-func (e errRequiredEnv) Error() string { return "missing required env var: " + string(e) }

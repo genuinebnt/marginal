@@ -1,22 +1,25 @@
 // Package outbox is auth-service's own outbox (DATA_MODEL.md § Outbox) —
 // the Postgres write happens in the same transaction as whatever domain
-// change produced it (Register, for auth.user_registered), and a
-// separate Poller publishes it to NATS afterward. Postgres write + NATS
-// publish is a dual write with no distributed transaction, so this
-// two-phase shape — durable row first, publish later, at-least-once — is
-// what DATA_MODEL.md's own outbox section prescribes, not a shortcut.
+// change produced it (Register, for auth.user_registered). The actual
+// claim-publish-mark polling loop lives in the shared marginal/outboxpoll
+// module (collaboration-service's own internal/outbox used to duplicate
+// it byte-for-byte); this package supplies outboxpoll the three things
+// that are genuinely specific to auth.outbox: how to claim/mark rows via
+// authrepo, and this service's own wireEvent shape.
 package outbox
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/nats-io/nats.go"
+
+	"marginal/outboxpoll"
 
 	"marginal/auth-service/internal/authrepo/gen"
 )
@@ -77,88 +80,27 @@ type wireEvent struct {
 	Payload json.RawMessage `json:"payload"`
 }
 
-// Poller periodically claims unpublished outbox rows and publishes them.
-// One poller instance is safe to run per process; more than one replica
-// running it concurrently is also safe (FOR UPDATE SKIP LOCKED — see
-// ClaimUnpublishedOutboxEvents's own doc comment).
-type Poller struct {
-	pool      *pgxpool.Pool
-	nc        *nats.Conn
-	batchSize int32
-	interval  time.Duration
-}
-
-type Option func(*Poller)
-
-func WithBatchSize(n int32) Option        { return func(p *Poller) { p.batchSize = n } }
-func WithInterval(d time.Duration) Option { return func(p *Poller) { p.interval = d } }
-
-const (
-	defaultBatchSize = 20
-	defaultInterval  = 500 * time.Millisecond
-)
-
-func NewPoller(pool *pgxpool.Pool, nc *nats.Conn, opts ...Option) *Poller {
-	p := &Poller{pool: pool, nc: nc, batchSize: defaultBatchSize, interval: defaultInterval}
-	for _, opt := range opts {
-		opt(p)
-	}
-	return p
-}
-
-// Run blocks, polling until ctx is done. Call it in its own goroutine.
-func (p *Poller) Run(ctx context.Context, onError func(error)) {
-	ticker := time.NewTicker(p.interval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			if err := p.pollOnce(ctx); err != nil {
-				onError(err)
-			}
-		}
-	}
-}
-
-func (p *Poller) pollOnce(ctx context.Context) error {
-	tx, err := p.pool.Begin(ctx)
-	if err != nil {
-		return fmt.Errorf("outbox: poller: begin: %w", err)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := authrepo.New(tx)
-
-	rows, err := q.ClaimUnpublishedOutboxEvents(ctx, p.batchSize)
-	if err != nil {
-		return fmt.Errorf("outbox: poller: claiming: %w", err)
-	}
-	if len(rows) == 0 {
-		return nil
-	}
-
-	published := make([]pgtype.UUID, 0, len(rows))
-	for _, row := range rows {
-		envelope, err := json.Marshal(wireEvent{ID: row.ID.Bytes, Payload: row.Payload})
+// NewPoller wires up the shared outboxpoll.Poller with auth.outbox's own
+// claim/mark queries and wireEvent shape — the polling loop itself
+// (transaction, ticking, retry-next-tick-on-publish-failure) lives in
+// marginal/outboxpoll, identical to collaboration-service's own NewPoller.
+func NewPoller(pool *pgxpool.Pool, nc *nats.Conn, opts ...outboxpoll.Option) *outboxpoll.Poller {
+	claim := func(ctx context.Context, tx pgx.Tx, limit int32) ([]outboxpoll.Row, error) {
+		rows, err := authrepo.New(tx).ClaimUnpublishedOutboxEvents(ctx, limit)
 		if err != nil {
-			return fmt.Errorf("outbox: poller: marshaling envelope for %s: %w", row.ID.Bytes, err)
+			return nil, err
 		}
-		if err := p.nc.Publish(row.EventType, envelope); err != nil {
-			// Not fatal for the whole batch: roll back, so THIS row (and
-			// the rest of the batch, since a partial commit would let an
-			// un-published row's claim lapse without ever retrying) is
-			// retried next tick rather than lost.
-			return fmt.Errorf("outbox: poller: publishing %s: %w", row.ID.Bytes, err)
+		out := make([]outboxpoll.Row, len(rows))
+		for i, r := range rows {
+			out[i] = outboxpoll.Row{ID: r.ID, AggregateID: r.AggregateID, EventType: r.EventType, Payload: r.Payload}
 		}
-		published = append(published, row.ID)
+		return out, nil
 	}
-
-	if err := q.MarkOutboxEventsPublished(ctx, published); err != nil {
-		return fmt.Errorf("outbox: poller: marking published: %w", err)
+	markPublished := func(ctx context.Context, tx pgx.Tx, ids []pgtype.UUID) error {
+		return authrepo.New(tx).MarkOutboxEventsPublished(ctx, ids)
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("outbox: poller: commit: %w", err)
+	buildEnvelope := func(row outboxpoll.Row) ([]byte, error) {
+		return json.Marshal(wireEvent{ID: row.ID.Bytes, Payload: row.Payload})
 	}
-	return nil
+	return outboxpoll.New(pool, nc, claim, markPublished, buildEnvelope, opts...)
 }

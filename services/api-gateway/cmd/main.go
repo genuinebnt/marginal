@@ -23,6 +23,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"marginal/envconfig"
+
 	authv1 "marginal/auth-service/genproto/authv1"
 	documentv1 "marginal/document-service/genproto/documentv1"
 
@@ -60,8 +62,8 @@ func main() {
 }
 
 func run() error {
-	documentAddr := envOr("DOCUMENT_SERVICE_GRPC_ADDR", "localhost:9001")
-	authAddr := envOr("AUTH_SERVICE_GRPC_ADDR", "localhost:9006")
+	documentAddr := envconfig.EnvOr("DOCUMENT_SERVICE_GRPC_ADDR", "localhost:9001")
+	authAddr := envconfig.EnvOr("AUTH_SERVICE_GRPC_ADDR", "localhost:9006")
 
 	// insecure.NewCredentials(): east-west traffic within this repo's
 	// deployment topology (ADR-007) — TLS termination, if any, happens at
@@ -111,23 +113,16 @@ func run() error {
 	pages.Mount(r)
 	auth.Mount(r)
 
-	addr := envOr("API_GATEWAY_HTTP_ADDR", ":8000")
+	addr := envconfig.EnvOr("API_GATEWAY_HTTP_ADDR", ":8000")
 	slog.Info("api-gateway listening", "addr", addr, "document_service", documentAddr, "auth_service", authAddr)
 	return http.ListenAndServe(addr, r)
 }
 
 func allowedOrigins() []string {
-	raw := envOr("CORS_ALLOWED_ORIGINS", "*")
+	raw := envconfig.EnvOr("CORS_ALLOWED_ORIGINS", "*")
 	parts := strings.Split(raw, ",")
 	for i, p := range parts {
 		parts[i] = strings.TrimSpace(p)
 	}
 	return parts
-}
-
-func envOr(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return fallback
 }
