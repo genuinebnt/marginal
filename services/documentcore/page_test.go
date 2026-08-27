@@ -249,6 +249,34 @@ func TestInsertBlockAsChildOfContainerPlacesItImmediatelyAfterParent(t *testing.
 	assert.Equal(t, quote, *page.Blocks[1].Parent)
 }
 
+// TestCalloutAndAsideAcceptAnyChildKind confirms RFC-001 §10's two new
+// containers behave exactly like Quote/Toggle — any child kind is
+// accepted, unlike ListItem's own restricted children.
+func TestCalloutAndAsideAcceptAnyChildKind(t *testing.T) {
+	page := NewPage(newTestPageID(), "Title")
+	callout := newTestBlockID()
+	require.NoError(t, page.Apply(InsertBlock{ID: callout, Kind: NewCallout(Danger, "⚠️"), Content: PlainContent("")}))
+	aside := newTestBlockID()
+	require.NoError(t, page.Apply(InsertBlock{ID: aside, After: &callout, Kind: NewAside("🐢"), Content: PlainContent("")}))
+
+	require.NoError(t, page.Apply(InsertBlock{ID: newTestBlockID(), Parent: &callout, Kind: NewList(Bulleted), Content: PlainContent("")}))
+	require.NoError(t, page.Apply(InsertBlock{ID: newTestBlockID(), Parent: &aside, Kind: NewQuote(), Content: PlainContent("")}))
+
+	require.Len(t, page.Blocks, 4)
+}
+
+func TestDeleteBlockRejectsNonEmptyCallout(t *testing.T) {
+	page := NewPage(newTestPageID(), "Title")
+	callout := newTestBlockID()
+	require.NoError(t, page.Apply(InsertBlock{ID: callout, Kind: NewCallout(Note, ""), Content: PlainContent("")}))
+	require.NoError(t, page.Apply(InsertBlock{ID: newTestBlockID(), Parent: &callout, Kind: NewParagraph(), Content: PlainContent("")}))
+
+	err := page.Apply(DeleteBlock{Tombstone: page.Blocks[0], After: nil})
+
+	var notEmpty *ContainerNotEmptyError
+	assert.ErrorAs(t, err, &notEmpty)
+}
+
 func TestInsertBlockNilAfterInsertsAsParentsFirstChild(t *testing.T) {
 	page := NewPage(newTestPageID(), "Title")
 	quote := newTestBlockID()

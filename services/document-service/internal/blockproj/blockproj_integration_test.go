@@ -172,6 +172,43 @@ func TestDeleteTextAndNoOpDoNotWipeProjectedText(t *testing.T) {
 	assert.Equal(t, "hello", blocks[0].Text, "a NoOp must not wipe the projected text")
 }
 
+// TestCalloutWithChildMaterialisesInProjection confirms RFC-001 §10's
+// Callout/Aside containers project the same as Quote/Toggle (§1) — a
+// child under a Callout gets the correct parent_id, and Callout's own
+// kind-specific fields (tone, icon) round-trip through docs.blocks.kind.
+func TestCalloutWithChildMaterialisesInProjection(t *testing.T) {
+	pool := newTestPool(t)
+	pageID := createTestPage(t, pool, "Callout Page")
+	proj := blockproj.New(pool)
+	ctx := context.Background()
+
+	callout := documentcore.BlockID(uuid.Must(uuid.NewV7()))
+	require.NoError(t, proj.HandleEvent(ctx, pageID, blockOpJSON(t, documentcore.InsertBlock{
+		ID: callout, Kind: documentcore.NewCallout(documentcore.Danger, "⚠️"),
+	})))
+	child := documentcore.BlockID(uuid.Must(uuid.NewV7()))
+	require.NoError(t, proj.HandleEvent(ctx, pageID, blockOpJSON(t, documentcore.InsertBlock{
+		ID: child, Parent: &callout, Kind: documentcore.NewParagraph(),
+	})))
+	require.NoError(t, proj.HandleEvent(ctx, pageID, textOpJSON(t, child, "InsertText", "be careful")))
+
+	blocks := listBlocks(t, pool, pageID)
+	require.Len(t, blocks, 2)
+	assert.Equal(t, "callout", blocks[0].Kind)
+	require.NotNil(t, blocks[1].ParentID)
+	assert.Equal(t, uuid.UUID(callout), *blocks[1].ParentID)
+	assert.Equal(t, "be careful", blocks[1].Text)
+
+	var toneAndIcon struct {
+		Tone string `json:"tone"`
+		Icon string `json:"icon"`
+	}
+	require.NoError(t, pool.QueryRow(ctx, `SELECT kind->>'tone', kind->>'icon' FROM docs.blocks WHERE id = $1`, callout).
+		Scan(&toneAndIcon.Tone, &toneAndIcon.Icon))
+	assert.Equal(t, "danger", toneAndIcon.Tone)
+	assert.Equal(t, "⚠️", toneAndIcon.Icon)
+}
+
 // TestInsertBlockUnderContainerMaterialisesParentIDAndPath pins RFC-001
 // §1's containment through the whole projection: a child block's
 // parent_id and its LTREE path (the quote's own path, plus the child's

@@ -119,20 +119,23 @@ func blocksEqual(a, b []Block) bool {
 	return true
 }
 
-// containerCandidates returns every Quote/Toggle block in blocks — a
-// random legal Parent for the nested property test below to choose from.
-// Deliberately excludes List/ListItem: their extra ListChild ::= List |
-// Paragraph restriction (InvalidListChildError) is already covered
-// deterministically (TestInsertBlockUnderListItemRestrictsChildKind,
+// containerCandidates returns every Quote/Toggle/Callout/Aside block in
+// blocks — a random legal Parent for the nested property test below to
+// choose from. Deliberately excludes List/ListItem: their extra
+// ListChild ::= List | Paragraph restriction (InvalidListChildError) is
+// already covered deterministically
+// (TestInsertBlockUnderListItemRestrictsChildKind,
 // TestSetBlockKindUnderListItemRestrictsChildKind); a generator that has
 // to also replicate that rule to keep proposing legal ops would risk its
 // own mirror logic drifting from Page.Apply's, and this property is about
 // invertibility under nesting, not exhaustively fuzzing every containment
-// rule a second time.
+// rule a second time. Quote/Toggle/Callout/Aside all accept any child
+// kind, so they can share one pool.
 func containerCandidates(blocks []Block) []BlockID {
 	var out []BlockID
 	for _, b := range blocks {
-		if b.Kind.Tag == Quote || b.Kind.Tag == Toggle {
+		switch b.Kind.Tag {
+		case Quote, Toggle, Callout, Aside:
 			out = append(out, b.ID)
 		}
 	}
@@ -158,10 +161,16 @@ func TestPropertyNestedPageApplyInvertRoundTrip(t *testing.T) {
 
 		newBlockKind := func() BlockKind {
 			if rapid.Bool().Draw(t, "isContainer") {
-				if rapid.Bool().Draw(t, "isQuote") {
+				switch rapid.IntRange(0, 3).Draw(t, "containerKind") {
+				case 0:
 					return NewQuote()
+				case 1:
+					return NewToggle()
+				case 2:
+					return NewCallout(Warn, "")
+				default:
+					return NewAside("🐢")
 				}
-				return NewToggle()
 			}
 			return NewParagraph()
 		}

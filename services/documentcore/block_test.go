@@ -30,6 +30,9 @@ func TestBlockKindJSONRoundTrips(t *testing.T) {
 		{"list_item unchecked", NewListItem(false)},
 		{"list_item checked", NewListItem(true)},
 		{"image", NewImage(fileID)},
+		{"callout default tone", NewCallout(Warn, "")},
+		{"callout with tone and icon", NewCallout(Danger, "⚠️")},
+		{"aside", NewAside("🐢")},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -56,6 +59,19 @@ func TestUnmarshalBlockKindRejectsUnknownListKind(t *testing.T) {
 	assert.ErrorAs(t, err, &invalid)
 }
 
+func TestUnmarshalBlockKindRejectsUnknownCalloutTone(t *testing.T) {
+	var k BlockKind
+	err := json.Unmarshal([]byte(`{"tag":"callout","tone":"not_a_real_tone"}`), &k)
+	var invalid *InvalidCalloutToneError
+	assert.ErrorAs(t, err, &invalid)
+}
+
+func TestUnmarshalBlockKindDefaultsOmittedCalloutToneToWarn(t *testing.T) {
+	var k BlockKind
+	require.NoError(t, json.Unmarshal([]byte(`{"tag":"callout"}`), &k))
+	assert.Equal(t, Warn, k.Tone)
+}
+
 func TestUnmarshalBlockKindRejectsInvalidImageFileID(t *testing.T) {
 	var k BlockKind
 	err := json.Unmarshal([]byte(`{"tag":"image","file_id":"not-a-uuid"}`), &k)
@@ -76,6 +92,8 @@ func TestBlockTagIsContainer(t *testing.T) {
 		{Toggle, true},
 		{List, true},
 		{ListItem, true},
+		{Callout, true},
+		{Aside, true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.tag.String(), func(t *testing.T) {
