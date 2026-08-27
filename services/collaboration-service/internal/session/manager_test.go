@@ -14,29 +14,37 @@ import (
 	"marginal/collaboration-service/internal/pageop"
 )
 
-func TestManagerGetReturnsTheSameSessionOnRepeatedCalls(t *testing.T) {
-	m := NewManager(newFakeRepo(), t.TempDir(), "server-actor", WithFlushOptions(noAutoFlush()...))
-	defer func() { _ = m.CloseAll() }()
-	pageID := uuid.Must(uuid.NewV7())
+func TestManagerGetSessionIdentity(t *testing.T) {
+	tests := []struct {
+		name     string
+		samePage bool
+	}{
+		{name: "repeated Get for the same page reuses the session", samePage: true},
+		{name: "Get for different pages opens distinct sessions", samePage: false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			m := NewManager(newFakeRepo(), t.TempDir(), "server-actor", WithFlushOptions(noAutoFlush()...))
+			defer func() { _ = m.CloseAll() }()
 
-	s1, err := m.Get(context.Background(), pageID)
-	require.NoError(t, err)
-	s2, err := m.Get(context.Background(), pageID)
-	require.NoError(t, err)
+			pageID1 := uuid.Must(uuid.NewV7())
+			pageID2 := pageID1
+			if !tc.samePage {
+				pageID2 = uuid.Must(uuid.NewV7())
+			}
 
-	assert.Same(t, s1, s2, "Get must reuse the already-open session, not reopen it")
-}
+			s1, err := m.Get(context.Background(), pageID1)
+			require.NoError(t, err)
+			s2, err := m.Get(context.Background(), pageID2)
+			require.NoError(t, err)
 
-func TestManagerGetOpensDistinctSessionsPerPage(t *testing.T) {
-	m := NewManager(newFakeRepo(), t.TempDir(), "server-actor", WithFlushOptions(noAutoFlush()...))
-	defer func() { _ = m.CloseAll() }()
-
-	s1, err := m.Get(context.Background(), uuid.Must(uuid.NewV7()))
-	require.NoError(t, err)
-	s2, err := m.Get(context.Background(), uuid.Must(uuid.NewV7()))
-	require.NoError(t, err)
-
-	assert.NotSame(t, s1, s2)
+			if tc.samePage {
+				assert.Same(t, s1, s2, "Get must reuse the already-open session, not reopen it")
+			} else {
+				assert.NotSame(t, s1, s2)
+			}
+		})
+	}
 }
 
 // TestManagerCloseAllLeavesSessionsCleanlyClosable proves CloseAll

@@ -121,38 +121,56 @@ func TestMaxDepthEvictsTheOldestOp(t *testing.T) {
 	}
 }
 
-func TestFailedUndoLeavesBothStacksUnchanged(t *testing.T) {
-	page, id := pageWithOneBlock()
-	h := NewHistory(8)
+func TestFailedUndoOrRedoLeavesBothStacksUnchanged(t *testing.T) {
+	tests := []struct {
+		name string
+		// setup runs after the recorded op but before the block disappears
+		// behind history's back — Redo needs a prior Undo to have something
+		// to redo at all.
+		setup       func(t *testing.T, h *History, page *Page)
+		act         func(h *History, page *Page) error
+		wantErrMsg  string
+		wantUndoMsg string
+		wantRedoMsg string
+	}{
+		{
+			name:        "undo",
+			setup:       func(t *testing.T, h *History, page *Page) {},
+			act:         func(h *History, page *Page) error { return h.Undo(page) },
+			wantErrMsg:  "undo must report that the inverse could not apply",
+			wantUndoMsg: "a failed undo must not consume the op",
+			wantRedoMsg: "a failed undo must not push onto redo",
+		},
+		{
+			name: "redo",
+			setup: func(t *testing.T, h *History, page *Page) {
+				require.NoError(t, h.Undo(page))
+			},
+			act:         func(h *History, page *Page) error { return h.Redo(page) },
+			wantErrMsg:  "redo must report that the op could not apply",
+			wantUndoMsg: "a failed redo must not push onto undo",
+			wantRedoMsg: "a failed redo must not consume the op",
+		},
+	}
 
-	doOp(t, h, &page, retypeBlock(id))
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			page, id := pageWithOneBlock()
+			h := NewHistory(8)
 
-	// The block the recorded op refers to disappears behind history's back.
-	require.NoError(t, page.Apply(DeleteBlock{Tombstone: page.Blocks[0], After: nil}))
+			doOp(t, h, &page, retypeBlock(id))
+			tc.setup(t, h, &page)
 
-	undoDepth := h.UndoDepth()
-	redoDepth := h.RedoDepth()
+			// The block the recorded op refers to disappears behind history's back.
+			require.NoError(t, page.Apply(DeleteBlock{Tombstone: page.Blocks[0], After: nil}))
 
-	err := h.Undo(&page)
-	require.Error(t, err, "undo must report that the inverse could not apply")
-	assert.Equal(t, undoDepth, h.UndoDepth(), "a failed undo must not consume the op")
-	assert.Equal(t, redoDepth, h.RedoDepth(), "a failed undo must not push onto redo")
-}
+			undoDepth := h.UndoDepth()
+			redoDepth := h.RedoDepth()
 
-func TestFailedRedoLeavesBothStacksUnchanged(t *testing.T) {
-	page, id := pageWithOneBlock()
-	h := NewHistory(8)
-
-	doOp(t, h, &page, retypeBlock(id))
-	require.NoError(t, h.Undo(&page))
-
-	require.NoError(t, page.Apply(DeleteBlock{Tombstone: page.Blocks[0], After: nil}))
-
-	undoDepth := h.UndoDepth()
-	redoDepth := h.RedoDepth()
-
-	err := h.Redo(&page)
-	require.Error(t, err, "redo must report that the op could not apply")
-	assert.Equal(t, undoDepth, h.UndoDepth(), "a failed redo must not push onto undo")
-	assert.Equal(t, redoDepth, h.RedoDepth(), "a failed redo must not consume the op")
+			err := tc.act(h, &page)
+			require.Error(t, err, tc.wantErrMsg)
+			assert.Equal(t, undoDepth, h.UndoDepth(), tc.wantUndoMsg)
+			assert.Equal(t, redoDepth, h.RedoDepth(), tc.wantRedoMsg)
+		})
+	}
 }

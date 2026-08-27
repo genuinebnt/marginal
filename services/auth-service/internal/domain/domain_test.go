@@ -9,39 +9,60 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewEmailLowercasesAndTrims(t *testing.T) {
-	e, err := NewEmail("  Alice@Example.COM  ")
-	require.NoError(t, err)
-	assert.Equal(t, "alice@example.com", e.String())
+func TestNewEmail(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		want    string
+		wantErr bool
+	}{
+		{name: "lowercases and trims", input: "  Alice@Example.COM  ", want: "alice@example.com"},
+		{name: "rejects malformed", input: "not-an-email", wantErr: true},
+		{
+			// mail.ParseAddress happily accepts "Name <addr>" — a login
+			// identifier must be a bare address, not a message header.
+			name:    "rejects display name form",
+			input:   "Alice <alice@example.com>",
+			wantErr: true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			e, err := NewEmail(tc.input)
+			if tc.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, e.String())
+		})
+	}
 }
 
-func TestNewEmailRejectsMalformed(t *testing.T) {
-	_, err := NewEmail("not-an-email")
-	assert.Error(t, err)
-}
-
-func TestNewEmailRejectsDisplayNameForm(t *testing.T) {
-	// mail.ParseAddress happily accepts "Name <addr>" — a login identifier
-	// must be a bare address, not a message header.
-	_, err := NewEmail("Alice <alice@example.com>")
-	assert.Error(t, err)
-}
-
-func TestNewPasswordRejectsTooShort(t *testing.T) {
-	_, err := NewPassword("short")
-	assert.Error(t, err)
-}
-
-func TestNewPasswordAcceptsLongPassphrase(t *testing.T) {
-	// OWASP: a low maximum is a bug because it blocks passphrases.
-	long := strings.Repeat("correct horse battery staple ", 3)
-	_, err := NewPassword(long)
-	assert.NoError(t, err)
-}
-
-func TestNewPasswordRejectsOverMax(t *testing.T) {
-	_, err := NewPassword(strings.Repeat("a", maxPasswordLength+1))
-	assert.Error(t, err)
+func TestNewPassword(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		wantErr bool
+	}{
+		{name: "rejects too short", input: "short", wantErr: true},
+		{
+			// OWASP: a low maximum is a bug because it blocks passphrases.
+			name:  "accepts long passphrase",
+			input: strings.Repeat("correct horse battery staple ", 3),
+		},
+		{name: "rejects over max", input: strings.Repeat("a", maxPasswordLength+1), wantErr: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := NewPassword(tc.input)
+			if tc.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
 }
 
 func TestPasswordIsNeverPrintedInTheClear(t *testing.T) {
@@ -56,14 +77,20 @@ func TestPasswordIsNeverPrintedInTheClear(t *testing.T) {
 	assert.Equal(t, "hunter22222", p.Expose())
 }
 
-func TestNewDisplayNameRejectsEmpty(t *testing.T) {
-	_, err := NewDisplayName("   ")
-	assert.Error(t, err)
-}
-
-func TestNewDisplayNameRejectsControlCharacters(t *testing.T) {
-	_, err := NewDisplayName("Alice\x00")
-	assert.Error(t, err)
+func TestNewDisplayNameRejects(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{name: "empty", input: "   "},
+		{name: "control characters", input: "Alice\x00"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := NewDisplayName(tc.input)
+			assert.Error(t, err)
+		})
+	}
 }
 
 func TestAssignCursorColorIsDeterministic(t *testing.T) {

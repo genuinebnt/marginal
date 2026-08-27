@@ -8,37 +8,39 @@ import (
 	"pgregory.net/rapid"
 )
 
-func TestBetweenEmptyBoundsReturnsMidAlphabetKey(t *testing.T) {
-	key, err := Between("", "")
-	require.NoError(t, err)
-	assert.Equal(t, "i", key)
-}
-
-func TestBetweenNoLowerBound(t *testing.T) {
-	key, err := Between("", "i")
-	require.NoError(t, err)
-	assert.Less(t, key, "i")
-	assert.Greater(t, key, "")
-}
-
-func TestBetweenNoUpperBound(t *testing.T) {
-	key, err := Between("i", "")
-	require.NoError(t, err)
-	assert.Greater(t, key, "i")
-}
-
-func TestBetweenTwoKeysWithRoom(t *testing.T) {
-	key, err := Between("a1", "a3")
-	require.NoError(t, err)
-	assert.Greater(t, key, "a1")
-	assert.Less(t, key, "a3")
-}
-
-func TestBetweenAdjacentSingleCharKeys(t *testing.T) {
-	key, err := Between("i", "j")
-	require.NoError(t, err)
-	assert.Greater(t, key, "i")
-	assert.Less(t, key, "j")
+func TestBetweenProducesKeyWithinBounds(t *testing.T) {
+	tests := []struct {
+		name       string
+		prev, next string
+		wantExact  string
+		checkLower bool
+		checkUpper bool
+	}{
+		{name: "empty bounds returns mid-alphabet key", prev: "", next: "", wantExact: "i"},
+		{name: "no lower bound", prev: "", next: "i", checkLower: true, checkUpper: true},
+		{name: "no upper bound", prev: "i", next: "", checkLower: true},
+		{name: "two keys with room", prev: "a1", next: "a3", checkLower: true, checkUpper: true},
+		{name: "adjacent single-char keys", prev: "i", next: "j", checkLower: true, checkUpper: true},
+		// "0i" legitimately occurs (e.g. Between("", "1") can produce it) —
+		// leading '0' alone isn't the floor; only a next that's ALL zeros is
+		// (see the ErrNoRoom cases below).
+		{name: "succeeds when next has room past leading zeros", prev: "", next: "0i", checkLower: true, checkUpper: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			key, err := Between(tc.prev, tc.next)
+			require.NoError(t, err)
+			if tc.wantExact != "" {
+				assert.Equal(t, tc.wantExact, key)
+			}
+			if tc.checkLower {
+				assert.Greater(t, key, tc.prev)
+			}
+			if tc.checkUpper {
+				assert.Less(t, key, tc.next)
+			}
+		})
+	}
 }
 
 func TestBetweenRepeatedInsertsBeforeTheCurrentFirstKeepWorking(t *testing.T) {
@@ -73,30 +75,38 @@ func TestBetweenRepeatedInsertsBetweenTheSameTwoKeysKeepWorking(t *testing.T) {
 }
 
 func TestBetweenRejectsPrevNotBeforeNext(t *testing.T) {
-	_, err := Between("b", "a")
-	assert.Error(t, err)
-
-	_, err = Between("a", "a")
-	assert.Error(t, err)
+	tests := []struct {
+		name       string
+		prev, next string
+	}{
+		{name: "prev after next", prev: "b", next: "a"},
+		{name: "prev equal to next", prev: "a", next: "a"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := Between(tc.prev, tc.next)
+			assert.Error(t, err)
+		})
+	}
 }
 
+// TestBetweenReturnsErrNoRoomAtTheGenuineFloor covers a next made entirely
+// of the alphabet minimum, with no lower bound: the one case nothing can
+// be inserted below (see ErrNoRoom's doc comment).
 func TestBetweenReturnsErrNoRoomAtTheGenuineFloor(t *testing.T) {
-	// next made entirely of the alphabet minimum, with no lower bound: the
-	// one case nothing can be inserted below (see ErrNoRoom's doc comment).
-	_, err := Between("", "0")
-	assert.ErrorIs(t, err, ErrNoRoom)
-
-	_, err = Between("a", "a0")
-	assert.ErrorIs(t, err, ErrNoRoom)
-}
-
-func TestBetweenSucceedsWhenNextHasRoomPastLeadingZeros(t *testing.T) {
-	// "0i" legitimately occurs (e.g. Between("", "1") can produce it) —
-	// leading '0' alone isn't the floor; only an next that's ALL zeros is.
-	key, err := Between("", "0i")
-	require.NoError(t, err)
-	assert.Greater(t, key, "")
-	assert.Less(t, key, "0i")
+	tests := []struct {
+		name       string
+		prev, next string
+	}{
+		{name: "no lower bound, next is the alphabet minimum", prev: "", next: "0"},
+		{name: "next is prev plus the alphabet minimum", prev: "a", next: "a0"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := Between(tc.prev, tc.next)
+			assert.ErrorIs(t, err, ErrNoRoom)
+		})
+	}
 }
 
 // TestPropertyBetweenOrdering is the load-bearing check: for any prev, next

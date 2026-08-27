@@ -53,20 +53,27 @@ func TestItemAtSkipsALeadingTombstoneRun(t *testing.T) {
 }
 
 func TestItemAtOutOfBounds(t *testing.T) {
-	log := NewLog()
-	gen := NewIDGenerator("actor-1")
-	require.NoError(t, log.InsertAt(0, idsN(gen, 2)))
+	tests := []struct {
+		name    string
+		insertN int
+		index   int
+	}{
+		{name: "index past end", insertN: 2, index: 2},
+		{name: "negative index", insertN: 2, index: -1},
+		{name: "empty log", insertN: 0, index: 0},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			log := NewLog()
+			gen := NewIDGenerator("actor-1")
+			if tc.insertN > 0 {
+				require.NoError(t, log.InsertAt(0, idsN(gen, tc.insertN)))
+			}
 
-	_, err := log.ItemAt(2)
-	assert.ErrorIs(t, err, ErrOutOfBounds)
-	_, err = log.ItemAt(-1)
-	assert.ErrorIs(t, err, ErrOutOfBounds)
-}
-
-func TestItemAtOnEmptyLogIsOutOfBounds(t *testing.T) {
-	log := NewLog()
-	_, err := log.ItemAt(0)
-	assert.ErrorIs(t, err, ErrOutOfBounds)
+			_, err := log.ItemAt(tc.index)
+			assert.ErrorIs(t, err, ErrOutOfBounds)
+		})
+	}
 }
 
 func TestResolveUnknownItem(t *testing.T) {

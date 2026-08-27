@@ -365,31 +365,36 @@ func TestActorIdViaQueryParamWorksLikeTheHeader(t *testing.T) {
 	assert.Equal(t, actorID, ack.Op.ActorID)
 }
 
-func TestMissingActorHeaderIsRejected(t *testing.T) {
-	srv, _ := newTestServer(t)
-	url := "ws" + srv.URL[len("http"):] + "/collab/pages/" + uuid.Must(uuid.NewV7()).String()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	_, resp, err := websocket.Dial(ctx, url, nil)
-	require.Error(t, err)
-	if resp != nil {
-		assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+func TestInvalidConnectionAttemptsAreRejected(t *testing.T) {
+	tests := []struct {
+		name       string
+		pageID     string
+		withHeader bool
+		wantStatus int
+	}{
+		{name: "missing actor header", pageID: uuid.Must(uuid.NewV7()).String(), withHeader: false, wantStatus: http.StatusUnauthorized},
+		{name: "invalid page id", pageID: "not-a-uuid", withHeader: true, wantStatus: http.StatusBadRequest},
 	}
-}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			srv, _ := newTestServer(t)
+			url := "ws" + srv.URL[len("http"):] + "/collab/pages/" + tc.pageID
 
-func TestInvalidPageIDIsRejected(t *testing.T) {
-	srv, _ := newTestServer(t)
-	url := "ws" + srv.URL[len("http"):] + "/collab/pages/not-a-uuid"
-	header := http.Header{}
-	header.Set("X-Actor-Id", uuid.Must(uuid.NewV7()).String())
+			var opts *websocket.DialOptions
+			if tc.withHeader {
+				header := http.Header{}
+				header.Set("X-Actor-Id", uuid.Must(uuid.NewV7()).String())
+				opts = &websocket.DialOptions{HTTPHeader: header}
+			}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	_, resp, err := websocket.Dial(ctx, url, &websocket.DialOptions{HTTPHeader: header})
-	require.Error(t, err)
-	if resp != nil {
-		assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			_, resp, err := websocket.Dial(ctx, url, opts)
+			require.Error(t, err)
+			if resp != nil {
+				assert.Equal(t, tc.wantStatus, resp.StatusCode)
+			}
+		})
 	}
 }
 

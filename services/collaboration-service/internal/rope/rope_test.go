@@ -21,19 +21,24 @@ func TestEmptyRope(t *testing.T) {
 }
 
 func TestInsertAtStartMiddleEnd(t *testing.T) {
-	r := New("hello")
-
-	start, err := r.Insert(0, ">>")
-	require.NoError(t, err)
-	assert.Equal(t, ">>hello", start.String())
-
-	middle, err := r.Insert(2, "-")
-	require.NoError(t, err)
-	assert.Equal(t, "he-llo", middle.String())
-
-	end, err := r.Insert(5, "!")
-	require.NoError(t, err)
-	assert.Equal(t, "hello!", end.String())
+	tests := []struct {
+		name string
+		at   int
+		text string
+		want string
+	}{
+		{name: "start", at: 0, text: ">>", want: ">>hello"},
+		{name: "middle", at: 2, text: "-", want: "he-llo"},
+		{name: "end", at: 5, text: "!", want: "hello!"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			r := New("hello")
+			got, err := r.Insert(tc.at, tc.text)
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got.String())
+		})
+	}
 }
 
 func TestInsertDoesNotMutateTheOriginal(t *testing.T) {
@@ -43,19 +48,25 @@ func TestInsertDoesNotMutateTheOriginal(t *testing.T) {
 	assert.Equal(t, "hello", r.String(), "Rope is immutable — Insert must not affect the receiver")
 }
 
-func TestDeleteRange(t *testing.T) {
-	r := New("hello world")
-	got, err := r.Delete(5, 11)
-	require.NoError(t, err)
-	assert.Equal(t, "hello", got.String())
-}
-
-func TestDeleteEntireRope(t *testing.T) {
-	r := New("hello")
-	got, err := r.Delete(0, 5)
-	require.NoError(t, err)
-	assert.Equal(t, "", got.String())
-	assert.Equal(t, 0, got.Len())
+func TestDelete(t *testing.T) {
+	tests := []struct {
+		name       string
+		input      string
+		start, end int
+		want       string
+	}{
+		{name: "partial range", input: "hello world", start: 5, end: 11, want: "hello"},
+		{name: "entire rope", input: "hello", start: 0, end: 5, want: ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			r := New(tc.input)
+			got, err := r.Delete(tc.start, tc.end)
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got.String())
+			assert.Equal(t, len(tc.want), got.Len())
+		})
+	}
 }
 
 func TestSlice(t *testing.T) {

@@ -16,28 +16,34 @@ func testParagraph(id BlockID, text string) Block {
 	return Block{ID: id, Kind: NewParagraph(), Content: PlainContent(text)}
 }
 
-func TestApplyInsertBlockAtStart(t *testing.T) {
-	page := NewPage(newTestPageID(), "Title")
-	id := newTestBlockID()
+func TestApplyInsertBlock(t *testing.T) {
+	tests := []struct {
+		name      string
+		withFirst bool
+		wantLen   int
+		wantIndex int
+	}{
+		{name: "at start", withFirst: false, wantLen: 1, wantIndex: 0},
+		{name: "after existing", withFirst: true, wantLen: 2, wantIndex: 1},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			page := NewPage(newTestPageID(), "Title")
+			var after *BlockID
+			if tc.withFirst {
+				first := newTestBlockID()
+				require.NoError(t, page.Apply(InsertBlock{ID: first, Kind: NewParagraph(), Content: PlainContent("")}))
+				after = &first
+			}
 
-	err := page.Apply(InsertBlock{ID: id, After: nil, Kind: NewParagraph(), Content: PlainContent("")})
+			id := newTestBlockID()
+			err := page.Apply(InsertBlock{ID: id, After: after, Kind: NewParagraph(), Content: PlainContent("")})
 
-	require.NoError(t, err)
-	require.Len(t, page.Blocks, 1)
-	assert.Equal(t, id, page.Blocks[0].ID)
-}
-
-func TestApplyInsertBlockAfterExisting(t *testing.T) {
-	page := NewPage(newTestPageID(), "Title")
-	first := newTestBlockID()
-	require.NoError(t, page.Apply(InsertBlock{ID: first, Kind: NewParagraph(), Content: PlainContent("")}))
-
-	second := newTestBlockID()
-	err := page.Apply(InsertBlock{ID: second, After: &first, Kind: NewParagraph(), Content: PlainContent("")})
-
-	require.NoError(t, err)
-	require.Len(t, page.Blocks, 2)
-	assert.Equal(t, second, page.Blocks[1].ID)
+			require.NoError(t, err)
+			require.Len(t, page.Blocks, tc.wantLen)
+			assert.Equal(t, id, page.Blocks[tc.wantIndex].ID)
+		})
+	}
 }
 
 func TestApplyInsertBlockRejectsDuplicateID(t *testing.T) {

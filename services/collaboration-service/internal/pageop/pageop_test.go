@@ -12,52 +12,42 @@ import (
 	"marginal/collaboration-service/internal/ops"
 )
 
-func TestMarshalUnmarshalRoundTripBlock(t *testing.T) {
-	blockID := documentcore.BlockID(uuid.New())
-	op := Block{Op: documentcore.InsertBlock{
-		ID:      blockID,
-		After:   nil,
-		Kind:    documentcore.NewParagraph(),
-		Content: documentcore.Content{Text: "hello"},
-	}}
-
-	data, err := Marshal(op)
-	require.NoError(t, err)
-
-	got, err := Unmarshal(data)
-	require.NoError(t, err)
-	require.Equal(t, op, got)
-}
-
-func TestMarshalUnmarshalRoundTripText(t *testing.T) {
-	blockID := documentcore.BlockID(uuid.New())
-	op := Text{
-		BlockID: blockID,
-		Op:      ops.InsertText{At: nil, Text: "hi"},
-	}
-
-	data, err := Marshal(op)
-	require.NoError(t, err)
-
-	got, err := Unmarshal(data)
-	require.NoError(t, err)
-	require.Equal(t, op, got)
-}
-
-func TestMarshalUnmarshalRoundTripTextWithAnchor(t *testing.T) {
+func TestMarshalUnmarshalRoundTrip(t *testing.T) {
 	blockID := documentcore.BlockID(uuid.New())
 	at := anchor.Anchor{Item: anchor.ItemID{Actor: "a", Counter: 1}, Bias: anchor.After}
-	op := Text{
-		BlockID: blockID,
-		Op:      ops.InsertText{At: &at, Text: "hi"},
+
+	tests := []struct {
+		name string
+		op   Op
+	}{
+		{
+			name: "block",
+			op: Block{Op: documentcore.InsertBlock{
+				ID:      blockID,
+				After:   nil,
+				Kind:    documentcore.NewParagraph(),
+				Content: documentcore.Content{Text: "hello"},
+			}},
+		},
+		{
+			name: "text",
+			op:   Text{BlockID: blockID, Op: ops.InsertText{At: nil, Text: "hi"}},
+		},
+		{
+			name: "text with anchor",
+			op:   Text{BlockID: blockID, Op: ops.InsertText{At: &at, Text: "hi"}},
+		},
 	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			data, err := Marshal(tc.op)
+			require.NoError(t, err)
 
-	data, err := Marshal(op)
-	require.NoError(t, err)
-
-	got, err := Unmarshal(data)
-	require.NoError(t, err)
-	require.Equal(t, op, got)
+			got, err := Unmarshal(data)
+			require.NoError(t, err)
+			require.Equal(t, tc.op, got)
+		})
+	}
 }
 
 func TestTypeNamePrefixesByTier(t *testing.T) {

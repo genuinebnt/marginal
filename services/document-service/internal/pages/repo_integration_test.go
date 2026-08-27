@@ -315,11 +315,17 @@ func TestReparentUnderSelfOrDescendantFails(t *testing.T) {
 	require.NoError(t, err)
 	childID := child.ID
 
-	// Under itself.
-	_, err = repo.Reparent(ctx, parent.ID, pages.ParentChange{Change: true, ParentID: &parent.ID}, nil)
-	require.ErrorIs(t, err, pages.ErrCycle)
-
-	// Under its own descendant.
-	_, err = repo.Reparent(ctx, parent.ID, pages.ParentChange{Change: true, ParentID: &childID}, nil)
-	require.ErrorIs(t, err, pages.ErrCycle)
+	tests := []struct {
+		name        string
+		newParentID pages.PageID
+	}{
+		{name: "under itself", newParentID: parentID},
+		{name: "under its own descendant", newParentID: childID},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := repo.Reparent(ctx, parentID, pages.ParentChange{Change: true, ParentID: &tc.newParentID}, nil)
+			require.ErrorIs(t, err, pages.ErrCycle)
+		})
+	}
 }
