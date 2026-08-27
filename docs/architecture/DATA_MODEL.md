@@ -311,47 +311,63 @@ CREATE INDEX ON docs.pages (lower(title)) WHERE deleted_at IS NULL;
 
 ### Blocks
 
+`document-service`'s actual `docs.blocks` (`internal/migrate/migrations/00002_docs_blocks_and_links.sql`) is a fully-rebuilt-on-every-event projection (§ The Central Rule) — it uses `pgx/v5` + `sqlc`, not `sqlx` (the Go/TS pivot, `ADR-011`, superseded the earlier Rust-track tooling this doc originally assumed), a plain `INTEGER position` rather than a fractional `sort_key` (a projection has no concurrent-independent-writer reordering problem a fractional key exists to solve — `internal/blockproj`'s own doc comment), and no `deleted_at`/`content_version` (a block's whole row is replaced, not soft-deleted, on the next replay). `parent_id` and `path` below are new — RFC-001 §1's containment design (`Quote`/`Toggle`/`List`/`ListItem` nesting), materialised the same way `docs.pages` already materialises pages-within-pages:
+
 ```sql
 CREATE TABLE docs.blocks (
-    id              UUID PRIMARY KEY DEFAULT uuidv7(),
-    page_id         UUID NOT NULL REFERENCES docs.pages(id) ON DELETE CASCADE,
-    parent_id       UUID REFERENCES docs.blocks(id),
-    path            LTREE NOT NULL,
-    sort_key        TEXT NOT NULL,
-    kind            TEXT NOT NULL,
-    content         JSONB NOT NULL DEFAULT '{}',
-    -- Content shapes evolve. Old rows keep old shapes forever, so the shape
-    -- version is stored per row (ADR-001 seam #2). Additive-only evolution.
-    content_version SMALLINT NOT NULL DEFAULT 1,
-    deleted_at      TIMESTAMPTZ,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    id         UUID PRIMARY KEY,          -- same id collaboration-service's ops name — the projection's join key to its source
+    page_id    UUID NOT NULL REFERENCES docs.pages(id) ON DELETE CASCADE,
+    parent_id  UUID REFERENCES docs.blocks(id) ON DELETE CASCADE,
+    -- Materialised ancestry, e.g. 'p<block-hex>.p<block-hex>' — same LTREE
+    -- shape docs.pages.path already uses, one level deeper. documentcore's
+    -- own in-memory Page does NOT carry this — a block only needs to know
+    -- its immediate Parent there; path exists purely so this table can
+    -- answer "every descendant of X" as an indexed <@ query, the same
+    -- reason docs.pages has one (RFC-001 §1 "Persisted form is not the
+    -- in-memory form").
+    path       LTREE NOT NULL,
+    position   INTEGER NOT NULL,          -- depth-first order within the page — a parent immediately precedes all its descendants, then the next top-level sibling
+    kind       JSONB NOT NULL,            -- documentcore.BlockKind's own tagged-object JSON shape
+    content    JSONB NOT NULL DEFAULT '{}', -- documentcore.Content{text, marks}
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX ON docs.blocks USING GIST (path);
-CREATE INDEX ON docs.blocks (page_id, sort_key) WHERE deleted_at IS NULL;
-CREATE INDEX ON docs.blocks USING GIN (content jsonb_path_ops);
+CREATE INDEX ON docs.blocks (page_id, position);
 ```
 
-### `content` shape per `kind`
+### `kind` shape per `BlockTag`
+
+Matches `documentcore.BlockKind`'s own `MarshalJSON` exactly (`block.go`) — the tag names an unused field, never sends it:
 
 ```json
-// paragraph | heading_1..3 | quote | toggle | bulleted_list | numbered_list | todo_list
-{ "spans": [{ "text": "Hello", "bold": true, "link": "https://…" }] }
+// paragraph | quote | toggle | divider
+{"tag": "paragraph"}
 
-// todo_list adds
-{ "checked": false, "spans": [...] }
+// heading — Level meaningful only here
+{"tag": "heading", "level": 2}
 
-// code — NO spans; code is never formatted (RFC-001 §1 grammar)
-{ "code": "fn main() {}", "language": "rust" }
+// code_block — Language meaningful only here
+{"tag": "code_block", "language": "go"}
 
-// image
-{ "file_id": "uuid", "caption": "optional", "width_ratio": 0.6 }
+// list — ListKind meaningful only here
+{"tag": "list", "list_kind": "todo"}
 
-// divider
-{}
+// list_item — Checked meaningful only when the parent list's ListKind is "todo"
+{"tag": "list_item", "checked": false}
+
+// image — FileId meaningful only here; no upload/asset pipeline backs it yet (RFC-001 §1)
+{"tag": "image", "file_id": "uuid"}
 ```
 
-Mark keys are serialised in a fixed order and absent means false — never `"bold": false` (RFC-001 §2).
+### `content` shape
+
+One shape for every `BlockTag` — `documentcore.Content{text, marks}` (RFC-001 §2), whether the block is a leaf's own text (`Paragraph`/`Heading`/`Code`), a container's own inline text (`Quote`/`Toggle`/`ListItem`'s `Spans`), or an `Image`'s `Caption`:
+
+```json
+{"text": "Hello world", "marks": [{"kind": {"tag": "bold"}, "start": 0, "end": 5}]}
+```
+
+`Code` never carries marks in practice (RFC-001 §1: "code is never bold") but the shape is the same — `documentcore` doesn't special-case it structurally, only `CodeBlock`'s own editing surface never offers formatting.
 
 ### The op log — `document-service` in Phase 1, `collaboration-service` from Phase 3
 

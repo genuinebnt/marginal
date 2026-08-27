@@ -25,27 +25,84 @@ The tree is an **abstract** syntax tree: it deliberately discards how content wa
 
 ### Write the grammar before the code
 
+This is the **logical grammar** — the resolved view a renderer, a projector, or a REST response sees. The CRDT machinery (RFC-002's rope, anchors, the op log) lives underneath and is fully resolved away by the time anything reaches this shape; `MarkRange`'s `Offset`s are logical offsets into an already-resolved `RunText`, not anchors.
+
 ```ebnf
+Page      ::= PageId Document
 Document  ::= Block*
-Block     ::= Paragraph | Heading | List | Quote | Code | Toggle | Image | Divider
+
+Block     ::= BlockId BlockKind
+
+BlockKind ::= Paragraph
+            | Heading
+            | List
+            | Quote
+            | Code
+            | Toggle
+            | Image
+            | Divider
+
 Paragraph ::= Spans
-Heading    ::= Level Spans                  (* Level = 1 | 2 | 3 *)
-List       ::= ListKind ListItem+           (* ListKind = bulleted | numbered | todo *)
-ListItem  ::= Spans Block*                  (* nesting via children *)
+Heading   ::= Level Spans
+Level     ::= 1 | 2 | 3
+Divider   ::= ε
+
 Quote     ::= Spans Block*
 Toggle    ::= Spans Block*                  (* collapsed state is view, not model *)
+
+List      ::= ListKind ListItem+
+ListKind  ::= bulleted | numbered | todo
+ListItem  ::= BlockId Checked? Spans ListChild*
+ListChild ::= List | Paragraph
+Checked   ::= true | false                  (* meaningful only when the enclosing List's ListKind = todo *)
+
 Code      ::= Language? RawText             (* no Spans — code is unformatted *)
+Language  ::= String
+RawText   ::= String
+
 Image     ::= FileId Caption?
-Spans     ::= Span*
-Span      ::= Text Mark*
-Mark      ::= bold | italic | strike | code | link(Url) | pagelink(PageId)
+Caption   ::= Spans
+
+Spans     ::= Run*
+Run       ::= RunText MarkRange*
+RunText   ::= String
+
+MarkRange ::= Mark Offset Offset            (* [start, end) into RunText — logical, resolved *)
+
+Mark      ::= bold
+            | italic
+            | strike
+            | code
+            | link(Url)
+            | pagelink(PageId)
+
+BlockId   ::= UUID
+PageId    ::= UUID
+FileId    ::= UUID
+Offset    ::= Integer
+Url       ::= String
 ```
 
-Two rules that fall out of writing it down: **`Code` has no `Spans`** (code is never bold), and **toggle collapse is view state, not model state** — it must not be stored in the block or it becomes a collaborative edit when someone expands a toggle.
+Rules that fall out of writing it down:
+
+- **`Code` has no `Spans`** — code is never bold.
+- **Toggle collapse is view state, not model state** — it must not be stored in the block or it becomes a collaborative edit when someone expands a toggle.
+- **`Quote`, `Toggle`, `List`, and `ListItem` are the only container kinds** — every other `BlockKind` is a leaf and can never have children. `documentcore` enforces this as a real precondition (`NotAContainerError`), not a convention callers are trusted to follow.
+- **`List` is two nesting levels, not one**: a `List` block's children (via the same containment mechanism every other container uses) are `ListItem` blocks; a `ListItem`'s own children are, per `ListChild`, restricted to `List` (a nested sub-list) or `Paragraph` (continuation text under that item) — `documentcore` checks this restriction specifically for `ListItem` parents, where every other container accepts any block kind as a child.
+- **`Checked` lives on the `ListItem`, not the `List`** — each item tracks its own completion; it's meaningful only when the enclosing `List`'s `ListKind` is `todo`, the same "field meaningful only for one tag" shape `Level`/`Language` already have on `Heading`/`Code`.
+- **`Image`'s `Caption` is the block's own `Content`** — reuses the exact mechanism `Quote`/`Toggle`'s own inline text already uses, not a second text-storage path.
+- **`FileId` has no backing upload/asset pipeline in this repo yet** (`CLOUD_PORTABILITY.md`'s object-storage port is defined but unused by any Track 1 service) — an `Image` block holds an opaque `FileId` reference only; resolving it to bytes is out of scope until an upload flow exists. A stated gap, not a silent one.
 
 ### Persisted form is not the in-memory form
 
-The block tree is stored as an **adjacency list**: rows with `parent_id`, an LTREE `path`, and a fractional `sort_key`. The nested tree is materialised at read time. So "surface syntax" is rows; the AST is what you build from them.
+The block tree is stored as an **adjacency list**: rows with `parent_id`, an LTREE `path`, and a fractional `sort_key` — the same shape `docs.pages` already uses for pages-within-pages, applied one level deeper (blocks-within-a-page). The nested tree is materialised at read time. So "surface syntax" is rows; the AST is what you build from them.
+
+`documentcore`'s own in-memory model does **not** need the materialised LTREE path — that exists to make "find all descendants of X" a cheap indexed Postgres query, and only `document-service`'s projection (`docs.blocks`) needs that query shape. In memory, a block only needs to know its immediate `Parent` (nil for a top-level block); `Page.Blocks` stays one flat, depth-first-ordered slice — a parent immediately followed by all its descendants, then the next top-level sibling — so a linear walk from the start already produces reading order, and `document-service`'s materialised `position` column keeps meaning exactly what it means today. Reparenting keeps this order invariant the same way `MoveBlock` already keeps sibling order invariant: it is what `Page.Apply` restores after every op, not something a reader has to reconstruct.
+
+Two invariants nesting adds, both `Page.Apply` preconditions (checked uniformly with every other "this op's recorded prior state must match reality" check RFC-002 §1 already requires):
+
+1. **No cycles.** A block can never become its own ancestor — the same rule `ReparentPage`'s `ErrCycle` already enforces for pages, checked here by walking the `Parent` chain from the proposed new parent up to the root and rejecting if the moved block appears in it (`documentcore` has no LTREE prefix check to lean on, so it's a bounded walk instead — bounded by the page's own block count).
+2. **A container must be empty to delete or to change kind away from a container tag.** Cascading a delete through a whole subtree has no clean `Invert()` — reinserting a whole subtree atomically is a different, harder operation than reinserting one block — so this repo's scope stops at rejecting the op (`ContainerNotEmptyError`) rather than building subtree-delete's own undo semantics. A caller that wants to remove a non-empty container deletes its children first, one block at a time, each individually invertible.
 
 ---
 

@@ -17,15 +17,26 @@ type PageID uuid.UUID
 // PageID.
 type BlockID uuid.UUID
 
+// FileID identifies an uploaded file — today, only as an Image block's
+// opaque reference (RFC-001 §1). No upload/asset pipeline backs this yet
+// (CLOUD_PORTABILITY.md's object-storage port is defined but unused by
+// any Track 1 service); documentcore only stores and round-trips the id,
+// same sourcing rule as PageID/BlockID.
+type FileID uuid.UUID
+
 func (id PageID) String() string  { return uuid.UUID(id).String() }
 func (id BlockID) String() string { return uuid.UUID(id).String() }
+func (id FileID) String() string  { return uuid.UUID(id).String() }
 
 // MarshalText/UnmarshalText (not inherited from uuid.UUID — a defined type
-// doesn't inherit its underlying type's methods) give PageID/BlockID plain
-// UUID-string JSON encoding, the same shape DATA_MODEL.md's JSONB columns
-// and the WASM/JS boundary both expect.
+// doesn't inherit its underlying type's methods) give PageID/BlockID/FileID
+// plain UUID-string JSON encoding, the same shape DATA_MODEL.md's JSONB
+// columns and the WASM/JS boundary both expect.
 func (id PageID) MarshalText() ([]byte, error)  { return uuid.UUID(id).MarshalText() }
 func (id *PageID) UnmarshalText(b []byte) error { return (*uuid.UUID)(id).UnmarshalText(b) }
 
 func (id BlockID) MarshalText() ([]byte, error)  { return uuid.UUID(id).MarshalText() }
 func (id *BlockID) UnmarshalText(b []byte) error { return (*uuid.UUID)(id).UnmarshalText(b) }
+
+func (id FileID) MarshalText() ([]byte, error)  { return uuid.UUID(id).MarshalText() }
+func (id *FileID) UnmarshalText(b []byte) error { return (*uuid.UUID)(id).UnmarshalText(b) }

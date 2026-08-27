@@ -231,3 +231,216 @@ func TestMoveBlockThenInvertRestoresOrder(t *testing.T) {
 
 	assertRoundTrips(t, &page, MoveBlock{ID: ids[0], From: nil, To: &ids[2]})
 }
+
+// --- RFC-001 §1 containment: Quote/Toggle/List/ListItem nesting ---
+
+func TestInsertBlockAsChildOfContainerPlacesItImmediatelyAfterParent(t *testing.T) {
+	page := NewPage(newTestPageID(), "Title")
+	quote := newTestBlockID()
+	require.NoError(t, page.Apply(InsertBlock{ID: quote, Kind: NewQuote(), Content: PlainContent("")}))
+
+	child := newTestBlockID()
+	require.NoError(t, page.Apply(InsertBlock{ID: child, Parent: &quote, Kind: NewParagraph(), Content: PlainContent("inside")}))
+
+	require.Len(t, page.Blocks, 2)
+	assert.Equal(t, quote, page.Blocks[0].ID)
+	assert.Equal(t, child, page.Blocks[1].ID)
+	require.NotNil(t, page.Blocks[1].Parent)
+	assert.Equal(t, quote, *page.Blocks[1].Parent)
+}
+
+func TestInsertBlockNilAfterInsertsAsParentsFirstChild(t *testing.T) {
+	page := NewPage(newTestPageID(), "Title")
+	quote := newTestBlockID()
+	require.NoError(t, page.Apply(InsertBlock{ID: quote, Kind: NewQuote(), Content: PlainContent("")}))
+
+	first := newTestBlockID()
+	require.NoError(t, page.Apply(InsertBlock{ID: first, Parent: &quote, Kind: NewParagraph(), Content: PlainContent("")}))
+	// A second child with After: nil must land BEFORE `first`, not after —
+	// nil always means "the parent's first child," regardless of any
+	// existing children (mirrors nil meaning "start of the page" at the
+	// top level).
+	second := newTestBlockID()
+	require.NoError(t, page.Apply(InsertBlock{ID: second, Parent: &quote, Kind: NewParagraph(), Content: PlainContent("")}))
+
+	require.Len(t, page.Blocks, 3)
+	assert.Equal(t, []BlockID{quote, second, first}, []BlockID{page.Blocks[0].ID, page.Blocks[1].ID, page.Blocks[2].ID})
+}
+
+func TestInsertBlockAfterASiblingWithChildrenSkipsPastThem(t *testing.T) {
+	// [Quote A (with child C), Quote B] — inserting after A must land after
+	// C too, not between A and C, preserving depth-first order.
+	page := NewPage(newTestPageID(), "Title")
+	a := newTestBlockID()
+	require.NoError(t, page.Apply(InsertBlock{ID: a, Kind: NewQuote(), Content: PlainContent("")}))
+	c := newTestBlockID()
+	require.NoError(t, page.Apply(InsertBlock{ID: c, Parent: &a, Kind: NewParagraph(), Content: PlainContent("")}))
+
+	b := newTestBlockID()
+	require.NoError(t, page.Apply(InsertBlock{ID: b, After: &a, Kind: NewQuote(), Content: PlainContent("")}))
+
+	assert.Equal(t, []BlockID{a, c, b}, []BlockID{page.Blocks[0].ID, page.Blocks[1].ID, page.Blocks[2].ID})
+}
+
+func TestInsertBlockRejectsNonexistentParent(t *testing.T) {
+	page := NewPage(newTestPageID(), "Title")
+	ghost := newTestBlockID()
+
+	err := page.Apply(InsertBlock{ID: newTestBlockID(), Parent: &ghost, Kind: NewParagraph(), Content: PlainContent("")})
+
+	var notFound *BlockNotFoundError
+	assert.ErrorAs(t, err, &notFound)
+}
+
+func TestInsertBlockRejectsNonContainerParent(t *testing.T) {
+	page := NewPage(newTestPageID(), "Title")
+	paragraph := newTestBlockID()
+	require.NoError(t, page.Apply(InsertBlock{ID: paragraph, Kind: NewParagraph(), Content: PlainContent("")}))
+
+	err := page.Apply(InsertBlock{ID: newTestBlockID(), Parent: &paragraph, Kind: NewParagraph(), Content: PlainContent("")})
+
+	var notAContainer *NotAContainerError
+	assert.ErrorAs(t, err, &notAContainer)
+}
+
+func TestInsertBlockUnderListItemRestrictsChildKind(t *testing.T) {
+	page := NewPage(newTestPageID(), "Title")
+	item := newTestBlockID()
+	require.NoError(t, page.Apply(InsertBlock{ID: item, Kind: NewListItem(false), Content: PlainContent("")}))
+
+	// RFC-001 §1: ListChild ::= List | Paragraph — Quote is rejected...
+	err := page.Apply(InsertBlock{ID: newTestBlockID(), Parent: &item, Kind: NewQuote(), Content: PlainContent("")})
+	var invalidChild *InvalidListChildError
+	assert.ErrorAs(t, err, &invalidChild)
+
+	// ...but a nested List and a continuation Paragraph are both allowed.
+	assert.NoError(t, page.Apply(InsertBlock{ID: newTestBlockID(), Parent: &item, Kind: NewList(Bulleted), Content: PlainContent("")}))
+	assert.NoError(t, page.Apply(InsertBlock{ID: newTestBlockID(), Parent: &item, Kind: NewParagraph(), Content: PlainContent("")}))
+}
+
+func TestDeleteBlockRejectsNonEmptyContainer(t *testing.T) {
+	page := NewPage(newTestPageID(), "Title")
+	quote := newTestBlockID()
+	require.NoError(t, page.Apply(InsertBlock{ID: quote, Kind: NewQuote(), Content: PlainContent("")}))
+	child := newTestBlockID()
+	require.NoError(t, page.Apply(InsertBlock{ID: child, Parent: &quote, Kind: NewParagraph(), Content: PlainContent("")}))
+
+	err := page.Apply(DeleteBlock{Tombstone: page.Blocks[0], After: nil})
+
+	var notEmpty *ContainerNotEmptyError
+	assert.ErrorAs(t, err, &notEmpty)
+	assert.Len(t, page.Blocks, 2, "a rejected delete must not mutate the page")
+}
+
+func TestDeleteBlockAllowsEmptyContainer(t *testing.T) {
+	page := NewPage(newTestPageID(), "Title")
+	quote := newTestBlockID()
+	require.NoError(t, page.Apply(InsertBlock{ID: quote, Kind: NewQuote(), Content: PlainContent("")}))
+
+	err := page.Apply(DeleteBlock{Tombstone: page.Blocks[0], After: nil})
+
+	require.NoError(t, err)
+	assert.Empty(t, page.Blocks)
+}
+
+func TestDeleteBlockRejectsParentMismatch(t *testing.T) {
+	page := NewPage(newTestPageID(), "Title")
+	quote := newTestBlockID()
+	require.NoError(t, page.Apply(InsertBlock{ID: quote, Kind: NewQuote(), Content: PlainContent("")}))
+	child := newTestBlockID()
+	require.NoError(t, page.Apply(InsertBlock{ID: child, Parent: &quote, Kind: NewParagraph(), Content: PlainContent("")}))
+
+	// child's real parent is quote, not nil (top-level).
+	err := page.Apply(DeleteBlock{Tombstone: Block{ID: child, Parent: nil, Kind: NewParagraph(), Content: PlainContent("")}, After: &quote})
+
+	var mismatch *ParentMismatchError
+	assert.ErrorAs(t, err, &mismatch)
+}
+
+func TestSetBlockKindRejectsConvertingNonEmptyContainerToLeaf(t *testing.T) {
+	page := NewPage(newTestPageID(), "Title")
+	quote := newTestBlockID()
+	require.NoError(t, page.Apply(InsertBlock{ID: quote, Kind: NewQuote(), Content: PlainContent("")}))
+	require.NoError(t, page.Apply(InsertBlock{ID: newTestBlockID(), Parent: &quote, Kind: NewParagraph(), Content: PlainContent("")}))
+
+	err := page.Apply(SetBlockKind{ID: quote, From: NewQuote(), To: NewParagraph()})
+
+	var notEmpty *ContainerNotEmptyError
+	assert.ErrorAs(t, err, &notEmpty)
+	assert.Equal(t, Quote, page.Blocks[0].Kind.Tag, "a rejected conversion must not mutate the block")
+}
+
+func TestSetBlockKindUnderListItemRestrictsChildKind(t *testing.T) {
+	page := NewPage(newTestPageID(), "Title")
+	item := newTestBlockID()
+	require.NoError(t, page.Apply(InsertBlock{ID: item, Kind: NewListItem(false), Content: PlainContent("")}))
+	para := newTestBlockID()
+	require.NoError(t, page.Apply(InsertBlock{ID: para, Parent: &item, Kind: NewParagraph(), Content: PlainContent("")}))
+
+	err := page.Apply(SetBlockKind{ID: para, From: NewParagraph(), To: NewQuote()})
+
+	var invalidChild *InvalidListChildError
+	assert.ErrorAs(t, err, &invalidChild)
+}
+
+func TestMoveBlockRejectsCycleUnderOwnDescendant(t *testing.T) {
+	page := NewPage(newTestPageID(), "Title")
+	quote := newTestBlockID()
+	require.NoError(t, page.Apply(InsertBlock{ID: quote, Kind: NewQuote(), Content: PlainContent("")}))
+	child := newTestBlockID()
+	require.NoError(t, page.Apply(InsertBlock{ID: child, Parent: &quote, Kind: NewQuote(), Content: PlainContent("")}))
+
+	// Moving quote to become its own child's child.
+	err := page.Apply(MoveBlock{ID: quote, FromParent: nil, From: nil, ToParent: &child, To: nil})
+
+	var cycle *CycleError
+	assert.ErrorAs(t, err, &cycle)
+}
+
+func TestMoveBlockRejectsMovingUnderItself(t *testing.T) {
+	page := NewPage(newTestPageID(), "Title")
+	quote := newTestBlockID()
+	require.NoError(t, page.Apply(InsertBlock{ID: quote, Kind: NewQuote(), Content: PlainContent("")}))
+
+	err := page.Apply(MoveBlock{ID: quote, FromParent: nil, From: nil, ToParent: &quote, To: nil})
+
+	var cycle *CycleError
+	assert.ErrorAs(t, err, &cycle)
+}
+
+func TestMoveBlockRelocatesWholeSubtreeAsOneUnit(t *testing.T) {
+	// [Quote(children: A, B), Target] — moving Quote under Target must
+	// bring A and B along, contiguous and in order, immediately after it.
+	page := NewPage(newTestPageID(), "Title")
+	quote := newTestBlockID()
+	require.NoError(t, page.Apply(InsertBlock{ID: quote, Kind: NewQuote(), Content: PlainContent("")}))
+	a := newTestBlockID()
+	require.NoError(t, page.Apply(InsertBlock{ID: a, Parent: &quote, Kind: NewParagraph(), Content: PlainContent("a")}))
+	b := newTestBlockID()
+	require.NoError(t, page.Apply(InsertBlock{ID: b, Parent: &quote, After: &a, Kind: NewParagraph(), Content: PlainContent("b")}))
+	target := newTestBlockID()
+	require.NoError(t, page.Apply(InsertBlock{ID: target, After: &quote, Kind: NewToggle(), Content: PlainContent("")}))
+
+	err := page.Apply(MoveBlock{ID: quote, FromParent: nil, From: nil, ToParent: &target, To: nil})
+	require.NoError(t, err)
+
+	require.Len(t, page.Blocks, 4)
+	assert.Equal(t, []BlockID{target, quote, a, b},
+		[]BlockID{page.Blocks[0].ID, page.Blocks[1].ID, page.Blocks[2].ID, page.Blocks[3].ID})
+	require.NotNil(t, page.Blocks[1].Parent)
+	assert.Equal(t, target, *page.Blocks[1].Parent, "the subtree's own root is reparented")
+	require.NotNil(t, page.Blocks[2].Parent)
+	assert.Equal(t, quote, *page.Blocks[2].Parent, "descendants keep their existing parent")
+}
+
+func TestMoveBlockSubtreeThenInvertRestoresNestedOrder(t *testing.T) {
+	page := NewPage(newTestPageID(), "Title")
+	quote := newTestBlockID()
+	require.NoError(t, page.Apply(InsertBlock{ID: quote, Kind: NewQuote(), Content: PlainContent("")}))
+	child := newTestBlockID()
+	require.NoError(t, page.Apply(InsertBlock{ID: child, Parent: &quote, Kind: NewParagraph(), Content: PlainContent("")}))
+	target := newTestBlockID()
+	require.NoError(t, page.Apply(InsertBlock{ID: target, After: &quote, Kind: NewToggle(), Content: PlainContent("")}))
+
+	assertRoundTrips(t, &page, MoveBlock{ID: quote, FromParent: nil, From: nil, ToParent: &target, To: nil})
+}

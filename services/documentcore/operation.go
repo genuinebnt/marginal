@@ -21,11 +21,13 @@ type Op interface {
 	isOp()
 }
 
-// InsertBlock inserts Kind/Content as a new block with id ID, immediately
-// after the block named by After (or at the start of the page if After is
-// nil).
+// InsertBlock inserts Kind/Content as a new block with id ID, as a child
+// of Parent (nil = top-level), immediately after the sibling named by
+// After (or as Parent's first child — or the page's first top-level
+// block, if Parent is also nil — if After is nil).
 type InsertBlock struct {
 	ID      BlockID   `json:"id"`
+	Parent  *BlockID  `json:"parent"`
 	After   *BlockID  `json:"after"`
 	Kind    BlockKind `json:"kind"`
 	Content Content   `json:"content"`
@@ -35,18 +37,26 @@ func (InsertBlock) isOp() {}
 
 func (op InsertBlock) Invert() Op {
 	return DeleteBlock{
-		Tombstone: Block{ID: op.ID, Kind: op.Kind, Content: op.Content},
+		Tombstone: Block{ID: op.ID, Parent: op.Parent, Kind: op.Kind, Content: op.Content},
 		After:     op.After,
 	}
 }
 
 // DeleteBlock removes Tombstone.ID from the page. Tombstone carries the
-// full block so Invert can reinsert it; After must equal the block's
-// actual predecessor at apply time (Page.Apply checks this) — the deleted
-// Rust attempt's open-decisions list flagged that an unchecked After lets a
-// wrong position apply cleanly and silently restore the block to the wrong
+// full block (including its Parent — RFC-001 §1's containment) so Invert
+// can reinsert it exactly; After must equal the block's actual predecessor
+// at apply time (Page.Apply checks this) — the deleted Rust attempt's
+// open-decisions list flagged that an unchecked After lets a wrong
+// position apply cleanly and silently restore the block to the wrong
 // place on undo. Checking it here, uniformly for every "records a prior
 // value" op, is the fix.
+//
+// Only an empty container (or a leaf) may be deleted — Page.Apply rejects
+// deleting a non-empty Quote/Toggle/List/ListItem (ContainerNotEmptyError).
+// A whole-subtree delete has no clean Invert(): reinserting a subtree
+// atomically is a different, harder operation than reinserting one block,
+// so this repo's scope stops at requiring the caller to delete a
+// container's children first, each individually invertible.
 type DeleteBlock struct {
 	Tombstone Block    `json:"tombstone"`
 	After     *BlockID `json:"after"`
@@ -57,6 +67,7 @@ func (DeleteBlock) isOp() {}
 func (op DeleteBlock) Invert() Op {
 	return InsertBlock{
 		ID:      op.Tombstone.ID,
+		Parent:  op.Tombstone.Parent,
 		After:   op.After,
 		Kind:    op.Tombstone.Kind,
 		Content: op.Tombstone.Content,
@@ -68,6 +79,13 @@ func (op DeleteBlock) Invert() Op {
 // "from" no longer matches current state fails loudly rather than
 // corrupting it silently (the same principle DeleteBlock.After above
 // applies, generalised to every op that records a prior value).
+//
+// Converting a non-empty container (From.Tag.IsContainer()) to a leaf
+// kind is rejected (ContainerNotEmptyError) — same reasoning as
+// DeleteBlock. Converting a block whose own Parent is a ListItem to
+// anything other than List or Paragraph is rejected too
+// (InvalidListChildError) — RFC-001 §1's ListChild ::= List | Paragraph
+// restriction, the one child-kind rule specific to ListItem parents.
 type SetBlockKind struct {
 	ID   BlockID   `json:"id"`
 	From BlockKind `json:"from"`
@@ -109,16 +127,31 @@ func (op SetTitle) Invert() Op {
 	return SetTitle{Page: op.Page, From: op.To, To: op.From}
 }
 
-// MoveBlock relocates ID from immediately after From to immediately after
-// To (nil means "at the start of the page" for either).
+// MoveBlock relocates ID from being FromParent's child (nil = top-level)
+// immediately after sibling From, to being ToParent's child immediately
+// after sibling To (nil means "first child of the parent" — or "first
+// top-level block" if the parent is also nil — for either From or To).
+//
+// If ID is a container with children, the whole subtree moves as one
+// unit (RFC-001 §1's depth-first order invariant: a parent is always
+// immediately followed by all its descendants) — the only op that ever
+// relocates more than one block, since InsertBlock only ever creates one
+// block and DeleteBlock only ever removes an empty one. Page.Apply
+// rejects a move that would make ID its own ancestor (CycleError, the
+// same rule ReparentPage's ErrCycle already enforces for pages) and
+// checks ToParent's container-ness and, if ToParent is a ListItem, ID's
+// own kind against ListChild's restriction — the same two checks
+// InsertBlock's Parent already needs.
 type MoveBlock struct {
-	ID   BlockID  `json:"id"`
-	From *BlockID `json:"from"`
-	To   *BlockID `json:"to"`
+	ID         BlockID  `json:"id"`
+	FromParent *BlockID `json:"from_parent"`
+	From       *BlockID `json:"from"`
+	ToParent   *BlockID `json:"to_parent"`
+	To         *BlockID `json:"to"`
 }
 
 func (MoveBlock) isOp() {}
 
 func (op MoveBlock) Invert() Op {
-	return MoveBlock{ID: op.ID, From: op.To, To: op.From}
+	return MoveBlock{ID: op.ID, FromParent: op.ToParent, From: op.To, ToParent: op.FromParent, To: op.From}
 }
