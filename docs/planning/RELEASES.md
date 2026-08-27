@@ -59,18 +59,22 @@ feature of its own — and are treated the same way, not given their own minor.
 `ROADMAP.md`'s own dependency ordering (its Track 4 intro: "comments need anchors,
 notifications need comments, publishing needs RBAC, plugins need the diagnostics engine,
 and the assistant needs the search index"), and every one of those holds across the
-`v2`→`v4` boundary in the right direction: `v2.2.0` (Diagnostics) comes before `v4.2.0`
-(Plugins, which needs it); `v2.4.0` (Search) comes before `v4.4.0` (Assistant, which
+`v2`→`v4` boundary in the right direction: `v2.3.0` (Diagnostics) comes before `v4.2.0`
+(Plugins, which needs it); `v2.5.0` (Search) comes before `v4.4.0` (Assistant, which
 needs the index); `v3.1.0` (RBAC) comes before `v4.1.0` (Publishing, which needs it);
 `v3.2.0` (Comments) comes before `v3.3.0` (Notifications, which needs it), both inside
-the same major. `v4.3.0`/`v4.4.0`'s own order (Graph Explorer & Related Content before
-Assistant) is deliberately the other way around from a naive "AI last" reading: the
-graph-algorithm and lexical-similarity work in `v4.3.0` needs no embedding index at all,
-so it ships first; `v4.4.0`'s embedding index then completes `v4.3.0`'s Discover panel
-with real semantic similarity as a staged enhancement, not a second version of the same
-screen. If a future session's own judgment says a different cut fits the porting goal
-better once a major is actually underway, that judgment wins over this table — the
-table is a plan, not a constraint on it.
+the same major. `v4.3.0`/`v4.4.0`'s own order (Related Content before Assistant) is
+deliberately the other way around from a naive "AI last" reading: the lexical- and
+graph-centrality-based ranking in `v4.3.0` needs no embedding index at all, so it ships
+first; `v4.4.0`'s embedding index then completes `v4.3.0`'s Discover panel with real
+semantic similarity as a staged enhancement, not a second version of the same screen.
+The graph-algorithm work this same reasoning applies to even more directly —
+`graph.html`/`graph-algorithms.html` in full — is pulled forward much further still, into
+`v2.2.0`: highest DSA-learning density per unit of build effort, every row independently
+demoable the moment it lands, and no dependency on anything past `v1.0.0`'s own link
+graph (`v2.0.0`'s own intro paragraph has the detail). If a future session's own judgment
+says a different cut fits the porting goal better once a major is actually underway, that
+judgment wins over this table — the table is a plan, not a constraint on it.
 
 **On the full `v3` grammar (RFC-001 §10):** the target is full coverage, not the subset
 that was easy. The one carve-out is `Table`/`CommTable` and the four cross-page query
@@ -97,13 +101,28 @@ delete safely, and every algorithm that backs those guarantees is visible, not j
 trusted. Track 2, plus the parts of Track 3 that are product depth rather than
 distributed-systems scaling.*
 
+**`graph.html`/`graph-algorithms.html` are pulled forward into their own early minor
+(`v2.2.0`), not spread across four later ones the way an earlier pass at this table had
+them.** Every row on that pair of mockups — components/orphans, three-colour-DFS cycle
+detection, shortest path, BFS-as-wavefront, forward reachability/blast radius, Betti
+numbers, the Voronoi/Delaunay territory view — is a pure graph algorithm over
+`blockproj`'s already-existing `docs.page_links` (shipped in `v1.0.0`), with **no real
+dependency** on Diagnostics, Search, or Assistant; the earlier spread across those
+phases followed `ROADMAP.md`'s ownership table, not an actual build-order constraint.
+Consolidating it earlier is a deliberate reprioritization (highest DSA-learning density
+per unit of build effort, and every one of these algorithms is independently demoable
+the moment it lands — faster payoff than waiting on the features it used to ride along
+with). `v2.6.0` (Page-Delete Saga) now consumes `v2.2.0`'s own reachability computation
+rather than building it a second time.
+
 | Version | Feature | Ships | Source | Status |
 |---|---|---|---|---|
 | `v2.1.0` | **Undo / Redo** | Per-actor undo/redo across collaborative edits — a keyboard shortcut and a visible undo stack, correct even when someone else edited the same page in between. `documentcore.History` (already built, Track 1) is the primitive; this wires it through `collaboration-service`'s session and a real UI affordance. **Shipped** (`b9c61fe`, `15335c8`). | Phase 5 | shipped |
-| `v2.2.0` | **Diagnostics & the fact graph** | RFC-003's analyzer engine: a symbol table, a reverse index (page-rename invalidates referrers), incremental re-analysis, and real inline squiggles/quick-fixes in the editor — `InspectorRail`'s "Checks" tab stops being an honest empty state. Also makes `facts.html` real: named definitions and transclusion backed by a genuine dependency DAG with topological dirty-propagation (editing a definition marks only what's transitively downstream), cycle rejection by three-colour DFS, and duplicate-definition detection by hash collision — plus the graph's own components/orphans/cycles view in `graph.html`/`graph-algorithms.html` (that pair's Phase-4-owned rows). | Phase 4 | planned |
-| `v2.3.0` | **History, Trace & Diff** | One `InspectorRail`/nav-reachable "History" feature, not three disconnected pages — `history.html`, `trace.html`, and `diff.html` all belong to it and ship together, matching `trace.html`'s own nav (its crumb reads "Product · Op trace," linked from History). Event-sourced replay of `collab.ops` into a scrubbable version-history timeline, snapshots for performance, restore-to-a-point (`history.html`: one paragraph backed by a genuine tombstoned persistent sequence, palimpsest mode reading the tombstones the live text is filtered from). The op-log debugger (`trace.html`: every `apply`/`invert` runs for real, `apply(invert(op), apply(op, doc)) == doc` re-checked on every step, not asserted — backend already real and tested, `internal/session.Trace` + `GET /collab/pages/{id}/trace`, landed during `v2.1.0`'s branch as reusable op-log infrastructure; its UI ships here). The revision diff (`diff.html`: the actual LCS dynamic-programming table and its traceback between two real revisions). `InspectorRail`'s "History" tab stops being an honest empty state. | Phase 6 | planned |
-| `v2.4.0` | **Search, Backlinks & Graph Explorer** | Real full-text search across pages (Postgres FTS or Bleve, in place of Tantivy — an in-process, embeddable-index choice, not a new service), BK-tree fuzzy title matching for "did you mean," and `[[link]]`/`/command` autocomplete via a trie while typing. `search.html` becomes real. Backlinks already exist (`blockproj`'s `docs.page_links`); this adds the search surface. `graph.html`/`graph-algorithms.html` gain their Phase-7-owned rows: shortest path and link distance (real BFS), and BFS rendered as an animated wavefront with per-level frontier widths. | Phase 7 | planned |
-| `v2.5.0` | **Page-Delete Saga** | Safe, resumable cascading delete — a crash mid-delete resumes instead of leaving orphaned descendants; idempotent, with a real "deleting…" state visible in the page tree. `graph.html`'s blast-radius/forward-reachability row (Phase 8) becomes real here — it's the same reachability computation the saga itself needs to know what a delete will actually take with it. | Phase 8 | planned |
+| `v2.2.0` | **Graph Explorer** | `graph.html`/`graph-algorithms.html`, made real, in full, over the real `[[link]]` graph: connected components and orphan detection (flood fill), cycle detection (three-colour DFS — a visited set alone answers "seen before," not "on the current path"), shortest path and link distance (BFS), BFS rendered as an animated wavefront with per-level frontier widths, forward reachability/blast radius, Betti numbers (β₁ from the GF(2) rank of the triangle boundary map, β₂ from the Euler characteristic), and the graph's exact Voronoi territory view (half-plane intersection, Delaunay dual read back off the cells) plus a seeded force simulation that cools to a stop and reheats on drag. | Phases 4, 7, 8, 21 (the graph-only rows) | planned |
+| `v2.3.0` | **Diagnostics & the fact graph** | RFC-003's analyzer engine: a symbol table, a reverse index (page-rename invalidates referrers), incremental re-analysis, and real inline squiggles/quick-fixes in the editor — `InspectorRail`'s "Checks" tab stops being an honest empty state. Also makes `facts.html` real: named definitions and transclusion backed by a genuine dependency DAG with topological dirty-propagation (editing a definition marks only what's transitively downstream), cycle rejection by three-colour DFS, and duplicate-definition detection by hash collision — a second, product-coupled graph (definitions, not pages), which is why it stays here rather than folding into `v2.2.0`. | Phase 4 | planned |
+| `v2.4.0` | **History, Trace & Diff** | One `InspectorRail`/nav-reachable "History" feature, not three disconnected pages — `history.html`, `trace.html`, and `diff.html` all belong to it and ship together, matching `trace.html`'s own nav (its crumb reads "Product · Op trace," linked from History). Event-sourced replay of `collab.ops` into a scrubbable version-history timeline, snapshots for performance, restore-to-a-point (`history.html`: one paragraph backed by a genuine tombstoned persistent sequence, palimpsest mode reading the tombstones the live text is filtered from). The op-log debugger (`trace.html`: every `apply`/`invert` runs for real, `apply(invert(op), apply(op, doc)) == doc` re-checked on every step, not asserted — backend already real and tested, `internal/session.Trace` + `GET /collab/pages/{id}/trace`, landed during `v2.1.0`'s branch as reusable op-log infrastructure; its UI ships here). The revision diff (`diff.html`: the actual LCS dynamic-programming table and its traceback between two real revisions). `InspectorRail`'s "History" tab stops being an honest empty state. | Phase 6 | planned |
+| `v2.5.0` | **Search & Backlinks** | Real full-text search across pages (Postgres FTS or Bleve, in place of Tantivy — an in-process, embeddable-index choice, not a new service), BK-tree fuzzy title matching for "did you mean," and `[[link]]`/`/command` autocomplete via a trie while typing. `search.html` becomes real. Backlinks already exist (`blockproj`'s `docs.page_links`); this adds the search surface — `graph.html`'s own shortest-path/wavefront rows already shipped in `v2.2.0`. | Phase 7 | planned |
+| `v2.6.0` | **Page-Delete Saga** | Safe, resumable cascading delete — a crash mid-delete resumes instead of leaving orphaned descendants; idempotent, with a real "deleting…" state visible in the page tree. Consumes `v2.2.0`'s own forward-reachability computation to know what a delete will actually take with it, rather than building it a second time. | Phase 8 | planned |
 
 ---
 
@@ -137,7 +156,7 @@ remaining work.*
 |---|---|---|---|---|
 | `v4.1.0` | **Publishing, Distribution & Workspace Analytics** | Public pages via static pre-render, a feed, a sitemap — a page becomes a thing you can share outside the login wall (`home.html`'s pitch, `reader.html`'s published badge). `analytics.html` becomes real: workspace analytics where the sketches *are* the privacy mechanism — HyperLogLog, Count-Min Sketch, and a t-digest, each computed live over the real event stream and shown beside its exact answer and error, not a canned example. | Phase 17 | planned |
 | `v4.2.0` | **Plugins & Extensibility** | A real plugin surface: custom block kinds and custom diagnostic analyzers, sandboxed. Go substitution note: `wazero` (a pure-Go WebAssembly runtime, no cgo) stands in for `wasmtime` — same component-model/capability-based-security shape RFC-005 (once written) should specify, different host embedding. | Phase 18 | planned |
-| `v4.3.0` | **Graph Explorer & Related Content** | `graph.html`'s remaining rows become real: Betti numbers (β₁ from the GF(2) rank of the triangle boundary map, β₂ from the Euler characteristic) and the graph's Voronoi territory view (exact Voronoi by half-plane intersection, Delaunay dual read back off the cells). A Discover panel ranking related pages by what's available *without* an embedding index yet — lexical similarity (SimHash+LSH) and graph centrality (PageRank) — plus the similar-block hint, merge assistant, bridge suggestions, reading order, and minimum reading set that `ROADMAP.md` § Not Drawn Yet lists against this same phase. Semantic similarity is layered into this same panel once `v4.4.0` ships its embedding index — staged, not blocked on it. | Phase 21 | planned |
+| `v4.3.0` | **Related Content** | A Discover panel ranking related pages by what's available *without* an embedding index yet — lexical similarity (SimHash+LSH) and graph centrality (PageRank, over the same link graph `v2.2.0`'s Graph Explorer already made real) — plus the similar-block hint, merge assistant, bridge suggestions, reading order, and minimum reading set that `ROADMAP.md` § Not Drawn Yet lists against this same phase. `graph.html`'s own rows (Betti numbers, Voronoi territory) already shipped in `v2.2.0`. Semantic similarity is layered into this same panel once `v4.4.0` ships its embedding index — staged, not blocked on it. | Phase 21 | planned |
 | `v4.4.0` | **Assistant & Semantic Search** | An assistant that edits by emitting real `Op`s (never raw text — per-actor undo, collaboration, and audit all come free that way), backed by one embedding index (`pgvector`) that also completes `v4.3.0`'s Discover panel with real semantic similarity. Local embeddings (no required API key) for the self-hosted build. `discover.html` becomes fully real: an HNSW index actually built and queried in Go — layer assignment, greedy descent, `Mmax` pruning — with recall@5 measured live against brute force, not asserted. | Phase 19 | planned |
 | `v4.5.0` | **Structured & Query Blocks** | `Table`/`CommTable` and the cross-page query kinds (`TableOfContents`, `FeaturedArticles`, `FeaturedProjects`, `PortfolioProjects`) — the last of RFC-001 §10's v3 grammar. First deliverable is the ADR this repo's own "Still Out" rule requires: fixed row/cell arity under concurrent edits, and exactly where cross-page aggregation gets an owner without becoming the "databases/rollups" boundary `DATA_MODEL.md` already draws. Only after that ADR lands does block-kind work start. | RFC-001 §10.4 (documented-but-not-recommended, pending this ADR) | planned |
 
