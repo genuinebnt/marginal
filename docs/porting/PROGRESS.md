@@ -3124,5 +3124,63 @@ three disconnected screens. Also reiterated: whatever ships must match
 its mockup 1:1, not just cover the same feature loosely.
 
 **`v2.1.0` is complete and shipped**: Undo/Redo (`b9c61fe`, `15335c8`)
-plus this trace backend. Per `RELEASES.md`'s dependency-checked order,
-`v2.2.0` (Diagnostics & the fact graph) is next.
+plus this trace backend. Merged to `master` and tagged `v2.1.0-release`.
+
+---
+
+## 2026-08-27 — RELEASES.md reordered: Graph Explorer pulled forward to v2.2.0
+
+Two corrections, live, before `v2.2.0` work started: `graph.html`'s
+remaining rows (Betti numbers, Voronoi) were about to ship in `v4.3.0`,
+after Assistant — moved earlier instead (`v4.3.0`/`v4.4.0` swapped:
+lexical+graph-centrality ranking needs no embedding index, so it ships
+first; semantic similarity layers in once Assistant's index exists).
+Separately: **all** of `graph.html`/`graph-algorithms.html` — components,
+cycles, shortest path, wavefront, blast radius, Betti, Voronoi — was
+pulled forward from four scattered later minors into its own `v2.2.0`,
+immediately after Undo/Redo, per explicit request (highest DSA-learning
+density per unit of build effort, fastest ROI, no real dependency on
+anything past `v1.0.0`'s own link graph). `v3.0.0`'s milestone claim also
+had its "multi-tenant" wording removed — contradicted ADR-001 and
+CLAUDE.md's own hosted-tier note; reworded to "multi-user." Full detail in
+`RELEASES.md`'s own diff; v2.x renumbered accordingly (Diagnostics -> 2.3,
+History/Trace/Diff -> 2.4, Search -> 2.5, Page-Delete Saga -> 2.6).
+
+## 2026-08-27 — v2.2.0: Graph Explorer, backend complete
+
+Branch `v2.2.0`, cut from `master` after tagging `v2.1.0-release`.
+
+**`internal/graphalgo`** (new module-free package, document-service):
+pure functions over an in-memory graph, no I/O — `Components` (flood
+fill, undirected), `Orphans` (component containing none of a root set —
+graph-algorithms.html's own "a mutually-linked pair with nothing pointing
+in is still orphaned" argument, not `backlinks == 0`), `DetectCycle`
+(three-colour DFS, directed — pinned against a diamond shape a plain
+visited set would false-positive on), `BFS`/`ShortestPath` (undirected
+link-distance — the same distance map, grouped by value, is the
+"wavefront" animation, no separate algorithm needed), `ForwardReachable`
+(directed, outbound-only — blast radius), `Diameter` (all-pairs BFS). 22
+tests, each pinning one of the mockup's own stated claims. Commit `98d20ef`.
+
+**`internal/graph` + `internal/graphrepo`** (document-service): a new
+`GraphService` gRPC surface (`GetLinkGraph`, `AnalyzeGraph`,
+`GraphNeighborhood`) registered alongside `PageService` on the same
+listener — same deployable, same scaling profile, not a new service per
+ADR-001. Two sqlc queries build the graph from `docs.pages`/
+`docs.page_links` (deliberately not one join — a linkless page still
+needs to appear as a node). Verified against real Postgres via
+testcontainers-go. Commit `c76dace`.
+
+**`internal/graphrest`** (api-gateway) + `docs/api/graph.md`: the REST
+mapping (`GET /graph`, `/graph/analysis`, `/graph/neighborhood/{id}`),
+same shape as `pagesrest`. Commit `215efa4`.
+
+**Still open for `v2.2.0`**, in order: Betti numbers (β₀/β₁/β₂ — GF(2)
+rank of the triangle boundary map, clique complex) and the exact Voronoi/
+Delaunay territory view (computational geometry) — both pure additions to
+`graphalgo`, same pattern as what's landed. A seeded force-directed
+layout, compiled to wasm (mirroring `documentcore`'s own Go->wasm
+boundary — this needs interactive, client-side 60fps response to
+dragging, unlike the one-shot algorithms above which are computed
+server-side and shipped as data). Then the frontend Graph Explorer
+screen(s) themselves, matching `graph.html`/`graph-algorithms.html` 1:1.
