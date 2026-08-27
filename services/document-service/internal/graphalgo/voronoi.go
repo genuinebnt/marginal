@@ -6,11 +6,16 @@ import "math"
 // source of these (a site's position in the drawn graph), but Voronoi/
 // Delaunay are pure geometry over any point set — this package doesn't
 // know or care where a coordinate came from.
-type Point struct{ X, Y float64 }
+type Point struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+}
 
 // Site is one page's position in the layout — Voronoi's own input.
+// Point is embedded so its JSON flattens into {id, x, y}, not a nested
+// object — the wasm bridge's own wire shape (cmd/graphwasm).
 type Site struct {
-	ID NodeID
+	ID NodeID `json:"id"`
 	Point
 }
 
@@ -19,7 +24,12 @@ type Site struct {
 // "exact Voronoi diagram" here means exact within this rectangle — the
 // same practical choice graph.html's own implementation makes, not a
 // mathematical compromise.
-type Rect struct{ MinX, MinY, MaxX, MaxY float64 }
+type Rect struct {
+	MinX float64 `json:"min_x"`
+	MinY float64 `json:"min_y"`
+	MaxX float64 `json:"max_x"`
+	MaxY float64 `json:"max_y"`
+}
 
 func (r Rect) corners() []Point {
 	return []Point{{r.MinX, r.MinY}, {r.MaxX, r.MinY}, {r.MaxX, r.MaxY}, {r.MinX, r.MaxY}}
@@ -28,8 +38,8 @@ func (r Rect) corners() []Point {
 // VoronoiCell is one site's exact territory: every point within bounds
 // closer to Site than to any other site, as a convex polygon.
 type VoronoiCell struct {
-	Site Site
-	Poly []Point
+	Site Site    `json:"site"`
+	Poly []Point `json:"poly"`
 }
 
 // bisector is the perpendicular bisector between si and sj, as a
@@ -110,7 +120,10 @@ func PolygonArea(poly []Point) float64 {
 
 // DelaunayPair is one edge of the Delaunay dual — two sites whose
 // Voronoi cells share a boundary segment.
-type DelaunayPair struct{ A, B NodeID }
+type DelaunayPair struct {
+	A NodeID `json:"a"`
+	B NodeID `json:"b"`
+}
 
 // Delaunay reads the dual triangulation directly off cells — no second
 // algorithm, since the triangulation is already implicit in which

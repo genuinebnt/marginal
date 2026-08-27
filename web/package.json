@@ -7,9 +7,10 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "build:wasm": "../services/document-service/scripts/build-wasm.sh",
+    "build:graph-wasm": "../services/document-service/scripts/build-graph-wasm.sh",
     "lint": "oxlint",
     "preview": "vite preview",
-    "pretest": "npm run build:wasm",
+    "pretest": "npm run build:wasm && npm run build:graph-wasm",
     "test": "vitest run"
   },
   "dependencies": {

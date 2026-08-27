@@ -5,9 +5,11 @@ import "math"
 // LayoutNode is one site's mutable force-directed simulation state —
 // position and velocity, updated one LayoutTick at a time.
 type LayoutNode struct {
-	ID     NodeID
-	X, Y   float64
-	VX, VY float64
+	ID NodeID  `json:"id"`
+	X  float64 `json:"x"`
+	Y  float64 `json:"y"`
+	VX float64 `json:"vx"`
+	VY float64 `json:"vy"`
 }
 
 // LayoutParams are graph.html's own tick() constants, ported unchanged:
@@ -18,11 +20,11 @@ type LayoutNode struct {
 // (velocity retained per tick, <1 so the simulation can actually settle
 // instead of oscillating forever).
 type LayoutParams struct {
-	Repel        float64
-	SpringLength float64
-	SpringK      float64
-	Center       float64
-	Damp         float64
+	Repel        float64 `json:"repel"`
+	SpringLength float64 `json:"spring_length"`
+	SpringK      float64 `json:"spring_k"`
+	Center       float64 `json:"center"`
+	Damp         float64 `json:"damp"`
 }
 
 // DefaultLayoutParams are graph.html's own tick() values.
