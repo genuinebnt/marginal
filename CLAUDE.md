@@ -107,6 +107,8 @@ docker-compose.yml              local dev stack — all 5 services + one Postgre
 
 services/                       backend, kept separate from web/; each has its own Dockerfile
 ├── documentcore/                its own module (marginal/documentcore), no cmd — page.go, block.go, operation.go, history.go, inline.go; imported by document-service (wasm bridge) AND collaboration-service (block-op session state) — moved out of document-service/internal in the block-collab reconciliation pass so neither has to reimplement the other's Page.Apply
+├── envconfig/                   its own module (marginal/envconfig), no cmd — EnvOr/RequiredEnv; every cmd/main.go imports it instead of each declaring its own copy (idiomatic-Go review pass, 2026-08-27)
+├── outboxpoll/                  its own module (marginal/outboxpoll), no cmd — the shared FOR UPDATE SKIP LOCKED claim-publish-mark Poller; auth-service's and collaboration-service's own internal/outbox each plug in their own sqlc queries + wireEvent shape via Claim/MarkPublished/BuildEnvelope closures (same review pass)
 ├── document-service/
 │   ├── go.mod, cmd/main.go
 │   ├── cmd/wasm/                GOOS=js GOARCH=wasm entrypoint — the editor core's browser build; imports marginal/documentcore
