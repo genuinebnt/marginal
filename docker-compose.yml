@@ -111,8 +111,8 @@ services:
 
   auth-service:
     build:
-      context: services/auth-service
-      dockerfile: Dockerfile
+      context: . # repo root — see services/auth-service/Dockerfile's own comment on why
+      dockerfile: services/auth-service/Dockerfile
     environment:
       DATABASE_URL: postgres://auth_service:dev-only-not-a-real-secret@auth-db:5432/auth_service?sslmode=disable
       REDIS_ADDR: redis:6379
@@ -148,8 +148,8 @@ services:
 
   notification-service:
     build:
-      context: services/notification-service
-      dockerfile: Dockerfile
+      context: . # repo root — see services/notification-service/Dockerfile's own comment on why
+      dockerfile: services/notification-service/Dockerfile
     environment:
       DATABASE_URL: postgres://notification_service:dev-only-not-a-real-secret@notification-db:5432/notification_service?sslmode=disable
       NATS_URL: nats://nats:4222
