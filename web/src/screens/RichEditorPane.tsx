@@ -947,7 +947,18 @@ function EditableTextBlock({
         sel.addRange(restored);
       }
     }
-  }, [text, marks]);
+    // tag is a real dependency, not just text/marks: converting a
+    // block's kind (SetBlockKind) changes the rendered `<Tag>` (e.g.
+    // p -> h1) without changing text/marks at all. React treats that as
+    // a host-element type change at this position and swaps in a fresh,
+    // empty DOM node — but if text/marks are the only deps, this effect
+    // never re-runs to populate it (nothing it depends on changed), so
+    // the fresh element stays empty until some *other* prop change
+    // happens to fire it. Found live: "converting to another block hides
+    // txt" — the text was never lost server-side (a reload always showed
+    // it correctly), only this effect's own dependency array was
+    // incomplete for the DOM-identity change a tag swap causes.
+  }, [text, marks, tag]);
 
   function handleInput(e: FormEvent<HTMLElement>) {
     const value = e.currentTarget.textContent ?? "";
