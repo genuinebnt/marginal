@@ -3175,12 +3175,24 @@ testcontainers-go. Commit `c76dace`.
 mapping (`GET /graph`, `/graph/analysis`, `/graph/neighborhood/{id}`),
 same shape as `pagesrest`. Commit `215efa4`.
 
-**Still open for `v2.2.0`**, in order: Betti numbers (β₀/β₁/β₂ — GF(2)
-rank of the triangle boundary map, clique complex) and the exact Voronoi/
-Delaunay territory view (computational geometry) — both pure additions to
-`graphalgo`, same pattern as what's landed. A seeded force-directed
-layout, compiled to wasm (mirroring `documentcore`'s own Go->wasm
-boundary — this needs interactive, client-side 60fps response to
-dragging, unlike the one-shot algorithms above which are computed
-server-side and shipped as data). Then the frontend Graph Explorer
-screen(s) themselves, matching `graph.html`/`graph-algorithms.html` 1:1.
+Betti numbers landed next: `graphalgo.Betti` (β₀/β₁ as graph facts;
+β₁-of-the-clique-complex/β₂/χ/triangles/rank(∂₂) as properties of a
+*chosen* complex, stated as such per the mockup's own argument) —
+GF(2) Gaussian elimination on `math/big.Int` rows (no 64-edge ceiling,
+unlike the mockup's own BigInt-in-JS). Verified against the mockup's own
+headline example (a hollow tetrahedron, K4 with all four faces filled,
+scoring the textbook 2-sphere result β₀=1/β₁_clique=0/β₂=1) plus a
+`rapid` property test pinning a real algebraic fact (`B1Clique` can never
+go negative — `∂₁∘∂₂ = 0` in any chain complex) across 100 random graphs.
+Wired through `GraphAnalysis.betti`, `graphrest`, `docs/api/graph.md`,
+and a real Postgres end-to-end integration test. Commits `2d098eb`,
+`5b7f4d0`.
+
+**Still open for `v2.2.0`**, in order: the exact Voronoi/Delaunay
+territory view (computational geometry — half-plane intersection, the
+Delaunay dual read back off the cells). A seeded force-directed layout,
+compiled to wasm (mirroring `documentcore`'s own Go->wasm boundary — this
+needs interactive, client-side 60fps response to dragging, unlike the
+one-shot algorithms above which are computed server-side and shipped as
+data). Then the frontend Graph Explorer screen(s) themselves, matching
+`graph.html`/`graph-algorithms.html` 1:1.
