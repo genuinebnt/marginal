@@ -2846,29 +2846,54 @@ schema, which had drifted from `DATA_MODEL.md`'s pre-`ADR-011` sqlx-era
 sketch) are updated. Full detail, including the design reasoning, in
 commit `67c903d`'s own message.
 
-**Stage 1 only — explicitly not yet done, and documentcore alone doesn't
-break anything by landing without them:**
+**Stage 1 only when this landed — since closed by Stage 2, same day:**
+document-service's `internal/blockproj` now projects nesting too (see
+next entry). `collaboration-service` needed no changes for correctness —
+`session.Session` calls `documentcore.Page.Apply` directly with no
+special-casing of block structure, so live nested editing already worked
+end-to-end at the CRDT/session layer from Stage 1 onward; only the
+read-model projection was behind, until Stage 2.
 
-- **`document-service`'s `internal/blockproj`** still assumes a flat
-  tree — `pageState`/`blockState` have no `parent` field, and
-  `applyBlockOp`'s `InsertBlock`/`MoveBlock` cases ignore
-  `op.Parent`/`op.FromParent`/`op.ToParent` entirely. A nested op applied
-  today would materialise into `docs.blocks` as if every block were
-  top-level, and a subtree `MoveBlock` would orphan the moved block's
-  children at their old position. Needs: a `parent` field on
-  `blockState`, parent-scoped order tracking (mirroring `Page`'s own
-  depth-first-order approach), and the `parent_id`/`path` columns
-  `DATA_MODEL.md` now documents but the actual migration doesn't have yet.
-- **`collaboration-service`** needs no changes for correctness —
-  `session.Session` calls `documentcore.Page.Apply` directly with no
-  special-casing of block structure, so live nested editing already
-  works end-to-end at the CRDT/session layer; only the read-model
-  projection downstream is behind.
+**Still open, Stage 3 (frontend) not started:**
+
 - **`web/`'s editor** has no rendering, insertion UI, or drag-and-drop
   for `List`/`Toggle`/`Image` yet — `RichEditorPane`'s block-kind set is
   still the pre-nesting five.
 - **`Image`'s `FileId`** has no backing upload/asset pipeline in this
   repo at all (stated in RFC-001 §1 itself, not a silent gap).
+
+---
+
+## 2026-08-27 — RFC-001 §1 nesting, Stage 2: document-service
+
+`internal/blockproj` rewritten to hold a real `documentcore.Page` per
+tracked page and call `page.Apply(op)` directly, instead of its own
+hand-rolled `pageState`/`blockState` + order-tracking functions that
+duplicated `Page.Apply`'s own depth-first-order/cycle/containment
+bookkeeping — the package's own doc comment already said this shouldn't
+happen twice. A side effect: marks are now actually projected into
+`docs.blocks.content` (previously silently dropped, a real pre-existing
+gap this change happens to close). New migration `00003` (not an edit to
+the already-applied `00002`) adds `parent_id`/`path` to `docs.blocks`,
+mirroring `docs.pages`' own adjacency-list shape one level deeper; `path`
+is computed by `persist()` in one forward pass since `page.Blocks` is
+already depth-first-ordered.
+
+Verified against real Postgres (three new integration tests: parent_id/
+path materialise correctly, a whole-subtree `MoveBlock` survives the
+round trip, a fresh `Projector` rehydrates `Parent` from `parent_id`
+after a restart) and live: rebuilt document-service's AND
+collaboration-service's Docker images (collaboration-service also links
+`documentcore` and needed rebuilding to pick up Stage 1 — the first live
+smoke test after Stage 1 alone landed showed exactly the "flat
+projection" gap the note above described, from the stale container, not
+a code bug; rebuilding both fixed it), then ran a real WebSocket
+InsertBlock(quote) + InsertBlock(paragraph, parent=quote) + InsertText
+sequence and confirmed `docs.blocks` shows the correct `parent_id` and
+an LTREE `path` extending the parent's own. Full detail in commit
+`695d8d8`'s own message.
+
+**Next: Stage 3 (frontend rendering) — not started.**
 
 Next, in order: `blockproj` + the `docs.blocks` migration (Stage 2, the
 one piece required before nested blocks are queryable/durable at all),
