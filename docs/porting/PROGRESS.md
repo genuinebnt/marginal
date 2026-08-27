@@ -2893,7 +2893,28 @@ sequence and confirmed `docs.blocks` shows the correct `parent_id` and
 an LTREE `path` extending the parent's own. Full detail in commit
 `695d8d8`'s own message.
 
-**Next: Stage 3 (frontend rendering) — not started.**
+**Stage 3 (frontend rendering) — done**, at the user's request ("build
+frontend too so i can verify later my port"). `RichEditorPane` now
+renders and edits every kind Stages 1-2 built: nesting as render-time
+indentation (never a second tree kept in sync by hand), List/ListItem
+with bullet/number/checkbox, Toggle with real client-local collapse,
+Callout/Aside with tone/icon/emoji styling, and an Image placeholder
+(no upload pipeline, RFC-001 §1's own stated gap). Along the way, found
+and fixed two more real bugs beyond documentation: `session.BlockSnapshot`
+never carried `Parent` at all (a client loading an already-nested page
+would render it flat), and `useCollabPage`'s own snapshot handler didn't
+read `parent` off incoming snapshots either, independently of that
+server-side gap. Both fixed; see the two commits' own messages
+(`ead1a37`, `9996459`) for full detail, including the live Playwright
+verification that caught a stale-container issue (same class this repo
+has hit before — rebuild every service that links `documentcore`, not
+just the one you changed) and a `file_id: ""` bug in the Image insert
+path.
+
+**Known, stated gaps, not silently papered over:** drag-and-drop is
+same-level reorder only (no reparenting UI); deleting a non-empty
+container is a silent no-op client-side (the backend correctly rejects
+it, but the "error" frame is only logged, not shown to the user).
 
 ---
 
