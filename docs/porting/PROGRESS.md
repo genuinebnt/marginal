@@ -2895,6 +2895,52 @@ an LTREE `path` extending the parent's own. Full detail in commit
 
 **Next: Stage 3 (frontend rendering) — not started.**
 
-Next, in order: `blockproj` + the `docs.blocks` migration (Stage 2, the
-one piece required before nested blocks are queryable/durable at all),
-then frontend rendering (Stage 3).
+---
+
+## 2026-08-27 — RFC-001 §10: v3 target grammar documented, Callout/Aside implemented
+
+At the user's explicit request, adapted `genuine-folio`'s own
+`:::directive` markdown family (a different, single-author static-site
+repo — `backend/src/infra/render.rs`, `frontend/lib/directives.ts`) into
+a much larger target document grammar for Marginal, documented as RFC-001
+§10 — explicitly aspirational, not the current contract (§1 stays that).
+The real design move genuine-folio's own directives didn't have: every
+directive body that was one flat string there (`desc`, `body`) becomes
+`Block*` here, so it's real, independently collaboratively-editable
+content instead of one blob owned by whoever's cursor is in it last.
+
+§10.4 draws the implementation line explicitly: zero-new-mechanism
+containers (`Callout`, `Aside`) are the natural next slice; structured
+collections shaped like `List`/`ListItem` (`Timeline`, `Grid`, `Tabs`,
+`Accordion`, `ServiceCards`, `SignalList`, `Stack`, `MetaPills`,
+`FooterLinks`, `UsesSection`, `IconCards`) are mechanically
+straightforward but real per-kind work, not attempted in one pass;
+`SyncedBlock`/`ColumnList`/the `Diagram` family each need their own
+design pass; **`Table`/`CommTable` and the four dynamic/query blocks
+(`TableOfContents`, `FeaturedArticles`, `FeaturedProjects`,
+`PortfolioProjects`) need an ADR before any implementation at all** —
+`CLAUDE.md`'s own "databases/tables/rollups... a second ownership tier,
+not a feature" boundary, and no cross-page query/aggregation engine
+exists anywhere in this repo's architecture; and the personal-homepage
+kinds (`Hero`, `Rainbow`, `HomeDivider`, `NowStatus`, `NowProgress`,
+`NowChips`, `NowReading`) are documented because they're part of the
+source grammar being adapted, not because they're recommended for a
+collaborative notebook.
+
+Implemented the first slice: `Callout` and `Aside` in `documentcore` —
+exactly `Quote`/`Toggle`'s existing container shape, plus their own
+fields (`CalloutTone` — genuine-folio's own six semantic tones, `warn`
+default; an emoji-only `Icon`; `Aside`'s own `Emoji`). `document-service`
+needed **zero code changes** — Stage 2's rewrite (`blockproj` holding a
+real `documentcore.Page`) means any new container kind projects
+correctly for free; only a new integration test was added to confirm it.
+Verified: `go test -race` clean including a new `block_test.go`/
+`page_test.go` coverage and property-test generator extension (5000
+`rapid.checks`), plus a live integration test against real Postgres.
+
+**Next, in order, per §10.4's own line:** the `List`/`ListItem`-shaped
+structured collections (`Timeline` is the smallest concrete next step —
+`BlockId Term Title Block* DirectiveIcon? Current?`, no new mechanism
+beyond one more container-with-fixed-fields kind), then the ones needing
+their own design pass, with `Table`/`CommTable` and the four dynamic
+blocks blocked on an ADR that hasn't been written yet.
