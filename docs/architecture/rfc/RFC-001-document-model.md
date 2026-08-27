@@ -467,6 +467,440 @@ Write these as failing tests before any of it has a body:
 
 ---
 
+## 10. Target Grammar (v3) — Extended Block Kinds
+
+**Status: aspirational.** This section documents where the block-kind set is
+headed, not what `documentcore` implements today — §1's grammar (currently:
+`Paragraph`/`Heading`/`Quote`/`Code`/`Divider`/`List`/`ListItem`/`Toggle`/
+`Image`) is the actual, current contract. Sections below name each kind's
+implementation status explicitly; nothing here is built until §1 (or a
+future §1 revision) says so.
+
+**Provenance.** Adapted from `genuine-folio`'s own `:::directive` markdown
+family (`backend/src/infra/render.rs`, `frontend/lib/directives.ts` — a
+different, single-author static-site repo, not part of Marginal) — but not
+a port. That system's directive bodies are flat, single-string fields
+(`desc: string`, `body: string`); every genuine change here is upgrading
+each of those to `Block*`, the same nesting §1 already gives `Quote`/
+`Toggle`/`List`/`ListItem` — a directive's body becomes real, independently
+collaboratively-editable content instead of one opaque text blob owned by
+whoever's cursor is in it last. The directive→block-kind mapping and the
+raw-markdown-directive syntax itself are `genuine-folio`'s own input
+format, not part of this grammar — Marginal has no markdown-directive input
+surface; a client constructs `Op`s directly (RFC-002), so only the
+*resolved shape* below is relevant here.
+
+### 10.1 Design principles
+
+1. **Every block kind is usable everywhere.** Any `BlockKind` may appear at
+   the top level of a `Document` or inside any container's `Block*` — a
+   callout inside a timeline entry inside a column inside a toggle is
+   legal. No page-type gating, no "only nests one level" rule. A renderer
+   may *style* a block differently by context but must not reject it.
+2. **Structured content is `Block*`, not flat text.** Wherever the source
+   directive family treated an item body as one opaque string, the block
+   kind below gives it `Block*` instead — RFC-002 §2's block-granular ops
+   (and, inside it, §2's character-granular ones) apply to that content
+   exactly as they do to a top-level page, not a second content model.
+3. **Every `Block` and every repeatable sub-item carries a `BlockId`.**
+   Timeline entries, cards, tabs, diagram steps, decisions, table rows,
+   columns, list items — all of them, the same `BlockId`-per-node rule §1
+   already establishes for the currently-implemented kinds. This is what
+   makes concurrent insert/delete/reorder/edit of *different* items merge
+   cleanly (RFC-002 §1) — only edits to the *same* field of the *same*
+   item conflict.
+4. **View state is never in the model.** Collapsed/expanded, active tab,
+   current diagram step, selection, hover — all client-only, the same
+   rule §1 already states for `Toggle`'s own collapse state. The grammar
+   carries at most a *seed* hint (`Open?`) the client consumes once and
+   then owns.
+5. **Dynamic blocks store parameters, not content.** `TableOfContents`,
+   `FeaturedArticles`, `FeaturedProjects`, `PortfolioProjects` hold only
+   query/label arguments; their body is a live projection computed at
+   render time, never persisted into the document tree. **These need a
+   query/aggregation engine across pages that does not exist in this repo
+   and is explicitly out of scope (`CLAUDE.md`'s "databases/tables/views/
+   relations/rollups... a second ownership tier, not a feature") — an ADR
+   is required before any of these four is implemented, not just this
+   RFC entry.**
+
+### CRDT mapping (informative)
+
+| Grammar construct | CRDT primitive |
+|---|---|
+| `Block*`, `X+` ordered children | replicated sequence of `BlockId` (RFC-002 §2's block-granular ISA) |
+| `Spans` / `Run` / `MarkRange` | inline text CRDT (§2's rope + Peritext-style marks) |
+| `Level`, `CalloutTone`, `Ratio`, `Checked`, `Language`, every boolean flag | last-writer-wins register (`SetBlockKind`/`SetBlockContent`) |
+| `RawText`, `SvgSource`, `MermaidSource`, `LatexSource` | text-sequence CRDT *or* LWW blob (implementation's choice) |
+| `BlockId`, `PageId`, `FileId` | assigned once at creation, never reused |
+
+`MarkRange` offsets are logical positions within the merged `RunText`,
+resolved after the text CRDT has converged — identical to §2's existing
+`Mark{Start,End}`.
+
+### 10.2 Grammar (EBNF)
+
+```ebnf
+(* ========================================================= *)
+(*     TARGET DOCUMENT GRAMMAR (v3) — aspirational, §10       *)
+(*   CRDT machinery is underneath and resolved before this    *)
+(*   logical representation is consumed by the renderer.      *)
+(*   Every BlockKind may nest inside any container.            *)
+(* ========================================================= *)
+
+Page      ::= PageId Document
+Document  ::= Block*
+
+Block     ::= BlockId BlockKind
+
+BlockKind ::= (* -- prose (§1, implemented) --------------------------- *)
+              Paragraph
+            | Heading
+            | List
+            | Divider
+              (* -- containers (Quote/Toggle: §1, implemented) ------- *)
+            | Quote
+            | Toggle
+            | Callout
+            | Aside
+            | ColumnList
+              (* -- code, math, diagrams (Code: §1, implemented) ---- *)
+            | Code
+            | Equation
+            | Mermaid
+            | Diagram
+            | DiagramSequence
+              (* -- media & external refs (Image: §1, implemented) - *)
+            | Image
+            | Video
+            | File
+            | Bookmark
+            | Embed
+              (* -- tables (needs an ADR — see 10.1 point 5's sibling
+                   concern: fixed row/cell arity across concurrent
+                   edits is its own hard problem, not yet designed) - *)
+            | Table
+            | CommTable
+              (* -- structured collections -------------------------- *)
+            | Timeline
+            | IconCards
+            | ServiceCards
+            | Grid
+            | Signals
+            | SignalList
+            | Accordion
+            | Tabs
+            | Stack
+            | MetaPills
+            | FooterLinks
+            | UsesSection
+              (* -- synced / generated ------------------------------ *)
+            | SyncedBlock
+            | TableOfContents          (* needs an ADR — 10.1 point 5 *)
+              (* -- page composition (usable anywhere) -------------- *)
+            | Hero
+            | Eyebrow
+            | SectionLabel
+            | Rainbow
+            | HomeDivider
+            | NowStatus
+            | NowProgress
+            | NowChips
+            | NowReading
+            | FeaturedArticles         (* needs an ADR — 10.1 point 5 *)
+            | FeaturedProjects         (* needs an ADR — 10.1 point 5 *)
+            | PortfolioProjects        (* needs an ADR — 10.1 point 5 *)
+
+
+(* ========================================================= *)
+(*                       CONTAINERS                          *)
+(* ========================================================= *)
+
+Callout     ::= Icon? CalloutTone? Spans Block*
+Aside       ::= Emoji Spans Block*
+                (* the "character aside" — emoji speaker + note *)
+Icon        ::= Emoji | FileId
+CalloutTone ::= note | info | tip | warn | danger | success
+                (* genuine-folio's own six semantic tones — "warn" is
+                   the historical default. The source system also has a
+                   Notion-palette-shaped superset (gray/brown/orange/…);
+                   not adopted here, since nothing in Marginal imports or
+                   exports Notion content — add it if that ever changes,
+                   not speculatively now. *)
+
+
+(* ========================================================= *)
+(*                      SYNCED BLOCK                         *)
+(* ========================================================= *)
+
+SyncedBlock ::= Original | Reference
+Original    ::= Block*
+Reference   ::= BlockId        (* resolves to the corresponding Original *)
+
+
+(* ========================================================= *)
+(*                  CODE / MATH / DIAGRAMS                   *)
+(* ========================================================= *)
+
+Equation        ::= LatexSource        (* target of a math block *)
+LatexSource     ::= String
+
+Mermaid         ::= MermaidSource
+MermaidSource   ::= String
+
+Diagram         ::= Wide? SvgSource    (* inline SVG, theme-adaptive *)
+SvgSource       ::= String
+
+DiagramSequence ::= Wide? DiagramStep+
+DiagramStep     ::= BlockId Caption SvgSource
+Caption         ::= String
+Wide            ::= true | false       (* lifts the reading-width cap *)
+
+
+(* ========================================================= *)
+(*                          MEDIA                             *)
+(* ========================================================= *)
+
+Video     ::= FileId FileName? Caption?
+File      ::= FileId FileName Caption?
+FileName  ::= String
+
+
+(* ========================================================= *)
+(*                  EXTERNAL REFERENCES                       *)
+(* ========================================================= *)
+
+Bookmark      ::= Url BookmarkMeta?
+BookmarkMeta  ::= Title? Description? PreviewImage?
+Title         ::= String
+Description   ::= String
+PreviewImage  ::= FileId | Url
+
+Embed         ::= Url EmbedProvider?
+EmbedProvider ::= String               (* dispatch key: youtube, figma, … *)
+
+
+(* ========================================================= *)
+(*                          LAYOUT                             *)
+(* ========================================================= *)
+
+ColumnList ::= Column+
+Column     ::= BlockId Ratio? Block*
+Ratio      ::= Float                   (* sibling ratios normally sum to 1.0 *)
+
+
+(* ========================================================= *)
+(*                    TABLE OF CONTENTS                        *)
+(* ========================================================= *)
+
+TableOfContents ::= ε                  (* live view generated from headings *)
+
+
+(* ========================================================= *)
+(*                          TABLES                             *)
+(* ========================================================= *)
+
+Table           ::= TableStyle? TableWidth HasColumnHeader? HasRowHeader? TableRow+
+TableStyle      ::= plain | matrix
+TableWidth      ::= Integer
+TableRow        ::= BlockId Cell{TableWidth}   (* row arity == TableWidth *)
+Cell            ::= Spans
+HasColumnHeader ::= true | false
+HasRowHeader    ::= true | false
+
+CommTable       ::= CommRow+           (* service-to-service comms table *)
+CommRow         ::= BlockId Call Protocol ProtocolClass Pattern Failure
+Call            ::= Spans
+Protocol        ::= String
+ProtocolClass   ::= String
+Pattern         ::= Spans
+Failure         ::= Spans
+
+
+(* ========================================================= *)
+(*                 STRUCTURED COLLECTIONS                     *)
+(* ========================================================= *)
+
+Timeline      ::= TimelineItem+
+TimelineItem  ::= BlockId Term Title Block* DirectiveIcon? Current?
+Term          ::= Spans
+Title         ::= Spans
+Current       ::= true | false
+
+IconCards     ::= Accent? IconCardItem+
+IconCardItem  ::= BlockId DirectiveIcon Title Block*
+Accent        ::= true | false
+
+ServiceCards  ::= ServiceCard+
+ServiceCard   ::= BlockId CardColor Name Owns? Tag* Block*
+Name          ::= Spans
+Owns          ::= Spans
+Tag           ::= String
+
+Grid          ::= GridItem+
+GridItem      ::= BlockId Title Block*
+
+Signals       ::= TitledNote+
+TitledNote    ::= BlockId Spans Block*
+
+SignalList    ::= SignalTag+
+SignalTag     ::= BlockId TagLabel TagClass Block*
+TagLabel      ::= String
+TagClass      ::= String
+
+Accordion         ::= AccordionSection+
+AccordionSection  ::= BlockId Ordinal Title Subtitle? PhaseColor? Open? Decision+
+Ordinal           ::= Integer
+Subtitle          ::= Spans
+Decision          ::= BlockId Spans Block*
+PhaseColor        ::= default | blue | purple | pink | green | warn
+Open              ::= true | false
+
+Tabs        ::= Tab+
+Tab         ::= BlockId Label ConceptCard+
+ConceptCard ::= BlockId ConceptDomain Name Block*
+Label       ::= Spans
+
+Stack       ::= StackEntry+
+StackEntry  ::= BlockId Name Role?
+Role        ::= Spans
+
+MetaPills   ::= MetaPill+
+MetaPill    ::= BlockId PillLabel PillValue?
+PillLabel   ::= Spans
+PillValue   ::= Spans
+
+FooterLinks ::= FooterLink+
+FooterLink  ::= BlockId Label Url
+
+UsesSection    ::= AccentColor? SectionHeading UsesItem+
+SectionHeading ::= Spans
+UsesItem       ::= BlockId Name Description Tag?
+
+
+(* ========================================================= *)
+(*        PAGE COMPOSITION  (no gating — usable anywhere)      *)
+(* ========================================================= *)
+
+Hero        ::= Eyebrow? Title Lead? HeroPill*
+Lead        ::= Spans
+HeroPill    ::= BlockId PillLabel PillValue?
+
+Eyebrow      ::= Spans
+SectionLabel ::= Spans
+
+Rainbow     ::= BandColor*
+BandColor   ::= CssColor
+
+HomeDivider ::= ε
+
+NowStatus      ::= NowStatusCard+
+NowStatusCard  ::= BlockId StatusLabel StatusValue StatusSub? StatusTone?
+StatusLabel    ::= Spans
+StatusValue    ::= Spans
+StatusSub      ::= Spans
+StatusTone     ::= default | acc | purple | warn
+
+NowProgress    ::= ProgressTitle? NowProgressRow+
+ProgressTitle  ::= Spans
+NowProgressRow ::= BlockId ProgressLabel Percent ProgressColor?
+ProgressLabel  ::= Spans
+Percent        ::= Integer            (* clamped 0..=100 *)
+ProgressColor  ::= acc | blue | purple | warn
+
+NowChips  ::= NowChip+
+NowChip   ::= BlockId Accent? Spans
+
+NowReading    ::= NowReadingRow+
+NowReadingRow ::= BlockId SpineColor BookTitle Author Progress
+SpineColor    ::= CssColor
+BookTitle     ::= Spans
+Author        ::= Spans
+Progress      ::= Spans
+
+FeaturedArticles  ::= SlotLabel?
+FeaturedProjects  ::= SlotLabel?
+PortfolioProjects ::= SlotLabel?
+SlotLabel  ::= String
+
+
+(* ========================================================= *)
+(*                    VALUE-OBJECT VOCAB                       *)
+(* ========================================================= *)
+
+DirectiveIcon ::= home | work | layers | book | shield | terminal
+                | flag | star | chip | network | clock
+
+CardColor     ::= blue | teal | green | purple | amber | pink
+
+ConceptDomain ::= dist | sysdes | micro | rust | perf | dsa
+```
+
+### 10.3 Semantic invariants (not expressible in the grammar)
+
+- **Table row arity.** Every `TableRow` has exactly `TableWidth` cells.
+  Widening or narrowing is a structural edit that must add/remove one
+  `Cell` (its own `BlockId`) in every row atomically — needs its own
+  design (this is exactly the "needs an ADR" gap 10.1 flags for tables).
+- **Column ratios.** Sibling `Column.Ratio` values are advisory and
+  normally sum to `1.0`; a renderer normalises rather than rejecting.
+- **`Current` / `Open` uniqueness.** At most one `TimelineItem` per
+  `Timeline` should carry `Current = true`; if none does, the renderer
+  highlights the first. `Open` is a one-shot seed the client consumes on
+  first mount, same rule as `Toggle`'s own collapse state (§1).
+- **`Reference` resolution.** A `SyncedBlock` `Reference` must resolve to
+  an `Original` on some page; a dangling reference renders as an inert
+  placeholder, never an error — the same "dangling is data, not a fault"
+  choice `docs.page_links.target_page = NULL` already makes for `[[wikilinks]]`
+  (`DATA_MODEL.md`).
+- **Dynamic blocks are read-only projections** — never written back into
+  the document tree (10.1 point 5).
+- **`Percent`** is clamped to `0..=100` on construction (parse, don't
+  validate — documentcore's own `NewHeading`/`NewList` convention).
+- **Icon vocabulary is closed.** `DirectiveIcon` values outside the listed
+  set are a diagnostic, not a passthrough — the field is plain text and
+  must not become raw markup.
+
+### 10.4 Implementation status
+
+Not an exhaustive per-kind ledger — just where the line is drawn today and
+why, so a future session doesn't have to re-derive it:
+
+- **Zero-new-mechanism containers** (`Callout`, `Aside`): the exact same
+  shape `Quote`/`Toggle` already have — `BlockTag.IsContainer()` extended
+  by two entries, a `CalloutTone`/`Icon`/`Emoji` field each following the
+  existing `Level`/`Language`/`ListKindOf` "meaningful only for one tag"
+  pattern. The natural next slice.
+- **Structured collections shaped like `List`/`ListItem`** (`Timeline`,
+  `Grid`, `IconCards`, `Signals`, `Tabs`, `Accordion`, `ServiceCards`,
+  `SignalList`, `Stack`, `MetaPills`, `FooterLinks`, `UsesSection`): each
+  is `BlockId <fixed inline fields> Block*` — the same shape `ListItem`
+  already has, just with different fixed fields per kind. Mechanically
+  straightforward once the container mechanism exists, but each is its
+  own `BlockKind` with its own fields — real, if repetitive, work; not
+  attempted in one pass.
+- **New machinery needed, each its own design pass**: `SyncedBlock`
+  (cross-block reference resolution nothing in this repo does yet),
+  `ColumnList` (a ratio/layout concern layered on containment),
+  `Diagram`/`DiagramSequence`/`Mermaid`/`Equation` (raw-blob storage,
+  no rich-text marks inside — closer to `Code` than to a text block).
+- **Needs an ADR before any implementation** (`CLAUDE.md`'s "still out"
+  gate): `Table`/`CommTable` (fixed row/cell arity under concurrent
+  edits), `TableOfContents`/`FeaturedArticles`/`FeaturedProjects`/
+  `PortfolioProjects` (a cross-page query/aggregation engine this repo's
+  architecture has no owner for — `DATA_MODEL.md`'s own "no databases/
+  rollups" boundary, `collab.ops.page_id NOT NULL` and one page per
+  collaboration-service instance).
+- **Site-specific page-composition kinds** (`Hero`, `Eyebrow`, `Rainbow`,
+  `HomeDivider`, `NowStatus`, `NowProgress`, `NowChips`, `NowReading`):
+  documented here because they're part of the source grammar this
+  section adapts, not because they're recommended for Marginal — these
+  are `genuine-folio`'s own personal-homepage components, not general
+  collaborative-notebook content. Revisit only if an actual Marginal use
+  case calls for them.
+
+---
+
 ## Resources
 
 | Resource | For |
