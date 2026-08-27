@@ -123,5 +123,17 @@ export type ServerMessage =
   | { type: "error"; message: string };
 
 export type ClientMessage =
-  | { type: "op"; op: PageOp }
-  | { type: "cursor"; cursor: { block_id: string | null; start: number; end: number } };
+  // undo_group is optional even here — omit it (or send undefined) for a
+  // single-op edit, RFC-002 §3's "a group of one." Set it to the same
+  // client-generated id on every op belonging to one gesture (a paste, an
+  // input rule's multi-op conversion) so a later "undo" reverts the whole
+  // gesture in one step — see docs/api/collaboration.md §2.
+  | { type: "op"; op: PageOp; undo_group?: string }
+  | { type: "cursor"; cursor: { block_id: string | null; start: number; end: number } }
+  // No payload — undo/redo apply to the sender's own actor id, scoped to
+  // this page (docs/api/collaboration.md §2.1). The server acks one frame
+  // per op the action actually committed, each indistinguishable on the
+  // wire from an ordinary "ack"/"broadcast" — see useCollabPage, which
+  // needs no special-case handling for them at all.
+  | { type: "undo" }
+  | { type: "redo" };
