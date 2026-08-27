@@ -26,25 +26,46 @@ demo-quality MVP, not a fixed date. Scope discipline comes from
 
 ## Objective & Order
 
-**Primary objective: a complete, demo-quality Track 1 MVP in Go + TypeScript**
-(`ADR-011`). Rust depth (`ADR-002`) is suspended for this track, not
-abandoned — it resumes in the future Rust-port repo.
+**`v1.0.0` (Track 1 MVP) is done** — Documents → Auth → Collaboration, the 🏁
+(log in, write a page, edit it live with someone). Built completely in Go +
+TypeScript (`ADR-011`), all three services scaffolded as standalone code
+areas (`.agents/agents.md` §3, since they share no code) with real logic
+landed one at a time, `document-service` first.
 
-**Phase numbers are identifiers, not a sequence.** Work `ROADMAP.md` § Execution Order — only Track 1 is in scope for this repo right now:
+**Development continues past the MVP, in this repo, versioned `v2.0.0` →
+`v4.0.0` (`ADR-012`, supersedes `ADR-011`'s "Tracks 2–6 build after the Rust
+port, in a future repo").** `docs/planning/RELEASES.md` is the concrete
+plan: one branch per minor version, one feature per branch, backend and UI
+both real and complete before it merges — the same bar each of `v1.0.0`'s
+own three phases had to clear. Each **major** version is sized to be its
+own self-contained Go→Rust porting unit, the same size class as the MVP —
+the user ports one major at a time, in a separate future Rust repo, coming
+back here to keep building the next. **The TypeScript/HTML/CSS frontend is
+never ported** — it's the permanent visual harness a porting pass compares
+its Rust backend against, which is exactly why a minor's UI can never be
+stubbed. Rust depth (`ADR-002`) stays suspended for this repo's own Go+TS
+branches; it re-applies in full to each porting pass, per major version,
+in that future repo.
 
-```
-Track 1 — MVP             1 Documents → 2 Auth → 3 Collaboration
-                          🏁 log in, write a page, edit live with someone
-```
+**The acceptance bar for `v2`–`v4` is the full `docs/ui-mockups/` set** —
+including the eleven pages that run a real algorithm client-side today
+(graph BFS/DFS/Voronoi, HNSW, HyperLogLog/Count-Min/t-digest, LCS DP, a
+dependency DAG, OT+Merkle+DAG+LSM views), not only the notebook-editing
+screens. `RELEASES.md` maps every mockup onto the minor that makes it real.
+**The algorithm behind each one is Go** — the same rule `documentcore`
+already follows for the editor core (server-side, or compiled to wasm when
+it must run against live client state) — **never a second implementation
+in TypeScript**, which only draws what Go computed. This is what gives the
+eventual Rust port real learning weight: this algorithmic depth is what
+gets hand-ported, major by major, while the TS/HTML/CSS view layer never
+moves.
 
-All three Track 1 services are scaffolded as standalone code areas now
-(`.agents/agents.md` §3) — they share no code, so there's no benefit to
-phasing them in one at a time. Real logic still lands one at a time,
-starting with `document-service`.
-
-**Tracks 2–6 are out of scope for this repo.** They were previously gated on
-the 🏁 and built here afterward (`ADR-009`); now the plan is to build them,
-if at all, after the Rust port, in that future repo, per `ADR-011`.
+**Phase numbers in `ROADMAP.md` are identifiers, not a sequence** — that
+document's own Track 2–5 phases are `RELEASES.md`'s source material,
+re-cut into shippable, browser-usable slices instead of Rust/DSA-density
+order. Track 6 (cloud hardening) and the phases that are pure
+infrastructure/reliability depth with no browser-visible feature (9, 10)
+are continuous, patch-level work per `ADR-012`, not their own minor.
 
 **Cloud is built ahead of live use, not deferred anymore.** `CLOUD_ROADMAP.md`/
 `ADR-008`/`ADR-010`'s GCP+Terraform plan (Cloud Run, one Postgres per
@@ -190,7 +211,7 @@ open indefinitely (no idle-eviction), matching this repo's demo scale.
 | `docs/architecture/PROJECT_STRUCTURE.md` | Layout + principles — governs every file placement |
 | `docs/architecture/rfc/RFC-001-document-model.md` | Block tree, spans, input rules, paste — language-agnostic |
 | `docs/architecture/rfc/RFC-002-operation-model.md` | **Op ISA, invertibility, log versioning, WAL** — language-agnostic |
-| `docs/architecture/rfc/RFC-003-diagnostics-engine.md` | Analyzers, symbol table, incrementality (Track 2, not in scope yet) |
+| `docs/architecture/rfc/RFC-003-diagnostics-engine.md` | Analyzers, symbol table, incrementality (`v2.2.0`, `RELEASES.md`) |
 | `docs/architecture/lld/document-service.md` | Module map, type contracts, invariants, build order |
 | `docs/api/pages.md` | Pages contract — gRPC `PageService` §1 + the gateway's REST mapping §2 |
 | `docs/api/auth.md` | Auth contract — gRPC `AuthService` §1 + the gateway's REST mapping §2 |
@@ -199,7 +220,9 @@ open indefinitely (no idle-eviction), matching this repo's demo scale.
 | `docs/architecture/DATA_MODEL.md` | **Database per service** — schemas, ownership, and where a join happens |
 | `docs/architecture/CLOUD_PORTABILITY.md` | Ports & adapters, local vs Google Cloud |
 | `docs/architecture/GLOSSARY.md` | Ubiquitous language |
-| `docs/planning/ROADMAP.md` | Full phase list — only Track 1 is in scope here |
+| `docs/planning/ROADMAP.md` | Full phase list — source material `RELEASES.md` re-cuts into `v2`–`v4`; see its own top pointer |
+| `docs/planning/RELEASES.md` | **The concrete `v2.0.0`→`v4.0.0` release plan** — what version ships what, in what order |
+| `docs/architecture/adr/ADR-012-semver-branch-releases-past-mvp.md` | SemVer branch-per-minor workflow; why each major is its own Go→Rust porting unit |
 | `docs/planning/USER_STORIES.md` | **What each phase means from the outside** — testable *Done when* |
 | `docs/planning/CLOUD_ROADMAP.md` | Cloud track + cost discipline — `deploy/terraform/` now implements this, see its own README |
 | `docs/planning/TIMELINE.md` | Original estimates — largely superseded by `ADR-011`'s scope change |
@@ -208,7 +231,7 @@ open indefinitely (no idle-eviction), matching this repo's demo scale.
 | `docs/porting/OPEN_QUESTIONS.md` | Still-open, language-independent product decisions |
 | `docs/api/README.md` | API documentation conventions |
 | `deploy/terraform/README.md` | GCP IaC — what's provisioned, cost posture, known limitations, setup steps |
-| `docs/ui-mockups/` | Static visual specs + editor/reader chrome spec |
+| `docs/ui-mockups/` | Visual specs — the full set is the `v2`–`v4` acceptance bar, not just the editor/reader chrome (`RELEASES.md`) |
 | `docs/rust/README.md` | What's archived from the Rust attempt, and why |
 | `docs/architecture/adr/` | 001 scope · ~~002 Rust depth~~ · 003 Postgres · ~~004 SPA~~ · ~~005 Go reference~~ · 007 gRPC east-west · 008 GCP + Terraform · 009 scope expansion · 010 cost-bounded cloud posture · **011 Go+TS MVP, Rust port later** |
 
@@ -246,19 +269,23 @@ open indefinitely (no idle-eviction), matching this repo's demo scale.
 
 **Still out — these need structural change, not just an ADR:**
 
-Databases/tables/views/relations/rollups · formula language · spatial canvas · mobile apps.
+A general formula language · spatial canvas · mobile apps.
 
-The first is the hard one: `collab.ops.page_id` is `NOT NULL` and `collaboration-service`
-owns exactly one page per instance, so cross-page aggregation has **no owner**. That is a
-second ownership tier, not a feature.
+**No longer out for this repo:** RBAC/spaces, comments, reactions, notifications
+(the feature), publishing, plugins, semantic search/assistant, and the rest of
+the full editor — `ADR-011` deferred these to a future Rust-port repo;
+`ADR-012` reverses that. They're `v2.0.0`–`v4.0.0` here now, per
+`docs/planning/RELEASES.md`'s concrete plan.
 
-**Out for this repo specifically (`ADR-011`):** everything beyond Track 1 —
-RBAC/spaces, comments, reactions, notifications (the feature — digesting,
-per-user preferences, delivery — not the `notification-service` skeleton,
-which is scaffolded; see the Services table above), publishing, plugins,
-semantic search/assistant, the full editor. These were "now in scope" under
-ADR-009 for the eventual full build; they come after the Rust port, in that
-future repo, not here.
+**`Table`/`CommTable` and their four dynamic/query siblings** (`TableOfContents`,
+`FeaturedArticles`, `FeaturedProjects`, `PortfolioProjects` — RFC-001 §10) are
+scheduled (`v4.5.0`, `RELEASES.md`), not out — but gated on an ADR first, the
+same discipline every other item on this list needs: `collab.ops.page_id` is
+`NOT NULL` and `collaboration-service` owns exactly one page per instance, so
+cross-page aggregation has **no owner** in the architecture today, and fixed
+row/cell arity under concurrent edits is undesigned. That ADR has to resolve
+both before any block-kind work starts — it's a second ownership tier, not a
+feature to just build.
 
 If a still-out item appears in a request, it needs an ADR first.
 

@@ -2983,3 +2983,55 @@ dependencies changed, it never re-ran to populate it. Fixed by adding
 `tag` to the dependency array. Confirmed via Playwright across the full
 kind matrix (paragraph/heading/quote <-> toggle/callout/aside) — see
 commit `153bee0`.
+
+---
+
+## 2026-08-27 — ADR-012: SemVer branch releases past the MVP; port major-by-major
+
+`v1.0.0` is done. Rather than stop building here and hand-port the whole
+thing to Rust once (ADR-011's original plan), the user chose to keep
+building in this repo, in Go+TS, versioned `v2.0.0` -> `v4.0.0`, porting
+each **major** to Rust as its own pass once it ships — `v1.0.0`'s own
+size (three complete phases: Documents, Auth, Collaboration) is exactly
+the unit one porting pass can absorb, so each future major is cut to
+that same scale rather than accumulating into one pile ported at the
+very end. **Minor** version = one feature, its own branch, backend and
+UI both real and complete before merge to `master` (never half-wired,
+same bar `v1.0.0`'s three phases already cleared) — because the
+TypeScript/HTML/CSS frontend is never itself ported; it's the permanent
+visual harness a future Rust pass gets compared against, so a stubbed
+UI gives that comparison nothing to check against. **Patch** version is
+not a required cadence — only bumped for a real post-ship issue that
+doesn't warrant a new minor.
+
+Mid-design, two corrections reshaped the plan from what an initial draft
+would have produced: the acceptance bar for `v2`-`v4` is the *entire*
+`docs/ui-mockups/` set (all seventeen pages, including the eleven that
+run a real algorithm client-side today — graph BFS/DFS/Voronoi, HNSW,
+the sketches, LCS DP, the dependency DAG, OT+Merkle+DAG+LSM), not just
+the notebook-editing screens; and RFC-001 §10's v3 grammar target is
+*full* coverage, not the subset that was easy — the one carve-out
+(`Table`/`CommTable` and the four cross-page query kinds) got its own
+minor (`v4.5.0`) gated on writing the cross-page-aggregation-ownership
+ADR `CLAUDE.md`'s "Still Out" rule already required, rather than being
+left permanently unscoped. Both corrections landed as a standing rule,
+not just a one-time plan adjustment: the algorithm behind every one of
+those mockup pages is Go (server-side, or compiled to wasm the same way
+`documentcore` already is) — never reimplemented a second time in
+TypeScript, which only draws what Go computed. That's the concrete
+reason the Rust port carries real learning weight going forward: this
+algorithmic depth is what actually gets hand-ported, major by major,
+while the TS/HTML/CSS view layer never moves.
+
+Wrote `docs/architecture/adr/ADR-012-semver-branch-releases-past-mvp.md`
+(amends ADR-011) and `docs/planning/RELEASES.md` (the concrete `v2.0.0`
+-> `v4.0.0` table, one row per minor, each mapped to its `ROADMAP.md`
+phase(s) and to the mockup surface(s) it makes real). Updated `CLAUDE.md`
+(`Objective & Order`, `Key Docs`, `Out of Scope`) and `ROADMAP.md`'s own
+top paragraph to point at both and stop describing Tracks 2-5 as
+deferred to a future repo. No code changed in this pass — planning docs
+only, per the user's explicit request to scope this before building
+anything.
+
+**Next:** `v2.1.0` (Undo/Redo + the `trace.html` op-log debugger) is the
+first feature branch, per `RELEASES.md`'s own dependency-checked order.

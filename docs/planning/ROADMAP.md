@@ -2,8 +2,12 @@
 
 **Product:** a self-hosted collaborative knowledge platform (ADR-001, expanded by ADR-009)
 **Primary objective:** really good Rust learning (ADR-002) — **suspended for this repo; see ADR-011.**
-Only Track 1 (MVP) is in scope here, built in Go + TypeScript. Tracks 2–6 below
-describe the full original design and apply to the future Rust-port repo, not this one.
+Track 1 (MVP) shipped as `v1.0.0`; Tracks 2–5 below are no longer deferred to a future
+repo — **ADR-012** re-cuts them into `v2.0.0`→`v4.0.0`, built here in Go + TypeScript.
+`docs/planning/RELEASES.md` is the concrete, shippable-slice version of this document;
+phase numbers below are that plan's source material, not an execution order of their own.
+Track 6 stays continuous, patch-level work per this doc's own words ("never a track at
+the end"), not a version of its own.
 
 ---
 
