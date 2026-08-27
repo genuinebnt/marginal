@@ -4,6 +4,8 @@ import { useAuth } from "./auth/AuthContext";
 import { AuthPage } from "./screens/AuthPage";
 import { DashboardScreen } from "./screens/DashboardScreen";
 import { EditorScreen } from "./screens/EditorScreen";
+import { GraphScreen } from "./screens/GraphScreen";
+import { GraphAlgorithmsScreen } from "./screens/GraphAlgorithmsScreen";
 
 function RequireAuth({ children }: { children: ReactElement }) {
   const { session } = useAuth();
@@ -28,6 +30,22 @@ function App() {
         element={
           <RequireAuth>
             <EditorScreen />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/graph"
+        element={
+          <RequireAuth>
+            <GraphScreen />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/graph/algorithms"
+        element={
+          <RequireAuth>
+            <GraphAlgorithmsScreen />
           </RequireAuth>
         }
       />
