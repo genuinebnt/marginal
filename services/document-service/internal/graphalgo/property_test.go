@@ -55,6 +55,40 @@ func TestComponentsAndOrphansNeverPanicOnRandomGraphs(t *testing.T) {
 	})
 }
 
+// TestVoronoiCellsAlwaysPartitionBoundsExactly is the defining property
+// of a Voronoi diagram, checked across random site counts and positions
+// rather than only the hand-picked fixtures in voronoi_test.go: every
+// cell's area must sum to exactly the bounding rectangle's own area, no
+// matter how the sites are arranged — the mockup's own claim ("cell
+// area measures the layout") only means something if this holds for any
+// layout, not just a convenient one.
+func TestVoronoiCellsAlwaysPartitionBoundsExactly(t *testing.T) {
+	rapid.Check(t, func(t *rapid.T) {
+		bounds := Rect{MinX: 0, MinY: 0, MaxX: 100, MaxY: 100}
+		n := rapid.IntRange(1, 15).Draw(t, "n")
+		sites := make([]Site, n)
+		for i := range sites {
+			sites[i] = Site{
+				ID: NodeID(fmt.Sprintf("s%d", i)),
+				Point: Point{
+					X: rapid.Float64Range(0, 100).Draw(t, "x"),
+					Y: rapid.Float64Range(0, 100).Draw(t, "y"),
+				},
+			}
+		}
+
+		cells := Voronoi(sites, bounds)
+		var total float64
+		for _, c := range cells {
+			total += PolygonArea(c.Poly)
+		}
+		want := (bounds.MaxX - bounds.MinX) * (bounds.MaxY - bounds.MinY)
+		if diff := total - want; diff > 1e-3 || diff < -1e-3 {
+			t.Fatalf("cells summed to %.6f, want %.6f (sites=%+v)", total, want, sites)
+		}
+	})
+}
+
 func randomGraph(t *rapid.T) Graph {
 	n := rapid.IntRange(0, 12).Draw(t, "n")
 	nodes := make([]NodeID, n)
