@@ -3188,11 +3188,34 @@ Wired through `GraphAnalysis.betti`, `graphrest`, `docs/api/graph.md`,
 and a real Postgres end-to-end integration test. Commits `2d098eb`,
 `5b7f4d0`.
 
-**Still open for `v2.2.0`**, in order: the exact Voronoi/Delaunay
-territory view (computational geometry — half-plane intersection, the
-Delaunay dual read back off the cells). A seeded force-directed layout,
-compiled to wasm (mirroring `documentcore`'s own Go->wasm boundary — this
-needs interactive, client-side 60fps response to dragging, unlike the
-one-shot algorithms above which are computed server-side and shipped as
-data). Then the frontend Graph Explorer screen(s) themselves, matching
-`graph.html`/`graph-algorithms.html` 1:1.
+Voronoi/Delaunay landed next: `graphalgo.Voronoi`/`Delaunay`, ported
+field-for-field from `graph.html`'s own half-plane-intersection
+implementation (Sutherland-Hodgman clipping, the dual read straight off
+shared cell edges, including its exact numeric tolerances). Verified via
+the actual defining property of a Voronoi diagram — every cell's area
+sums to exactly the bounding rectangle's, checked by hand and via a
+`rapid` property test across 100 random configurations. Commit `3c8851d`.
+
+Then the seeded force-directed layout: `graphalgo.LayoutTick`/
+`NextAlpha`/`SeededRNG`/`SeedPositions`, ported field-for-field from
+`graph.html`'s own `tick()`/`reheat()`/`rnd()` — same repulsion/spring/
+center/damp physics, same `ALPHA_MIN`/`ALPHA_DECAY` cooling constants,
+same linear congruential generator (so the same seed always produces the
+same initial scatter). This completes `internal/graphalgo`'s whole
+algorithm surface for `v2.2.0`. Commit `2429d40`.
+
+Then `cmd/graphwasm` + `web/src/graph-core/`: the layout and Voronoi/
+Delaunay compiled to `GOOS=js/wasm` (mirroring `documentcore`'s own
+bridge) and a TS loader, since these two specifically need interactive
+60fps client-side response to dragging — every one-shot algorithm
+(components/cycles/BFS/diameter/Betti) stays server-side only, reached
+over `docs/api/graph.md`. 4 wasm-bridge integration tests prove real Go
+physics/geometry runs through the actual boundary. Commit `59408b2`.
+
+**Still open for `v2.2.0`**: the frontend Graph Explorer screen(s)
+themselves — `web/src/screens/GraphScreen.tsx` (force layout, territory
+view, legend/filters) and `GraphAlgorithmsScreen.tsx` (components/cycles/
+shortest-path/wavefront/blast-radius/diameter/Betti panels), matching
+`graph.html`/`graph-algorithms.html` 1:1, wired to the real
+`GraphService` REST endpoints (`docs/api/graph.md`) and the two new wasm
+calls. This is the last piece before `v2.2.0` ships end-to-end.
