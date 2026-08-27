@@ -2758,3 +2758,71 @@ cursor-tracking pass) — two different real accounts can still coincidentally
 hash to the same two characters (a real, if much smaller, collision
 space than a plain UUID slice's). Wiring actual per-peer names would need
 a `GetUser` lookup this pass didn't add.
+
+---
+
+## 2026-08-26/27 — Full backend code review, fixed top to bottom
+
+A code review of every Go module aimed at idiomatic-Go/Rust-port
+cleanliness turned up 7 sections of findings (collaboration-service,
+documentcore, document-service, auth-service, notification-service,
+api-gateway, cross-cutting); all were fixed, verified, and committed in
+the order the review presented them — real bugs first within each
+section. Real bugs fixed along the way: `session.open` bound a page's
+Postgres-flush goroutine to the first WebSocket request's own context
+(the first client disconnecting silently killed that page's flush loop
+forever); `Content.Equal` replacing `reflect.DeepEqual` for
+`SetBlockContent`'s precondition (nil vs. non-nil-empty `Marks` slice);
+`blockproj.applyTextOp` wiping a block's projected text to empty on a
+bare `DeleteText` or a real `NoOp` event, with no later event to correct
+it; `wireEvent.Payload` was `[]byte` in all four copies of that envelope
+(document-service, both outbox producers, notification-service) —
+`encoding/json` base64-encodes a plain `[]byte`, so every NATS message's
+"payload" field was an opaque base64 string instead of the readable JSON
+it actually held, a real cross-language wire-format trap for the future
+Rust port; `sessions.Rotate` returning a populated `RotationResult`
+alongside its error on only two of several return paths, replaced with a
+typed `*ReuseDetectedError` (wraps `ErrRefreshTokenReused`, still
+`errors.Is`-able); every `cmd/main.go`'s outbound-request/gRPC-call path
+had no timeout of its own; api-gateway had no request body size limit;
+the wasm bridge indexed `args[i]` with no argument-count check, and an
+unrecovered panic inside a `js.Func` callback aborts the entire wasm
+module, not just one call.
+
+Two new shared modules came out of the cross-cutting section, both by
+explicit user decision on how far to take deduplication: `marginal/envconfig`
+(EnvOr/RequiredEnv — byte-for-byte identical across all five
+`cmd/main.go` files, zero reason to diverge) and `marginal/outboxpoll`
+(the FOR UPDATE SKIP LOCKED claim-publish-mark polling loop
+auth-service's and collaboration-service's own `internal/outbox`
+packages each independently implemented; each service still owns its own
+wireEvent shape and sqlc row type, plugged into the shared `Poller` via
+`ClaimFunc`/`MarkPublishedFunc`/`BuildEnvelopeFunc` closures). Both
+required converting auth-service's and notification-service's Dockerfiles
+from a self-contained single-directory build context to the repo-root
+context document-service/collaboration-service/api-gateway already used
+for the identical reason (a cross-module import resolved through
+`go.work`), plus the matching `docker-compose.yml` updates.
+
+A user-approved "full sweep" also converted every genuine table-driven
+test candidate across the backend (~15 conversions) — sibling test
+functions with an identical body differing only in input/expected
+output, merged into one test with a `[]struct{...}` table and `t.Run`
+subtests. Left alone, deliberately: timing/attack-narrative tests,
+property tests, multi-step transaction/concurrency scenarios, and
+anything where forcing a table would trade clarity for a stylistic
+checkbox — a plurality of the ~200 flagged test functions turned out to
+already be correctly standalone, not an oversight to fix.
+
+Verified per commit (`go build`/`go vet`/`go test -race`, plus
+`-tags=integration` against real Postgres/NATS/Redis via
+testcontainers-go where applicable) and, at the end, live: rebuilt and
+redeployed all five services' Docker images, then ran a real end-to-end
+smoke test through the actual running stack — register (exercises the
+new `outboxpoll.Poller` end to end: auth outbox → NATS →
+notification-service's welcome notification, confirmed via
+`GET /notifications`) and a real WebSocket session against
+collaboration-service (`InsertBlock` + `InsertText` → collab outbox →
+`outboxpoll.Poller` → NATS → document-service's `blockproj`), confirming
+the materialised block's text and kind in `docs.blocks` matched exactly
+what was sent.
