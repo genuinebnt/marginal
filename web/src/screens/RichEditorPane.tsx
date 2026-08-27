@@ -1,8 +1,27 @@
-import { useEffect, useRef, useState, type DragEvent, type ElementType, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type DragEvent, type ElementType, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import type { Page } from "../api/pages";
 import type { CollabPage, BlockView } from "../collab/useCollabPage";
+import type { BlockKind } from "../collab/types";
 import { KIND_LABELS, KIND_ORDER, kindFromKey, keyOf, type BlockKindKey } from "../collab/blockKind";
 import { addMark, isFullyMarked, removeMark, renderMarkedHTML, shiftMarksForEdit, type Mark, type MarkKind } from "../collab/marks";
+
+// Lists are two blocks (a List container plus its first ListItem child),
+// not a single in-place conversion the way every other kind is — see
+// chooseKind's own comment for why this table exists.
+const LIST_KEYS: Partial<Record<BlockKindKey, "bulleted" | "numbered" | "todo">> = {
+  bulleted_list: "bulleted",
+  numbered_list: "numbered",
+  todo_list: "todo",
+};
+
+const CALLOUT_TONE_COLOR: Record<string, string> = {
+  note: "var(--blue, #3b82f6)",
+  info: "var(--blue, #3b82f6)",
+  tip: "var(--green, #22c55e)",
+  warn: "var(--warn, #d97706)",
+  danger: "var(--red, #dc2626)",
+  success: "var(--green, #22c55e)",
+};
 
 const REPLACE_DEBOUNCE_MS = 400;
 const BLOCK_ID_ATTR = "data-block-id";
@@ -78,6 +97,10 @@ export function RichEditorPane({ page, collab, onRename }: { page: Page; collab:
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{ id: string; zone: "before" | "after" } | null>(null);
   const [bubble, setBubble] = useState<{ blockId: string; start: number; end: number; top: number; left: number } | null>(null);
+  // Toggle collapse is view state, not model state (RFC-001 §1) — a
+  // client-local Set, never sent over the wire; collapsing/expanding a
+  // Toggle does not touch collab at all.
+  const [collapsedToggles, setCollapsedToggles] = useState<Set<string>>(new Set());
   const [peerCarets, setPeerCarets] = useState<Map<string, { rects: DOMRect[]; caretRect: DOMRect }>>(new Map());
 
   // Recomputes every peer's on-screen caret/selection whenever their
@@ -180,8 +203,53 @@ export function RichEditorPane({ page, collab, onRename }: { page: Page; collab:
     return () => document.removeEventListener("selectionchange", onSelectionChange);
   }, [setCursor]);
 
+  // byId/depthOf/isHiddenByCollapsedToggle/listContextOf/visibleBlocks:
+  // RFC-001 §1's containment rendered — blocks stays one flat,
+  // depth-first-ordered array (mirroring documentcore.Page.Blocks
+  // exactly), so nesting is a render-time derivation from each block's
+  // own `parent`, never a second tree structure kept in sync by hand.
+  const byId = new Map(blocks.map((b) => [b.id, b]));
+
+  function depthOf(id: string): number {
+    let depth = 0;
+    let cur = byId.get(id)?.parent ?? null;
+    while (cur !== null) {
+      depth++;
+      cur = byId.get(cur)?.parent ?? null;
+    }
+    return depth;
+  }
+
+  function isHiddenByCollapsedToggle(id: string): boolean {
+    let cur = byId.get(id)?.parent ?? null;
+    while (cur !== null) {
+      const parent = byId.get(cur);
+      if (parent && parent.kind.tag === "toggle" && collapsedToggles.has(parent.id)) return true;
+      cur = parent?.parent ?? null;
+    }
+    return false;
+  }
+
+  // A List block itself never gets a visible row — only its ListItem
+  // children do, each looking up its own list_kind/1-based index here.
+  function listContextOf(b: BlockView): { kind: "bulleted" | "numbered" | "todo"; index: number } | null {
+    if (b.parent === null) return null;
+    const parent = byId.get(b.parent);
+    if (!parent || parent.kind.tag !== "list") return null;
+    const siblings = blocks.filter((x) => x.parent === b.parent);
+    return { kind: parent.kind.list_kind, index: siblings.findIndex((x) => x.id === b.id) + 1 };
+  }
+
+  const visibleBlocks = blocks.filter((b) => b.kind.tag !== "list" && !isHiddenByCollapsedToggle(b.id));
+
   function handleEnter(afterId: string) {
-    const id = insertBlock(afterId, { tag: "paragraph" });
+    // Enter continues a ListItem as a sibling under the same List, and
+    // stays under whatever non-list container (Toggle/Callout/Aside/
+    // Quote) the current block is already in — never resets to a
+    // top-level paragraph out from under an in-progress nested edit.
+    const current = byId.get(afterId);
+    const kind: BlockKind = current?.kind.tag === "list_item" ? { tag: "list_item", checked: false } : { tag: "paragraph" };
+    const id = insertBlock(afterId, kind, current?.parent ?? null);
     pendingFocusId.current = id;
   }
 
@@ -240,6 +308,19 @@ export function RichEditorPane({ page, collab, onRename }: { page: Page; collab:
 
   function chooseKind(kind: BlockKindKey) {
     if (!kindMenu) return;
+    const listKind = LIST_KEYS[kind];
+    if (listKind) {
+      // A list is a container plus its first item, not a single in-place
+      // conversion — always inserted fresh, right after the block that
+      // triggered whichever menu mode is open, regardless of mode.
+      const afterId = kindMenu.mode === "insert" ? kindMenu.afterId : kindMenu.blockId;
+      const parent = byId.get(afterId)?.parent ?? null;
+      setKindMenu(null);
+      const listId = insertBlock(afterId, { tag: "list", list_kind: listKind }, parent);
+      const itemId = insertBlock(null, { tag: "list_item", checked: false }, listId);
+      pendingFocusId.current = itemId;
+      return;
+    }
     if (kindMenu.mode === "convert") {
       const { blockId, textBeforeChoice } = kindMenu;
       setKindMenu(null);
@@ -250,7 +331,8 @@ export function RichEditorPane({ page, collab, onRename }: { page: Page; collab:
     } else if (kindMenu.mode === "insert") {
       const { afterId } = kindMenu;
       setKindMenu(null);
-      const id = insertBlock(afterId, kindFromKey(kind));
+      const parent = byId.get(afterId)?.parent ?? null;
+      const id = insertBlock(afterId, kindFromKey(kind), parent);
       pendingFocusId.current = id;
     } else {
       const { blockId } = kindMenu;
@@ -316,10 +398,24 @@ export function RichEditorPane({ page, collab, onRename }: { page: Page; collab:
           )}
         </div>
 
-        {blocks.map((b) => (
+        {visibleBlocks.map((b) => (
           <BlockRow
             key={b.id}
             block={b}
+            depth={depthOf(b.id)}
+            listContext={listContextOf(b)}
+            collapsed={collapsedToggles.has(b.id)}
+            onToggleCollapse={() =>
+              setCollapsedToggles((prev) => {
+                const next = new Set(prev);
+                if (next.has(b.id)) next.delete(b.id);
+                else next.add(b.id);
+                return next;
+              })
+            }
+            onToggleChecked={() => {
+              if (b.kind.tag === "list_item") setBlockKind(b.id, { tag: "list_item", checked: !b.kind.checked });
+            }}
             disabled={state !== "open"}
             registerRef={(el) => {
               if (el) rowRefs.current.set(b.id, el);
@@ -537,6 +633,11 @@ function offsetsToRange(root: HTMLElement, start: number, end: number): Range | 
 
 function BlockRow({
   block,
+  depth,
+  listContext,
+  collapsed,
+  onToggleCollapse,
+  onToggleChecked,
   disabled,
   registerRef,
   onChangeText,
@@ -554,6 +655,21 @@ function BlockRow({
   onDragEnd,
 }: {
   block: BlockView;
+  /** Nesting depth (RFC-001 §1's containment) — 0 for a top-level block,
+   * derived from the parent chain, never stored. */
+  depth: number;
+  /** Set only for a ListItem — its parent List's own list_kind, plus
+   * this item's 1-based position among its List siblings (for numbered
+   * lists). null for every other kind, including List itself (which
+   * never gets a row of its own). */
+  listContext: { kind: "bulleted" | "numbered" | "todo"; index: number } | null;
+  /** Toggle-only view state (RFC-001 §1: not model state) — whether this
+   * block's children are currently hidden. Meaningless for any other kind. */
+  collapsed: boolean;
+  onToggleCollapse: () => void;
+  /** ListItem-only — flips Checked via SetBlockKind (Checked lives on
+   * BlockKind, not Content — block.go's own field-per-tag pattern). */
+  onToggleChecked: () => void;
   disabled: boolean;
   registerRef: (el: HTMLElement | null) => void;
   onChangeText: (text: string) => void;
@@ -570,7 +686,130 @@ function BlockRow({
   onDrop: () => void;
   onDragEnd: () => void;
 }) {
-  const kindKey = keyOf(block.kind);
+  const tag = block.kind.tag;
+  const kindKey = tag === "list_item" || tag === "toggle" || tag === "callout" || tag === "aside" || tag === "image" ? null : keyOf(block.kind);
+
+  let body: ReactNode;
+  if (tag === "divider") {
+    body = <hr className="block-divider" />;
+  } else if (tag === "code_block") {
+    body = (
+      <CodeBlockField
+        text={block.text}
+        disabled={disabled}
+        registerRef={registerRef}
+        onChangeText={onChangeText}
+        onBackspaceEmpty={onBackspaceEmpty}
+        onCursorChange={onCursorChange}
+      />
+    );
+  } else if (tag === "image") {
+    // No upload/asset pipeline exists yet (RFC-001 §1, §10) — a labeled
+    // placeholder standing in for what would otherwise be a broken <img>.
+    body = (
+      <div style={{ border: "1px dashed var(--border, #999)", borderRadius: 6, padding: "24px 16px", textAlign: "center", color: "var(--muted, #888)" }}>
+        🖼 Image {block.kind.tag === "image" && block.kind.file_id ? `(${block.kind.file_id})` : "(no file yet — upload not implemented)"}
+      </div>
+    );
+  } else if (tag === "list_item") {
+    const prefix =
+      listContext?.kind === "numbered" ? (
+        <span className="mono muted" style={{ minWidth: 20, textAlign: "right" }}>{listContext.index}.</span>
+      ) : listContext?.kind === "todo" ? (
+        <input type="checkbox" checked={block.kind.tag === "list_item" && !!block.kind.checked} onChange={onToggleChecked} disabled={disabled} />
+      ) : (
+        <span className="muted">•</span>
+      );
+    body = (
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+        {prefix}
+        <EditableTextBlock
+          blockId={block.id}
+          tag="p"
+          text={block.text}
+          marks={block.marks}
+          disabled={disabled}
+          registerRef={registerRef}
+          onChangeText={onChangeText}
+          onEnter={onEnter}
+          onBackspaceEmpty={onBackspaceEmpty}
+          onSlashTrigger={onSlashTrigger}
+        />
+      </div>
+    );
+  } else if (tag === "toggle") {
+    body = (
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
+        <span onClick={onToggleCollapse} title={collapsed ? "Expand" : "Collapse"} style={{ cursor: "pointer", userSelect: "none", marginTop: 2 }}>
+          {collapsed ? "▶" : "▼"}
+        </span>
+        <EditableTextBlock
+          blockId={block.id}
+          tag="p"
+          text={block.text}
+          marks={block.marks}
+          disabled={disabled}
+          registerRef={registerRef}
+          onChangeText={onChangeText}
+          onEnter={onEnter}
+          onBackspaceEmpty={onBackspaceEmpty}
+          onSlashTrigger={onSlashTrigger}
+        />
+      </div>
+    );
+  } else if (tag === "callout") {
+    const tone = block.kind.tag === "callout" ? (block.kind.tone ?? "warn") : "warn";
+    body = (
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 8, borderLeft: `3px solid ${CALLOUT_TONE_COLOR[tone]}`, background: "rgba(128,128,128,0.06)", borderRadius: 4, padding: "8px 12px" }}>
+        <span style={{ marginTop: 2 }}>{(block.kind.tag === "callout" && block.kind.icon) || "💡"}</span>
+        <EditableTextBlock
+          blockId={block.id}
+          tag="p"
+          text={block.text}
+          marks={block.marks}
+          disabled={disabled}
+          registerRef={registerRef}
+          onChangeText={onChangeText}
+          onEnter={onEnter}
+          onBackspaceEmpty={onBackspaceEmpty}
+          onSlashTrigger={onSlashTrigger}
+        />
+      </div>
+    );
+  } else if (tag === "aside") {
+    body = (
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 8, background: "rgba(128,128,128,0.06)", borderRadius: 4, padding: "8px 12px" }}>
+        <span style={{ marginTop: 2 }}>{block.kind.tag === "aside" ? block.kind.emoji : "💬"}</span>
+        <EditableTextBlock
+          blockId={block.id}
+          tag="p"
+          text={block.text}
+          marks={block.marks}
+          disabled={disabled}
+          registerRef={registerRef}
+          onChangeText={onChangeText}
+          onEnter={onEnter}
+          onBackspaceEmpty={onBackspaceEmpty}
+          onSlashTrigger={onSlashTrigger}
+        />
+      </div>
+    );
+  } else {
+    body = (
+      <EditableTextBlock
+        blockId={block.id}
+        tag={kindKey === "heading1" ? "h1" : kindKey === "heading2" ? "h2" : kindKey === "heading3" ? "h3" : kindKey === "quote" ? "blockquote" : "p"}
+        text={block.text}
+        marks={block.marks}
+        disabled={disabled}
+        registerRef={registerRef}
+        onChangeText={onChangeText}
+        onEnter={onEnter}
+        onBackspaceEmpty={onBackspaceEmpty}
+        onSlashTrigger={onSlashTrigger}
+      />
+    );
+  }
 
   return (
     <div
@@ -579,6 +818,7 @@ function BlockRow({
       onDrop={(e) => { e.preventDefault(); onDrop(); }}
       style={{
         opacity: dragging ? 0.4 : 1,
+        marginLeft: depth * 24,
         borderTop: dropZone === "before" ? "2px solid var(--violet)" : "2px solid transparent",
         borderBottom: dropZone === "after" ? "2px solid var(--violet)" : "2px solid transparent",
       }}
@@ -597,38 +837,14 @@ function BlockRow({
           onDragStart={onDragStart}
           onDragEnd={onDragEnd}
           onClick={(e) => onHandleClick(e.currentTarget)}
-          title="Drag to reorder, click to change kind or delete"
+          title="Drag to reorder (same level only — see docs/porting/PROGRESS.md), click to change kind or delete"
           style={{ cursor: "grab" }}
         >
           ⠿
         </span>
       </div>
 
-      {kindKey === "divider" ? (
-        <hr className="block-divider" />
-      ) : kindKey === "code_block" ? (
-        <CodeBlockField
-          text={block.text}
-          disabled={disabled}
-          registerRef={registerRef}
-          onChangeText={onChangeText}
-          onBackspaceEmpty={onBackspaceEmpty}
-          onCursorChange={onCursorChange}
-        />
-      ) : (
-        <EditableTextBlock
-          blockId={block.id}
-          tag={kindKey === "heading1" ? "h1" : kindKey === "heading2" ? "h2" : kindKey === "heading3" ? "h3" : kindKey === "quote" ? "blockquote" : "p"}
-          text={block.text}
-          marks={block.marks}
-          disabled={disabled}
-          registerRef={registerRef}
-          onChangeText={onChangeText}
-          onEnter={onEnter}
-          onBackspaceEmpty={onBackspaceEmpty}
-          onSlashTrigger={onSlashTrigger}
-        />
-      )}
+      {body}
     </div>
   );
 }

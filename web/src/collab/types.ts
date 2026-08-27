@@ -32,26 +32,39 @@ export type TextOp =
 
 // Block-granular ops (documentcore.Op) — RFC-002 §2's structural tier.
 // Content/BlockKind match documentcore's own JSON shapes exactly
-// (block.go's blockKindJSON, page.go's Content).
+// (block.go's blockKindJSON, page.go's Content). List/ListItem/Toggle/
+// Image/Callout/Aside are RFC-001 §1's containment additions — see
+// block.go's own blockKindJSON doc comment for which field is
+// meaningful on which tag.
 export type BlockKind =
   | { tag: "paragraph" }
   | { tag: "heading"; level: number }
   | { tag: "quote" }
   | { tag: "code_block"; language: string }
-  | { tag: "divider" };
+  | { tag: "divider" }
+  | { tag: "list"; list_kind: "bulleted" | "numbered" | "todo" }
+  | { tag: "list_item"; checked?: boolean }
+  | { tag: "toggle" }
+  | { tag: "image"; file_id: string }
+  | { tag: "callout"; tone?: "note" | "info" | "tip" | "warn" | "danger" | "success"; icon?: string }
+  | { tag: "aside"; emoji: string };
 
 export interface Content {
   text: string;
   marks?: Mark[];
 }
 
+// Tombstone/InsertBlock's block-identity fields match documentcore.Block
+// (block.go) — parent included, so DeleteBlock's own precondition check
+// (ParentMismatchError) has what it needs, the same reasoning Tombstone
+// already carries kind/content for Invert().
 export type BlockOp =
-  | { type: "InsertBlock"; id: string; after: string | null; kind: BlockKind; content: Content }
-  | { type: "DeleteBlock"; tombstone: { id: string; kind: BlockKind; content: Content }; after: string | null }
+  | { type: "InsertBlock"; id: string; parent: string | null; after: string | null; kind: BlockKind; content: Content }
+  | { type: "DeleteBlock"; tombstone: { id: string; parent: string | null; kind: BlockKind; content: Content }; after: string | null }
   | { type: "SetBlockKind"; id: string; from: BlockKind; to: BlockKind }
   | { type: "SetBlockContent"; block: string; prev: Content; content: Content }
   | { type: "SetTitle"; page: string; from: string; to: string }
-  | { type: "MoveBlock"; id: string; from: string | null; to: string | null };
+  | { type: "MoveBlock"; id: string; from_parent: string | null; from: string | null; to_parent: string | null; to: string | null };
 
 // pageop.Op's wire union (internal/pageop) — "scope" tells the two tiers
 // apart. A Block envelope merges BlockOp's own tagged fields directly (no
@@ -74,6 +87,7 @@ export interface LoggedOp {
 // session.BlockSnapshot/Snapshot — the "snapshot" frame's payload.
 export interface BlockSnapshot {
   id: string;
+  parent: string | null;
   kind: BlockKind;
   text: string;
   marks?: Mark[];

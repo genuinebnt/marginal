@@ -7,6 +7,11 @@ export type ConnectionState = "connecting" | "open" | "closed";
 
 export interface BlockView {
   id: string;
+  /** nil (null) means top-level — RFC-001 §1's containment, mirroring
+   * documentcore.Block.Parent. blocks is kept in the same depth-first
+   * order documentcore.Page.Blocks requires: a container immediately
+   * precedes all its descendants, then the next sibling. */
+  parent: string | null;
   kind: BlockKind;
   text: string;
   marks: Mark[];
@@ -62,26 +67,95 @@ export interface CollabPage {
    * on, not just mark changes — see RichEditorPane's own doc comment for
    * why (marks would silently desync from a block's live text otherwise). */
   setBlockContent: (blockId: string, newText: string, newMarks: Mark[]) => void;
-  /** Inserts a fresh, empty block of kind right after afterId (or at the
-   * document start if afterId is null), returning the new block's
-   * client-generated id so the caller can focus it once it appears. */
-  insertBlock: (afterId: string | null, kind: BlockKind) => string;
+  /** Inserts a fresh, empty block of kind as parent's child (nil = top-
+   * level), immediately after afterId (or as parent's first child — or
+   * the document start, if parent is also nil — if afterId is null).
+   * Returns the new block's client-generated id so the caller can focus
+   * it once it appears. */
+  insertBlock: (afterId: string | null, kind: BlockKind, parent?: string | null) => string;
   /** Removes a block entirely. Refuses (no-op) if it's the last block —
-   * a page always has at least one block in this editor. */
+   * a page always has at least one block in this editor. The backend
+   * itself refuses a non-empty container (ContainerNotEmptyError) — this
+   * client doesn't pre-check that, so deleting one is a silent no-op
+   * today (the "error" server frame is only logged, not surfaced as UI) —
+   * a known, accepted gap, not a correctness issue: the op is rejected,
+   * not silently corrupting the page. */
   deleteBlock: (blockId: string) => void;
   /** Changes a block's kind in place (paragraph ↔ heading ↔ quote ↔
-   * code_block ↔ divider) — does not touch its content. */
+   * code_block ↔ divider ↔ …) — does not touch its content. */
   setBlockKind: (blockId: string, kind: BlockKind) => void;
-  /** Moves blockId to immediately after afterId (null = the document
-   * start) — drag-to-reorder, MoveBlock (RFC-002 §2). */
-  moveBlock: (blockId: string, afterId: string | null) => void;
+  /** Moves blockId to immediately after afterId (null = parent's first
+   * child) — drag-to-reorder, MoveBlock (RFC-002 §2). parent is
+   * OMITTED, not null, when the caller only wants a same-level reorder —
+   * it then defaults to the block's own current parent, so existing
+   * drag-and-drop (which never names a parent) can't accidentally
+   * reparent a nested block to top-level. Passing parent explicitly (even
+   * `null` for "make top-level") is how a caller opts into reparenting;
+   * no UI in this editor does that yet — a stated gap, not a silent one. */
+  moveBlock: (blockId: string, afterId: string | null, parent?: string | null) => void;
 }
 
 interface liveBlock {
+  parent: string | null;
   kind: BlockKind;
   text: string;
   marks: Mark[];
   boundaries: AnchorRange | null;
+}
+
+// Module-level, not closures: applyStructural (inside the connection
+// effect) and the public insertBlock/deleteBlock/moveBlock callbacks
+// (outside it) both need these, and they're pure functions of
+// (order, live) — no reason to duplicate them per call site. They mirror
+// documentcore's own page.go (predecessorOf/isDescendant/subtreeEnd/
+// insertIndexAfterInParent) exactly: this client's local order must stay
+// in the same depth-first order the backend maintains, or a MoveBlock
+// (which relocates a whole subtree, not just one block — see MoveBlock's
+// own doc comment in collab/types.ts) would desync this copy from the
+// real one.
+function parentOf(live: Map<string, liveBlock>, id: string): string | null {
+  return live.get(id)?.parent ?? null;
+}
+
+/** The sibling immediately before id — the nearest earlier block sharing
+ * id's own parent, mirroring documentcore's predecessorOf. */
+function predecessorOf(order: string[], live: Map<string, liveBlock>, id: string): string | null {
+  const parent = parentOf(live, id);
+  const idx = order.indexOf(id);
+  for (let j = idx - 1; j >= 0; j--) {
+    if (parentOf(live, order[j]) === parent) return order[j];
+  }
+  return null;
+}
+
+function isDescendant(live: Map<string, liveBlock>, id: string, ancestorId: string): boolean {
+  let cur = parentOf(live, id);
+  while (cur !== null) {
+    if (cur === ancestorId) return true;
+    cur = parentOf(live, cur);
+  }
+  return false;
+}
+
+/** The index one past id's last descendant in order's depth-first
+ * ordering (i.e. right after id itself, if it has none). */
+function subtreeEndIndex(order: string[], live: Map<string, liveBlock>, id: string): number {
+  let j = order.indexOf(id) + 1;
+  while (j < order.length && isDescendant(live, order[j], id)) j++;
+  return j;
+}
+
+/** Resolves (parent, after) to an insertion index into order — nil after
+ * means "parent's first child" (or the document start, if parent is also
+ * nil); a non-nil after goes after all of after's own descendants
+ * (subtreeEndIndex), preserving depth-first order. */
+function insertIndexAfterInParent(order: string[], live: Map<string, liveBlock>, parent: string | null, after: string | null): number {
+  if (after === null) {
+    if (parent === null) return 0;
+    const parentIdx = order.indexOf(parent);
+    return parentIdx === -1 ? order.length : parentIdx + 1;
+  }
+  return subtreeEndIndex(order, live, after);
 }
 
 /**
@@ -119,7 +193,7 @@ export function useCollabPage(pageId: string, actorId: string): CollabPage {
   const publish = useCallback(() => {
     setBlocks(orderRef.current.map((id) => {
       const b = liveRef.current.get(id)!;
-      return { id, kind: b.kind, text: b.text, marks: b.marks };
+      return { id, parent: b.parent, kind: b.kind, text: b.text, marks: b.marks };
     }));
   }, []);
 
@@ -147,23 +221,19 @@ export function useCollabPage(pageId: string, actorId: string): CollabPage {
     ws.onclose = () => setState("closed");
     ws.onerror = () => setState("closed");
 
-    function indexOf(id: string): number {
-      return orderRef.current.indexOf(id);
-    }
-    function insertAfter(id: string, after: string | null) {
-      const idx = after === null ? 0 : indexOf(after) + 1;
-      orderRef.current.splice(idx, 0, id);
-    }
-
     function applyStructural(op: PageOp & { scope: "block" }) {
       switch (op.type) {
         case "InsertBlock":
           if (!liveRef.current.has(op.id)) {
-            liveRef.current.set(op.id, { kind: op.kind, text: op.content.text, marks: op.content.marks ?? [], boundaries: null });
-            insertAfter(op.id, op.after);
+            liveRef.current.set(op.id, { parent: op.parent, kind: op.kind, text: op.content.text, marks: op.content.marks ?? [], boundaries: null });
+            const idx = insertIndexAfterInParent(orderRef.current, liveRef.current, op.parent, op.after);
+            orderRef.current.splice(idx, 0, op.id);
           }
           break;
         case "DeleteBlock": {
+          // The backend only ever allows deleting an empty container or a
+          // leaf (ContainerNotEmptyError otherwise), so this never needs
+          // to remove more than the one id — unlike MoveBlock below.
           const id = op.tombstone.id;
           orderRef.current = orderRef.current.filter((x) => x !== id);
           liveRef.current.delete(id);
@@ -184,8 +254,20 @@ export function useCollabPage(pageId: string, actorId: string): CollabPage {
           break;
         }
         case "MoveBlock": {
-          orderRef.current = orderRef.current.filter((x) => x !== op.id);
-          insertAfter(op.id, op.to);
+          // Relocates the whole subtree rooted at op.id as one contiguous
+          // unit, preserving depth-first order — the same reason
+          // documentcore.Page.Apply's own MoveBlock case does. Only the
+          // subtree's own root gets reparented; every descendant already
+          // has the right Parent (each other) and needs no change.
+          const idx = orderRef.current.indexOf(op.id);
+          if (idx === -1) break;
+          const end = subtreeEndIndex(orderRef.current, liveRef.current, op.id);
+          const subtree = orderRef.current.slice(idx, end);
+          orderRef.current = [...orderRef.current.slice(0, idx), ...orderRef.current.slice(end)];
+          const insertIdx = insertIndexAfterInParent(orderRef.current, liveRef.current, op.to_parent, op.to);
+          orderRef.current.splice(insertIdx, 0, ...subtree);
+          const root = liveRef.current.get(op.id);
+          if (root) root.parent = op.to_parent;
           break;
         }
         case "SetTitle":
@@ -199,7 +281,7 @@ export function useCollabPage(pageId: string, actorId: string): CollabPage {
         case "snapshot": {
           orderRef.current = msg.snapshot.blocks.map((b) => b.id);
           liveRef.current = new Map(
-            msg.snapshot.blocks.map((b) => [b.id, { kind: b.kind, text: b.text, marks: b.marks ?? [], boundaries: b.boundaries ?? null }]),
+            msg.snapshot.blocks.map((b) => [b.id, { parent: b.parent, kind: b.kind, text: b.text, marks: b.marks ?? [], boundaries: b.boundaries ?? null }]),
           );
           publish();
           setPeers(new Set(msg.present ?? []));
@@ -367,11 +449,11 @@ export function useCollabPage(pageId: string, actorId: string): CollabPage {
   );
 
   const insertBlock = useCallback(
-    (afterId: string | null, kind: BlockKind) => {
+    (afterId: string | null, kind: BlockKind, parent: string | null = null) => {
       const id = crypto.randomUUID();
       send({
         type: "op",
-        op: { scope: "block", type: "InsertBlock", id, after: afterId, kind, content: { text: "" } },
+        op: { scope: "block", type: "InsertBlock", id, parent, after: afterId, kind, content: { text: "" } },
       });
       return id;
     },
@@ -383,11 +465,10 @@ export function useCollabPage(pageId: string, actorId: string): CollabPage {
       if (orderRef.current.length <= 1) return; // always keep at least one block
       const b = liveRef.current.get(blockId);
       if (!b) return;
-      const idx = orderRef.current.indexOf(blockId);
-      const after = idx > 0 ? orderRef.current[idx - 1] : null;
+      const after = predecessorOf(orderRef.current, liveRef.current, blockId);
       send({
         type: "op",
-        op: { scope: "block", type: "DeleteBlock", tombstone: { id: blockId, kind: b.kind, content: { text: b.text, marks: b.marks } }, after },
+        op: { scope: "block", type: "DeleteBlock", tombstone: { id: blockId, parent: b.parent, kind: b.kind, content: { text: b.text, marks: b.marks } }, after },
       });
     },
     [send],
@@ -403,13 +484,17 @@ export function useCollabPage(pageId: string, actorId: string): CollabPage {
   );
 
   const moveBlock = useCallback(
-    (blockId: string, afterId: string | null) => {
+    (blockId: string, afterId: string | null, parent?: string | null) => {
       if (blockId === afterId) return;
-      const idx = orderRef.current.indexOf(blockId);
-      if (idx === -1) return;
-      const from = idx > 0 ? orderRef.current[idx - 1] : null;
-      if (from === afterId) return; // already there
-      send({ type: "op", op: { scope: "block", type: "MoveBlock", id: blockId, from, to: afterId } });
+      const b = liveRef.current.get(blockId);
+      if (!b) return;
+      // Omitted parent means "keep the block's own current parent" — a
+      // plain reorder, never a reparent — see this hook's own moveBlock
+      // doc comment for why that matters for existing drag-and-drop.
+      const toParent = parent === undefined ? b.parent : parent;
+      const from = predecessorOf(orderRef.current, liveRef.current, blockId);
+      if (b.parent === toParent && from === afterId) return; // already there
+      send({ type: "op", op: { scope: "block", type: "MoveBlock", id: blockId, from_parent: b.parent, from, to_parent: toParent, to: afterId } });
     },
     [send],
   );

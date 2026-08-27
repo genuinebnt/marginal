@@ -30,6 +30,7 @@ describe("wasm bridge", () => {
     const next = await applyOp(page, {
       type: "InsertBlock",
       id: blockId,
+      parent: null,
       after: null,
       kind: paragraph(),
       content: plainContent("hello"),
@@ -46,7 +47,7 @@ describe("wasm bridge", () => {
     await expect(
       applyOp(page, {
         type: "DeleteBlock",
-        tombstone: { id: randomUUID(), kind: paragraph(), content: plainContent("") },
+        tombstone: { id: randomUUID(), parent: null, kind: paragraph(), content: plainContent("") },
         after: null,
       }),
     ).rejects.toBeInstanceOf(DocumentCoreError);
@@ -57,6 +58,7 @@ describe("wasm bridge", () => {
     const op = {
       type: "InsertBlock" as const,
       id: blockId,
+      parent: null,
       after: null,
       kind: paragraph(),
       content: plainContent("x"),
@@ -75,6 +77,7 @@ describe("wasm bridge", () => {
     page = await applyOp(page, {
       type: "InsertBlock",
       id: blockId,
+      parent: null,
       after: null,
       kind: paragraph(),
       content: plainContent(""),

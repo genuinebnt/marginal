@@ -37,8 +37,12 @@ export interface Content {
 
 export const plainContent = (text: string): Content => ({ text, marks: [] });
 
-// RFC-001 §1's grammar has more variants (List, Toggle, Image) than Go's
-// documentcore implements yet — see block.go's doc comment.
+// documentcore now also implements List/ListItem/Toggle/Image/Callout/
+// Aside (RFC-001 §1) — not added here, since this module isn't wired to
+// any screen yet (this file's own header comment) and nothing exercises
+// them through the wasm boundary; add them when/if that changes, same
+// convention as everything else in this file staying a direct mirror of
+// whatever documentcore's JSON actually is at the time.
 export type BlockKind =
   | { tag: "paragraph" }
   | { tag: "heading"; level: 1 | 2 | 3 }
@@ -57,6 +61,7 @@ export const heading = (level: 1 | 2 | 3): BlockKind => ({ tag: "heading", level
 
 export interface Block {
   id: BlockId;
+  parent: BlockId | null;
   kind: BlockKind;
   content: Content;
 }
@@ -67,11 +72,16 @@ export interface Page {
   blocks: Block[];
 }
 
-/** Mirrors documentcore's Op union exactly — field names match RFC-002 §2. */
+/** Mirrors documentcore's Op union exactly — field names match RFC-002 §2
+ * and RFC-001 §1's containment (Parent/FromParent/ToParent). This module
+ * isn't wired to any screen yet (see this file's own header comment) —
+ * kept in sync with documentcore's real wire shape anyway, the same
+ * reason wasm.test.ts's own literals are, so a later hookup doesn't
+ * inherit a silently-stale type. */
 export type Op =
-  | { type: "InsertBlock"; id: BlockId; after: BlockId | null; kind: BlockKind; content: Content }
+  | { type: "InsertBlock"; id: BlockId; parent: BlockId | null; after: BlockId | null; kind: BlockKind; content: Content }
   | { type: "DeleteBlock"; tombstone: Block; after: BlockId | null }
   | { type: "SetBlockKind"; id: BlockId; from: BlockKind; to: BlockKind }
   | { type: "SetBlockContent"; block: BlockId; prev: Content; content: Content }
   | { type: "SetTitle"; page: PageId; from: string; to: string }
-  | { type: "MoveBlock"; id: BlockId; from: BlockId | null; to: BlockId | null };
+  | { type: "MoveBlock"; id: BlockId; from_parent: BlockId | null; from: BlockId | null; to_parent: BlockId | null; to: BlockId | null };
