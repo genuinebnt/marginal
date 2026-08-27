@@ -1,4 +1,4 @@
-// Command graphwasm compiles internal/graphalgo's interactive pieces to
+// Command graphwasm compiles graphalgo's interactive pieces to
 // GOOS=js GOARCH=wasm: the force-directed layout and the Voronoi/
 // Delaunay territory view, both of which have to run client-side at
 // interactive framerate (dragging a node, or recomputing cells as
@@ -8,7 +8,7 @@
 // The one-shot algorithms (components, cycles, BFS, diameter, Betti) are
 // NOT duplicated here — they're computed once per request by
 // GraphService (internal/graph), which already imports the same
-// internal/graphalgo package. This binary exists only for the two
+// graphalgo package. This binary exists only for the two
 // algorithms that genuinely need to live in the browser; everything else
 // stays server-side, same package, no second implementation either way.
 //
@@ -29,7 +29,7 @@ import (
 	"fmt"
 	"syscall/js"
 
-	"marginal/document-service/internal/graphalgo"
+	"marginal/graphalgo"
 )
 
 func jsonArg(args []js.Value, i int) []byte { return []byte(args[i].String()) }

@@ -15,7 +15,7 @@ import (
 )
 
 // TestAnalyzeGraphEndToEndTriangle exercises the full stack — real
-// Postgres, graph.PostgresRepo.LoadGraph, internal/graphalgo, and the
+// Postgres, graph.PostgresRepo.LoadGraph, graphalgo, and the
 // proto translation in api.go — for a real 3-cycle of mutually-linked
 // pages: graph-algorithms.html's own smallest case where a cycle exists,
 // gets filled as one triangle, and its own loop disappears from

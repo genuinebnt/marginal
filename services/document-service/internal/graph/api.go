@@ -8,11 +8,11 @@ import (
 	"google.golang.org/grpc/status"
 
 	documentv1 "marginal/document-service/genproto/documentv1"
-	"marginal/document-service/internal/graphalgo"
+	"marginal/graphalgo"
 )
 
 // Server implements documentv1.GraphServiceServer over a *PostgresRepo —
-// proto <-> domain translation only; internal/graphalgo has every
+// proto <-> domain translation only; graphalgo has every
 // algorithm. See docs/api/graph.md.
 type Server struct {
 	documentv1.UnimplementedGraphServiceServer

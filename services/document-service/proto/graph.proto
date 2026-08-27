@@ -3,7 +3,7 @@
 // docs/api/graph.md, which this file matches field-for-field.
 //
 // Read-only and parameter-light on purpose: every algorithm here
-// (internal/graphalgo) is a pure function over docs.pages/docs.page_links
+// (graphalgo) is a pure function over docs.pages/docs.page_links
 // as of right now, computed fresh per request — there is no persisted
 // "graph" state of its own to keep consistent, unlike PageService's own
 // rows.
@@ -21,7 +21,7 @@ service GraphService {
 
   // AnalyzeGraph runs every parameter-free algorithm once, over the whole
   // graph: connected components, orphan detection, cycle detection, and
-  // diameter (internal/graphalgo).
+  // diameter (graphalgo).
   rpc AnalyzeGraph(AnalyzeGraphRequest) returns (GraphAnalysis);
 
   // GraphNeighborhood is the one parameterized view: BFS shortest-path
@@ -41,7 +41,7 @@ message LinkGraph {
 message GraphNode {
   string id = 1;
   string title = 2;
-  // is_root mirrors internal/graphalgo.Orphans' own root set: a page
+  // is_root mirrors graphalgo.Orphans' own root set: a page
   // with no parent, reachable without already knowing another page's
   // title exists.
   bool is_root = 3;
@@ -56,7 +56,7 @@ message AnalyzeGraphRequest {}
 
 message GraphAnalysis {
   // component_of maps every page id to its connected-component id
-  // (internal/graphalgo.Components, over the undirected projection).
+  // (graphalgo.Components, over the undirected projection).
   map<string, int32> component_of = 1;
   // orphan_components are component ids containing none of the root
   // pages — graph-algorithms.html's own "a mutually-linked pair with
@@ -67,7 +67,7 @@ message GraphAnalysis {
   repeated string cycle = 3;
   int32 diameter = 4;
   // betti is graph-algorithms.html's own topology panel
-  // (internal/graphalgo.Betti) — see BettiNumbers' own field comments for
+  // (graphalgo.Betti) — see BettiNumbers' own field comments for
   // why some of these are graph facts and some are a stated modelling
   // choice (filling every triangle).
   BettiNumbers betti = 5;

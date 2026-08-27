@@ -15,7 +15,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
 	"marginal/document-service/internal/graph"
-	"marginal/document-service/internal/graphalgo"
+	"marginal/graphalgo"
 	"marginal/document-service/internal/migrate"
 	"marginal/document-service/internal/pages"
 )

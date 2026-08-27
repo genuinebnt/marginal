@@ -3,7 +3,7 @@
 // docs/api/graph.md, which this file matches field-for-field.
 //
 // Read-only and parameter-light on purpose: every algorithm here
-// (internal/graphalgo) is a pure function over docs.pages/docs.page_links
+// (graphalgo) is a pure function over docs.pages/docs.page_links
 // as of right now, computed fresh per request — there is no persisted
 // "graph" state of its own to keep consistent, unlike PageService's own
 // rows.
@@ -123,7 +123,7 @@ type GraphNode struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	Id    string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	Title string                 `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
-	// is_root mirrors internal/graphalgo.Orphans' own root set: a page
+	// is_root mirrors graphalgo.Orphans' own root set: a page
 	// with no parent, reachable without already knowing another page's
 	// title exists.
 	IsRoot        bool `protobuf:"varint,3,opt,name=is_root,json=isRoot,proto3" json:"is_root,omitempty"`
@@ -273,7 +273,7 @@ func (*AnalyzeGraphRequest) Descriptor() ([]byte, []int) {
 type GraphAnalysis struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// component_of maps every page id to its connected-component id
-	// (internal/graphalgo.Components, over the undirected projection).
+	// (graphalgo.Components, over the undirected projection).
 	ComponentOf map[string]int32 `protobuf:"bytes,1,rep,name=component_of,json=componentOf,proto3" json:"component_of,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
 	// orphan_components are component ids containing none of the root
 	// pages — graph-algorithms.html's own "a mutually-linked pair with
@@ -284,7 +284,7 @@ type GraphAnalysis struct {
 	Cycle    []string `protobuf:"bytes,3,rep,name=cycle,proto3" json:"cycle,omitempty"`
 	Diameter int32    `protobuf:"varint,4,opt,name=diameter,proto3" json:"diameter,omitempty"`
 	// betti is graph-algorithms.html's own topology panel
-	// (internal/graphalgo.Betti) — see BettiNumbers' own field comments for
+	// (graphalgo.Betti) — see BettiNumbers' own field comments for
 	// why some of these are graph facts and some are a stated modelling
 	// choice (filling every triangle).
 	Betti         *BettiNumbers `protobuf:"bytes,5,opt,name=betti,proto3" json:"betti,omitempty"`

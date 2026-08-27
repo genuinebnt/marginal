@@ -23,7 +23,7 @@ type ListPagesForGraphRow struct {
 	ParentID pgtype.UUID
 }
 
-// Every live page — the link graph's node set (internal/graphalgo.Graph
+// Every live page — the link graph's node set (graphalgo.Graph
 // needs every page to exist as a node even with zero links, so orphan
 // detection can see it sitting alone). parent_id IS NULL identifies a
 // root for graphalgo.Orphans' own root set — a page nobody has nested
@@ -63,7 +63,7 @@ type ListResolvedLinksForGraphRow struct {
 // Every page_links row that resolved to a real page — the link graph's
 // edge set. A dangling link (target_page IS NULL) has nothing on the
 // other end to draw a line to or walk toward, so it's excluded here the
-// same way internal/graphalgo.Edge's own doc comment says it must be.
+// same way graphalgo.Edge's own doc comment says it must be.
 func (q *Queries) ListResolvedLinksForGraph(ctx context.Context) ([]ListResolvedLinksForGraphRow, error) {
 	rows, err := q.db.Query(ctx, listResolvedLinksForGraph)
 	if err != nil {
