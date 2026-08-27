@@ -42,14 +42,18 @@ import (
 // ApplyClientOp calls Subscriber.Deliver while holding its own mutex).
 const outboxBufferSize = 64
 
-// clientMessage is every shape a client sends: an op to apply ("op"), or
-// its own current caret/selection ("cursor") — fire-and-forget, no ack.
-// Cursor is set only for Type "cursor"; a nil BlockID inside it means
-// "not focused in any block right now" (blurred everywhere).
+// clientMessage is every shape a client sends: an op to apply ("op"), its
+// own current caret/selection ("cursor") — fire-and-forget, no ack — or a
+// request to undo/redo its own most recent gesture ("undo"/"redo" — no
+// further payload, docs/api/collaboration.md §2.1). Cursor is set only
+// for Type "cursor"; a nil BlockID inside it means "not focused in any
+// block right now" (blurred everywhere). UndoGroup is set only for Type
+// "op", optional even then — nil is RFC-002 §3's "group of one."
 type clientMessage struct {
-	Type   string          `json:"type"` // "op" | "cursor"
-	Op     json.RawMessage `json:"op,omitempty"`
-	Cursor *cursorPayload  `json:"cursor,omitempty"`
+	Type      string          `json:"type"` // "op" | "cursor" | "undo" | "redo"
+	Op        json.RawMessage `json:"op,omitempty"`
+	UndoGroup *uuid.UUID      `json:"undo_group,omitempty"`
+	Cursor    *cursorPayload  `json:"cursor,omitempty"`
 }
 
 // cursorPayload is clientMessage's "cursor" shape — see clientMessage's
@@ -245,12 +249,20 @@ func readLoop(ctx context.Context, conn *websocket.Conn, sess *session.Session, 
 				continue
 			}
 
-			result, err := sess.ApplyClientOp(ctx, actorID, actorKind, op, subID)
+			result, err := sess.ApplyClientOp(ctx, actorID, actorKind, op, msg.UndoGroup, subID)
 			if err != nil {
 				sub.enqueue(serverMessage{Type: "error", Message: clientSafeMessage(err)})
 				continue
 			}
 			sub.enqueue(serverMessage{Type: "ack", Op: &result.Op, Boundaries: result.Boundaries})
+
+		case "undo":
+			results, err := sess.Undo(ctx, actorID, actorKind, subID)
+			enqueueUndoRedoAcks(sub, results, err)
+
+		case "redo":
+			results, err := sess.Redo(ctx, actorID, actorKind, subID)
+			enqueueUndoRedoAcks(sub, results, err)
 
 		case "cursor":
 			if msg.Cursor == nil {
@@ -262,6 +274,23 @@ func readLoop(ctx context.Context, conn *websocket.Conn, sess *session.Session, 
 		default:
 			sub.enqueue(serverMessage{Type: "error", Message: fmt.Sprintf("unknown message type %q", msg.Type)})
 		}
+	}
+}
+
+// enqueueUndoRedoAcks sends one "ack" frame per op an Undo/Redo call
+// actually committed, in the order they applied — docs/api/collaboration.md
+// §2.1: "from every other client's point of view, an undo is
+// indistinguishable from the sender submitting N ordinary ops, because it
+// is one." Each already-committed op still gets acked even when err is
+// non-nil (a multi-op group that failed partway per that same section) —
+// only the failure itself, not the partial success, is reported as an
+// "error" frame.
+func enqueueUndoRedoAcks(sub *connSubscriber, results []session.CommitResult, err error) {
+	for _, r := range results {
+		sub.enqueue(serverMessage{Type: "ack", Op: &r.Op, Boundaries: r.Boundaries})
+	}
+	if err != nil {
+		sub.enqueue(serverMessage{Type: "error", Message: clientSafeMessage(err)})
 	}
 }
 

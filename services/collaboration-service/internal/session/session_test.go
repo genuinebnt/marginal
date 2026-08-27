@@ -45,7 +45,7 @@ func insertBlock(t *testing.T, s *Session, actor uuid.UUID, text string) documen
 	id := documentcore.BlockID(uuid.Must(uuid.NewV7()))
 	_, err := s.ApplyClientOp(context.Background(), actor, oplog.ActorUser, pageop.Block{
 		Op: documentcore.InsertBlock{ID: id, Kind: documentcore.NewParagraph(), Content: documentcore.Content{Text: text}},
-	}, 0)
+	}, nil, 0)
 	require.NoError(t, err)
 	return id
 }
@@ -101,7 +101,7 @@ func TestSnapshotIncludesMarksSetViaSetBlockContent(t *testing.T) {
 			Prev:    documentcore.Content{Text: "hello world"},
 			Content: documentcore.Content{Text: "hello world", Marks: []documentcore.Mark{bold}},
 		},
-	}, 0)
+	}, nil, 0)
 	require.NoError(t, err)
 
 	snap := s.Snapshot()
@@ -116,7 +116,7 @@ func TestApplyClientOpMutatesTextAndReturnsAck(t *testing.T) {
 	blockID := insertBlock(t, s, actor, "")
 
 	textOp := pageop.Text{BlockID: blockID, Op: ops.InsertText{At: nil, Text: "hi"}}
-	result, err := s.ApplyClientOp(context.Background(), actor, oplog.ActorUser, textOp, 0)
+	result, err := s.ApplyClientOp(context.Background(), actor, oplog.ActorUser, textOp, nil, 0)
 	require.NoError(t, err)
 	assert.Equal(t, "hi", blockText(t, s, blockID))
 	assert.Equal(t, actor, result.Op.ActorID)
@@ -139,7 +139,7 @@ func TestBroadcastExcludesTheSubmittingSubscriber(t *testing.T) {
 	defer subB.Close()
 
 	result, err := s.ApplyClientOp(context.Background(), actor, oplog.ActorUser,
-		pageop.Text{BlockID: blockID, Op: ops.InsertText{At: nil, Text: "hi"}}, subA.ID)
+		pageop.Text{BlockID: blockID, Op: ops.InsertText{At: nil, Text: "hi"}}, nil, subA.ID)
 	require.NoError(t, err)
 
 	assert.Empty(t, subARec.snapshot(), "the submitting subscriber must not also receive its own op via Deliver")
@@ -158,7 +158,7 @@ func TestUnsubscribeStopsFurtherDelivery(t *testing.T) {
 	sub.Close()
 
 	_, err := s.ApplyClientOp(context.Background(), actor, oplog.ActorUser,
-		pageop.Text{BlockID: blockID, Op: ops.InsertText{At: nil, Text: "hi"}}, 999)
+		pageop.Text{BlockID: blockID, Op: ops.InsertText{At: nil, Text: "hi"}}, nil, 999)
 	require.NoError(t, err)
 	assert.Empty(t, rec.snapshot())
 }
@@ -174,7 +174,7 @@ func TestCanApplyDeniesWithoutMutatingState(t *testing.T) {
 
 	blockID := documentcore.BlockID(uuid.Must(uuid.NewV7()))
 	_, err = s.ApplyClientOp(context.Background(), uuid.Must(uuid.NewV7()), oplog.ActorUser,
-		pageop.Block{Op: documentcore.InsertBlock{ID: blockID, Kind: documentcore.NewParagraph()}}, 0)
+		pageop.Block{Op: documentcore.InsertBlock{ID: blockID, Kind: documentcore.NewParagraph()}}, nil, 0)
 	assert.ErrorIs(t, err, ErrDenied)
 	assert.Empty(t, s.Snapshot().Blocks, "a denied op must not touch the page")
 }
@@ -197,10 +197,10 @@ func TestOpenRecoversUnflushedWALOps(t *testing.T) {
 
 	blockID := insertBlock(t, first, actor, "")
 	_, err = first.ApplyClientOp(context.Background(), actor, oplog.ActorUser,
-		pageop.Text{BlockID: blockID, Op: ops.InsertText{At: nil, Text: "hello "}}, 0)
+		pageop.Text{BlockID: blockID, Op: ops.InsertText{At: nil, Text: "hello "}}, nil, 0)
 	require.NoError(t, err)
 	_, err = first.ApplyClientOp(context.Background(), actor, oplog.ActorUser,
-		pageop.Text{BlockID: blockID, Op: ops.InsertText{At: nil, Text: "world"}}, 0)
+		pageop.Text{BlockID: blockID, Op: ops.InsertText{At: nil, Text: "world"}}, nil, 0)
 	require.NoError(t, err)
 	require.Equal(t, "worldhello ", blockText(t, first, blockID), "InsertAt(nil) always inserts at position 0")
 
@@ -237,7 +237,7 @@ func TestOpenDoesNotDoubleApplyAlreadyConfirmedOps(t *testing.T) {
 
 	blockID := documentcore.BlockID(uuid.Must(uuid.NewV7()))
 	_, err = first.ApplyClientOp(context.Background(), actor, oplog.ActorUser,
-		pageop.Block{Op: documentcore.InsertBlock{ID: blockID, Kind: documentcore.NewParagraph(), Content: documentcore.Content{Text: "hi"}}}, 0)
+		pageop.Block{Op: documentcore.InsertBlock{ID: blockID, Kind: documentcore.NewParagraph(), Content: documentcore.Content{Text: "hi"}}}, nil, 0)
 	require.NoError(t, err)
 
 	require.Eventually(t, func() bool {

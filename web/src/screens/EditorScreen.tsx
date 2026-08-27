@@ -36,6 +36,27 @@ export function EditorScreen() {
     getPage(actorId, id).then(setActivePage).catch(() => setActivePage(null));
   }, [id, actorId]);
 
+  // ⌘Z/Ctrl+Z and ⌘⇧Z/Ctrl+Y — real per-actor undo/redo (v2.1.0), not the
+  // browser's own native contenteditable undo. Captured at the document
+  // level (capture: true, before the focused contenteditable's own native
+  // handling) and preventDefault'd unconditionally on a match: the browser's
+  // native undo operates purely on local DOM history and has no idea this
+  // page is a collaborative session, so letting it run instead would desync
+  // the contenteditable's text from what the server (and every other actor)
+  // thinks this block contains. RFC-002 §3's own undo/redo lives entirely
+  // server-side (internal/session.Undo/Redo) — this just asks for it.
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod || e.key.toLowerCase() !== "z") return;
+      e.preventDefault();
+      if (e.shiftKey) collab.redo();
+      else collab.undo();
+    }
+    document.addEventListener("keydown", onKeyDown, { capture: true });
+    return () => document.removeEventListener("keydown", onKeyDown, { capture: true });
+  }, [collab]);
+
   function handleRename(title: string) {
     if (!id) return;
     renamePage(actorId, id, title)
@@ -62,6 +83,12 @@ export function EditorScreen() {
           <span className="mark"></span>Marginal
         </Link>
         <div className="spacer"></div>
+        <button className="btn" onClick={collab.undo} title="Undo your last edit (⌘Z / Ctrl+Z)">
+          ↶ Undo
+        </button>
+        <button className="btn" onClick={collab.redo} title="Redo (⌘⇧Z / Ctrl+Shift+Z)">
+          ↷ Redo
+        </button>
         <button className="btn" onClick={copyShareLink} title="Copy this page's link so someone else can join">
           {linkCopied ? "Link copied" : "Copy link"}
         </button>

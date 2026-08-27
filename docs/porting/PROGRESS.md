@@ -3035,3 +3035,94 @@ anything.
 
 **Next:** `v2.1.0` (Undo/Redo + the `trace.html` op-log debugger) is the
 first feature branch, per `RELEASES.md`'s own dependency-checked order.
+
+---
+
+## 2026-08-27 — v2.1.0: per-actor undo/redo, wired end to end
+
+Branch `v2.1.0`, cut from `v1.0.0`. RFC-002 §3's undo design and
+`DATA_MODEL.md`'s `undo_group` column were already fully specced and
+persisted (schema, sqlc, `oplog.LoggedOp`) since Track 1, but never
+consumed — `ApplyClientOp` computed each op's inverse and discarded it
+(its own doc comment said so explicitly). This phase wires it through:
+
+- `Session` gains per-actor undo/redo stacks. Undo is durable — rebuilt
+  from `collab.ops` on every session open (RFC-002 §3: "putting it in the
+  log rather than a client-side stack"), so it survives a reconnect. Redo
+  is in-memory only, cleared the moment any new op commits for that actor.
+- `ApplyClientOp`/replay refactored around two shared helpers
+  (`applyPageOpLocked`, `commitOpLocked`) so `Undo`/`Redo` reuse the exact
+  same durable WAL/broadcast/flush pipeline an ordinary client op takes —
+  from every other connection's point of view, an undo is indistinguishable
+  from the actor submitting N ordinary ops, because it is one.
+- Undo/Redo pop the newest `undo_group` (never the newest op globally) and
+  re-apply its inverses against **current** state. This works without a
+  separate OT-transform step — the part RFC-002 §3 calls "the genuinely
+  hard part" — precisely because every op here already addresses content
+  by stable `BlockID`/`Anchor`, never an integer offset.
+- A conflicting op mid-group (someone else's edit broke a later inverse's
+  precondition) fails loudly, commits nothing further, and leaves the
+  untried remainder pending for a retry — documented as deliberately not
+  atomic across a multi-op group, since each op already committed durably
+  as it applied. Pinned by a real test (`TestUndoConflictLeavesGroupPendingAndReportsError`)
+  that manufactures exactly this conflict via two actors editing the same
+  block.
+- Wire protocol (`docs/api/collaboration.md` §2.1, new): `"op"` messages
+  gain an optional `undo_group` (client-assigned — "whoever originates the
+  gesture," per RFC-002 §3); new `"undo"`/`"redo"` client messages, acked
+  one frame per op they actually committed.
+- Frontend: `useCollabPage` gains `undo()`/`redo()` (plain WS messages —
+  no client-side reducer needed, the existing "ack" handler already
+  applies the result). `setBlockText`'s own delete+insert pair now shares
+  one `undo_group` so replacing a block's whole text undoes in one step.
+  `EditorScreen` gets a visible Undo/Redo button pair plus ⌘Z/Ctrl+Z and
+  ⌘⇧Z/Ctrl+Shift+Z, captured ahead of the focused contenteditable's own
+  native undo (which would otherwise desync a block's DOM text from
+  server state).
+
+Verified: 10 new `session` package tests plus 2 real WebSocket round-trip
+tests in `wsapi`, full suite green under `-race` with `goleak` clean; `go
+vet`/`gofmt` clean across both touched modules. Live-verified against the
+real docker stack via Playwright — typed text, Ctrl+Z/Redo/Undo-button
+round-trip correctly, a multi-op gesture (replacing existing text) undoes
+as one atomic step, and a reload reflects the same server-committed state.
+Commits: `b9c61fe` (backend), `15335c8` (frontend).
+
+Also created a `v1.0.0` git worktree at `../marginal-v1.0.0` (sibling
+directory) so the pre-`v2` MVP stays browsable/runnable side by side while
+this and future feature branches build on top of it.
+
+**Next:** the other half of `v2.1.0` per `RELEASES.md` — making
+`trace.html` real: a live op-log view where every `apply`/`invert` runs for
+real and the invertibility law is re-checked on every step, not asserted.
+
+---
+
+## 2026-08-27 — trace.html's backend lands; regrouped into History (v2.3.0)
+
+Built `internal/session.Trace` + `GET /collab/pages/{id}/trace`: replays
+a page's real confirmed op log and, per step, computes the op's inverse
+and re-verifies RFC-002 §3's invertibility law by actually replaying
+(twice per step — once through it, once stopping short — rather than
+building a `Clone()` for `documentcore.Page`/`doctext.Text` that nothing
+else needs), never asserting it the way the mockup's own fixed nine-op
+sequence does. Each step also carries `after`: the whole document once
+that step applied (`session.Snapshot`, via a new free `buildSnapshot`
+`snapshotLocked` now delegates to) — so a future client renders "the
+document at step N" by picking one precomputed entry, never by
+re-running `apply()` itself. Commit `9f7cd27`.
+
+**Mid-build correction (user, live):** `trace.html`'s own nav links back
+to History ("Product · Op trace"), and the user caught that building it
+as a page bolted onto the editor would fragment it from `history.html`/
+`diff.html`, which belong to the same feature. `RELEASES.md` updated:
+`v2.1.0` is Undo/Redo only (already shipped); `trace.html`'s **backend**
+lands now anyway, as reusable op-log infrastructure that doesn't depend
+on the rest of History — but its UI ships together with the scrubber and
+the LCS diff, as one `v2.3.0` ("History, Trace & Diff") feature, not
+three disconnected screens. Also reiterated: whatever ships must match
+its mockup 1:1, not just cover the same feature loosely.
+
+**`v2.1.0` is complete and shipped**: Undo/Redo (`b9c61fe`, `15335c8`)
+plus this trace backend. Per `RELEASES.md`'s dependency-checked order,
+`v2.2.0` (Diagnostics & the fact graph) is next.

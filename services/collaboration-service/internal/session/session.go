@@ -48,6 +48,13 @@ import (
 	"marginal/collaboration-service/internal/wal"
 )
 
+// maxUndoDepth bounds how many gestures (single ops or groups) each
+// actor's undo stack keeps — the same eviction reasoning as
+// documentcore.History's own maxDepth: an unbounded stack holding onto
+// every inverse an actor ever produced this session is a slow memory leak
+// (Content strings, Block tombstones), not a correctness issue.
+const maxUndoDepth = 100
+
 // ErrDenied is can_apply's rejection (RFC-002 §5). can_apply always
 // returns true at today's single-tenant scope — nothing in this repo
 // exercises a real denial — but the chokepoint itself is real and
@@ -161,6 +168,20 @@ type Snapshot struct {
 // actor task reached only through channels, no lock anywhere). Decide
 // which one the port targets before translating this type; don't infer
 // it from this comment's earlier, looser wording.
+// undoGroup is one undo-able gesture — RFC-002 §3's "undo pops the newest
+// undo_group belonging to this actor, never the newest op." inverses holds
+// every op the gesture contained, already inverted, in the order the
+// *original* ops were applied (oldest first) — undoing the gesture means
+// walking this slice back-to-front (the last-applied original op must be
+// undone first); redoing it means walking a freshly-built group (of the
+// undo's own resulting inverses) front-to-back. groupID mirrors the
+// client-supplied undo_group this gesture shared, purely for logging/
+// debugging — nil is a valid group of one, same as the wire field itself.
+type undoGroup struct {
+	groupID  *uuid.UUID
+	inverses []pageop.Op
+}
+
 type Session struct {
 	mu          sync.Mutex
 	pageID      uuid.UUID
@@ -171,6 +192,15 @@ type Session struct {
 	wal         *wal.Writer
 	flush       *flush.Loop
 	canApply    CanApplyFunc
+
+	// undo is reconstructed from collab.ops on every session open (RFC-002
+	// §3: "putting it in the log rather than a client-side stack") — it
+	// survives a reconnect. redo is not: it's purely in-memory, always
+	// starts empty on open, and is cleared for an actor the moment any new
+	// op of theirs commits (recordUndoLocked), the same "a new op
+	// invalidates redo" rule documentcore.History already enforces.
+	undo map[uuid.UUID][]undoGroup
+	redo map[uuid.UUID][]undoGroup
 
 	subs      map[uint64]Subscriber
 	subActors map[uint64]uuid.UUID      // which actor owns each subID, for presence join/leave bookkeeping
@@ -215,11 +245,14 @@ func open(ctx context.Context, pageID uuid.UUID, repo opstore.Repo, walDir strin
 	page := documentcore.NewPage(documentcore.PageID(pageID), "")
 	blocks := make(map[documentcore.BlockID]*doctext.Text)
 	clock := oplog.VectorClock{}
+	undoStacks := make(map[uuid.UUID][]undoGroup)
 	confirmedIDs := make(map[uuid.UUID]struct{}, len(confirmed))
 	for _, l := range confirmed {
-		if err := applyReplayedOp(&page, blocks, serverActor, l.Op); err != nil {
+		inverse, err := applyReplayedOp(&page, blocks, serverActor, l.Op)
+		if err != nil {
 			return nil, fmt.Errorf("session: open: replaying confirmed op %s: %w", l.ID, err)
 		}
+		appendUndoGroup(undoStacks, l.ActorID, l.UndoGroup, inverse)
 		clock[l.ActorID.String()]++
 		confirmedIDs[l.ID] = struct{}{}
 	}
@@ -234,9 +267,11 @@ func open(ctx context.Context, pageID uuid.UUID, repo opstore.Repo, walDir strin
 		if _, already := confirmedIDs[l.ID]; already {
 			return nil // already reflected in the confirmed replay above
 		}
-		if err := applyReplayedOp(&page, blocks, serverActor, l.Op); err != nil {
+		inverse, err := applyReplayedOp(&page, blocks, serverActor, l.Op)
+		if err != nil {
 			return fmt.Errorf("replaying un-flushed WAL op %s: %w", l.ID, err)
 		}
+		appendUndoGroup(undoStacks, l.ActorID, l.UndoGroup, inverse)
 		clock[l.ActorID.String()]++
 		toReflush = append(toReflush, l)
 		return nil
@@ -294,6 +329,8 @@ func open(ctx context.Context, pageID uuid.UUID, repo opstore.Repo, walDir strin
 		subActors:   make(map[uint64]uuid.UUID),
 		presence:    make(map[uuid.UUID]int),
 		cursors:     make(map[uuid.UUID]CursorEvent),
+		undo:        undoStacks,
+		redo:        make(map[uuid.UUID][]undoGroup),
 		logger:      logger,
 	}
 	s.rebuildBlockIndex()
@@ -304,23 +341,52 @@ func open(ctx context.Context, pageID uuid.UUID, repo opstore.Repo, walDir strin
 // from either source (confirmed Postgres rows or the un-flushed WAL tail)
 // — identical to what ApplyClientOp does to page/blocks, without the
 // WAL-append/broadcast/flush-enqueue side effects a replay must not repeat.
-func applyReplayedOp(page *documentcore.Page, blocks map[documentcore.BlockID]*doctext.Text, serverActor string, op pageop.Op) error {
+// Returns op's own inverse, computed the same way ApplyClientOp computes
+// it live, so open() can rebuild every actor's undo stack from the log
+// exactly as it happened the first time (RFC-002 §3).
+func applyReplayedOp(page *documentcore.Page, blocks map[documentcore.BlockID]*doctext.Text, serverActor string, op pageop.Op) (pageop.Op, error) {
 	switch op := op.(type) {
 	case pageop.Block:
-		return applyBlockOp(page, blocks, serverActor, op.Op)
+		if err := applyBlockOp(page, blocks, serverActor, op.Op); err != nil {
+			return nil, err
+		}
+		return pageop.Block{Op: op.Op.Invert()}, nil
 	case pageop.Text:
 		text, ok := blocks[op.BlockID]
 		if !ok {
-			return ErrUnknownBlock
+			return nil, ErrUnknownBlock
 		}
-		if _, err := ops.Apply(text, op.Op); err != nil {
-			return err
+		inverse, err := ops.Apply(text, op.Op)
+		if err != nil {
+			return nil, err
 		}
 		syncBlockContent(page, op.BlockID, text)
-		return nil
+		return pageop.Text{BlockID: op.BlockID, Op: inverse}, nil
 	default:
-		return fmt.Errorf("session: unknown op type %T", op)
+		return nil, fmt.Errorf("session: unknown op type %T", op)
 	}
+}
+
+// appendUndoGroup pushes inverseOp onto actorID's undo stack in stacks,
+// merging it into the current top group when groupID is non-nil and
+// matches that group's own id (another op from the same gesture) —
+// otherwise starting a fresh group. A nil groupID always starts a new
+// group ("undo_group IS NULL means a group of one," RFC-002 §3). Evicts
+// the oldest group once an actor's stack exceeds maxUndoDepth via
+// copy+reslice, the same technique and reasoning as
+// documentcore.History.Record's own eviction.
+func appendUndoGroup(stacks map[uuid.UUID][]undoGroup, actorID uuid.UUID, groupID *uuid.UUID, inverseOp pageop.Op) {
+	groups := stacks[actorID]
+	if n := len(groups); n > 0 && groupID != nil && groups[n-1].groupID != nil && *groups[n-1].groupID == *groupID {
+		groups[n-1].inverses = append(groups[n-1].inverses, inverseOp)
+	} else {
+		groups = append(groups, undoGroup{groupID: groupID, inverses: []pageop.Op{inverseOp}})
+	}
+	if len(groups) > maxUndoDepth {
+		copy(groups, groups[1:])
+		groups = groups[:maxUndoDepth]
+	}
+	stacks[actorID] = groups
 }
 
 // applyBlockOp keeps blocks (the per-block live ropes) consistent with a
@@ -406,7 +472,8 @@ func (s *Session) syncBlockContentFast(blockID documentcore.BlockID, text *docte
 // RFC-002 §6), broadcast to every other subscriber, then best-effort
 // enqueue for the batched Postgres flush. senderSubID excludes the
 // submitting connection from the broadcast (its ack is this method's own
-// return value, not a Deliver call).
+// return value, not a Deliver call). undoGroupID is the client-supplied
+// grouping id (docs/api/collaboration.md §2) — nil for a group of one.
 //
 // A flush-enqueue failure (the loop is stopped, or its bounded queue is
 // full and ctx expires waiting) does not fail the op: the op is already
@@ -414,7 +481,7 @@ func (s *Session) syncBlockContentFast(blockID documentcore.BlockID, text *docte
 // that point, matching ARCHITECTURE.md's ack-at-WAL-sync design. It's
 // logged instead, since the Postgres flush is a background durability
 // concern once the client-visible steps are done.
-func (s *Session) ApplyClientOp(ctx context.Context, actorID uuid.UUID, actorKind oplog.ActorKind, op pageop.Op, senderSubID uint64) (CommitResult, error) {
+func (s *Session) ApplyClientOp(ctx context.Context, actorID uuid.UUID, actorKind oplog.ActorKind, op pageop.Op, undoGroupID *uuid.UUID, senderSubID uint64) (CommitResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -422,45 +489,77 @@ func (s *Session) ApplyClientOp(ctx context.Context, actorID uuid.UUID, actorKin
 		return CommitResult{}, ErrDenied
 	}
 
-	// The inverse each op tier can compute (documentcore.Op.Invert for a
-	// Block op; ops.Apply's own return for a Text op) is what per-actor
-	// undo (DATA_MODEL.md's undo_group) would consume — undo isn't wired
-	// at the session layer yet (docs/porting/PROGRESS.md), so it's
-	// intentionally discarded here rather than half-threaded through an
-	// API nothing calls.
-	var boundaries *anchor.AnchorRange
+	result, inverse, err := s.commitOpLocked(ctx, actorID, actorKind, op, undoGroupID, senderSubID)
+	if err != nil {
+		return CommitResult{}, fmt.Errorf("session: apply: %w", err)
+	}
+
+	// A genuine client edit always lands on undo and always invalidates
+	// whatever redo was pointing at — the same rule documentcore.History
+	// already enforces, generalized to per-actor groups.
+	appendUndoGroup(s.undo, actorID, undoGroupID, inverse)
+	delete(s.redo, actorID)
+
+	return result, nil
+}
+
+// applyPageOpLocked mutates the session's live state (page structure or
+// one block's rope, depending on op's tier) and returns that op's own
+// inverse — documentcore.Op.Invert() for a Block op, ops.Apply's own
+// return for a Text op — plus, only for a Text op, that block's current
+// boundary anchors. Caller must hold s.mu.
+func (s *Session) applyPageOpLocked(op pageop.Op) (*anchor.AnchorRange, pageop.Op, error) {
 	switch o := op.(type) {
 	case pageop.Block:
 		if err := applyBlockOp(&s.page, s.blocks, s.serverActor, o.Op); err != nil {
-			return CommitResult{}, fmt.Errorf("session: apply: %w", err)
+			return nil, nil, err
 		}
 		s.rebuildBlockIndex()
+		return nil, pageop.Block{Op: o.Op.Invert()}, nil
 	case pageop.Text:
 		text, ok := s.blocks[o.BlockID]
 		if !ok {
-			return CommitResult{}, fmt.Errorf("session: apply: %w", ErrUnknownBlock)
+			return nil, nil, ErrUnknownBlock
 		}
-		if _, err := ops.Apply(text, o.Op); err != nil {
-			return CommitResult{}, fmt.Errorf("session: apply: %w", err)
+		inverse, err := ops.Apply(text, o.Op)
+		if err != nil {
+			return nil, nil, err
 		}
 		s.syncBlockContentFast(o.BlockID, text)
-		boundaries = text.Boundaries()
+		return text.Boundaries(), pageop.Text{BlockID: o.BlockID, Op: inverse}, nil
 	default:
-		return CommitResult{}, fmt.Errorf("session: apply: unknown op type %T", op)
+		return nil, nil, fmt.Errorf("unknown op type %T", op)
+	}
+}
+
+// commitOpLocked is the pipeline ApplyClientOp, Undo, and Redo all share
+// once an op has been authorized and is ready to become the next entry in
+// this page's log: apply it, stamp a LoggedOp (tagged with undoGroupID),
+// WAL-append, broadcast to every subscriber but senderSubID, best-effort
+// flush-enqueue. Returns the CommitResult for the caller's own ack and
+// op's own inverse — which stack (undo or redo, and whether it clears the
+// other) that inverse belongs on is the caller's decision, not this
+// method's, since ApplyClientOp and Undo/Redo make that decision
+// differently. Caller must hold s.mu and must already have checked
+// can_apply.
+func (s *Session) commitOpLocked(ctx context.Context, actorID uuid.UUID, actorKind oplog.ActorKind, op pageop.Op, undoGroupID *uuid.UUID, senderSubID uint64) (CommitResult, pageop.Op, error) {
+	boundaries, inverse, err := s.applyPageOpLocked(op)
+	if err != nil {
+		return CommitResult{}, nil, err
 	}
 
 	s.clock[actorID.String()]++
-	l, err := oplog.New(s.pageID, actorID, actorKind, nil, cloneClock(s.clock), op)
+	l, err := oplog.New(s.pageID, actorID, actorKind, undoGroupID, cloneClock(s.clock), op)
 	if err != nil {
-		return CommitResult{}, fmt.Errorf("session: apply: building logged op: %w", err)
+		return CommitResult{}, nil, fmt.Errorf("building logged op: %w", err)
 	}
 
 	record, err := oplog.Marshal(l)
 	if err != nil {
-		return CommitResult{}, fmt.Errorf("session: apply: marshaling for WAL: %w", err)
+		return CommitResult{}, nil, fmt.Errorf("marshaling for WAL: %w", err)
 	}
 	if err := s.wal.Append(record); err != nil {
-		return CommitResult{}, fmt.Errorf("session: apply: WAL append: %w", err)
+		return CommitResult{}, nil, fmt.Errorf("WAL append: %w", err)
 	}
 
 	result := CommitResult{Op: l, Boundaries: boundaries}
@@ -476,7 +575,98 @@ func (s *Session) ApplyClientOp(ctx context.Context, actorID uuid.UUID, actorKin
 		s.logger.Error("session: enqueue for flush failed", "page_id", s.pageID, "op_id", l.ID, "err", err)
 	}
 
-	return result, nil
+	return result, inverse, nil
+}
+
+// Undo pops actorID's own most recent undo_group (or single op) and
+// re-applies its inverse(s) against current state, oldest-original-op
+// undone last — docs/api/collaboration.md §2.1 has the full contract,
+// including what "not atomic across a multi-op group" means when op k of
+// a group fails partway. An empty undo stack is a no-op: (nil, nil), not
+// an error, the same contract documentcore.History.Undo already holds
+// itself to. Each op undone is itself logged, WAL'd, and broadcast exactly
+// like an ordinary client op — from every other connection's point of
+// view, an undo is indistinguishable from actorID submitting N ops,
+// because it is one.
+func (s *Session) Undo(ctx context.Context, actorID uuid.UUID, actorKind oplog.ActorKind, senderSubID uint64) ([]CommitResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	groups := s.undo[actorID]
+	if len(groups) == 0 {
+		return nil, nil
+	}
+	group := groups[len(groups)-1]
+	remaining := groups[:len(groups)-1]
+
+	redoGroupID, err := uuid.NewV7()
+	if err != nil {
+		return nil, fmt.Errorf("session: undo: %w", err)
+	}
+
+	var results []CommitResult
+	var produced []pageop.Op // filled newest-original-op-first; reversed below
+	for i := len(group.inverses) - 1; i >= 0; i-- {
+		op := group.inverses[i]
+		if !s.canApply(op, actorID, actorKind) {
+			s.undo[actorID] = append(remaining, undoGroup{groupID: group.groupID, inverses: group.inverses[:i+1]})
+			return results, ErrDenied
+		}
+		result, redoOp, err := s.commitOpLocked(ctx, actorID, actorKind, op, &redoGroupID, senderSubID)
+		if err != nil {
+			s.undo[actorID] = append(remaining, undoGroup{groupID: group.groupID, inverses: group.inverses[:i+1]})
+			return results, fmt.Errorf("session: undo: %w", err)
+		}
+		results = append(results, result)
+		produced = append(produced, redoOp)
+	}
+
+	s.undo[actorID] = remaining
+	for i := len(produced) - 1; i >= 0; i-- {
+		appendUndoGroup(s.redo, actorID, &redoGroupID, produced[i])
+	}
+	return results, nil
+}
+
+// Redo pops actorID's own most recent redo group (only ever populated by
+// that actor's own prior Undo — see the Session.undo/redo field comment
+// for why redo isn't reconstructed from collab.ops) and re-applies it
+// oldest-first, restoring the gesture Undo just reverted. Same no-op and
+// non-atomic-across-a-group contract as Undo.
+func (s *Session) Redo(ctx context.Context, actorID uuid.UUID, actorKind oplog.ActorKind, senderSubID uint64) ([]CommitResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	groups := s.redo[actorID]
+	if len(groups) == 0 {
+		return nil, nil
+	}
+	group := groups[len(groups)-1]
+	remaining := groups[:len(groups)-1]
+
+	undoGroupID, err := uuid.NewV7()
+	if err != nil {
+		return nil, fmt.Errorf("session: redo: %w", err)
+	}
+
+	var results []CommitResult
+	for i := 0; i < len(group.inverses); i++ {
+		op := group.inverses[i]
+		if !s.canApply(op, actorID, actorKind) {
+			s.redo[actorID] = append(remaining, undoGroup{groupID: group.groupID, inverses: group.inverses[i:]})
+			return results, ErrDenied
+		}
+		result, undoOp, err := s.commitOpLocked(ctx, actorID, actorKind, op, &undoGroupID, senderSubID)
+		if err != nil {
+			s.redo[actorID] = append(remaining, undoGroup{groupID: group.groupID, inverses: group.inverses[i:]})
+			return results, fmt.Errorf("session: redo: %w", err)
+		}
+		results = append(results, result)
+		appendUndoGroup(s.undo, actorID, &undoGroupID, undoOp)
+	}
+
+	s.redo[actorID] = remaining
+	return results, nil
 }
 
 // Subscription is the handle Subscribe returns: an id (what the caller
@@ -622,20 +812,28 @@ func (s *Session) Snapshot() Snapshot {
 // same instant as Present/Cursors, not a second, separately-locked read
 // that could race a commit landing in between).
 func (s *Session) snapshotLocked() Snapshot {
-	blocks := make([]BlockSnapshot, len(s.page.Blocks))
-	for i, b := range s.page.Blocks {
+	return buildSnapshot(s.page, s.blocks)
+}
+
+// buildSnapshot is snapshotLocked's body, as a free function over any
+// page/blocks pair rather than a live Session's own fields — so Trace can
+// build the same shape at every replay step without a Session to call it
+// through (its own doc comment has the "why free function" reasoning).
+func buildSnapshot(page documentcore.Page, blocks map[documentcore.BlockID]*doctext.Text) Snapshot {
+	out := make([]BlockSnapshot, len(page.Blocks))
+	for i, b := range page.Blocks {
 		// text == nil should be unreachable now that applyBlockOp seeds a
 		// block's rope before, not after, admitting it into page.Blocks —
 		// kept as a defence-in-depth guard against that invariant
 		// (spanning two separate data structures) breaking again, rather
 		// than a nil-pointer panic taking down whichever connection asked
 		// for a snapshot.
-		text := s.blocks[b.ID]
+		text := blocks[b.ID]
 		if text == nil {
-			blocks[i] = BlockSnapshot{ID: b.ID, Parent: b.Parent, Kind: b.Kind, Marks: b.Content.Marks}
+			out[i] = BlockSnapshot{ID: b.ID, Parent: b.Parent, Kind: b.Kind, Marks: b.Content.Marks}
 			continue
 		}
-		blocks[i] = BlockSnapshot{
+		out[i] = BlockSnapshot{
 			ID:         b.ID,
 			Parent:     b.Parent,
 			Kind:       b.Kind,
@@ -644,7 +842,7 @@ func (s *Session) snapshotLocked() Snapshot {
 			Boundaries: text.Boundaries(),
 		}
 	}
-	return Snapshot{PageID: s.page.ID, Title: s.page.Title, Blocks: blocks}
+	return Snapshot{PageID: page.ID, Title: page.Title, Blocks: out}
 }
 
 // Close stops the flush loop (draining whatever is already buffered, per

@@ -67,7 +67,7 @@ func TestManagerCloseAllLeavesSessionsCleanlyClosable(t *testing.T) {
 	blockID := documentcore.BlockID(uuid.Must(uuid.NewV7()))
 	_, err = s.ApplyClientOp(context.Background(), actor, oplog.ActorUser, pageop.Block{
 		Op: documentcore.InsertBlock{ID: blockID, Kind: documentcore.NewParagraph(), Content: documentcore.Content{Text: "hi"}},
-	}, 0)
+	}, nil, 0)
 	require.NoError(t, err)
 
 	require.NoError(t, m1.CloseAll())

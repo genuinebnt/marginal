@@ -108,9 +108,64 @@ The only message that commits anything:
 ```json
 {
   "type": "op",
-  "op": { "scope": "text", "block": "<block-uuid>", "op": { "type": "InsertText", "at": null, "text": "hello" } }
+  "op": { "scope": "text", "block": "<block-uuid>", "op": { "type": "InsertText", "at": null, "text": "hello" } },
+  "undo_group": "3fae2f9e-...-uuid"
 }
 ```
+
+`undo_group` is optional — omit it (or send `null`) for a single-op edit,
+RFC-002 §3's "a group of one." Set it to the same UUID on every op that
+belongs to one user gesture (a paste, the `## ` input rule's `SetBlockKind`
++ `DeleteText` pair, one accepted assistant proposal) so a later `"undo"`
+(§2.1 below) reverts the whole gesture in one step instead of one twentieth
+of it. **The client generates this id and owns the grouping decision** —
+RFC-002 §3: "assigned by whoever originates the gesture... never the
+server, which cannot know where a gesture began."
+
+### 2.1. Undo and redo
+
+```json
+{ "type": "undo" }
+{ "type": "redo" }
+```
+
+No payload — undo/redo apply to **the sender's own actor id**, scoped to
+this page. The server pops that actor's most recent `undo_group` (or the
+most recent single op, if it wasn't grouped) off a durable, per-actor stack
+reconstructed from `collab.ops` itself on session open, not a client-side
+history — RFC-002 §3: "putting it in the log rather than a client-side
+stack." Each op in the popped group is inverted and re-applied against
+**current** state (never a stale snapshot), oldest-original-op undone
+last — the same reason `documentcore.History` already applies an inverse
+to the live page rather than restoring a snapshot: this session's ops
+address content by stable id/anchor (`BlockID`, `ItemID`), so an inverse
+computed against today's state is correct even if other actors' ops landed
+in between, without a separate OT transform step.
+
+The server acknowledges an `"undo"`/`"redo"` the same way it acknowledges
+an `"op"`: one `"ack"` frame per op the action actually committed (a
+grouped gesture of N ops produces N `"ack"` frames, in the order they were
+applied), each also broadcast (`"broadcast"`) to every other connection —
+from every other client's point of view, an undo is indistinguishable from
+the sender submitting N ordinary ops, because it is one. An empty stack is
+a **no-op**, not an `error` frame — `documentcore.History`'s own contract,
+carried through unchanged.
+
+**Not atomic across a multi-op group.** Each op in the popped group commits
+through the normal durable pipeline (WAL, broadcast, flush-enqueue) as it's
+applied, one at a time — if op *k* of a group fails to apply (its target
+block was deleted by someone else since), ops `1..k-1` are already
+committed and cannot be un-committed for free. The remaining, not-yet-applied
+tail of the group is left as a new pending group on the actor's stack (so a
+second `"undo"` continues where the first one stopped) and the failure
+surfaces as an `"error"` frame. This only matters for genuinely multi-op
+gestures; a single-op undo (the common case) is atomic the same way
+`documentcore.History.Undo` already is.
+
+Redo is **not** reconstructed from `collab.ops` on reconnect — it's
+in-memory only per session, cleared (like every editor's redo stack) the
+moment a new op commits for that actor, matching `documentcore.History`'s
+existing "a new op invalidates redo" rule.
 
 `op` is `internal/pageop.Op`, JSON-encoded exactly as `pageop.Marshal`
 produces it — one of two scopes, each nesting its own tier's op:
@@ -260,6 +315,7 @@ The full `oplog.LoggedOp`, RFC-002 §4's permanent wire format:
   "page_id": "...",
   "actor_id": "...",
   "actor_kind": "user",
+  "undo_group": null,
   "vector_clock": { "<actor-id>": 3 },
   "op": { "scope": "text", "block": "...", "op": { "type": "InsertText", "at": null, "text": "hello" } },
   "created_at": "2026-08-26T08:29:32.966828Z"
@@ -286,3 +342,51 @@ fresh snapshot).
 
 There is no explicit ping/pong or idle-timeout policy documented yet —
 left to `coder/websocket`'s defaults for now.
+
+---
+
+## 5. `GET /collab/pages/{id}/trace` — the op-log debugger's data source
+
+Plain HTTP, not a WebSocket — "give me the whole confirmed replay once,"
+not a live session. Backs `docs/ui-mockups/trace.html`'s "real ops, real
+inverses" claim against an actual page's actual op log
+(`internal/session.Trace`), rather than that mockup's own synthetic,
+fixed nine-op sequence. Read-only: never touches a live `Session`, so it's
+safe to call for a page someone else has open right now, and it only ever
+sees ops that have already reached `collab.ops` (a session's own
+not-yet-flushed WAL tail is invisible to it, same as any other reader of
+the confirmed log).
+
+```
+GET /collab/pages/{id}/trace
+```
+
+```json
+{
+  "steps": [
+    {
+      "op": { /* the full oplog.LoggedOp — §3's "the committed op" shape, unchanged */ },
+      "inverse": { /* that op's own inverse, in the same "scope"-tagged pageop.Op envelope */ },
+      "law_holds": true,
+      "after": { /* session.Snapshot — the whole document once this step's op has been applied */ }
+    }
+  ]
+}
+```
+
+One entry per confirmed op, oldest first. `law_holds` is
+`apply(invert(op), apply(op, doc)) == doc`, **checked for real** by
+replaying the log a second time and comparing observable document state
+(title, block order/containment/kind/text/marks — not raw CRDT tombstone
+bookkeeping, which can legitimately differ between "never touched" and
+"deleted then reinserted" while meaning the same thing), not asserted from
+`Invert()`'s own claim — `docs/ui-mockups/README.md`'s own principle for
+this page: "the badge turns amber the moment it fails," not "the badge
+always says holds." `after` is *the whole document*, not a diff — a
+client renders "the document at step N" by picking one precomputed entry,
+never by re-running `apply()` itself: the algorithm lives in Go
+(`ADR-012`), the client only draws what Go already computed.
+
+A malformed or corrupt log entry (one that fails to even replay) is a
+`500` — this endpoint has no partial-result contract; either the whole
+log replays cleanly and every step is reported, or none are.

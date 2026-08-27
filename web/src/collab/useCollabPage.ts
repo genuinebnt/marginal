@@ -93,6 +93,18 @@ export interface CollabPage {
    * `null` for "make top-level") is how a caller opts into reparenting;
    * no UI in this editor does that yet — a stated gap, not a silent one. */
   moveBlock: (blockId: string, afterId: string | null, parent?: string | null) => void;
+  /** Reverts this actor's own most recently recorded gesture (RFC-002 §3:
+   * "undo pops the newest undo_group belonging to this actor, never the
+   * newest op") — never another peer's edits. A no-op, not an error, when
+   * there's nothing to undo. The server drives the resulting inverse
+   * op(s) through the same "ack" path an ordinary edit takes
+   * (docs/api/collaboration.md §2.1), so this hook needs no separate
+   * reducer for it — see the "ack" case below. */
+  undo: () => void;
+  /** Re-applies the gesture undo most recently reverted. Cleared the
+   * moment any new op commits for this actor — the same "a new edit
+   * invalidates redo" rule every editor holds itself to. */
+  redo: () => void;
 }
 
 interface liveBlock {
@@ -411,13 +423,22 @@ export function useCollabPage(pageId: string, actorId: string): CollabPage {
     (blockId: string, newText: string) => {
       const b = liveRef.current.get(blockId);
       if (!b) return;
+      // One user-visible edit ("replace this block's text") can be two
+      // ops on the wire (delete the old text, insert the new) — grouped
+      // under one undo_group so a single Ctrl+Z reverts both, not just
+      // the InsertText half (RFC-002 §3's "undo pops the newest
+      // undo_group... without grouping, ⌘Z undoes one twentieth of a
+      // paste and the document looks corrupted"). Undefined (not
+      // generated) when only one op is actually sent below — a real
+      // group of one needs no id at all.
+      const undoGroup = b.boundaries && newText.length > 0 ? crypto.randomUUID() : undefined;
       let opsSent = 0;
       if (b.boundaries) {
-        send({ type: "op", op: { scope: "text", block: blockId, op: { type: "DeleteText", range: b.boundaries, text: "" } } });
+        send({ type: "op", op: { scope: "text", block: blockId, op: { type: "DeleteText", range: b.boundaries, text: "" } }, undo_group: undoGroup });
         opsSent++;
       }
       if (newText.length > 0) {
-        send({ type: "op", op: { scope: "text", block: blockId, op: { type: "InsertText", at: null, text: newText } } });
+        send({ type: "op", op: { scope: "text", block: blockId, op: { type: "InsertText", at: null, text: newText } }, undo_group: undoGroup });
         opsSent++;
       }
       // Registers how many acks this batch owes — see the "ack" case's
@@ -499,5 +520,8 @@ export function useCollabPage(pageId: string, actorId: string): CollabPage {
     [send],
   );
 
-  return { state, ready, blocks, peers, cursors, setCursor, setBlockText, setBlockContent, insertBlock, deleteBlock, setBlockKind, moveBlock };
+  const undo = useCallback(() => send({ type: "undo" }), [send]);
+  const redo = useCallback(() => send({ type: "redo" }), [send]);
+
+  return { state, ready, blocks, peers, cursors, setCursor, setBlockText, setBlockContent, insertBlock, deleteBlock, setBlockKind, moveBlock, undo, redo };
 }
