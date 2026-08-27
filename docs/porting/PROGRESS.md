@@ -2965,3 +2965,21 @@ structured collections (`Timeline` is the smallest concrete next step —
 beyond one more container-with-fixed-fields kind), then the ones needing
 their own design pass, with `Table`/`CommTable` and the four dynamic
 blocks blocked on an ADR that hasn't been written yet.
+
+---
+
+## 2026-08-27 — Real bug: converting a block's kind hid its text
+
+Reported live right after Stage 3 landed: converting any block's kind
+(paragraph -> Heading 1, etc.) made its text disappear client-side —
+survived a reload every time, so nothing was ever lost server-side
+(`SetBlockKind` never touches `Content`). Root cause: `EditableTextBlock`
+renders a dynamic `<Tag>` and writes its content imperatively
+(`el.innerHTML = ...`) in a `useEffect` keyed on `[text, marks]` only.
+`SetBlockKind` changes `tag` without changing text/marks at all — React
+sees the rendered host element's type change (e.g. `p` -> `h1`) and
+swaps in a fresh, empty DOM node, but since neither of the effect's own
+dependencies changed, it never re-ran to populate it. Fixed by adding
+`tag` to the dependency array. Confirmed via Playwright across the full
+kind matrix (paragraph/heading/quote <-> toggle/callout/aside) — see
+commit `153bee0`.
