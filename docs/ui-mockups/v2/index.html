@@ -202,7 +202,7 @@ a{color:#E8873C}a:hover{color:#F2A264}
   </div>
   <div class="status"><span>25 routes</span><span>27 screens</span><span>1 shell · 11 components</span><div style="flex:1"></div><span style="color:#3FCFA8">● every mockup page accounted for, plus the five that were undrawn</span></div>
 </div>
-<div class="tag"><b>01</b> PAGE GRAPH <i>how the thirty-two routes connect — every screen in this document, placed</i></div>
+<div class="tag"><b>01</b> PAGE GRAPH <i>how the thirty-four routes connect — and which named routes are not drawn</i></div>
 <div class="sc">
   <div class="scan"></div>
   <div class="bar">
@@ -210,7 +210,7 @@ a{color:#E8873C}a:hover{color:#F2A264}
     <div class="vr"></div>
     <span class="crumb">build / <b>page graph</b></span>
     <div style="flex:1"></div>
-    <span class="chip chip-e">32 NODES</span><span class="chip">58 EDGES</span><span class="chip chip-t">0 ORPHANS</span><span class="chip chip-s">≤ 3 HOPS</span>
+    <span class="chip chip-e">34 NODES</span><span class="chip">62 EDGES</span><span class="chip chip-t">0 ORPHANS</span><span class="chip chip-s">≤ 3 HOPS</span>
   </div>
   <div class="body">
     <div style="flex:1;position:relative">
@@ -258,6 +258,9 @@ a{color:#E8873C}a:hover{color:#F2A264}
           <line x1="620" y1="230" x2="852" y2="240"></line>
           <line x1="852" y1="240" x2="900" y2="386"></line>
           <line x1="112" y1="472" x2="900" y2="386"></line>
+          <line x1="900" y1="386" x2="900" y2="452"></line>
+          <line x1="900" y1="452" x2="900" y2="518"></line>
+          <line x1="112" y1="640" x2="900" y2="518"></line>
         </g>
         <!-- primary flow -->
         <g stroke="rgba(232,135,60,.5)" stroke-width="1.6">
@@ -332,6 +335,8 @@ a{color:#E8873C}a:hover{color:#F2A264}
 
           <!-- OPERATE -->
           <circle cx="900" cy="386" r="5" fill="#4B4842"></circle><text x="914" y="384" font-family="Archivo" font-size="11.5" fill="#9B968D">Admin</text><text x="914" y="397" font-family="IBM Plex Mono" font-size="8.5" fill="#4B4842">/admin</text>
+          <circle cx="900" cy="452" r="5" fill="#E8873C"></circle><text x="914" y="450" font-family="Archivo" font-size="11.5" fill="#E4E2DC">Audit log</text><text x="914" y="463" font-family="IBM Plex Mono" font-size="8.5" fill="#6E6A63">/admin/audit</text>
+          <circle cx="900" cy="518" r="5" fill="#E8873C"></circle><text x="914" y="516" font-family="Archivo" font-size="11.5" fill="#E4E2DC">API keys</text><text x="914" y="529" font-family="IBM Plex Mono" font-size="8.5" fill="#6E6A63">/admin/api-keys</text>
         </g>
       </svg>
       <div style="position:absolute;left:24px;bottom:22px;display:flex;gap:18px;padding:10px 14px;background:#111214;border:1px solid rgba(255,255,255,.1);font-size:11px;color:#8C8880">
@@ -345,46 +350,45 @@ a{color:#E8873C}a:hover{color:#F2A264}
     <div class="insp">
       <div class="insp-t"><span class="it it-on">COVERAGE</span><span class="it">CLUSTERS</span></div>
       <div style="padding:14px;display:flex;flex-direction:column;gap:12px">
-        <div class="lbl">FROM THE V1 MOCKUP SET · 19</div>
-        <div class="mono" style="font-size:11px;line-height:1.95;color:#9B968D">
+        <div class="lbl">FROM THE V1 SET · 19</div>
+        <div class="mono" style="font-size:11px;line-height:1.9;color:#9B968D">
           <div><span style="color:#3FCFA8">✓</span> home · register · login · editor</div>
-          <div><span style="color:#3FCFA8">✓</span> reader · search · graph</div>
-          <div><span style="color:#3FCFA8">✓</span> graph-algorithms · discover</div>
-          <div><span style="color:#3FCFA8">✓</span> facts · compiler · analytics</div>
-          <div><span style="color:#3FCFA8">✓</span> trace · netcode · diff</div>
+          <div><span style="color:#3FCFA8">✓</span> reader · search · graph · discover</div>
+          <div><span style="color:#3FCFA8">✓</span> graph-algorithms · facts · compiler</div>
+          <div><span style="color:#3FCFA8">✓</span> analytics · trace · netcode · diff</div>
           <div><span style="color:#3FCFA8">✓</span> perf · history · admin · settings</div>
         </div>
         <div style="height:1px;background:rgba(255,255,255,.07)"></div>
         <div class="lbl">DRAWN IN V2 · 6</div>
-        <div class="mono" style="font-size:11px;line-height:1.95;color:#9B968D">
-          <div><span style="color:#E8873C">+</span> notifications inbox</div>
-          <div><span style="color:#E8873C">+</span> media library</div>
-          <div><span style="color:#E8873C">+</span> plugin directory</div>
-          <div><span style="color:#E8873C">+</span> spaces &amp; roles</div>
-          <div><span style="color:#E8873C">+</span> offline / reconnect</div>
-          <div><span style="color:#E8873C">+</span> components &amp; motion</div>
+        <div class="mono" style="font-size:11px;line-height:1.9;color:#9B968D">
+          <div><span style="color:#E8873C">+</span> notifications · media · plugins</div>
+          <div><span style="color:#E8873C">+</span> spaces · offline · components</div>
         </div>
         <div style="height:1px;background:rgba(255,255,255,.07)"></div>
         <!-- The completion pass. Each line says which hole it filled, because
              "we added seven screens" is not an argument and "the app could not
              do X" is. -->
-        <div class="lbl">COMPLETED THIS PASS · 7</div>
-        <div style="display:flex;flex-direction:column;gap:8px;font-size:11px;line-height:1.5">
-          <div><span style="color:#E8873C">+</span> <span style="color:#D2CFC8">Topics &amp; tags</span><br><span style="color:#585550;margin-left:11px">two classifications existed on four screens with nowhere to manage them</span></div>
-          <div><span style="color:#E8873C">+</span> <span style="color:#D2CFC8">Published page</span><br><span style="color:#585550;margin-left:11px">the pitch says self-hosted and shareable; nothing showed the shared artefact</span></div>
-          <div><span style="color:#E8873C">+</span> <span style="color:#D2CFC8">Profile</span><br><span style="color:#585550;margin-left:11px">avatars appeared on nine screens and led nowhere</span></div>
-          <div><span style="color:#E8873C">+</span> <span style="color:#D2CFC8">Trash &amp; restore</span><br><span style="color:#585550;margin-left:11px">the page tree showed a strikethrough delete with no destination</span></div>
-          <div><span style="color:#E8873C">+</span> <span style="color:#D2CFC8">Import / export</span><br><span style="color:#585550;margin-left:11px">data ownership was claimed on /home and never demonstrated</span></div>
-          <div><span style="color:#E8873C">+</span> <span style="color:#D2CFC8">⌘K palette</span><br><span style="color:#585550;margin-left:11px">the shortcut was listed in settings and drawn nowhere</span></div>
-          <div><span style="color:#E8873C">+</span> <span style="color:#D2CFC8">Notifications panel</span><br><span style="color:#585550;margin-left:11px">the bell had a badge and no open state</span></div>
+        <div class="lbl">COMPLETED THIS PASS · 9</div>
+        <div class="mono" style="font-size:11px;line-height:1.95;color:#9B968D">
+          <div><span style="color:#E8873C">+</span> topics &amp; tags · published page</div>
+          <div><span style="color:#E8873C">+</span> profile · trash · import/export</div>
+          <div><span style="color:#E8873C">+</span> ⌘K palette · notifications panel</div>
+          <div><span style="color:#E8873C">+</span> audit log · api keys</div>
         </div>
+        <div style="font-size:11px;line-height:1.6;color:#585550">Each filled a hole something else already pointed at: avatars led nowhere, the bell had no open state, the page tree struck a page through with no destination.</div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <!-- The honest accounting. A nav can name more routes than a design
+             doc draws; what it must not do is leave you guessing which. -->
+        <div class="lbl">NAMED IN A NAV · NOT DRAWN · 26</div>
+        <div style="font-size:11.5px;line-height:1.65;color:#8C8880">Settings lists 25 entries and Admin 14. Nine have a screen here and are marked <span class="mono" style="color:#8C8880">→</span> in their rail; the rest are dimmed.</div>
+        <div style="font-size:11px;line-height:1.65;color:#585550">They are mostly forms — object store, SSO, retention, feature flags, backups. Drawing twenty-six more settings panes would triple this document and demonstrate nothing the first one does not. Dimming them keeps the count visible instead of quietly implying the product ends where the drawings do.</div>
         <div style="height:1px;background:rgba(255,255,255,.07)"></div>
         <div class="lbl">OUT OF SCOPE — ADR-001</div>
         <div style="font-size:11.5px;line-height:1.7;color:#585550">Databases, tables, relations, rollups, formula language, spatial canvas.</div>
       </div>
     </div>
   </div>
-  <div class="status"><span>reachability BFS from /</span><span>32 nodes · 58 edges</span><div style="flex:1"></div><span style="color:#3FCFA8">● 0 orphans · 0 dead links · every avatar, badge and shortcut now lands somewhere</span></div>
+  <div class="status"><span>reachability BFS from /</span><span>34 nodes · 62 edges</span><div style="flex:1"></div><span style="color:#3FCFA8">● 0 orphans · 0 dead links · 26 named-but-undrawn routes, all marked as such</span></div>
 </div>
 <div class="tag"><b>02</b> HOME <i>the pitch, self-hosting, pricing</i></div>
 <div class="sc">
@@ -718,12 +722,6 @@ a{color:#E8873C}a:hover{color:#F2A264}
           <div class="mono" style="font-size:9px;letter-spacing:.19em;color:#E8873C;margin-bottom:6px">TRANSCLUDED · FACTS</div>
           <div style="font-size:14.5px;line-height:1.6;color:#D2CFC8">Convergence latency budget is <span class="mono" style="color:#E8873C">{{ack-budget}}</span> → <b style="color:#EFEDE7;font-weight:500">40 ms</b> <span class="mono" style="font-size:10.5px;color:#585550">· defined in Performance budget · fresh</span></div>
         </div>
-        <pre class="mono" style="margin:0 0 26px;padding:14px 16px;background:#121314;border:1px solid rgba(255,255,255,.07);font-size:11.5px;line-height:1.75;color:#9B968D;overflow:hidden"><span style="color:#585550">// ordering is total: timestamp, then actor as tiebreak</span>
-<span style="color:#7D9EC9">func</span> (a Op) Before(b Op) <span style="color:#7D9EC9">bool</span> {
-  <span style="color:#7D9EC9">if</span> a.Lamport != b.Lamport { <span style="color:#7D9EC9">return</span> a.Lamport &lt; b.Lamport }
-  <span style="color:#7D9EC9">return</span> a.Actor &lt; b.Actor
-}</pre>
-
         <div style="display:flex;align-items:center;gap:8px;padding-top:20px;border-top:1px solid rgba(255,255,255,.07)">
           <span class="chip" style="padding:5px 11px">✓ 4</span><span class="chip" style="padding:5px 11px">◇ 2</span><span class="chip" style="padding:5px 11px">＋</span>
           <div style="flex:1"></div>
@@ -742,14 +740,6 @@ a{color:#E8873C}a:hover{color:#F2A264}
             <div style="padding:11px 13px;background:#131415;border:1px solid rgba(255,255,255,.07)">
               <div style="font-size:13px;color:#E4E2DC;margin-bottom:5px">Operation model</div>
               <div class="tgrow"><span class="tg">crdt</span><span class="tg">op-log</span><span class="mono" style="font-size:9.5px;color:#585550;margin-left:auto">0.88</span></div>
-            </div>
-            <div style="padding:11px 13px;background:#131415;border:1px solid rgba(255,255,255,.07)">
-              <div style="font-size:13px;color:#E4E2DC;margin-bottom:5px">Rope internals</div>
-              <div class="tgrow"><span class="tg">rope</span><span class="tg">b-tree</span><span class="mono" style="font-size:9.5px;color:#585550;margin-left:auto">0.84</span></div>
-            </div>
-            <div style="padding:11px 13px;background:#131415;border:1px solid rgba(255,255,255,.07);opacity:.72">
-              <div style="font-size:13px;color:#E4E2DC;margin-bottom:5px">Undo stack</div>
-              <div class="tgrow"><span class="tg">undo</span><span class="tg">inverse</span><span class="mono" style="font-size:9.5px;color:#585550;margin-left:auto">0.79</span></div>
             </div>
           </div>
         </div>
@@ -781,8 +771,7 @@ a{color:#E8873C}a:hover{color:#F2A264}
         <div style="font-size:11px;line-height:1.6;color:#585550">Owned, singular, indexed. Changing it moves this page's node between clusters on <span class="mono" style="color:#8C8880">/graph</span> and re-scopes its Discover neighbours.</div>
 
         <span class="lbl" style="margin-top:2px">TAGS · 4</span>
-        <div class="tgrow"><span class="tg">crdt</span><span class="tg">convergence</span><span class="tg">lamport</span><span class="tg">block-id</span><span class="tg" style="border-style:dashed;color:#585550">＋</span></div>
-        <div style="font-size:11px;line-height:1.6;color:#585550">Free-form and many. Facets on <span class="mono" style="color:#8C8880">/search</span>; never a colour, because a hue that means five things means nothing.</div>
+        <div class="tgrow"><span class="tg">crdt</span><span class="tg">convergence</span><span class="tg">lamport</span><span class="tg">block-id</span></div>
 
         <div style="height:1px;background:rgba(255,255,255,.07)"></div>
         <span class="lbl">CO-OCCURRING TAGS</span>
@@ -1244,19 +1233,7 @@ a{color:#E8873C}a:hover{color:#F2A264}
           </div>
           <div style="font-size:11px;line-height:1.55;color:#585550">C2 is three topics tangled into one link component — the candidate for a split, and the only row here that suggests an action.</div>
         </div>
-        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
 
-        <div style="display:flex;flex-direction:column;gap:8px">
-          <span class="lbl">WHAT EACH ONE COST</span>
-          <div style="display:grid;grid-template-columns:1fr auto auto;gap:5px 10px;font:400 10px 'IBM Plex Mono',monospace;color:#8C8880">
-            <span style="color:#585550">algorithm</span><span style="color:#585550;text-align:right">visits</span><span style="color:#585550;text-align:right">ms</span>
-            <span>BFS</span><span style="text-align:right">37</span><span style="text-align:right">0.4</span>
-            <span>flood fill</span><span style="text-align:right">1 908</span><span style="text-align:right">3.1</span>
-            <span>3-colour DFS</span><span style="text-align:right">1 908</span><span style="text-align:right">4.0</span>
-            <span>all-pairs BFS</span><span style="text-align:right;color:#E0A34E">1 908²</span><span style="text-align:right;color:#E0A34E">812</span>
-          </div>
-          <div style="font-size:11px;line-height:1.55;color:#585550">Diameter is the expensive one and it is cached — recomputed on a link write, never on a render.</div>
-        </div>
       </div>
     </div>
   </div>
@@ -1442,10 +1419,6 @@ a{color:#E8873C}a:hover{color:#F2A264}
         <div style="display:flex;align-items:center;gap:9px"><span style="flex:1;font-size:11.5px;color:#9B968D">tag overlap</span><div style="width:74px;height:4px;background:rgba(255,255,255,.06)"><div style="width:60%;height:100%;background:#7AA8E8"></div></div><span class="mono" style="font-size:9.5px;color:#8C8880;width:34px;text-align:right">3/5</span></div>
         <div style="display:flex;align-items:center;gap:9px"><span style="flex:1;font-size:11.5px;color:#9B968D">graph distance</span><div style="width:74px;height:4px;background:rgba(255,255,255,.06)"><div style="width:82%;height:100%;background:#5AC8B4"></div></div><span class="mono" style="font-size:9.5px;color:#8C8880;width:34px;text-align:right">1 hop</span></div>
         <div style="font-size:11px;line-height:1.6;color:#585550">Never blended into one number. A blended score is unarguable, and an unarguable score is one you cannot debug when it puts the wrong page first.</div>
-        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
-        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">index build</span><span class="mono" style="font-size:11px;color:#E4E2DC">2.1 s</span></div>
-        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">memory</span><span class="mono" style="font-size:11px;color:#E4E2DC">11 MB</span></div>
-        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">recall@5 vs brute force</span><span class="mono" style="font-size:11px;color:#3FCFA8">5 / 5</span></div>
       </div>
     </div>
   </div>
@@ -1552,9 +1525,6 @@ a{color:#E8873C}a:hover{color:#F2A264}
         <div style="height:1px;background:rgba(255,255,255,.07)"></div>
         <span class="lbl">CYCLES</span>
         <div style="font-size:11.5px;line-height:1.65;color:#8C8880"><span class="mono" style="color:#9B968D">a = {{b}}, b = {{a}}</span> is refused at write time by three-colour DFS — the same routine the link graph already runs. Second use of an algorithm, not a second algorithm.</div>
-        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
-        <span class="lbl">WHY NOT 2-SAT</span>
-        <div style="font-size:11.5px;line-height:1.65;color:#8C8880">With explicit names a contradiction is <b style="color:#C3BFB7;font-weight:500">two definitions of one key</b> — a hash collision. The useful half becomes trivial and the hard half disappears.</div>
       </div>
     </div>
   </div>
@@ -1795,9 +1765,6 @@ enum Op { InsertText }
         <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">shrink failures</span><span class="mono" style="font-size:11px;color:#3FCFA8">0</span></div>
         <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">slowest input</span><span class="mono" style="font-size:11px;color:#E4E2DC">2.1 MB html</span></div>
         <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">parse budget</span><span class="mono" style="font-size:11px;color:#E4E2DC">120 ms</span></div>
-        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
-        <span class="lbl">WHY A PIPELINE</span>
-        <div style="font-size:11.5px;line-height:1.65;color:#8C8880">Paste and import are the same path. Anything that can enter the tree has to become ops first, which means anything pasted is undoable, attributable and replayable — properties that are impossible to add later.</div>
       </div>
     </div>
   </div>
@@ -2013,10 +1980,6 @@ enum Op { InsertText }
         <div style="height:1px;background:rgba(255,255,255,.07)"></div>
         <span class="lbl">WHAT MAKES IT POSSIBLE</span>
         <div style="font-size:11.5px;line-height:1.65;color:#8C8880"><span class="mono" style="color:#9B968D">DeleteText</span> keeps the removed text. <span class="mono" style="color:#9B968D">DeleteBlock</span> keeps the whole subtree. <span class="mono" style="color:#9B968D">MoveBlock</span> keeps <span class="mono" style="color:#9B968D">from</span> as well as <span class="mono" style="color:#9B968D">to</span>. An op recorded with only its destination would make this screen impossible.</div>
-        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
-        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">ops in this trace</span><span class="mono" style="font-size:11px;color:#E4E2DC">9</span></div>
-        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">kinds exercised</span><span class="mono" style="font-size:11px;color:#3FCFA8">7 of 7</span></div>
-        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">law failures</span><span class="mono" style="font-size:11px;color:#3FCFA8">0</span></div>
       </div>
     </div>
   </div>
@@ -2368,17 +2331,18 @@ enum Op { InsertText }
       <div class="rail-h">ADMIN<div></div></div>
       <div style="display:flex;flex-direction:column;padding:0 8px;gap:1px">
         <div class="tr tr-on"><i></i>Health</div>
-        <div class="tr">Services<span class="mono" style="margin-left:auto;font-size:8.5px;color:#E0A34E">1</span></div>
-        <div class="tr">Queues &amp; outbox</div>
-        <div class="tr">People<span class="mono" style="margin-left:auto;font-size:8.5px;color:#585550">14</span></div>
-        <div class="tr">Sessions<span class="mono" style="margin-left:auto;font-size:8.5px;color:#585550">9</span></div>
-        <div class="tr">Storage &amp; quota</div>
-        <div class="tr">Index &amp; embeddings</div>
-        <div class="tr">Backups</div>
-        <div class="tr">Jobs &amp; sagas<span class="mono" style="margin-left:auto;font-size:8.5px;color:#E0A34E">1</span></div>
-        <div class="tr">Feature flags</div>
-        <div class="tr">Audit log</div>
-        <div class="tr">Licence &amp; version</div>
+        <div class="tr" style="opacity:.45">Services<span class="mono" style="margin-left:auto;font-size:8.5px;color:#E0A34E">1</span></div>
+        <div class="tr" style="opacity:.45">Queues &amp; outbox</div>
+        <div class="tr" style="opacity:.45">People<span class="mono" style="margin-left:auto;font-size:8.5px;color:#585550">14</span></div>
+        <div class="tr" style="opacity:.45">Sessions<span class="mono" style="margin-left:auto;font-size:8.5px;color:#585550">9</span></div>
+        <div class="tr" style="opacity:.45">Storage &amp; quota</div>
+        <div class="tr" style="opacity:.45">Index &amp; embeddings</div>
+        <div class="tr" style="opacity:.45">Backups</div>
+        <div class="tr">Jobs &amp; sagas<span class="mono" style="margin-left:auto;font-size:8.5px;color:#E0A34E">1</span><span class="tr-n" style="margin-left:6px">→</span></div>
+        <div class="tr" style="opacity:.45">Feature flags</div>
+        <div class="tr">Audit log<span class="tr-n" style="margin-left:auto">→</span></div>
+        <div class="tr">API keys<span class="tr-n" style="margin-left:auto">→</span></div>
+        <div class="tr" style="opacity:.45">Licence &amp; version</div>
       </div>
       <div class="wal">
         <span class="lbl">BUILD</span>
@@ -2422,6 +2386,273 @@ enum Op { InsertText }
   </div>
   <div class="status"><span>/admin</span><span>outbox depth and op-log lag are the two that matter</span><div style="flex:1"></div><span style="color:#E0A34E">◌ index-worker lagging 2.4 s</span></div>
 </div>
+<div class="tag"><b>18b</b> AUDIT LOG <i>who did what, derived from the op log rather than written beside it</i></div>
+<div class="sc">
+  <div class="scan"></div>
+  <div class="bar">
+    <span class="wm">m<span style="color:#E8873C">/</span>arginal</span>
+    <span class="crumb">admin / <b>audit log</b></span>
+    <div style="flex:1"></div>
+    <div class="rd"><span class="rd-k">EVENTS · 30 D</span><span class="rd-v">118 402</span></div>
+    <div class="rd"><span class="rd-k">RETENTION</span><span class="rd-v">forever</span></div>
+    <div class="vr"></div>
+    <div class="clk"><b>14:06</b><span>THU 12 MAR</span></div><span class="kbd">⌘K</span><div class="icb">◎<div class="bdg">6</div></div><div class="icb icb-on">⚙</div><div class="av av-you">GN</div>
+  </div>
+  <div class="sub"><span class="sb sb-on">ALL</span><span class="sb">AUTH</span><span class="sb">PERMISSIONS</span><span class="sb">DESTRUCTIVE</span><span class="sb">SETTINGS</span><span class="sb">PLUGINS</span><div style="flex:1"></div><span class="sb" style="color:#585550">append-only · no delete, for anyone</span></div>
+  <div class="body">
+    <div class="rail" style="width:236px">
+      <div class="rail-h">ADMIN<div></div></div>
+      <div style="display:flex;flex-direction:column;padding:0 8px;gap:1px">
+        <div class="tr">Health<span class="tr-n" style="margin-left:auto">→</span></div>
+        <div class="tr" style="opacity:.45">Services<span class="mono" style="margin-left:auto;font-size:8.5px;color:#E0A34E">1</span></div>
+        <div class="tr" style="opacity:.45">Queues &amp; outbox</div>
+        <div class="tr" style="opacity:.45">People<span class="mono" style="margin-left:auto;font-size:8.5px;color:#585550">14</span></div>
+        <div class="tr" style="opacity:.45">Sessions<span class="mono" style="margin-left:auto;font-size:8.5px;color:#585550">9</span></div>
+        <div class="tr" style="opacity:.45">Storage &amp; quota</div>
+        <div class="tr" style="opacity:.45">Index &amp; embeddings</div>
+        <div class="tr" style="opacity:.45">Backups</div>
+        <div class="tr">Jobs &amp; sagas<span class="tr-n" style="margin-left:auto">→</span></div>
+        <div class="tr" style="opacity:.45">Feature flags</div>
+        <div class="tr tr-on"><i></i>Audit log</div>
+        <div class="tr">API keys<span class="tr-n" style="margin-left:auto">→</span></div>
+        <div class="tr" style="opacity:.45">Licence &amp; version</div>
+      </div>
+      <div class="wal">
+        <span class="lbl">→ = DRAWN IN THIS DOC</span>
+        <div style="font-size:11px;line-height:1.55;color:#8C8880">Dimmed entries are real routes with no screen drawn yet. Marked rather than hidden — a nav that quietly omits what is unfinished is how a design doc starts lying.</div>
+      </div>
+    </div>
+
+    <div style="flex:1;min-width:0;padding:22px 30px;overflow:hidden;display:flex;flex-direction:column">
+      <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:16px">
+        <h1 class="h1" style="font-size:20px">Audit log</h1>
+        <span class="mono" style="font-size:11px;color:#585550">a projection of collab.ops + auth events · never a second write path</span>
+        <div style="flex:1"></div>
+        <span class="chip">EXPORT CSV</span>
+      </div>
+
+      <div style="display:grid;grid-template-columns:74px 96px 1fr 132px 92px;gap:0;align-items:center;font-size:11.5px">
+        <span class="mono" style="font-size:8.5px;letter-spacing:.12em;color:#585550;padding-bottom:9px">TIME</span>
+        <span class="mono" style="font-size:8.5px;letter-spacing:.12em;color:#585550;padding-bottom:9px">ACTOR</span>
+        <span class="mono" style="font-size:8.5px;letter-spacing:.12em;color:#585550;padding-bottom:9px">EVENT</span>
+        <span class="mono" style="font-size:8.5px;letter-spacing:.12em;color:#585550;padding-bottom:9px">TARGET</span>
+        <span class="mono" style="font-size:8.5px;letter-spacing:.12em;color:#585550;text-align:right;padding-bottom:9px">SOURCE</span>
+
+        <span class="mono" style="font-size:10px;color:#585550;border-top:1px solid rgba(255,255,255,.07);padding:9px 0">14:06:02</span>
+        <div style="border-top:1px solid rgba(255,255,255,.07);padding:9px 0;display:flex;align-items:center;gap:7px"><div class="av av-you" style="width:17px;height:17px;font-size:7px">GN</div><span style="color:#9B968D;font-size:11px">Genuine</span></div>
+        <div style="border-top:1px solid rgba(255,255,255,.07);padding:9px 0"><span class="mono" style="font-size:10.5px;color:#7AA8E8">page.topic.set</span> <span style="color:#8C8880">protocol</span></div>
+        <span style="border-top:1px solid rgba(255,255,255,.07);padding:9px 0;color:#8C8880;font-size:11px">Sync protocol notes</span>
+        <span class="mono" style="border-top:1px solid rgba(255,255,255,.07);padding:9px 0;text-align:right;font-size:10px;color:#585550">web</span>
+
+        <span class="mono" style="font-size:10px;color:#585550;border-top:1px solid rgba(255,255,255,.07);padding:9px 0">13:58:41</span>
+        <div style="border-top:1px solid rgba(255,255,255,.07);padding:9px 0;display:flex;align-items:center;gap:7px"><div class="av av-them" style="width:17px;height:17px;font-size:7px">AD</div><span style="color:#9B968D;font-size:11px">Ada</span></div>
+        <div style="border-top:1px solid rgba(255,255,255,.07);padding:9px 0"><span class="mono" style="font-size:10.5px;color:#E0A34E">space.role.grant</span> <span style="color:#8C8880">editor → Rina</span></div>
+        <span style="border-top:1px solid rgba(255,255,255,.07);padding:9px 0;color:#8C8880;font-size:11px">Research</span>
+        <span class="mono" style="border-top:1px solid rgba(255,255,255,.07);padding:9px 0;text-align:right;font-size:10px;color:#585550">web</span>
+
+        <span class="mono" style="font-size:10px;color:#585550;border-top:1px solid rgba(255,255,255,.07);padding:9px 0">13:44:09</span>
+        <div style="border-top:1px solid rgba(255,255,255,.07);padding:9px 0;display:flex;align-items:center;gap:7px"><div class="av" style="width:17px;height:17px;font-size:7px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.16);color:#9B968D">RK</div><span style="color:#9B968D;font-size:11px">Rina</span></div>
+        <div style="border-top:1px solid rgba(255,255,255,.07);padding:9px 0"><span class="mono" style="font-size:10.5px;color:#E0A34E">page.delete.start</span> <span style="color:#8C8880">+ 4 descendants</span></div>
+        <span style="border-top:1px solid rgba(255,255,255,.07);padding:9px 0;color:#8C8880;font-size:11px">Old rope notes</span>
+        <span class="mono" style="border-top:1px solid rgba(255,255,255,.07);padding:9px 0;text-align:right;font-size:10px;color:#585550">web</span>
+
+        <span class="mono" style="font-size:10px;color:#585550;border-top:1px solid rgba(255,255,255,.07);padding:9px 0">13:44:12</span>
+        <div style="border-top:1px solid rgba(255,255,255,.07);padding:9px 0;display:flex;align-items:center;gap:7px"><div class="av" style="width:17px;height:17px;font-size:7px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);color:#6E6A63">sys</div><span style="color:#6E6A63;font-size:11px">system</span></div>
+        <div style="border-top:1px solid rgba(255,255,255,.07);padding:9px 0"><span class="mono" style="font-size:10.5px;color:#E0A34E">saga.resume</span> <span style="color:#8C8880">step 3 after restart</span></div>
+        <span style="border-top:1px solid rgba(255,255,255,.07);padding:9px 0;color:#8C8880;font-size:11px">delete/8f21</span>
+        <span class="mono" style="border-top:1px solid rgba(255,255,255,.07);padding:9px 0;text-align:right;font-size:10px;color:#585550">worker</span>
+
+        <span class="mono" style="font-size:10px;color:#585550;border-top:1px solid rgba(255,255,255,.07);padding:9px 0">11:02:33</span>
+        <div style="border-top:1px solid rgba(255,255,255,.07);padding:9px 0;display:flex;align-items:center;gap:7px"><div class="av av-ai" style="width:17px;height:17px;font-size:7px">✦</div><span style="color:#9B968D;font-size:11px">Assistant</span></div>
+        <div style="border-top:1px solid rgba(255,255,255,.07);padding:9px 0"><span class="mono" style="font-size:10.5px;color:#7D9EC9">op.propose</span> <span style="color:#8C8880">2 ops · accepted by GN</span></div>
+        <span style="border-top:1px solid rgba(255,255,255,.07);padding:9px 0;color:#8C8880;font-size:11px">Block model</span>
+        <span class="mono" style="border-top:1px solid rgba(255,255,255,.07);padding:9px 0;text-align:right;font-size:10px;color:#585550">api</span>
+
+        <span class="mono" style="font-size:10px;color:#585550;border-top:1px solid rgba(255,255,255,.07);padding:9px 0">09:41:18</span>
+        <div style="border-top:1px solid rgba(255,255,255,.07);padding:9px 0;display:flex;align-items:center;gap:7px"><div class="av" style="width:17px;height:17px;font-size:7px;background:rgba(255,255,255,.06);border:1px solid rgba(224,163,78,.4);color:#E0A34E">?</div><span style="color:#E0A34E;font-size:11px">unknown</span></div>
+        <div style="border-top:1px solid rgba(255,255,255,.07);padding:9px 0"><span class="mono" style="font-size:10.5px;color:#E0A34E">auth.fail</span> <span style="color:#8C8880">4th attempt · rate limited</span></div>
+        <span style="border-top:1px solid rgba(255,255,255,.07);padding:9px 0;color:#8C8880;font-size:11px">ada@…</span>
+        <span class="mono" style="border-top:1px solid rgba(255,255,255,.07);padding:9px 0;text-align:right;font-size:10px;color:#585550">203.0.113.9</span>
+
+        <span class="mono" style="font-size:10px;color:#585550;border-top:1px solid rgba(255,255,255,.07);padding:9px 0">08:14:52</span>
+        <div style="border-top:1px solid rgba(255,255,255,.07);padding:9px 0;display:flex;align-items:center;gap:7px"><div class="av av-you" style="width:17px;height:17px;font-size:7px">GN</div><span style="color:#9B968D;font-size:11px">Genuine</span></div>
+        <div style="border-top:1px solid rgba(255,255,255,.07);padding:9px 0"><span class="mono" style="font-size:10.5px;color:#C48AE0">setting.change</span> <span style="color:#8C8880">retention 30 d → 90 d</span></div>
+        <span style="border-top:1px solid rgba(255,255,255,.07);padding:9px 0;color:#8C8880;font-size:11px">workspace</span>
+        <span class="mono" style="border-top:1px solid rgba(255,255,255,.07);padding:9px 0;text-align:right;font-size:10px;color:#585550">web</span>
+
+        <span class="mono" style="font-size:10px;color:#585550;border-top:1px solid rgba(255,255,255,.07);padding:9px 0;opacity:.6">07:30:00</span>
+        <div style="border-top:1px solid rgba(255,255,255,.07);padding:9px 0;display:flex;align-items:center;gap:7px;opacity:.6"><div class="av" style="width:17px;height:17px;font-size:7px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);color:#6E6A63">sys</div><span style="color:#6E6A63;font-size:11px">system</span></div>
+        <div style="border-top:1px solid rgba(255,255,255,.07);padding:9px 0;opacity:.6"><span class="mono" style="font-size:10.5px;color:#3FCFA8">backup.complete</span> <span style="color:#8C8880">1.4 GB · verified</span></div>
+        <span style="border-top:1px solid rgba(255,255,255,.07);padding:9px 0;color:#8C8880;font-size:11px;opacity:.6">nightly</span>
+        <span class="mono" style="border-top:1px solid rgba(255,255,255,.07);padding:9px 0;text-align:right;font-size:10px;color:#585550;opacity:.6">worker</span>
+      </div>
+      <div class="mono" style="font-size:10px;color:#585550;margin-top:12px">118 394 more · every row links to the op or auth event it was derived from</div>
+
+      <div style="margin-top:auto;padding-top:20px;border-top:1px solid rgba(255,255,255,.07);display:grid;grid-template-columns:1fr 1fr 1.2fr;gap:26px">
+        <div>
+          <div class="lbl" style="margin-bottom:11px">EVENTS BY CLASS · 30 D</div>
+          <div style="display:flex;flex-direction:column;gap:7px">
+            <div style="display:flex;align-items:center;gap:9px"><span style="flex:1;font-size:11.5px;color:#D2CFC8">Content ops</span><div style="width:64px;height:4px;background:rgba(255,255,255,.06)"><div style="width:100%;height:100%;background:#7AA8E8"></div></div><span class="mono" style="font-size:9.5px;color:#8C8880;width:44px;text-align:right">116 802</span></div>
+            <div style="display:flex;align-items:center;gap:9px"><span style="flex:1;font-size:11.5px;color:#D2CFC8">Auth</span><div style="width:64px;height:4px;background:rgba(255,255,255,.06)"><div style="width:14%;height:100%;background:#5AC8B4"></div></div><span class="mono" style="font-size:9.5px;color:#8C8880;width:44px;text-align:right">1 108</span></div>
+            <div style="display:flex;align-items:center;gap:9px"><span style="flex:1;font-size:11.5px;color:#D2CFC8">Permissions</span><div style="width:64px;height:4px;background:rgba(255,255,255,.06)"><div style="width:6%;height:100%;background:#C48AE0"></div></div><span class="mono" style="font-size:9.5px;color:#8C8880;width:44px;text-align:right">312</span></div>
+            <div style="display:flex;align-items:center;gap:9px"><span style="flex:1;font-size:11.5px;color:#E0A34E">Destructive</span><div style="width:64px;height:4px;background:rgba(255,255,255,.06)"><div style="width:3%;height:100%;background:#E0A34E"></div></div><span class="mono" style="font-size:9.5px;color:#8C8880;width:44px;text-align:right">180</span></div>
+          </div>
+        </div>
+        <div>
+          <div class="lbl" style="margin-bottom:11px">WHY IT CANNOT DRIFT</div>
+          <div style="font-size:11.5px;line-height:1.7;color:#8C8880">Content rows are read from <span class="mono" style="color:#9B968D">collab.ops</span>, not written alongside it. There is no code path that edits a page without producing the row that says so, because the row <i>is</i> the op.</div>
+        </div>
+        <div>
+          <div class="lbl" style="margin-bottom:11px">WHAT IS NOT IN HERE</div>
+          <div style="font-size:11.5px;line-height:1.7;color:#8C8880">Reads. Deliberately: a log of who opened what is a surveillance feature, and once it exists someone will ask for a report from it. Analytics answers “how many” with sketches that cannot name a person, which is the version worth keeping.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="insp" style="width:290px">
+      <div class="insp-t"><span class="it it-on">SELECTED</span><span class="it">RETENTION</span></div>
+      <div style="padding:14px;display:flex;flex-direction:column;gap:12px">
+        <div class="mono" style="font-size:11px;color:#E4E2DC">saga.resume</div>
+        <div class="mono" style="font-size:10.5px;line-height:1.95;color:#8C8880">at&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;13:44:12.081<br>actor&nbsp;&nbsp;&nbsp;system<br>source&nbsp;&nbsp;worker-2<br>saga&nbsp;&nbsp;&nbsp;&nbsp;delete/8f21<br>step&nbsp;&nbsp;&nbsp;&nbsp;3 of 5<br>cause&nbsp;&nbsp;&nbsp;process restart</div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">DERIVED FROM</span>
+        <div style="font-size:11.5px;line-height:1.6;color:#8C8880">Saga cursor row <span class="mono" style="color:#9B968D">8f21</span>, step counter advanced. Not an event someone chose to emit — the row is the state, and the log reads it.</div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">SIGNING</span>
+        <div class="mono" style="font-size:10.5px;line-height:1.9;color:#8C8880">chain&nbsp;&nbsp;&nbsp;sha256 · prev-linked<br>verified&nbsp;<span style="color:#3FCFA8">✓ to genesis</span><br>gaps&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#3FCFA8">0</span></div>
+        <div style="font-size:11px;line-height:1.6;color:#585550">Each row carries the hash of the previous one. Deleting a row anywhere breaks the chain from that point forward, so tampering is detectable even by someone holding the database.</div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">EXPORT</span>
+        <div style="font-size:11.5px;line-height:1.65;color:#8C8880">CSV or JSONL, filtered to the current view. Same data, no summarisation — a compliance export that quietly aggregates is one nobody can check.</div>
+      </div>
+    </div>
+  </div>
+  <div class="status"><span>/admin/audit</span><span>append-only · prev-hash chained</span><div style="flex:1"></div><span style="color:#3FCFA8">● chain verified to genesis · 0 gaps</span></div>
+</div>
+
+<div class="tag"><b>18c</b> API KEYS &amp; WEBHOOKS <i>the other way in — same ops, same permissions, different door</i></div>
+<div class="sc">
+  <div class="scan"></div>
+  <div class="bar">
+    <span class="wm">m<span style="color:#E8873C">/</span>arginal</span>
+    <span class="crumb">admin / <b>api keys</b></span>
+    <div style="flex:1"></div>
+    <div class="rd"><span class="rd-k">KEYS</span><span class="rd-v">3</span></div>
+    <div class="rd"><span class="rd-k">CALLS · 24 H</span><span class="rd-v">14 208</span></div>
+    <div class="rd"><span class="rd-k">4XX</span><span class="rd-v" style="color:#E0A34E">31</span></div>
+    <div class="vr"></div>
+    <div class="clk"><b>14:06</b><span>THU 12 MAR</span></div><span class="kbd">⌘K</span><div class="icb">◎<div class="bdg">6</div></div><div class="icb icb-on">⚙</div><div class="av av-you">GN</div>
+  </div>
+  <div class="sub"><span class="sb sb-on">KEYS · 3</span><span class="sb">WEBHOOKS · 2</span><span class="sb">USAGE</span><span class="sb">RATE LIMITS</span><div style="flex:1"></div><span class="sb" style="color:#585550">a key is a member with a role, not a bypass</span></div>
+  <div class="body">
+    <div style="flex:1;min-width:0;padding:24px 30px;overflow:hidden;display:flex;flex-direction:column">
+      <div class="lbl" style="margin-bottom:13px">KEYS</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="border:1px solid rgba(255,255,255,.09);padding:13px 15px">
+          <div style="display:flex;align-items:center;gap:11px;margin-bottom:9px">
+            <span style="font-size:13.5px;color:#EFEDE7">CI · docs publisher</span>
+            <span class="chip chip-t" style="padding:2px 8px">ACTIVE</span>
+            <div style="flex:1"></div>
+            <span class="mono" style="font-size:10.5px;color:#585550">mk_live_••••••••4f21</span>
+            <span class="chip" style="padding:2px 8px">REVOKE</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+            <span class="chip chip-s" style="padding:2px 8px">Product · editor</span>
+            <span class="tg">pages:write</span><span class="tg">publish</span>
+            <span class="mono" style="font-size:10px;color:#585550;margin-left:auto">last used 2 min ago · 12 402 calls</span>
+          </div>
+        </div>
+        <div style="border:1px solid rgba(255,255,255,.09);padding:13px 15px">
+          <div style="display:flex;align-items:center;gap:11px;margin-bottom:9px">
+            <span style="font-size:13.5px;color:#EFEDE7">Backup runner</span>
+            <span class="chip chip-t" style="padding:2px 8px">ACTIVE</span>
+            <div style="flex:1"></div>
+            <span class="mono" style="font-size:10.5px;color:#585550">mk_live_••••••••9c03</span>
+            <span class="chip" style="padding:2px 8px">REVOKE</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+            <span class="chip" style="padding:2px 8px;border-color:rgba(255,255,255,.14)">All spaces · reader</span>
+            <span class="tg">export</span>
+            <span class="mono" style="font-size:10px;color:#585550;margin-left:auto">last used 6 h ago · 14 calls</span>
+          </div>
+        </div>
+        <div style="border:1px solid rgba(224,163,78,.3);background:rgba(224,163,78,.04);padding:13px 15px">
+          <div style="display:flex;align-items:center;gap:11px;margin-bottom:9px">
+            <span style="font-size:13.5px;color:#D2CFC8">Old importer</span>
+            <span class="chip chip-a" style="padding:2px 8px">UNUSED 94 D</span>
+            <div style="flex:1"></div>
+            <span class="mono" style="font-size:10.5px;color:#585550">mk_live_••••••••11ba</span>
+            <span class="chip chip-a" style="padding:2px 8px">REVOKE</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+            <span class="chip chip-s" style="padding:2px 8px">Research · editor</span>
+            <span class="tg">pages:write</span>
+            <span class="mono" style="font-size:10px;color:#E0A34E;margin-left:auto">a key nobody uses is a key nobody notices leaking</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="lbl" style="margin:26px 0 13px">WEBHOOKS</div>
+      <div style="display:flex;flex-direction:column">
+        <div class="row" style="padding:11px 0">
+          <span class="mono" style="flex:1;font-size:11.5px;color:#D2CFC8">https://ci.example/hooks/marginal</span>
+          <span class="tg">page.published</span><span class="tg">page.deleted</span>
+          <span class="mono" style="font-size:10px;color:#3FCFA8;width:76px;text-align:right">200 · 41 ms</span>
+        </div>
+        <div class="row" style="padding:11px 0;border-bottom:0">
+          <span class="mono" style="flex:1;font-size:11.5px;color:#D2CFC8">https://chat.example/incoming</span>
+          <span class="tg">mention</span>
+          <span class="mono" style="font-size:10px;color:#E0A34E;width:76px;text-align:right">retry 3/6</span>
+        </div>
+      </div>
+      <div style="font-size:11.5px;line-height:1.65;color:#585550;margin-top:12px;max-width:700px">Delivery is at-least-once with exponential backoff, and every payload carries the op id that caused it. A consumer that has seen that id before can drop the duplicate — which is the only honest way to offer at-least-once.</div>
+
+      <div style="margin-top:auto;padding-top:20px;border-top:1px solid rgba(255,255,255,.07);display:grid;grid-template-columns:1fr 1fr 1.1fr;gap:26px">
+        <div>
+          <div class="lbl" style="margin-bottom:11px">CALLS · 24 H</div>
+          <div style="display:flex;align-items:flex-end;gap:2px;height:44px;margin-bottom:9px">
+            <div style="flex:1;height:22%;background:rgba(232,135,60,.3)"></div><div style="flex:1;height:35%;background:rgba(232,135,60,.35)"></div><div style="flex:1;height:18%;background:rgba(232,135,60,.28)"></div><div style="flex:1;height:60%;background:rgba(232,135,60,.45)"></div><div style="flex:1;height:88%;background:#E8873C"></div><div style="flex:1;height:74%;background:rgba(232,135,60,.6)"></div><div style="flex:1;height:41%;background:rgba(232,135,60,.4)"></div><div style="flex:1;height:29%;background:rgba(232,135,60,.32)"></div><div style="flex:1;height:52%;background:rgba(232,135,60,.42)"></div><div style="flex:1;height:66%;background:rgba(232,135,60,.5)"></div><div style="flex:1;height:38%;background:rgba(232,135,60,.36)"></div><div style="flex:1;height:24%;background:rgba(232,135,60,.3)"></div>
+          </div>
+          <div style="display:flex;gap:18px"><div class="rd"><span class="rd-k">P50</span><span class="rd-v">18 ms</span></div><div class="rd"><span class="rd-k">P99</span><span class="rd-v">104 ms</span></div></div>
+        </div>
+        <div>
+          <div class="lbl" style="margin-bottom:11px">RATE LIMITS</div>
+          <div style="display:flex;flex-direction:column;gap:7px">
+            <div style="display:flex;align-items:center;gap:9px"><span style="flex:1;font-size:11.5px;color:#D2CFC8">CI · docs publisher</span><div style="width:56px;height:4px;background:rgba(255,255,255,.06)"><div style="width:62%;height:100%;background:#E8873C"></div></div><span class="mono" style="font-size:9.5px;color:#8C8880;width:52px;text-align:right">620/1000</span></div>
+            <div style="display:flex;align-items:center;gap:9px"><span style="flex:1;font-size:11.5px;color:#9B968D">Backup runner</span><div style="width:56px;height:4px;background:rgba(255,255,255,.06)"><div style="width:2%;height:100%;background:rgba(232,135,60,.5)"></div></div><span class="mono" style="font-size:9.5px;color:#8C8880;width:52px;text-align:right">2/100</span></div>
+            <div style="display:flex;align-items:center;gap:9px;opacity:.55"><span style="flex:1;font-size:11.5px;color:#9B968D">Old importer</span><div style="width:56px;height:4px;background:rgba(255,255,255,.06)"></div><span class="mono" style="font-size:9.5px;color:#585550;width:52px;text-align:right">0/500</span></div>
+          </div>
+          <div style="font-size:11px;line-height:1.6;color:#585550;margin-top:10px">Per key, per minute. A 429 carries <span class="mono" style="color:#8C8880">Retry-After</span> — a limit you cannot plan around is an outage with a nicer status code.</div>
+        </div>
+        <div>
+          <div class="lbl" style="margin-bottom:11px">A KEY IS A MEMBER</div>
+          <div style="font-size:11.5px;line-height:1.7;color:#8C8880">Every key holds a role in a space, resolved through the same <span class="mono" style="color:#9B968D">can_apply()</span> a person goes through. There is no admin key, no service bypass, and no path that writes to the tree without producing ops — which is why an API edit appears in history, undoes, and attributes to the key by name.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="insp" style="width:290px">
+      <div class="insp-t"><span class="it it-on">SELECTED KEY</span><span class="it">SCOPES</span></div>
+      <div style="padding:14px;display:flex;flex-direction:column;gap:12px">
+        <div style="font-size:14px;color:#EFEDE7">CI · docs publisher</div>
+        <div class="mono" style="font-size:10.5px;line-height:1.95;color:#8C8880">created&nbsp;&nbsp;14 Jan by GN<br>expires&nbsp;&nbsp;14 Jul <span style="color:#585550">· 124 d</span><br>calls&nbsp;&nbsp;&nbsp;&nbsp;12 402<br>last ip&nbsp;&nbsp;198.51.100.4</div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">SHOWN ONCE</span>
+        <div style="font-size:11.5px;line-height:1.65;color:#8C8880">The secret was displayed at creation and never again — only its hash is stored. Losing it means rotating it, which is inconvenient exactly once and safe every day after.</div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">GRANTED</span>
+        <div class="tgrow"><span class="tg tg-on">pages:write</span><span class="tg tg-on">publish</span></div>
+        <span class="lbl" style="margin-top:2px">NOT GRANTED</span>
+        <div class="tgrow" style="opacity:.5"><span class="tg">spaces:admin</span><span class="tg">members:write</span><span class="tg">export</span><span class="tg">purge</span></div>
+        <div style="font-size:11px;line-height:1.6;color:#585550">Scopes are additive and default to none. A key created without a scope can authenticate and do nothing, which is the right shape for the mistake people actually make.</div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">ROTATION</span>
+        <div style="font-size:11.5px;line-height:1.65;color:#8C8880">Rotating issues a second live secret and keeps the first valid for 24 h, so a deploy can roll without a window where both the old and new key are wrong.</div>
+      </div>
+    </div>
+  </div>
+  <div class="status"><span>/admin/api-keys</span><span>scoped · rate limited · expiring</span><div style="flex:1"></div><span style="color:#E0A34E">◌ 1 key unused for 94 days</span></div>
+</div>
 <div class="tag"><b>19</b> SETTINGS <i>three scopes, and the startup / runtime split</i></div>
 <div class="sc">
   <div class="scan"></div>
@@ -2450,21 +2681,21 @@ enum Op { InsertText }
            that it exists and that they cannot change it, not conclude the
            product lacks it. -->
       <div class="rail-h" style="margin-top:14px">WORKSPACE<div></div><span style="color:#4B4842">owner</span></div>
-      <div style="display:flex;flex-direction:column;padding:0 8px;gap:1px;opacity:.5">
-        <div class="tr">General &amp; branding</div>
-        <div class="tr">Topics &amp; tags<span class="mono" style="margin-left:auto;font-size:8.5px;color:#585550">5 · 34</span></div>
-        <div class="tr">Members &amp; roles<span class="mono" style="margin-left:auto;font-size:8.5px;color:#585550">14</span></div>
-        <div class="tr">Spaces<span class="mono" style="margin-left:auto;font-size:8.5px;color:#585550">4</span></div>
-        <div class="tr">Object store<span class="mono" style="margin-left:auto;font-size:8.5px;color:#E0A34E">startup</span></div>
-        <div class="tr">Search &amp; index<span class="mono" style="margin-left:auto;font-size:8.5px;color:#E0A34E">startup</span></div>
-        <div class="tr">Assistant &amp; embeddings</div>
-        <div class="tr">Plugins &amp; capabilities<span class="mono" style="margin-left:auto;font-size:8.5px;color:#585550">4</span></div>
-        <div class="tr">Retention &amp; purge</div>
-        <div class="tr">Backups</div>
-        <div class="tr">Import / export</div>
-        <div class="tr">SSO &amp; auth<span class="mono" style="margin-left:auto;font-size:8.5px;color:#E0A34E">startup</span></div>
-        <div class="tr">API keys &amp; webhooks</div>
-        <div class="tr">Audit log</div>
+      <div style="display:flex;flex-direction:column;padding:0 8px;gap:1px">
+        <div class="tr" style="opacity:.45">General &amp; branding</div>
+        <div class="tr">Topics &amp; tags<span class="mono" style="margin-left:auto;font-size:8.5px;color:#585550">5 · 34</span><span class="tr-n" style="margin-left:6px">→</span></div>
+        <div class="tr">Members &amp; roles<span class="mono" style="margin-left:auto;font-size:8.5px;color:#585550">14</span><span class="tr-n" style="margin-left:6px">→</span></div>
+        <div class="tr">Spaces<span class="mono" style="margin-left:auto;font-size:8.5px;color:#585550">4</span><span class="tr-n" style="margin-left:6px">→</span></div>
+        <div class="tr" style="opacity:.45">Object store<span class="mono" style="margin-left:auto;font-size:8.5px;color:#E0A34E">startup</span></div>
+        <div class="tr" style="opacity:.45">Search &amp; index<span class="mono" style="margin-left:auto;font-size:8.5px;color:#E0A34E">startup</span></div>
+        <div class="tr" style="opacity:.45">Assistant &amp; embeddings</div>
+        <div class="tr">Plugins &amp; capabilities<span class="mono" style="margin-left:auto;font-size:8.5px;color:#585550">4</span><span class="tr-n" style="margin-left:6px">→</span></div>
+        <div class="tr">Retention &amp; purge<span class="tr-n" style="margin-left:auto">→</span></div>
+        <div class="tr" style="opacity:.45">Backups</div>
+        <div class="tr">Import / export<span class="tr-n" style="margin-left:auto">→</span></div>
+        <div class="tr" style="opacity:.45">SSO &amp; auth<span class="mono" style="margin-left:auto;font-size:8.5px;color:#E0A34E">startup</span></div>
+        <div class="tr">API keys &amp; webhooks<span class="tr-n" style="margin-left:auto">→</span></div>
+        <div class="tr">Audit log<span class="tr-n" style="margin-left:auto">→</span></div>
       </div>
       <div class="rail-h" style="margin-top:14px">PAGE<div></div><span style="color:#4B4842">inspector</span></div>
       <div style="display:flex;flex-direction:column;padding:0 8px;gap:1px;opacity:.5">
@@ -2472,8 +2703,8 @@ enum Op { InsertText }
         <div class="tr">Comment policy</div>
       </div>
       <div class="wal">
-        <span class="lbl">STARTUP vs RUNTIME</span>
-        <div style="font-size:11px;line-height:1.55;color:#8C8880">Workspace settings marked <span class="mono" style="color:#E0A34E">startup</span> need a restart. Everything here is runtime.</div>
+        <span class="lbl">→ = DRAWN IN THIS DOC</span>
+        <div style="font-size:11px;line-height:1.5;color:#8C8880">8 of 25. Dimmed are real routes not drawn — marked, never hidden.</div>
       </div>
     </div>
     <div style="flex:1;min-width:0;padding:30px 40px;overflow:hidden;max-width:760px">
@@ -2515,7 +2746,7 @@ enum Op { InsertText }
         <span style="padding:9px 14px;text-align:center;font-size:12px;color:#585550;border-top:1px solid rgba(255,255,255,.07)">inherit</span>
         <div style="padding:9px 0;text-align:right;border-top:1px solid rgba(255,255,255,.07)"><span class="chip" style="padding:2px 7px">NONE</span></div>
       </div>
-      <div style="margin-top:12px;font-size:11.5px;color:#585550;line-height:1.6">Two topics left on <span class="mono" style="color:#8C8880">inherit</span>. Overrides are opt-in per topic — a workspace with forty topics should not need forty rows configured before it reads correctly.</div>
+
     </div>
     <div class="insp" style="width:290px">
       <div class="insp-t"><span class="it it-on">SCOPES</span><span class="it">CHANGED</span></div>
@@ -3240,11 +3471,6 @@ enum Op { InsertText }
         <div style="height:1px;background:rgba(255,255,255,.07)"></div>
         <span class="lbl">WHY A SAGA</span>
         <div style="font-size:11.5px;line-height:1.65;color:#8C8880">A cascading delete crosses four services. Doing it in one transaction is impossible; doing it without one means a crash leaves half a page deleted. Idempotent steps plus a stored cursor means a crash is a pause, not a corruption.</div>
-        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
-        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">steps</span><span class="mono" style="font-size:11px;color:#E4E2DC">5</span></div>
-        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">idempotent</span><span class="mono" style="font-size:11px;color:#3FCFA8">all</span></div>
-        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">resumed after restart</span><span class="mono" style="font-size:11px;color:#E0A34E">yes</span></div>
-        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">partial states possible</span><span class="mono" style="font-size:11px;color:#3FCFA8">0</span></div>
       </div>
     </div>
   </div>
@@ -3348,11 +3574,6 @@ id, so peers merge concurrent…</pre>
         <div style="height:1px;background:rgba(255,255,255,.07)"></div>
         <span class="lbl">WHAT THE ROUND TRIP PROVES</span>
         <div style="font-size:11.5px;line-height:1.65;color:#8C8880">That the exporter and importer agree. It does not prove the export is <i>useful</i> — a person still has to open a .md file somewhere else and find it readable, which is why markdown is the default rather than the op log.</div>
-        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
-        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">last run</span><span class="mono" style="font-size:11px;color:#E4E2DC">04:12</span></div>
-        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">pages compared</span><span class="mono" style="font-size:11px;color:#E4E2DC">1 908</span></div>
-        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">byte diffs</span><span class="mono" style="font-size:11px;color:#3FCFA8">0</span></div>
-        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">runtime</span><span class="mono" style="font-size:11px;color:#E4E2DC">41 s</span></div>
       </div>
     </div>
   </div>
@@ -3443,8 +3664,6 @@ id, so peers merge concurrent…</pre>
         <div style="height:1px;background:rgba(255,255,255,.07)"></div>
         <span class="lbl">WHAT HAPPENS ON RECONNECT</span>
         <div style="font-size:11.5px;line-height:1.65;color:#8C8880">The queued ops flush in order, the server transforms anything that raced them, and the local view rolls back only where it genuinely disagreed. Nothing is dropped and nothing is silently overwritten — the queue depth above is the honest number.</div>
-        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
-        <div style="font-size:11px;line-height:1.6;color:#585550">Retry is exponential with jitter and caps at 30 s. The spinner in the top bar is the only spinner in the app, and it means this.</div>
       </div>
     </div>
   </div>
