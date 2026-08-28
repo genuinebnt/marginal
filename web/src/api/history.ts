@@ -37,6 +37,7 @@ export interface LoggedOp {
   page_id: string;
   actor_id: string;
   actor_kind: string;
+  created_at: string;
   undo_group?: string | null;
   op: Op;
 }
@@ -89,4 +90,24 @@ export interface Move {
 
 export function getDiff(pageId: string, from: number, to: number): Promise<{ before: Snapshot; after: Snapshot; moves: Move[] }> {
   return collabFetch(`${COLLAB_URL}/collab/pages/${pageId}/diff?from=${from}&to=${to}`);
+}
+
+/** A short, human-readable label for one op — used by both HistoryScreen's
+ * op stream and TraceScreen's op list, the same two "which op is this"
+ * readouts trace.html's own oprow and history.html's own .op share. Real
+ * data only: the op's own type plus whatever text it actually carries,
+ * truncated for display, never a fabricated description. */
+export function describeOp(op: Op): { kind: string; detail: string } {
+  if (op.scope === "block") {
+    const type = String(op.type ?? "Op");
+    if (type === "InsertBlock" || type === "SetBlockContent") {
+      const text = (op.content as { text?: string } | undefined)?.text ?? "";
+      return { kind: type, detail: text ? `"${text.slice(0, 40)}"` : type === "InsertBlock" ? "(empty block)" : "" };
+    }
+    if (type === "SetTitle") return { kind: type, detail: `→ "${op.to ?? ""}"` };
+    return { kind: type, detail: "" };
+  }
+  const inner = op.op as { type?: string; text?: string } | undefined;
+  const type = inner?.type ?? "text edit";
+  return { kind: type, detail: inner?.text ? `"${inner.text.slice(0, 40)}"` : "" };
 }

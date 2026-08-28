@@ -59,6 +59,11 @@ type diffRequest struct {
 type diffResponse struct {
 	Table [][]int           `json:"table"` // textdiff.LCSTable's own output — diff.html's DP-matrix visualization needs every cell, not just the final script
 	Ops   []textdiff.DiffOp `json:"ops"`
+	// Path is TracebackWithPath's own visited-cell trail — diff.html's
+	// "the outlined path is the traceback that becomes the edit script,"
+	// drawn from what Go's own walk actually visited, never re-derived
+	// in TypeScript.
+	Path []textdiff.Coord `json:"path"`
 }
 
 func diff(this js.Value, args []js.Value) any {
@@ -70,8 +75,8 @@ func diff(this js.Value, args []js.Value) any {
 		return result(nil, err)
 	}
 	table := textdiff.LCSTable(req.A, req.B)
-	ops := textdiff.Traceback(table, req.A, req.B)
-	data, err := json.Marshal(diffResponse{Table: table, Ops: ops})
+	ops, path := textdiff.TracebackWithPath(table, req.A, req.B)
+	data, err := json.Marshal(diffResponse{Table: table, Ops: ops, Path: path})
 	return result(data, err)
 }
 

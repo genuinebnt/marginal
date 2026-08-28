@@ -8,11 +8,15 @@ import { search, suggestTitles, type SearchHit, type TitleSuggestion } from "../
  * (GET /search, Postgres FTS over docs.pages/docs.blocks' own tsvector
  * columns) and real fuzzy "did you mean" (GET /search/suggest,
  * internal/bktree's BK-tree, unchanged) — nothing here re-derives either
- * algorithm in TypeScript (ADR-012). The "kind" filter (page title vs.
- * block mention) is real, computed from each hit's own block_id
- * presence; a "scope" filter isn't — this repo has one flat workspace,
- * so there's nothing yet for it to filter by (an honest omission, not a
- * cosmetic stub the mockup's own static version could get away with).
+ * algorithm in TypeScript (ADR-012). The "kind" facet (Everything / Titles
+ * only / Block mentions) is real, computed from each hit's own block_id
+ * presence; the mockup's own "Product"/"Reading"/"Archive" SCOPE facets
+ * are not — this repo has one flat workspace, nothing yet for them to
+ * filter by, an honest omission rather than a cosmetic stub. The
+ * mockup's per-result link-graph SVG and result-path breadcrumb are
+ * dropped for the same reason: no real per-hit hierarchy/graph data is
+ * fetched here, and a decorative substitute would be exactly the "not
+ * real" the rest of this repo refuses to ship.
  */
 export function SearchScreen() {
   const { session, logout } = useAuth();
@@ -25,6 +29,7 @@ export function SearchScreen() {
   const [suggestions, setSuggestions] = useState<TitleSuggestion[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [kindFilter, setKindFilter] = useState<"all" | "page" | "block">("all");
+  const [elapsedMs, setElapsedMs] = useState<number | null>(null);
 
   useEffect(() => {
     const q = query.trim();
@@ -32,14 +37,17 @@ export function SearchScreen() {
       setHits(null);
       setSuggestions([]);
       setError(null);
+      setElapsedMs(null);
       return;
     }
     let cancelled = false;
     const timer = setTimeout(() => {
+      const startedAt = performance.now();
       search(actorId, q)
         .then((r) => {
           if (cancelled) return;
           setHits(r.hits);
+          setElapsedMs(Math.round(performance.now() - startedAt));
           setError(null);
           if (r.hits.length === 0) {
             suggestTitles(actorId, q).then((s) => {
@@ -72,6 +80,7 @@ export function SearchScreen() {
           <span className="mark"></span>Marginal
         </Link>
         <nav className="nav">
+          <Link to="/pages">Editor</Link>
           <Link to="/search" aria-current="page">Search</Link>
           <Link to="/graph">Graph</Link>
         </nav>
@@ -79,88 +88,112 @@ export function SearchScreen() {
         <button className="btn" onClick={logout}>Sign out</button>
       </header>
 
-      <main className="canvas" style={{ maxWidth: "44rem", margin: "0 auto", padding: "0 24px 40px", width: "100%" }}>
-        <div className="searchbar" style={{ padding: "26px 0 6px" }}>
-          <input
-            autoFocus
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search this workspace…"
-            style={{
-              width: "100%", padding: "13px 16px", fontFamily: "var(--display)", fontSize: 22,
-              background: "var(--bg-raised)", color: "var(--ink)", border: "1px solid var(--rule)",
-              borderRadius: "var(--radius-lg)",
-            }}
-          />
-        </div>
-
-        {hits && hits.length > 0 && (
-          <div style={{ display: "flex", gap: 8, margin: "12px 0" }}>
-            {(["all", "page", "block"] as const).map((k) => (
-              <button
-                key={k}
-                className={`pill ${kindFilter === k ? "violet" : ""}`}
-                onClick={() => setKindFilter(k)}
-                style={{ cursor: "pointer" }}
-              >
-                {k === "all" ? "All" : k === "page" ? "Title matches" : "Block mentions"}
-              </button>
-            ))}
+      <main className="page">
+        <div className="wrap">
+          <div className="searchbar">
+            <input
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search everything…"
+              autoComplete="off"
+              aria-label="Search"
+            />
+            <div className="facets" role="group" aria-label="Filters">
+              {(["all", "page", "block"] as const).map((k) => (
+                <button
+                  key={k}
+                  className="facet"
+                  aria-pressed={kindFilter === k}
+                  onClick={() => setKindFilter(k)}
+                >
+                  {k === "all" ? "Everything" : k === "page" ? "Titles only" : "Block mentions"}
+                </button>
+              ))}
+            </div>
           </div>
-        )}
 
-        {error && <div className="note" style={{ marginTop: 16 }}>{error}</div>}
-
-        {query.trim() && hits && hits.length === 0 && (
-          <div style={{ marginTop: 20 }}>
-            <div className="muted">No results for "{query}".</div>
-            {suggestions.length > 0 && (
-              <div className="note" style={{ marginTop: 12, maxWidth: "none" }}>
-                Did you mean:{" "}
-                {suggestions.map((s, i) => (
-                  <span key={s.page_id}>
-                    {i > 0 && ", "}
-                    <a onClick={() => navigate(`/pages/${s.page_id}`)} style={{ cursor: "pointer" }}>
-                      {s.title}
-                    </a>
+          <div className="layout">
+            <div>
+              {hits && (
+                <div className="meta-line">
+                  <span>{filtered?.length ?? 0} {filtered?.length === 1 ? "result" : "results"}</span>
+                  {elapsedMs !== null && (
+                    <>
+                      <span>·</span>
+                      <span>{elapsedMs} ms</span>
+                    </>
+                  )}
+                  <span className="spacer"></span>
+                  <span className="pill amber" title="internal/search.DefaultRefreshInterval — fuzzy suggestions only, full-text search is always transactionally fresh">
+                    fuzzy index refreshes every 30s
                   </span>
-                ))}
-                ?
-              </div>
-            )}
-          </div>
-        )}
-
-        <div style={{ marginTop: 8 }}>
-          {filtered?.map((h, i) => (
-            <div
-              key={`${h.page_id}-${h.block_id ?? "title"}-${i}`}
-              className="result"
-              onClick={() => navigate(`/pages/${h.page_id}`)}
-              style={{
-                display: "block", padding: "13px 4px", borderBottom: "1px solid var(--rule)", cursor: "pointer",
-              }}
-            >
-              <div style={{ fontFamily: "var(--display)", fontSize: 17, fontWeight: 560 }}>{h.page_title || "Untitled"}</div>
-              {h.snippet && (
-                <div style={{ marginTop: 4, fontFamily: "var(--serif)", fontSize: 14, color: "var(--ink-soft)" }}>
-                  {renderSnippet(h.snippet)}
                 </div>
               )}
-              <div style={{ marginTop: 6 }}>
-                <span className="pill">{h.block_id ? "Block" : "Page"}</span>
+
+              {error && <div className="note" style={{ maxWidth: "none" }}>{error}</div>}
+
+              {query.trim() && hits && hits.length === 0 && !error && (
+                <div className="muted" style={{ padding: "16px 0" }}>No results for "{query}".</div>
+              )}
+
+              <div>
+                {filtered?.map((h, i) => (
+                  <a
+                    key={`${h.page_id}-${h.block_id ?? "title"}-${i}`}
+                    className="result"
+                    href={`/pages/${h.page_id}`}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      navigate(`/pages/${h.page_id}`);
+                    }}
+                  >
+                    <div className="result-t">{h.page_title || "Untitled"}</div>
+                    {h.snippet && <div className="result-snip">{renderSnippet(h.snippet)}</div>}
+                    <div className="result-meta">
+                      <span className="pill">{h.block_id ? "Block" : "Page"}</span>
+                    </div>
+                  </a>
+                ))}
+              </div>
+
+              <div className="note" style={{ maxWidth: "none" }}>
+                <b>Really real.</b> Every result above comes from Postgres full-text search
+                (<code>websearch_to_tsquery</code> + <code>ts_rank</code>) over this workspace's actual
+                pages and blocks — the snippet is <code>ts_headline</code>'s own output, the reason it
+                matched, not a guess.
               </div>
             </div>
-          ))}
-        </div>
 
-        <div className="note" style={{ marginTop: 24, maxWidth: "none" }}>
-          <b>Really real.</b> Every result above comes from Postgres full-text search
-          (<code>websearch_to_tsquery</code> + <code>ts_rank</code>) over this workspace's actual pages
-          and blocks — the snippet is <code>ts_headline</code>'s own output, the reason it matched, not
-          a guess. "Did you mean" is a real BK-tree query over page titles, which has its own rebuild
-          cadence (every 30s) and may lag a page just renamed — search is full text plus the link
-          graph, never vectors.
+            <aside>
+              <div className="card aside-card">
+                <div className="label">Did you mean</div>
+                {suggestions.length === 0 ? (
+                  <div className="muted" style={{ fontSize: 12.5, padding: "6px 0" }}>
+                    {query.trim() ? "No close titles found." : "Type a query to search."}
+                  </div>
+                ) : (
+                  suggestions.map((s) => (
+                    <div
+                      className="row"
+                      key={s.page_id}
+                      onClick={() => navigate(`/pages/${s.page_id}`)}
+                      style={{ cursor: "pointer" }}
+                    >
+                      <span className="lead">~</span>
+                      {s.title}
+                      <span className="muted" style={{ marginLeft: "auto" }}>edit distance {s.distance}</span>
+                    </div>
+                  ))
+                )}
+                <div className="hr"></div>
+                <p style={{ margin: 0, fontSize: 12.5, color: "var(--ink-soft)", lineHeight: 1.55 }}>
+                  A real Burkhard-Keller tree over page titles — <code>internal/bktree</code>, pruned by
+                  the triangle inequality, not a fuzzy heuristic.
+                </p>
+              </div>
+            </aside>
+          </div>
         </div>
       </main>
     </div>

@@ -76,9 +76,30 @@ type DiffOp struct {
 // (`diff -u`'s own convention: what was removed, then what replaced
 // it), not the reverse.
 func Traceback(table [][]int, a, b []string) []DiffOp {
+	ops, _ := TracebackWithPath(table, a, b)
+	return ops
+}
+
+// Coord is one (i, j) cell of the LCS table — TracebackWithPath's own
+// visited-cell trail, diff.html's own "the outlined path is the
+// traceback that becomes the edit script," drawn from what the walk
+// actually visited rather than re-derived a second time client-side.
+type Coord struct {
+	I int `json:"i"`
+	J int `json:"j"`
+}
+
+// TracebackWithPath is Traceback's own body, additionally returning
+// every (i, j) cell the backward walk actually visited, oldest-in-the-
+// walk first (i.e. starting at (len(a), len(b)), ending at (0, 0)) — the
+// exact path diff.html's own DP-matrix view outlines. Traceback is this
+// function with the path discarded, not a separate implementation.
+func TracebackWithPath(table [][]int, a, b []string) ([]DiffOp, []Coord) {
 	i, j := len(a), len(b)
 	var reversed []DiffOp
+	var path []Coord
 	for i > 0 || j > 0 {
+		path = append(path, Coord{I: i, J: j})
 		switch {
 		case i > 0 && j > 0 && a[i-1] == b[j-1]:
 			reversed = append(reversed, DiffOp{Kind: Equal, Token: a[i-1]})
@@ -92,12 +113,13 @@ func Traceback(table [][]int, a, b []string) []DiffOp {
 			j--
 		}
 	}
+	path = append(path, Coord{I: 0, J: 0})
 
 	ops := make([]DiffOp, len(reversed))
 	for k, op := range reversed {
 		ops[len(reversed)-1-k] = op
 	}
-	return ops
+	return ops, path
 }
 
 // Diff is the whole pipeline — build the table, trace it back — for a

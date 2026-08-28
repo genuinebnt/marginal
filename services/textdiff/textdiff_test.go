@@ -112,6 +112,23 @@ func TestDiffEditScriptReconstructsBothSequences(t *testing.T) {
 	})
 }
 
+// TestTracebackWithPathStartsAtCornerAndEndsAtOrigin pins the actual
+// contract diff.html's DP-matrix view depends on: the path is exactly
+// the cells Traceback's own walk visited, starting at (len(a), len(b))
+// and always ending at (0, 0), one shorter than the total number of
+// diagonal/up/left moves plus the final resting cell.
+func TestTracebackWithPathStartsAtCornerAndEndsAtOrigin(t *testing.T) {
+	a := words("we hold sync acknowledgement under a tight budget")
+	b := words("we hold sync acknowledgement under a strict budget")
+	table := LCSTable(a, b)
+	ops, path := TracebackWithPath(table, a, b)
+
+	require.NotEmpty(t, path)
+	assert.Equal(t, Coord{I: len(a), J: len(b)}, path[0], "path starts at the table's own bottom-right corner")
+	assert.Equal(t, Coord{I: 0, J: 0}, path[len(path)-1], "path always ends at the origin")
+	assert.Equal(t, ops, Traceback(table, a, b), "Traceback must be TracebackWithPath's own ops, unchanged")
+}
+
 func assertEqualSlices(rt *rapid.T, want, got []string, msg string) {
 	if len(want) != len(got) {
 		rt.Fatalf("%s: length mismatch: want %v got %v", msg, want, got)

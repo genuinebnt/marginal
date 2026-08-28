@@ -53,4 +53,12 @@ describe("diff-core wasm bridge", () => {
     const result = await diffTokens(a, b);
     expect(result.table[a.length][b.length]).toBe(4);
   });
+
+  it("the traceback path starts at the table's corner and ends at the origin, through real Go", async () => {
+    const a = tokenizeWords("we hold sync acknowledgement under a tight budget");
+    const b = tokenizeWords("we hold sync acknowledgement under a strict budget");
+    const result = await diffTokens(a, b);
+    expect(result.path[0]).toEqual({ i: a.length, j: b.length });
+    expect(result.path[result.path.length - 1]).toEqual({ i: 0, j: 0 });
+  });
 });

@@ -18,9 +18,18 @@ export interface DiffOp {
   token: string;
 }
 
+export interface Coord {
+  i: number;
+  j: number;
+}
+
 export interface DiffResult {
   table: number[][];
   ops: DiffOp[];
+  /** Every (i, j) cell the real Go traceback walked, corner to origin —
+   * diff.html's own DP-matrix "outlined path," drawn from what Go
+   * actually visited, never re-derived here. */
+  path: Coord[];
 }
 
 interface WasmResult {
