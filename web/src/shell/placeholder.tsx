@@ -15,7 +15,15 @@
  *
  * The workflow this enables: build the screen faithfully now, then delete
  * `ph(...)` call sites one at a time as endpoints land. A screen is finished
- * when `grep -c "ph(" ` on it returns 0 — which is a check, not a feeling.
+ * when it has none left — which is a check, not a feeling:
+ *
+ *   grep -coE '(^|[^A-Za-z])ph\(' src/screens/*.tsx
+ *
+ * The word-boundary guard is load-bearing. A bare `grep -c "ph("` also
+ * matches `getLinkGraph(` and `analyzeGraph(`, and reported two
+ * placeholders on a screen that had none — a check that lies in the
+ * optimistic direction would be bad; this one lied pessimistically and was
+ * still worth fixing, because a check nobody trusts gets ignored.
  */
 import type { ReactNode } from "react";
 
