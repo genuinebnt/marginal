@@ -1,302 +1,351 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+/**
+ * docs/ui-mockups/v2/index.html § 17 HISTORY, ported.
+ *
+ * A scrubber over the real op log, and the palimpsest: one block's actual
+ * tombstoned character array, where every version is the filter
+ * `ins <= v < del` over ONE array rather than a stored snapshot per revision.
+ * That is the screen's central claim, and it is why STORED and LIVE are shown
+ * side by side — the gap between them is the tombstones, and 0 copies is the
+ * point.
+ *
+ * Restore is repeated undo through Trace's own precomputed inverses, never a
+ * snapshot swap, which is what makes it a normal edit that itself undoes.
+ */
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
-import { useCollabPage } from "../collab/useCollabPage";
-import { getTrace, getPalimpsest, describeOp, type TraceStep, type PalimpsestChar } from "../api/history";
+import {
+  getPalimpsest, getTrace, type PalimpsestChar, type TraceStep,
+} from "../api/history";
+import { listPages, type Page } from "../api/pages";
+import {
+  Body, Inspector, Label, Readout, Rule, Screen, StatusBar, TopBar, num,
+} from "../shell/Chrome";
 
-const ACTOR_COLORS = ["var(--teal)", "var(--violet)", "var(--ai)", "var(--cat-4)", "var(--cat-5)"];
-function colorFor(actorId: string, order: string[]): string {
-  const i = order.indexOf(actorId);
-  return ACTOR_COLORS[i % ACTOR_COLORS.length];
+/** Actor colours: you are teal, a peer violet, the assistant slate (§3.3). */
+function actorHue(actorId: string, you: string | null): string {
+  if (actorId === you) return "#3FCFA8";
+  if (actorId.startsWith("assistant")) return "#7D9EC9";
+  return "#A98CE8";
 }
 
-/**
- * docs/ui-mockups/v2/index.html § 17 HISTORY, made real (v2.4.0): the scrubber walks a
- * real replay (GET .../trace, internal/session.Trace, unchanged from
- * trace.html's own data source), "Restore this version"/"Undo my last
- * edit" send real WS messages (Session.RestoreTo/Undo), and the
- * palimpsest panel reads one block's real tombstoned character history
- * (GET .../palimpsest, internal/palimpsest.Build). Snapshot tick marks
- * and rebuild-timing telemetry from the mockup are dropped — this repo
- * has no snapshot system (RFC-002: replay from scratch, always) and no
- * such instrumentation, and a decorative substitute would be exactly the
- * "not real" the rest of this repo refuses to ship.
- */
 export function HistoryScreen() {
-  const { id: pageId } = useParams();
-  const { session, logout } = useAuth();
-  if (!session) throw new Error("HistoryScreen requires an authenticated session");
-  const { actorId } = session;
-  const collab = useCollabPage(pageId ?? "", actorId);
+  const { id } = useParams();
+  const { session } = useAuth();
+  const actorId = session?.actorId ?? null;
+  const navigate = useNavigate();
 
-  const [steps, setSteps] = useState<TraceStep[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [scrub, setScrub] = useState(0);
-  const [actorFilter, setActorFilter] = useState<string | "all">("all");
-  const [restoring, setRestoring] = useState(false);
-
-  const [palBlockId, setPalBlockId] = useState<string | null>(null);
-  const [palChars, setPalChars] = useState<PalimpsestChar[] | null>(null);
-  const [palReveal, setPalReveal] = useState(false);
+  const [pages, setPages] = useState<Page[]>([]);
+  const [steps, setSteps] = useState<TraceStep[]>([]);
+  const [at, setAt] = useState(0);
+  const [blockId, setBlockId] = useState<string | null>(null);
+  const [chars, setChars] = useState<PalimpsestChar[] | null>(null);
+  const [actorFilter, setActorFilter] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!pageId) return;
-    let cancelled = false;
-    getTrace(pageId)
-      .then((r) => {
-        if (cancelled) return;
-        setSteps(r.steps);
-        setScrub(r.steps.length > 0 ? r.steps.length - 1 : 0);
-      })
-      .catch(() => {
-        if (!cancelled) setError("Couldn't load this page's op log.");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [pageId, restoring]); // re-fetch after a restore completes, so the scrubber reflects the new tip
+    if (!actorId) return;
+    listPages(actorId).then((r) => setPages(r.pages)).catch(() => {});
+  }, [actorId]);
 
-  const actorOrder = useMemo(() => {
-    const seen: string[] = [];
-    for (const s of steps ?? []) if (!seen.includes(s.op.actor_id)) seen.push(s.op.actor_id);
-    return seen;
+  const load = useCallback(() => {
+    if (!id) return;
+    getTrace(id)
+      .then((r) => { setSteps(r.steps); setAt(Math.max(r.steps.length - 1, 0)); setErr(null); })
+      .catch((e) => setErr(String(e.message ?? e)));
+  }, [id]);
+
+  useEffect(load, [load]);
+
+  // The palimpsest is per BLOCK, not per page — a tombstoned array belongs to
+  // one block's text. Defaults to the first block that has any.
+  useEffect(() => {
+    const head = steps[steps.length - 1]?.after;
+    if (!head) return;
+    const first = head.blocks.find((b) => b.text.length > 0) ?? head.blocks[0];
+    if (first && !blockId) setBlockId(first.id);
+  }, [steps, blockId]);
+
+  useEffect(() => {
+    if (!id || !blockId) { setChars(null); return; }
+    getPalimpsest(id, blockId).then((r) => setChars(r.chars)).catch(() => setChars(null));
+  }, [id, blockId]);
+
+  /** Op counts per actor — the rail, and the scrubber's tick colours. */
+  const actors = useMemo(() => {
+    const m = new Map<string, number>();
+    steps.forEach((s) => m.set(s.op.actor_id, (m.get(s.op.actor_id) ?? 0) + 1));
+    return [...m].sort((a, b) => b[1] - a[1]);
   }, [steps]);
 
-  const current = steps?.[scrub] ?? null;
-  const isTip = !!steps && scrub === steps.length - 1;
+  const shownSteps = useMemo(
+    () => (actorFilter ? steps.filter((s) => s.op.actor_id === actorFilter) : steps),
+    [steps, actorFilter],
+  );
 
-  // The same "pop this actor's own most recent undo_group" rule
-  // Session.Undo itself applies (RFC-002 §3), computed here only to
-  // preview which op(s) a click would revert — the actual undo still
-  // goes through collab.undo(), authoritative server-side.
-  const willUndoIds = useMemo(() => {
-    if (!steps) return new Set<string>();
-    for (let i = steps.length - 1; i >= 0; i--) {
-      if (steps[i].op.actor_id !== actorId) continue;
-      const group = steps[i].op.undo_group;
-      if (!group) return new Set([steps[i].op.id]);
-      return new Set(steps.filter((s) => s.op.undo_group === group).map((s) => s.op.id));
-    }
-    return new Set<string>();
-  }, [steps, actorId]);
+  const stored = chars?.length ?? 0;
+  const live = chars?.filter((c) => c.delete_step === undefined).length ?? 0;
+  const tombstoned = stored - live;
+  const head = steps[steps.length - 1]?.after ?? null;
 
-  useEffect(() => {
-    setPalChars(null);
-    if (!current || !palBlockId) return;
-    if (!current.after.blocks.some((b) => b.id === palBlockId)) return;
-    if (!pageId) return;
-    let cancelled = false;
-    getPalimpsest(pageId, palBlockId).then((r) => {
-      if (!cancelled) setPalChars(r.chars);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [pageId, palBlockId, current]);
-
-  async function handleRestore() {
-    if (!steps || scrub >= steps.length - 1) return;
-    setRestoring(true);
-    collab.restoreTo(scrub);
-    setTimeout(() => setRestoring(false), 500);
-  }
-
-  if (error) {
-    return <div className="app"><div className="note" style={{ margin: 24, maxWidth: "none" }}>{error}</div></div>;
-  }
-
-  const palBlock = current?.after.blocks.find((b) => b.id === palBlockId);
-
-  return (
-    <div className="app">
-      <header className="topbar">
-        <Link to="/pages" className="brand" style={{ textDecoration: "none" }}>
-          <span className="mark"></span>Marginal
-        </Link>
-        <nav className="nav">
-          {pageId && <Link to={`/pages/${pageId}`}>Editor</Link>}
-          <Link to={`/pages/${pageId}/history`} aria-current="page">History</Link>
-          <Link to={`/pages/${pageId}/trace`}>Op trace</Link>
-          {pageId && <Link to={`/pages/${pageId}/diff`}>Compare</Link>}
-        </nav>
-        <div className="crumb">Product · <b>{current?.after.title || "Untitled"}</b></div>
-        <div className="spacer"></div>
-        <button className="btn" onClick={() => collab.undo()} title="Reverts your own most recent gesture — never a peer's">
-          Undo my last edit
-        </button>
-        <button
-          className="btn primary"
-          disabled={!steps || isTip || restoring}
-          onClick={handleRestore}
-          title="Sends a real 'restore' message — repeated undo, applied live"
-        >
-          {restoring ? "Restoring…" : "Restore this version"}
-        </button>
-        <button className="btn" onClick={logout}>Sign out</button>
-      </header>
-
-      {!steps ? (
-        <div className="muted" style={{ padding: 24 }}>Loading…</div>
-      ) : steps.length === 0 ? (
-        <div className="note" style={{ margin: 24, maxWidth: "none" }}>This page has no confirmed ops yet.</div>
-      ) : (
-        <>
-          <div className="scrub">
-            <div className="scrub-head">
-              <span className="scrub-when">{new Date(current!.op.created_at).toLocaleString()}</span>
-              <span className="pill violet">op {scrub + 1} of {steps.length}</span>
-              <span className="muted">{isTip ? "current" : "historical — read only"}</span>
-              <span className="spacer"></span>
-            </div>
-            <div className="track">
-              <div className="ticks">
-                {steps.map((s, i) => (
-                  <div
-                    key={s.op.id}
-                    className="tick"
-                    style={{ left: `${(i / Math.max(1, steps.length - 1)) * 100}%`, background: colorFor(s.op.actor_id, actorOrder) }}
-                  />
-                ))}
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={steps.length - 1}
-                value={scrub}
-                onChange={(e) => setScrub(Number(e.target.value))}
-                aria-label="Scrub through revisions"
-              />
-            </div>
-            <div className="legend">
-              {actorOrder.map((a) => (
-                <span key={a}>
-                  <i style={{ background: colorFor(a, actorOrder) }}></i>
-                  {a === actorId ? "You" : a.slice(0, 8)}
-                </span>
+  if (!id) {
+    return (
+      <Screen>
+        <TopBar crumb={<>history</>} />
+        <Body>
+          <div className="rail">
+            <div className="rail-h">PICK A PAGE<div /></div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 1, padding: "0 8px", overflowY: "auto" }}>
+              {pages.map((p) => (
+                <div key={p.id} className="tr" style={{ cursor: "pointer" }}
+                     onClick={() => navigate(`/pages/${p.id}/history`)}>
+                  <span className="tr-t">{p.title}</span>
+                </div>
               ))}
             </div>
           </div>
-
-          <div className="body-row">
-            <main className="canvas">
-              <article className="doc standard">
-                <h1>{current?.after.title || "Untitled"}</h1>
-                <div className="dek">As of op {scrub + 1}</div>
-                {current?.after.blocks.map((b) => (
-                  <p
-                    key={b.id}
-                    onClick={() => setPalBlockId(b.id)}
-                    style={{ cursor: "pointer", background: palBlockId === b.id ? "var(--hover)" : undefined, borderRadius: 4 }}
-                    title="Click to inspect this block's palimpsest"
-                  >
-                    {b.text || <span className="muted">(empty)</span>}
-                  </p>
-                ))}
-
-                {palBlockId && (
-                  <div className="pal-wrap">
-                    <div className="pal-head">
-                      <span className="label">Palimpsest{palBlock ? ` — ${(palBlock.text || "").slice(0, 24) || "empty block"}` : ""}</span>
-                      <span className="pill violet">v{scrub}</span>
-                      <span className="spacer"></span>
-                      <button className="pal-toggle" aria-pressed={palReveal} onClick={() => setPalReveal((v) => !v)}>
-                        Palimpsest
-                      </button>
-                    </div>
-                    {!palChars ? (
-                      <div className="muted">Loading…</div>
-                    ) : (
-                      <>
-                        <div className="pal-text">
-                          {palChars
-                            .filter((c) => palReveal || c.delete_step == null)
-                            .map((c, i) => {
-                              const isDead = c.delete_step != null;
-                              const age = isDead ? scrub - c.delete_step! : 0;
-                              const opacity = isDead ? Math.max(0.25, 1 - age / Math.max(1, steps.length)) : 1;
-                              return isDead ? (
-                                <span
-                                  key={i}
-                                  className="ghost"
-                                  style={{ color: colorFor(c.delete_actor ?? "", actorOrder), opacity }}
-                                  title={`deleted at step ${c.delete_step}`}
-                                >
-                                  {String.fromCodePoint(c.rune)}
-                                </span>
-                              ) : (
-                                <span key={i} title={`inserted at step ${c.insert_step}`}>{String.fromCodePoint(c.rune)}</span>
-                              );
-                            })}
-                        </div>
-                        <div className="pal-meta">
-                          <span>chars stored <b>{palChars.length}</b></span>
-                          <span>live <b>{palChars.filter((c) => c.delete_step == null).length}</b></span>
-                          <span>tombstoned <b>{palChars.filter((c) => c.delete_step != null).length}</b></span>
-                          <span>versions addressable <b>{steps.length}</b></span>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                )}
-              </article>
-
-              <div className="note" style={{ maxWidth: "none" }}>
-                <b>Really real.</b> The scrubber walks an actual replay of this page's confirmed op log
-                (<code>internal/session.Trace</code>), "Restore this version" sends a real{" "}
-                <code>restore</code> message (repeated undo, never a snapshot swap), and the palimpsest
-                panel above reads one block's real tombstoned character array — a delete sets a version
-                stamp, it never removes.
-              </div>
-            </main>
-
-            <aside className="rail right">
-              <div className="rail-head">
-                <span className="label">Op stream</span>
-                <span className="spacer"></span>
-                <span className="muted mono">{steps.length}</span>
-              </div>
-              <div className="panel-body">
-                <div className="filters" role="group" aria-label="Filter by actor">
-                  <button aria-pressed={actorFilter === "all"} onClick={() => setActorFilter("all")}>All</button>
-                  {actorOrder.map((a) => (
-                    <button key={a} aria-pressed={actorFilter === a} onClick={() => setActorFilter(a)}>
-                      {a === actorId ? "You" : a.slice(0, 8)}
-                    </button>
-                  ))}
-                </div>
-
-                <div>
-                  {steps.map((s, i) => {
-                    const { kind, detail } = describeOp(s.op.op);
-                    const dim = actorFilter !== "all" && s.op.actor_id !== actorFilter;
-                    const willUndo = willUndoIds.has(s.op.id);
-                    return (
-                      <div
-                        key={s.op.id}
-                        className={`op ${willUndo ? "will-undo" : ""} ${dim ? "dim" : ""}`.trim()}
-                        onClick={() => setScrub(i)}
-                        title={willUndo ? "Undo my last edit would revert this" : undefined}
-                      >
-                        <span className="who" style={{ background: colorFor(s.op.actor_id, actorOrder) }}></span>
-                        <span><span className="kind">{kind}</span> {detail}</span>
-                        <span className="at">{new Date(s.op.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <div className="panel-section">
-                  <div className="panel-h">Undo scope</div>
-                  <div className="note" style={{ margin: 0, maxWidth: "none" }}>
-                    Undo inverts <b>your</b> last op, not the document's — every other actor's
-                    interleaved edits stay untouched, because every op carries its own inverse.
-                  </div>
-                </div>
-              </div>
-            </aside>
+          <div style={{ flex: 1, display: "grid", placeItems: "center", padding: 40 }}>
+            <div style={{ maxWidth: 520, fontSize: 12.5, lineHeight: 1.7, color: "#585550" }}>
+              History is per page, because an op log is. Every revision is a filter over one
+              stored array rather than a snapshot, so scrubbing costs nothing to keep.
+            </div>
           </div>
-        </>
-      )}
-    </div>
+        </Body>
+        <StatusBar route="/history" mechanism="op-log replay" state="no page selected" healthy />
+      </Screen>
+    );
+  }
+
+  return (
+    <Screen>
+      <TopBar
+        crumb={<>page / <b>{head?.title ?? "…"}</b></>}
+        readouts={
+          <>
+            <Readout k="STORED" v={`${num(stored)} chars`} />
+            <Readout k="LIVE AT HEAD" v={num(live)} tone="#3FCFA8" />
+            <Readout k="COPIES" v="0" />
+          </>
+        }
+      />
+
+      <Body>
+        <div className="rail" style={{ width: 250 }}>
+          <div className="rail-h">ACTORS<div /><span style={{ color: "#585550" }}>{actors.length}</span></div>
+          <div style={{ display: "flex", flexDirection: "column", padding: "0 8px", gap: 1 }}>
+            <div
+              className={`tr${actorFilter === null ? " tr-on" : ""}`}
+              style={{ cursor: "pointer" }}
+              onClick={() => setActorFilter(null)}
+            >
+              {actorFilter === null && <i />}
+              <div style={{ width: 6, height: 6, background: "#E8873C", flex: "none" }} />
+              <span className="tr-t">All actors</span>
+              <span className="tr-n">{num(steps.length)}</span>
+            </div>
+            {actors.map(([a, n]) => (
+              <div
+                key={a}
+                className={`tr${actorFilter === a ? " tr-on" : ""}`}
+                style={{ cursor: "pointer" }}
+                onClick={() => setActorFilter(a)}
+                title={a}
+              >
+                {actorFilter === a && <i />}
+                <div style={{ width: 6, height: 6, background: actorHue(a, actorId), flex: "none" }} />
+                <span className="tr-t">{a === actorId ? "You" : a.slice(0, 8)}</span>
+                <span className="tr-n">{num(n)}</span>
+              </div>
+            ))}
+          </div>
+          <div className="wal">
+            <Label>PER-ACTOR UNDO</Label>
+            <div className="mono" style={{ fontSize: 10.5, lineHeight: 1.8, color: "#8C8880" }}>
+              yours&nbsp;&nbsp;&nbsp;&nbsp;{num(actors.find(([a]) => a === actorId)?.[1] ?? 0)} ops<br />
+              others&nbsp;&nbsp;&nbsp;not yours to pop
+            </div>
+          </div>
+        </div>
+
+        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          <div style={{ padding: "24px 34px 18px", borderBottom: "1px solid rgba(255,255,255,.07)" }}>
+            <Label style={{ display: "block", marginBottom: 12 }}>
+              SCRUBBER · TICKS COLOURED BY ACTOR
+            </Label>
+            <div
+              style={{ position: "relative", height: 34, cursor: steps.length ? "pointer" : "default" }}
+              onClick={(e) => {
+                if (!steps.length) return;
+                const r = e.currentTarget.getBoundingClientRect();
+                const pct = (e.clientX - r.left) / r.width;
+                setAt(Math.max(0, Math.min(steps.length - 1, Math.round(pct * (steps.length - 1)))));
+              }}
+            >
+              <div style={{ position: "absolute", left: 0, right: 0, top: 16, height: 2, background: "rgba(255,255,255,.09)" }} />
+              <div style={{
+                position: "absolute", left: 0, top: 16, height: 2, background: "#E8873C",
+                width: steps.length > 1 ? `${(at / (steps.length - 1)) * 100}%` : "0%",
+              }} />
+              {steps.map((s, i) => {
+                const pct = steps.length > 1 ? (i / (steps.length - 1)) * 100 : 0;
+                const current = i === at;
+                const dimmed = actorFilter !== null && s.op.actor_id !== actorFilter;
+                return (
+                  <div
+                    key={s.op.id}
+                    title={`rev ${i + 1}`}
+                    style={{
+                      position: "absolute", left: `${pct}%`,
+                      top: current ? 4 : 8,
+                      width: current ? 3 : 2,
+                      height: current ? 26 : 18,
+                      background: current
+                        ? "#E8873C"
+                        : dimmed
+                          ? "rgba(255,255,255,.12)"
+                          : actorHue(s.op.actor_id, actorId),
+                    }}
+                  />
+                );
+              })}
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span className="mono" style={{ fontSize: 9.5, color: "#4B4842" }}>rev 1</span>
+              <span className="mono" style={{ fontSize: 9.5, color: "#E8873C" }}>
+                rev {num(steps.length ? at + 1 : 0)} · viewing
+              </span>
+              <span className="mono" style={{ fontSize: 9.5, color: "#4B4842" }}>
+                rev {num(steps.length)} head
+              </span>
+            </div>
+          </div>
+
+          <div style={{ padding: "26px 34px", flex: 1, minHeight: 0, overflowY: "auto" }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 16 }}>
+              <Label>PALIMPSEST — TOMBSTONES THE LIVE TEXT IS READ FROM</Label>
+            </div>
+
+            {chars === null && (
+              <div style={{ fontSize: 12.5, color: "#585550", lineHeight: 1.7 }}>
+                {err ? `◌ ${err}` : "Select a block to read its character history."}
+              </div>
+            )}
+
+            {chars !== null && chars.length === 0 && (
+              <div style={{ fontSize: 12.5, color: "#585550", lineHeight: 1.7, maxWidth: 560 }}>
+                No character history. This block arrived with its text already in the
+                <span className="mono" style={{ color: "#8C8880" }}> InsertBlock </span>
+                op — pasted or seeded — so there is nothing to tombstone. Type into it and
+                every keystroke becomes an insertion this array remembers.
+              </div>
+            )}
+
+            {chars !== null && chars.length > 0 && (
+              <div style={{ fontFamily: "Spectral,serif", fontSize: 18, lineHeight: 1.9, color: "#D2CFC8" }}>
+                {chars.map((c, i) => {
+                  const gone = c.delete_step !== undefined;
+                  // A character inserted after the scrub point has not been
+                  // typed yet at this revision, so it is not shown at all —
+                  // that is the `ins <= v` half of the filter.
+                  if (c.insert_step > at) return null;
+                  const deletedByNow = gone && (c.delete_step as number) <= at;
+                  return (
+                    <span
+                      key={i}
+                      style={
+                        deletedByNow
+                          ? { color: "#585550", textDecoration: "line-through", textDecorationColor: "rgba(224,163,78,.5)" }
+                          : gone
+                            ? { background: "rgba(232,135,60,.12)" }
+                            : undefined
+                      }
+                      title={deletedByNow ? `deleted at rev ${(c.delete_step as number) + 1}` : undefined}
+                    >
+                      {String.fromCodePoint(c.rune)}
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+
+            <div style={{ marginTop: 24, display: "flex", gap: 28 }}>
+              <Readout k="STORED" v={<span style={{ fontSize: 15 }}>{num(stored)}</span>} />
+              <Readout k="LIVE" v={<span style={{ fontSize: 15 }}>{num(live)}</span>} />
+              <Readout k="TOMBSTONED" v={<span style={{ fontSize: 15 }}>{num(tombstoned)}</span>}
+                       tone={tombstoned > 0 ? "#E0A34E" : undefined} />
+              <Readout k="FILTER AT REV" v={<span style={{ fontSize: 15 }}>ins ≤ v &lt; del</span>} />
+            </div>
+          </div>
+        </div>
+
+        <Inspector
+          tabs={[{ id: "ops", label: "OP STREAM" }, { id: "blocks", label: "BLOCKS" }]}
+          active="ops"
+        >
+          <Label>
+            {actorFilter ? "OPS BY THIS ACTOR" : "ALL OPS"} · {num(shownSteps.length)}
+          </Label>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {shownSteps.slice(-14).map((s) => {
+              const i = steps.indexOf(s);
+              return (
+                <div
+                  key={s.op.id}
+                  onClick={() => setAt(i)}
+                  style={{ display: "flex", gap: 8, alignItems: "baseline", cursor: "pointer" }}
+                >
+                  <span style={{ width: 5, height: 5, flex: "none", background: actorHue(s.op.actor_id, actorId) }} />
+                  <span className="mono" style={{ fontSize: 10, color: i === at ? "#E4E2DC" : "#8C8880" }}>
+                    rev {i + 1}
+                  </span>
+                  <span className="mono" style={{ marginLeft: "auto", fontSize: 9.5, color: "#585550" }}>
+                    {new Date(s.op.created_at).toLocaleTimeString("en-GB")}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+
+          <Rule />
+          <Label>BLOCK</Label>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {(head?.blocks ?? []).map((b) => (
+              <div
+                key={b.id}
+                onClick={() => setBlockId(b.id)}
+                style={{
+                  fontSize: 11.5, cursor: "pointer",
+                  color: b.id === blockId ? "#E4E2DC" : "#8C8880",
+                  whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                }}
+              >
+                {b.text.slice(0, 44) || `(empty ${b.kind.tag})`}
+              </div>
+            ))}
+          </div>
+
+          <Rule />
+          <div style={{ fontSize: 11, lineHeight: 1.6, color: "#585550" }}>
+            A delete writes a version stamp and never removes, so every revision is the filter
+            <span className="mono" style={{ color: "#8C8880" }}> ins ≤ v &lt; del </span>
+            over one array. That is why COPIES reads 0 — scrubbing costs nothing to keep because
+            nothing is kept.
+          </div>
+        </Inspector>
+      </Body>
+
+      <StatusBar
+        route={`/pages/${id}/history`}
+        mechanism="one tombstoned array · every revision is a filter"
+        state={
+          err ? "op log unavailable"
+            : steps.length === 0 ? "no ops on this page"
+            : `${num(steps.length)} revisions · ${num(tombstoned)} tombstoned`
+        }
+        healthy={!err}
+      />
+    </Screen>
   );
 }
+
+export default HistoryScreen;

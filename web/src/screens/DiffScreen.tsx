@@ -1,293 +1,312 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { useAuth } from "../auth/AuthContext";
-import { getTrace, getDiff, type TraceStep, type Move } from "../api/history";
-import { diffTokens, tokenizeChars, tokenizeWords, type DiffResult } from "../diff-core/wasm";
-
-type Granularity = "char" | "word";
-type View = "text" | "matrix" | "ops";
-
 /**
- * docs/ui-mockups/v2/index.html § 15 DIFF, made real (v2.4.0): before/after are two
- * real revisions (GET .../diff, backed by internal/session.Trace),
- * block moves/adds/removes are real (a MoveBlock filter over the
- * confirmed log, plus a plain before/after set difference — no
- * heuristic), and the LCS diff itself — the DP table, its traceback, and
- * the traceback PATH the matrix view outlines — all run in real Go
- * compiled to wasm (services/textdiff via document-service/cmd/diffwasm),
- * recomputed live when the granularity toggle changes. Nothing here
- * re-derives the algorithm in TypeScript (ADR-012); this file tokenizes
- * text and renders what Go already computed.
+ * docs/ui-mockups/v2/index.html § 15 DIFF, ported.
+ *
+ * The rendered matrix IS the computed table. Both come from
+ * marginal/textdiff in Go (compiled to wasm): the LCS table, its traceback,
+ * and the edit script are one call, and the ember path is exactly the cells
+ * Go visited — never re-derived here.
+ *
+ * The screen's own argument, kept: it shows the O(n·m) table AND argues
+ * against using it. Exposing the cost is the point — a diff view that hides
+ * its quadratic table teaches nothing about why Myers exists.
  */
-export function DiffScreen() {
-  const { id: pageId } = useParams();
-  const { logout } = useAuth();
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { useAuth } from "../auth/AuthContext";
+import { getDiff, getTrace, type Move, type Snapshot } from "../api/history";
+import { listPages, type Page } from "../api/pages";
+import { diffTokens, tokenizeChars, tokenizeWords, type DiffResult } from "../diff-core/wasm";
+import {
+  Body, Inspector, Label, Readout, Rule, Screen, StatusBar, TopBar, num,
+} from "../shell/Chrome";
 
-  const [steps, setSteps] = useState<TraceStep[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+type Granularity = "word" | "char";
+
+export function DiffScreen() {
+  const { id } = useParams();
+  const { session } = useAuth();
+  const actorId = session?.actorId ?? null;
+  const navigate = useNavigate();
+
+  const [pages, setPages] = useState<Page[]>([]);
+  const [total, setTotal] = useState(0);
   const [from, setFrom] = useState(0);
   const [to, setTo] = useState(0);
-  const [blockId, setBlockId] = useState<string | null>(null);
-  const [granularity, setGranularity] = useState<Granularity>("word");
-  const [view, setView] = useState<View>("text");
+  const [before, setBefore] = useState<Snapshot | null>(null);
+  const [after, setAfter] = useState<Snapshot | null>(null);
   const [moves, setMoves] = useState<Move[]>([]);
-  const [diff, setDiff] = useState<DiffResult | null>(null);
+  const [gran, setGran] = useState<Granularity>("word");
+  const [result, setResult] = useState<DiffResult | null>(null);
+  const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!pageId) return;
-    getTrace(pageId)
+    if (!actorId) return;
+    listPages(actorId).then((r) => setPages(r.pages)).catch(() => {});
+  }, [actorId]);
+
+  // Revision bounds come from the op log's own length.
+  useEffect(() => {
+    if (!id) return;
+    getTrace(id)
       .then((r) => {
-        setSteps(r.steps);
-        if (r.steps.length > 1) {
-          setFrom(0);
-          setTo(r.steps.length - 1);
-        }
+        // from/to are step INDICES into the trace, so the last valid one is
+        // length-1. Passing the count reads as "one past the end" and the
+        // endpoint rejects it — which it should.
+        const last = Math.max(r.steps.length - 1, 0);
+        setTotal(r.steps.length);
+        setFrom(Math.max(0, last - 6));
+        setTo(last);
       })
-      .catch(() => setError("Couldn't load this page's op log."));
-  }, [pageId]);
+      .catch((e) => setErr(String(e.message ?? e)));
+  }, [id]);
+
+  const load = useCallback(() => {
+    if (!id || to === 0) return;
+    getDiff(id, from, to)
+      .then((r) => { setBefore(r.before); setAfter(r.after); setMoves(r.moves); setErr(null); })
+      .catch((e) => setErr(String(e.message ?? e)));
+  }, [id, from, to]);
+
+  useEffect(load, [load]);
+
+  /** Flatten each side to one string — the diff is over prose, not structure;
+   *  structural change is what `moves` reports separately. */
+  const beforeText = useMemo(() => (before?.blocks ?? []).map((b) => b.text).join(" "), [before]);
+  const afterText = useMemo(() => (after?.blocks ?? []).map((b) => b.text).join(" "), [after]);
 
   useEffect(() => {
-    if (!pageId || !steps || from > to) return;
+    if (!beforeText && !afterText) { setResult(null); return; }
+    const tok = gran === "word" ? tokenizeWords : tokenizeChars;
+    // Tokenising is the only non-Go step here, and only because splitting a
+    // string is not diffing it. The table, traceback and script are all Go.
     let cancelled = false;
-    getDiff(pageId, from, to).then((r) => {
-      if (cancelled) return;
-      setMoves(r.moves);
-      if (!blockId) {
-        const firstShared = r.after.blocks.find((b) => r.before.blocks.some((bb) => bb.id === b.id)) ?? r.after.blocks[0];
-        if (firstShared) setBlockId(firstShared.id);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pageId, from, to, steps]);
+    diffTokens(tok(beforeText), tok(afterText))
+      .then((r) => { if (!cancelled) setResult(r); })
+      .catch(() => setResult(null));
+    return () => { cancelled = true; };
+  }, [beforeText, afterText, gran]);
 
-  const beforeStep = steps?.[from];
-  const afterStep = steps?.[to];
-  const beforeText = beforeStep?.after.blocks.find((b) => b.id === blockId)?.text ?? "";
-  const afterText = afterStep?.after.blocks.find((b) => b.id === blockId)?.text ?? "";
+  const onPath = useMemo(() => {
+    const s = new Set<string>();
+    (result?.path ?? []).forEach((c) => s.add(`${c.i},${c.j}`));
+    return s;
+  }, [result]);
 
-  useEffect(() => {
-    const tokenize = granularity === "word" ? tokenizeWords : tokenizeChars;
-    diffTokens(tokenize(beforeText), tokenize(afterText))
-      .then(setDiff)
-      .catch(() => setDiff(null));
-  }, [beforeText, afterText, granularity]);
+  const rows = result?.table.length ?? 0;
+  const cols = result?.table[0]?.length ?? 0;
+  // A full quadratic table is unreadable past a certain size and pointless to
+  // paint — the claim is that the matrix IS the computation, not that every
+  // cell must be on screen.
+  const CAP = 26;
+  const showTable = rows > 0 && rows <= CAP && cols <= CAP;
 
-  const blockRows = useMemo(() => {
-    if (!beforeStep || !afterStep) return [];
-    const movedIds = new Set(moves.map((m) => m.block_id));
-    const beforeIds = new Set(beforeStep.after.blocks.map((b) => b.id));
-    const afterIds = new Set(afterStep.after.blocks.map((b) => b.id));
-    const rows: { id: string; text: string; kind: "unchanged" | "moved" | "added" | "removed"; op: string }[] = [];
-    for (const b of afterStep.after.blocks) {
-      if (!beforeIds.has(b.id)) {
-        rows.push({ id: b.id, text: b.text, kind: "added", op: "InsertBlock" });
-      } else if (movedIds.has(b.id)) {
-        rows.push({ id: b.id, text: b.text, kind: "moved", op: "MoveBlock" });
-      } else {
-        rows.push({ id: b.id, text: b.text, kind: "unchanged", op: "unchanged" });
-      }
-    }
-    for (const b of beforeStep.after.blocks) {
-      if (!afterIds.has(b.id)) rows.push({ id: b.id, text: b.text, kind: "removed", op: "DeleteBlock" });
-    }
-    return rows;
-  }, [beforeStep, afterStep, moves]);
-
-  const insertions = diff?.ops.filter((op) => op.kind === "insert").length ?? 0;
-  const deletions = diff?.ops.filter((op) => op.kind === "delete").length ?? 0;
-  const lcsLength = diff ? diff.table[diff.table.length - 1][diff.table[0].length - 1] : 0;
-  const onPath = useMemo(() => new Set(diff?.path.map((c) => `${c.i},${c.j}`) ?? []), [diff]);
-  const aTokens = useMemo(() => (granularity === "word" ? tokenizeWords(beforeText) : tokenizeChars(beforeText)), [beforeText, granularity]);
-  const bTokens = useMemo(() => (granularity === "word" ? tokenizeWords(afterText) : tokenizeChars(afterText)), [afterText, granularity]);
-
-  if (error) return <div className="app"><div className="note" style={{ margin: 24, maxWidth: "none" }}>{error}</div></div>;
-  if (!steps) return <div className="app"><div className="muted" style={{ padding: 24 }}>Loading…</div></div>;
-
-  const blocksInScope = steps[to]?.after.blocks ?? [];
-
-  return (
-    <div className="app">
-      <header className="topbar">
-        <Link to="/pages" className="brand" style={{ textDecoration: "none" }}>
-          <span className="mark"></span>Marginal
-        </Link>
-        <nav className="nav">
-          {pageId && <Link to={`/pages/${pageId}`}>Editor</Link>}
-          {pageId && <Link to={`/pages/${pageId}/history`}>History</Link>}
-          {pageId && <Link to={`/pages/${pageId}/trace`}>Op trace</Link>}
-          <Link to={`/pages/${pageId}/diff`} aria-current="page">Diff</Link>
-        </nav>
-        <div className="crumb">Product · <b>{afterStep?.after.title || "Untitled"}</b></div>
-        <div className="spacer"></div>
-        {pageId && <Link className="btn" to={`/pages/${pageId}/history`}>Back to scrubber</Link>}
-        <button className="btn" onClick={logout}>Sign out</button>
-      </header>
-
-      <div className="diffbar">
-        <span className="label">Granularity</span>
-        <div className="seg2">
-          <button aria-pressed={granularity === "char"} onClick={() => setGranularity("char")}>Character</button>
-          <button aria-pressed={granularity === "word"} onClick={() => setGranularity("word")}>Word</button>
-        </div>
-        <span style={{ width: 10 }}></span>
-        <span className="label">Show</span>
-        <div className="seg2">
-          <button aria-pressed={view === "text"} onClick={() => setView("text")}>Text</button>
-          <button aria-pressed={view === "matrix"} onClick={() => setView("matrix")}>DP table</button>
-          <button aria-pressed={view === "ops"} onClick={() => setView("ops")}>Operations</button>
-        </div>
-        <span style={{ width: 10 }}></span>
-        <select value={blockId ?? ""} onChange={(e) => setBlockId(e.target.value)}>
-          {blocksInScope.map((b) => (
-            <option key={b.id} value={b.id}>{(b.text || "(empty block)").slice(0, 40)}</option>
-          ))}
-        </select>
-        <label className="muted" style={{ fontSize: 12, marginLeft: 8 }}>
-          From <input type="range" min={0} max={steps.length - 1} value={from} onChange={(e) => setFrom(Math.min(Number(e.target.value), to))} /> op {from}
-        </label>
-        <label className="muted" style={{ fontSize: 12 }}>
-          To <input type="range" min={0} max={steps.length - 1} value={to} onChange={(e) => setTo(Math.max(Number(e.target.value), from))} /> op {to}
-        </label>
-        <span className="spacer"></span>
-        <span className="muted mono">{insertions} ins · {deletions} del</span>
-      </div>
-
-      <div className="body-row">
-        <main className="canvas">
-          {view === "text" && (
-            <>
-              <div className="cols">
-                <div className="col">
-                  <div className="col-h"><span className="t">op {from}</span><span className="pill">{new Date(beforeStep!.op.created_at).toLocaleString()}</span></div>
-                  <div className="prose-d">
-                    {diff?.ops.filter((op) => op.kind !== "insert").map((op, i) => (
-                      <span key={i} className={op.kind === "delete" ? "del" : undefined}>
-                        {op.token}{granularity === "word" ? " " : ""}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-                <div className="col">
-                  <div className="col-h"><span className="t">op {to}</span><span className="pill teal">{to === steps.length - 1 ? "current" : new Date(afterStep!.op.created_at).toLocaleString()}</span></div>
-                  <div className="prose-d">
-                    {diff?.ops.filter((op) => op.kind !== "delete").map((op, i) => (
-                      <span key={i} className={op.kind === "insert" ? "ins" : undefined}>
-                        {op.token}{granularity === "word" ? " " : ""}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ padding: "0 24px 26px" }}>
-                <div className="panel-h" style={{ marginTop: 22 }}>Block structure</div>
-                <div className="blocks">
-                  {blockRows.map((r) => (
-                    <div key={r.id} className={`bl ${r.kind !== "unchanged" ? r.kind : ""}`.trim()}>
-                      {r.kind === "moved" && <span className="arrow">↕</span>}
-                      <span>{r.text || "(empty block)"}</span>
-                      <span className="op">{r.op}</span>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="note" style={{ maxWidth: "none" }}>
-                  <b>A moved block reads as MOVED, not delete + insert.</b> <code>MoveBlock</code>{" "}
-                  carries <code>from</code> as well as <code>to</code>, so the log already knows —
-                  this is a filter over the confirmed op log (<code>GET /collab/pages/id/diff</code>),
-                  never a heuristic guessing that two blocks are "the same."
-                </div>
-              </div>
-            </>
-          )}
-
-          {view === "matrix" && diff && (
-            <div style={{ padding: "22px 24px 30px" }}>
-              <div className="panel-h">LCS table — every cell computed by real Go, traceback path outlined</div>
-              <div className="matrix">
-                <table className="dp">
-                  <thead>
-                    <tr>
-                      <th></th>
-                      <th></th>
-                      {bTokens.map((tok, j) => <th key={j}>{tok}</th>)}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {diff.table.map((row, i) => (
-                      <tr key={i}>
-                        <th>{i === 0 ? "" : aTokens[i - 1]}</th>
-                        {row.map((cell, j) => {
-                          const isMatch = i > 0 && j > 0 && aTokens[i - 1] === bTokens[j - 1];
-                          const isOn = onPath.has(`${i},${j}`);
-                          return (
-                            <td key={j} className={`${isOn ? "on" : ""} ${isMatch ? "match" : ""}`.trim()}>
-                              {cell}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div className="note" style={{ maxWidth: "none" }}>
-                <b>This is the algorithm, not a picture of it.</b> Every cell above is{" "}
-                <code>services/textdiff.LCSTable</code>'s own real output; the outlined path is{" "}
-                <code>TracebackWithPath</code>'s own real traceback, not re-derived here. It's also
-                the argument against using it at document scale: the table is <b>O(n·m)</b> cells —
-                fine for one block, ruinous for a whole document, which is why history should use
-                Myers' <b>O(nd)</b> instead.
-              </div>
-            </div>
-          )}
-
-          {view === "ops" && diff && (
-            <div style={{ padding: "22px 24px 30px" }}>
-              <div className="panel-h">The edit script, as operations</div>
-              <div className="blocks">
-                {diff.ops.map((op, i) => (
-                  <div key={i} className={`bl ${op.kind === "insert" ? "added" : op.kind === "delete" ? "removed" : ""}`.trim()}>
-                    <span>{op.token}</span>
-                    <span className="op">{op.kind}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="note" style={{ maxWidth: "none" }}>
-                Derived from the real traceback above. In the real system these are read from the op
-                log rather than inferred — this view exists so a human can read a range of ops, not
-                so the system has to work out what changed.
-              </div>
-            </div>
-          )}
-        </main>
-
-        <aside className="rail right">
-          <div className="rail-head"><span className="label">This diff</span></div>
-          <div className="panel-body">
-            <div className="metric"><span className="k">Tokens compared</span><span className="v">{aTokens.length + bTokens.length}</span></div>
-            <div className="metric"><span className="k">Common subsequence</span><span className="v">{lcsLength}</span></div>
-            <div className="metric"><span className="k">Insertions</span><span className="v" style={{ color: "var(--teal)" }}>{insertions}</span></div>
-            <div className="metric"><span className="k">Deletions</span><span className="v" style={{ color: "var(--amber)" }}>{deletions}</span></div>
-            <div className="metric"><span className="k">DP cells filled</span><span className="v">{(aTokens.length + 1) * (bTokens.length + 1)}</span></div>
-
-            <div className="panel-section">
-              <div className="panel-h">Block moves</div>
-              {moves.length === 0 && <div className="muted" style={{ padding: "8px 0", fontSize: 12.5 }}>No blocks moved between op {from} and op {to}.</div>}
-              {moves.map((m, i) => (
-                <div className="row" key={i}>
-                  <span className="lead">↕</span>
-                  block {m.block_id.slice(0, 8)}
-                  <span className="muted" style={{ marginLeft: "auto", fontSize: 11 }}>step {m.step}</span>
+  if (!id) {
+    return (
+      <Screen>
+        <TopBar crumb={<>lab / <b>diff</b></>} />
+        <Body>
+          <div className="rail">
+            <div className="rail-h">PICK A PAGE<div /></div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 1, padding: "0 8px", overflowY: "auto" }}>
+              {pages.map((p) => (
+                <div key={p.id} className="tr" style={{ cursor: "pointer" }}
+                     onClick={() => navigate(`/pages/${p.id}/diff`)}>
+                  <span className="tr-t">{p.title}</span>
                 </div>
               ))}
             </div>
           </div>
-        </aside>
-      </div>
-    </div>
+          <div style={{ flex: 1, display: "grid", placeItems: "center", padding: 40 }}>
+            <div style={{ maxWidth: 520, fontSize: 12.5, lineHeight: 1.7, color: "#585550" }}>
+              A diff is between two revisions of one page, so it needs a page. Both sides are
+              replayed from the op log — neither is a stored snapshot.
+            </div>
+          </div>
+        </Body>
+        <StatusBar route="/lab/diff" mechanism="LCS in Go, via wasm" state="no page selected" healthy />
+      </Screen>
+    );
+  }
+
+  return (
+    <Screen>
+      <TopBar
+        crumb={<>lab / <b>diff</b> · rev {num(from)} → {num(to)}</>}
+        readouts={
+          <>
+            <Readout k="GRANULARITY" v={gran.toUpperCase()} />
+            <Readout k="TABLE" v={rows ? `${num(rows)} × ${num(cols)}` : "—"} />
+            <Readout k="COST" v="O(n·m)" tone="#E0A34E" />
+          </>
+        }
+        right={
+          <div style={{ display: "flex", gap: 6 }}>
+            <span className={`chip${gran === "word" ? " chip-e" : ""}`}
+                  style={{ cursor: "pointer" }} onClick={() => setGran("word")}>WORD</span>
+            <span className={`chip${gran === "char" ? " chip-e" : ""}`}
+                  style={{ cursor: "pointer" }} onClick={() => setGran("char")}>CHAR</span>
+          </div>
+        }
+      />
+
+      <Body>
+        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+            <div style={{ flex: 1, padding: "22px 26px", borderRight: "1px solid rgba(255,255,255,.07)", minWidth: 0, overflowY: "auto" }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 14 }}>
+                <Label>REV {num(from)}</Label>
+                <span className="mono" style={{ fontSize: 10, color: "#585550" }}>
+                  {before ? `${before.blocks.length} blocks` : "—"}
+                </span>
+              </div>
+              <div style={{ fontFamily: "Spectral,serif", fontSize: 15.5, lineHeight: 1.75, color: "#8C8880" }}>
+                {(result?.ops ?? []).filter((o) => o.kind !== "insert").map((o, i) => (
+                  <span
+                    key={i}
+                    style={o.kind === "delete"
+                      ? { background: "rgba(224,163,78,.14)", color: "#E0A34E", textDecoration: "line-through" }
+                      : undefined}
+                  >
+                    {o.token}{gran === "word" ? " " : ""}
+                  </span>
+                ))}
+                {!result && <span style={{ color: "#585550", fontSize: 12.5 }}>Nothing at this revision.</span>}
+              </div>
+            </div>
+
+            <div style={{ flex: 1, padding: "22px 26px", minWidth: 0, overflowY: "auto" }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 14 }}>
+                <Label>REV {num(to)}</Label>
+                <span className="mono" style={{ fontSize: 10, color: "#585550" }}>
+                  {after ? `${after.blocks.length} blocks` : "—"}
+                </span>
+              </div>
+              <div style={{ fontFamily: "Spectral,serif", fontSize: 15.5, lineHeight: 1.75, color: "#D2CFC8" }}>
+                {(result?.ops ?? []).filter((o) => o.kind !== "delete").map((o, i) => (
+                  <span
+                    key={i}
+                    style={o.kind === "insert"
+                      ? { background: "rgba(63,207,168,.14)", color: "#3FCFA8" }
+                      : undefined}
+                  >
+                    {o.token}{gran === "word" ? " " : ""}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ borderTop: "1px solid rgba(255,255,255,.07)", padding: "20px 26px", maxHeight: 340, overflowY: "auto" }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 14 }}>
+              <Label>LCS TABLE — THE RENDERED MATRIX IS THE COMPUTED TABLE</Label>
+              <span className="mono" style={{ fontSize: 10, color: "#585550" }}>traceback in ember</span>
+            </div>
+
+            {!showTable && rows > 0 && (
+              <div style={{ fontSize: 11.5, color: "#585550", lineHeight: 1.6, maxWidth: 620 }}>
+                {num(rows)} × {num(cols)} = {num(rows * cols)} cells. The table is computed in
+                full — that is the cost being demonstrated — but past {CAP} tokens a side it is
+                not legible, so it is not painted. Switch to a narrower revision range to see it.
+              </div>
+            )}
+
+            {showTable && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                {result!.table.map((row, i) => (
+                  <div key={i} style={{ display: "flex", gap: 2 }}>
+                    {row.map((v, j) => {
+                      const lit = onPath.has(`${i},${j}`);
+                      return (
+                        <div
+                          key={j}
+                          style={{
+                            width: 20, height: 16, flex: "none",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            font: "400 9px 'IBM Plex Mono',monospace",
+                            background: lit ? "rgba(232,135,60,.18)" : "rgba(255,255,255,.03)",
+                            color: lit ? "#E8873C" : v === 0 ? "#3A3833" : "#6E6A63",
+                          }}
+                        >
+                          {v}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <Inspector
+          tabs={[{ id: "script", label: "EDIT SCRIPT" }, { id: "moves", label: "MOVES" }]}
+          active="script"
+        >
+          <Label>REVISION RANGE</Label>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <input
+              type="range" min={0} max={Math.max(total - 1, 0)} value={from}
+              onChange={(e) => setFrom(Math.min(Number(e.target.value), to))}
+              style={{ flex: 1, accentColor: "#E8873C" }}
+            />
+            <span className="mono" style={{ fontSize: 10, color: "#8C8880", width: 28, textAlign: "right" }}>{from}</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <input
+              type="range" min={0} max={Math.max(total - 1, 0)} value={to}
+              onChange={(e) => setTo(Math.max(Number(e.target.value), from))}
+              style={{ flex: 1, accentColor: "#E8873C" }}
+            />
+            <span className="mono" style={{ fontSize: 10, color: "#8C8880", width: 28, textAlign: "right" }}>{to}</span>
+          </div>
+
+          <Rule />
+          <Label>EDIT SCRIPT</Label>
+          <div className="mono" style={{ fontSize: 10.5, lineHeight: 1.9, color: "#8C8880" }}>
+            equal&nbsp;&nbsp;&nbsp;{num((result?.ops ?? []).filter((o) => o.kind === "equal").length)}<br />
+            <span style={{ color: "#E0A34E" }}>delete&nbsp;&nbsp;{num((result?.ops ?? []).filter((o) => o.kind === "delete").length)}</span><br />
+            <span style={{ color: "#3FCFA8" }}>insert&nbsp;&nbsp;{num((result?.ops ?? []).filter((o) => o.kind === "insert").length)}</span><br />
+            visited&nbsp;{num(result?.path.length ?? 0)}
+          </div>
+
+          <Rule />
+          <Label>BLOCK MOVES · {num(moves.length)}</Label>
+          {moves.length === 0 ? (
+            <div style={{ fontSize: 11, lineHeight: 1.6, color: "#585550" }}>
+              No blocks moved. This is a filter over the op log's own MoveBlock ops, not a
+              heuristic over the text — a move either happened or it did not.
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {moves.map((m, i) => (
+                <div key={i} className="mono" style={{ fontSize: 10, color: "#8C8880" }}>
+                  {m.block_id.slice(0, 6)} · step {m.step}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <Rule />
+          <div style={{ fontSize: 11, lineHeight: 1.6, color: "#585550" }}>
+            The full O(n·m) table is computed and shown, then argued against. A diff view that
+            hides its quadratic cost teaches nothing about why Myers exists — so the cost is a
+            readout rather than a footnote.
+          </div>
+        </Inspector>
+      </Body>
+
+      <StatusBar
+        route={`/pages/${id}/diff`}
+        mechanism="LCS table and traceback in Go, via wasm"
+        state={
+          err ? "diff unavailable"
+            : rows === 0 ? "nothing to compare"
+            : `${num(rows * cols)} cells · ${num(result?.path.length ?? 0)} on the path`
+        }
+        healthy={!err}
+      />
+    </Screen>
   );
 }
+
+export default DiffScreen;
