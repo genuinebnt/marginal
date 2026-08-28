@@ -309,6 +309,13 @@ CREATE INDEX ON docs.pages (parent_id, sort_key) WHERE deleted_at IS NULL;
 CREATE INDEX ON docs.pages (lower(title)) WHERE deleted_at IS NULL;
 ```
 
+`search_vector` (migration `00004_search_vectors.sql`, `v2.5.0`) is
+`GENERATED ALWAYS AS (to_tsvector('english', title)) STORED`, GIN-indexed
+— full-text search against the title, transactionally consistent with
+it (`docs/api/search.md` §1). Not shown above alongside the original
+columns since it postdates them by three migrations; see that file for
+the exact `ALTER TABLE`.
+
 ### Blocks
 
 `document-service`'s actual `docs.blocks` (`internal/migrate/migrations/00002_docs_blocks_and_links.sql`) is a fully-rebuilt-on-every-event projection (§ The Central Rule) — it uses `pgx/v5` + `sqlc`, not `sqlx` (the Go/TS pivot, `ADR-011`, superseded the earlier Rust-track tooling this doc originally assumed), a plain `INTEGER position` rather than a fractional `sort_key` (a projection has no concurrent-independent-writer reordering problem a fractional key exists to solve — `internal/blockproj`'s own doc comment), and no `deleted_at`/`content_version` (a block's whole row is replaced, not soft-deleted, on the next replay). `parent_id` and `path` below are new — RFC-001 §1's containment design (`Quote`/`Toggle`/`List`/`ListItem` nesting), materialised the same way `docs.pages` already materialises pages-within-pages:
@@ -334,6 +341,12 @@ CREATE TABLE docs.blocks (
 CREATE INDEX ON docs.blocks USING GIST (path);
 CREATE INDEX ON docs.blocks (page_id, position);
 ```
+
+`search_vector` (migration `00004_search_vectors.sql`, `v2.5.0`) is
+`GENERATED ALWAYS AS (to_tsvector('english', coalesce(content->>'text', ''))) STORED`,
+GIN-indexed — full-text search against a block's own live text
+(`docs/api/search.md` §1), same reasoning as `docs.pages.search_vector`
+above.
 
 ### `kind` shape per `BlockTag`
 

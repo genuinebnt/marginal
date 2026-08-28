@@ -1,0 +1,62 @@
+// SearchService — the gRPC contract for search.html: full-text search
+// (docs.pages/docs.blocks' own GIN-indexed tsvector columns, Postgres
+// FTS standing in for Tantivy at this repo's scope) plus BK-tree fuzzy
+// title matching for "did you mean." See docs/api/search.md, which this
+// file matches field-for-field.
+syntax = "proto3";
+
+package marginal.document.v1;
+
+option go_package = "marginal/document-service/genproto/documentv1";
+
+service SearchService {
+  // Search runs websearch_to_tsquery against every live page's title and
+  // every live block's own text, ranked by ts_rank — real full-text
+  // search, transactionally consistent with the row it indexes (the
+  // GENERATED ALWAYS ... STORED tsvector columns commit with the row).
+  rpc Search(SearchRequest) returns (SearchResponse);
+
+  // SuggestTitles is the BK-tree query directly — "did you mean" for
+  // when Search comes back empty or thin. This index has its OWN rebuild
+  // cadence (internal/search's own doc comment) and may lag the write
+  // path — search.html's own admitted gap, not hidden here either.
+  rpc SuggestTitles(SuggestTitlesRequest) returns (SuggestTitlesResponse);
+}
+
+message SearchRequest {
+  string query = 1;
+}
+
+message SearchResponse {
+  repeated SearchHit hits = 1;
+}
+
+message SearchHit {
+  string page_id = 1;
+  string page_title = 2;
+  // block_id/snippet are set for a hit that matched a block's own text
+  // rather than (or in addition to) the page title — absent when only
+  // the title matched. snippet is ts_headline's own output: the
+  // matching term(s) wrapped in <b>...</b>, the reason this hit matched
+  // at all (search.html's own "the snippet shows why it matched").
+  optional string block_id = 3;
+  optional string snippet = 4;
+  float rank = 5;
+}
+
+message SuggestTitlesRequest {
+  string query = 1;
+  // max_distance bounds the BK-tree query — the same triangle-inequality
+  // pruning parameter internal/bktree.Tree.Query takes directly.
+  int32 max_distance = 2;
+}
+
+message SuggestTitlesResponse {
+  repeated TitleSuggestion suggestions = 1;
+}
+
+message TitleSuggestion {
+  string page_id = 1;
+  string title = 2;
+  int32 distance = 3;
+}

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type DragEvent, type ElementType, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import type { Page } from "../api/pages";
 import type { Diagnostic } from "../api/diagnostics";
+import { getLinkGraph } from "../api/graph";
+import { prefixSearch } from "../trie-core/wasm";
 import type { CollabPage, BlockView } from "../collab/useCollabPage";
 import type { BlockKind } from "../collab/types";
 import { KIND_LABELS, KIND_ORDER, kindFromKey, keyOf, type BlockKindKey } from "../collab/blockKind";
@@ -90,6 +92,7 @@ export function RichEditorPane({
   collab,
   onRename,
   diagnostics = [],
+  actorId,
 }: {
   page: Page;
   collab: CollabPage;
@@ -99,6 +102,10 @@ export function RichEditorPane({
    * marker (dotted amber, never a red squiggle), never re-derived here.
    * Optional so every existing caller/test keeps compiling unchanged. */
   diagnostics?: Diagnostic[];
+  /** Needed only for the `[[` autocomplete's own title list (GetLinkGraph
+   * — v2.5.0); optional so an existing caller/test that never triggers
+   * autocomplete keeps compiling unchanged. */
+  actorId?: string;
 }) {
   const { state, ready, blocks, peers, cursors, setCursor, setBlockText, setBlockContent, insertBlock, deleteBlock, setBlockKind, moveBlock } = collab;
   const pendingFocusId = useRef<string | null>(null);
@@ -113,6 +120,27 @@ export function RichEditorPane({
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{ id: string; zone: "before" | "after" } | null>(null);
   const [bubble, setBubble] = useState<{ blockId: string; start: number; end: number; top: number; left: number } | null>(null);
+  // The `[[` page-link autocomplete (v2.5.0). startIndex is where the
+  // in-progress query begins in that block's own live text — right after
+  // the "[[" that opened it — so every subsequent keystroke re-slices
+  // from there rather than re-detecting "[[" each time (only the FIRST
+  // "[[" opens the menu; typing more brackets inside an open query would
+  // otherwise look like a second trigger).
+  const [linkMenu, setLinkMenu] = useState<{ blockId: string; startIndex: number; query: string; top: number; left: number } | null>(null);
+  const [linkMatches, setLinkMatches] = useState<string[]>([]);
+  // Fetched once per mount, not once per "[[" — GetLinkGraph already
+  // returns every live page (graph.html's own node set), so it's the
+  // existing endpoint this reuses rather than a new one just for titles.
+  // Lazy: nothing is fetched until the first "[[" actually needs it.
+  const titlesRef = useRef<string[] | null>(null);
+  async function ensureTitles(): Promise<string[]> {
+    if (titlesRef.current) return titlesRef.current;
+    if (!actorId) return [];
+    const g = await getLinkGraph(actorId);
+    const titles = g.nodes.map((n) => n.title);
+    titlesRef.current = titles;
+    return titles;
+  }
   // Toggle collapse is view state, not model state (RFC-001 §1) — a
   // client-local Set, never sent over the wire; collapsing/expanding a
   // Toggle does not touch collab at all.
@@ -307,6 +335,66 @@ export function RichEditorPane({
     setKindMenu({ mode: "convert", blockId, textBeforeChoice: currentText, top: rect.bottom + 6, left: rect.left });
   }
 
+  // The `[[` page-link autocomplete (v2.5.0, RELEASES.md's own
+  // "[[link]]/command autocomplete via a trie while typing"). Called on
+  // EVERY keystroke in a text block (not just the triggering one, unlike
+  // onSlashTrigger) — this function, not the child, decides whether a
+  // menu should open, stay open with an updated query, or close, since
+  // that decision needs the live text on every subsequent keystroke, not
+  // just the "[[" moment itself.
+  async function handleLinkQuery(blockId: string, el: HTMLElement, value: string) {
+    if (!linkMenu) {
+      if (!value.endsWith("[[")) return;
+      const rect = el.getBoundingClientRect();
+      setLinkMenu({ blockId, startIndex: value.length, query: "", top: rect.bottom + 6, left: rect.left });
+      const titles = await ensureTitles();
+      setLinkMatches(await prefixSearch(titles, ""));
+      return;
+    }
+
+    if (linkMenu.blockId !== blockId) {
+      setLinkMenu(null);
+      return;
+    }
+
+    const { startIndex } = linkMenu;
+    const stillOpen =
+      value.length >= startIndex &&
+      value.slice(startIndex - 2, startIndex) === "[[" && // the opening bracket pair must still be there
+      !value.slice(startIndex).includes("]]") && // typing the close bracket ends the query, doesn't filter it
+      !value.slice(startIndex).includes("\n") &&
+      value.length - startIndex <= 80; // a page title this long has no realistic match anyway — treat it as an abandoned query
+    if (!stillOpen) {
+      setLinkMenu(null);
+      return;
+    }
+
+    const query = value.slice(startIndex);
+    setLinkMenu({ ...linkMenu, query });
+    const titles = await ensureTitles();
+    setLinkMatches(await prefixSearch(titles, query));
+  }
+
+  // Replaces the in-progress "[[query" with "[[Title]]" — the same
+  // splice-and-resync handleChangeText already does for every other
+  // text edit, just constructed here instead of read off the live DOM.
+  // Caret placement after this programmatic insert isn't restored to
+  // land exactly after "]]" (a stated simplification, not silently
+  // dropped): the block's own text-sync effect re-renders from `text`,
+  // and the browser's own contenteditable puts the caret at a reasonable
+  // position, just not guaranteed to be the ideal one.
+  function chooseLink(title: string) {
+    if (!linkMenu) return;
+    const block = byId.get(linkMenu.blockId);
+    if (!block) {
+      setLinkMenu(null);
+      return;
+    }
+    const newText = block.text.slice(0, linkMenu.startIndex) + title + "]]";
+    handleChangeText(block, newText);
+    setLinkMenu(null);
+  }
+
   // The insert-element bar: a persistent "+" per block (distinct from "/",
   // which converts the CURRENT block) that opens the same kind picker to
   // insert a brand-new block right after this one — a directly-discoverable
@@ -450,6 +538,7 @@ export function RichEditorPane({
             onEnter={() => handleEnter(b.id)}
             onBackspaceEmpty={() => handleBackspaceEmpty(b.id)}
             onSlashTrigger={(el, currentText) => handleSlashTrigger(b.id, el, currentText)}
+            onLinkQuery={(el, value) => handleLinkQuery(b.id, el, value)}
             onInsertTrigger={(el) => handleInsertTrigger(b.id, el)}
             onHandleClick={(el) => handleHandleClick(b.id, el)}
             onCursorChange={(start, end) => (start === -1 ? setCursor(null, 0, 0) : setCursor(b.id, start, end))}
@@ -480,6 +569,26 @@ export function RichEditorPane({
                     Delete
                   </div>
                 </>
+              )}
+            </div>
+          </>
+        )}
+
+        {linkMenu && (
+          <>
+            <div style={{ position: "fixed", inset: 0, zIndex: 29 }} onClick={() => setLinkMenu(null)} />
+            <div className="slash" style={{ top: linkMenu.top, left: linkMenu.left }}>
+              {linkMatches.length === 0 ? (
+                <div className="palette-item muted" style={{ cursor: "default" }}>
+                  No matching pages{linkMenu.query ? ` for "${linkMenu.query}"` : ""}
+                </div>
+              ) : (
+                linkMatches.slice(0, 8).map((title, i) => (
+                  <div key={`${title}-${i}`} className="palette-item" onClick={() => chooseLink(title)}>
+                    <span className="lead mono muted">→</span>
+                    {title}
+                  </div>
+                ))
               )}
             </div>
           </>
@@ -670,6 +779,7 @@ function BlockRow({
   onEnter,
   onBackspaceEmpty,
   onSlashTrigger,
+  onLinkQuery,
   onInsertTrigger,
   onHandleClick,
   onCursorChange,
@@ -706,6 +816,7 @@ function BlockRow({
   onEnter: () => void;
   onBackspaceEmpty: () => void;
   onSlashTrigger: (el: HTMLElement, currentText: string) => void;
+  onLinkQuery: (el: HTMLElement, value: string) => void;
   onInsertTrigger: (el: HTMLElement) => void;
   onHandleClick: (el: HTMLElement) => void;
   onCursorChange: (start: number, end: number) => void;
@@ -764,6 +875,7 @@ function BlockRow({
           onEnter={onEnter}
           onBackspaceEmpty={onBackspaceEmpty}
           onSlashTrigger={onSlashTrigger}
+          onLinkQuery={onLinkQuery}
         />
       </div>
     );
@@ -784,6 +896,7 @@ function BlockRow({
           onEnter={onEnter}
           onBackspaceEmpty={onBackspaceEmpty}
           onSlashTrigger={onSlashTrigger}
+          onLinkQuery={onLinkQuery}
         />
       </div>
     );
@@ -803,6 +916,7 @@ function BlockRow({
           onEnter={onEnter}
           onBackspaceEmpty={onBackspaceEmpty}
           onSlashTrigger={onSlashTrigger}
+          onLinkQuery={onLinkQuery}
         />
       </div>
     );
@@ -821,6 +935,7 @@ function BlockRow({
           onEnter={onEnter}
           onBackspaceEmpty={onBackspaceEmpty}
           onSlashTrigger={onSlashTrigger}
+          onLinkQuery={onLinkQuery}
         />
       </div>
     );
@@ -837,6 +952,7 @@ function BlockRow({
         onEnter={onEnter}
         onBackspaceEmpty={onBackspaceEmpty}
         onSlashTrigger={onSlashTrigger}
+        onLinkQuery={onLinkQuery}
       />
     );
   }
@@ -895,6 +1011,7 @@ function EditableTextBlock({
   onEnter,
   onBackspaceEmpty,
   onSlashTrigger,
+  onLinkQuery,
 }: {
   blockId: string;
   tag: "h1" | "h2" | "h3" | "p" | "blockquote";
@@ -906,6 +1023,7 @@ function EditableTextBlock({
   onEnter: () => void;
   onBackspaceEmpty: () => void;
   onSlashTrigger: (el: HTMLElement, currentText: string) => void;
+  onLinkQuery: (el: HTMLElement, value: string) => void;
 }) {
   const ref = useRef<HTMLElement | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1001,6 +1119,10 @@ function EditableTextBlock({
     if (value.endsWith("/")) {
       onSlashTrigger(e.currentTarget, value);
     }
+    // Every keystroke, not just the triggering one — see onLinkQuery's
+    // own caller (handleLinkQuery) for why an in-progress "[[query" needs
+    // re-checking on each one, not just the moment "[[" was typed.
+    onLinkQuery(e.currentTarget, value);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       pendingValueRef.current = null;

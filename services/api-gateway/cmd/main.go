@@ -33,6 +33,7 @@ import (
 	"marginal/api-gateway/internal/diagnosticsrest"
 	"marginal/api-gateway/internal/graphrest"
 	"marginal/api-gateway/internal/pagesrest"
+	"marginal/api-gateway/internal/searchrest"
 )
 
 // requestTimeout bounds every request this gateway handles, which in turn
@@ -92,6 +93,7 @@ func run() error {
 
 	pages := pagesrest.NewHandler(documentv1.NewPageServiceClient(documentConn))
 	graphHandler := graphrest.NewHandler(documentv1.NewGraphServiceClient(documentConn))
+	searchHandler := searchrest.NewHandler(documentv1.NewSearchServiceClient(documentConn))
 	diagnosticsHandler := diagnosticsrest.NewHandler(diagnosticsv1.NewDiagnosticsServiceClient(diagnosticsConn))
 	auth := authrest.NewHandler(authv1.NewAuthServiceClient(authConn))
 
@@ -124,6 +126,7 @@ func run() error {
 	})
 	pages.Mount(r)
 	graphHandler.Mount(r)
+	searchHandler.Mount(r)
 	diagnosticsHandler.Mount(r)
 	auth.Mount(r)
 

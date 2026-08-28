@@ -10,6 +10,7 @@ import { FactsScreen } from "./screens/FactsScreen";
 import { HistoryScreen } from "./screens/HistoryScreen";
 import { TraceScreen } from "./screens/TraceScreen";
 import { DiffScreen } from "./screens/DiffScreen";
+import { SearchScreen } from "./screens/SearchScreen";
 
 function RequireAuth({ children }: { children: ReactElement }) {
   const { session } = useAuth();
@@ -82,6 +83,14 @@ function App() {
         element={
           <RequireAuth>
             <DiffScreen />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/search"
+        element={
+          <RequireAuth>
+            <SearchScreen />
           </RequireAuth>
         }
       />

@@ -56,6 +56,7 @@ export function DashboardScreen() {
           <span className="mark"></span>Marginal
         </span>
         <div className="spacer"></div>
+        <Link className="btn" to="/search">Search</Link>
         <div style={{ position: "relative" }}>
           <button className="icon-btn" title="Notifications" onClick={() => setShowNotifications((s) => !s)}>
             🔔{notifications.length > 0 && <span className="badge">{notifications.length}</span>}

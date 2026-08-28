@@ -197,6 +197,7 @@ export function GraphScreen() {
           <Link to="/graph" aria-current="page">Graph</Link>
           <Link to="/graph/algorithms">Algorithms</Link>
           <Link to="/facts">Facts</Link>
+          <Link to="/search">Search</Link>
         </nav>
         <div className="spacer"></div>
         <button

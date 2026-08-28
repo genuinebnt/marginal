@@ -36,3 +36,15 @@ sql:
         overrides:
           - db_type: "ltree"
             go_type: "string"
+  - engine: "postgresql"
+    queries: "internal/searchrepo/queries.sql"
+    schema: "internal/migrate/migrations"
+    gen:
+      go:
+        package: "searchrepo"
+        out: "internal/searchrepo/gen"
+        sql_package: "pgx/v5"
+        emit_pointers_for_null_types: true
+        overrides:
+          - db_type: "ltree"
+            go_type: "string"
