@@ -41,6 +41,7 @@ type DocsPage struct {
 	CreatedAt      pgtype.Timestamptz
 	UpdatedAt      pgtype.Timestamptz
 	SearchVector   interface{}
+	TopicID        pgtype.UUID
 }
 
 type DocsPageDeletion struct {
@@ -60,4 +61,16 @@ type DocsPageLink struct {
 	FromBlock   pgtype.UUID
 	TargetTitle string
 	TargetPage  pgtype.UUID
+}
+
+type DocsPageTag struct {
+	PageID pgtype.UUID
+	Tag    string
+}
+
+type DocsTopic struct {
+	ID        pgtype.UUID
+	Name      string
+	ColorKey  string
+	CreatedAt pgtype.Timestamptz
 }

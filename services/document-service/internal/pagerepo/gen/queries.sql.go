@@ -11,6 +11,25 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const addPageTag = `-- name: AddPageTag :exec
+INSERT INTO docs.page_tags (page_id, tag) VALUES ($1, lower($2::text))
+ON CONFLICT DO NOTHING
+`
+
+type AddPageTagParams struct {
+	PageID pgtype.UUID
+	Tag    string
+}
+
+// Idempotent: re-tagging is a no-op, not a constraint violation. The CHECK
+// on the column already enforces lowercase, so this lowers here rather than
+// letting a mixed-case write fail at the database — the caller typed a tag,
+// they did not make a mistake.
+func (q *Queries) AddPageTag(ctx context.Context, arg AddPageTagParams) error {
+	_, err := q.db.Exec(ctx, addPageTag, arg.PageID, arg.Tag)
+	return err
+}
+
 const claimPageDeletions = `-- name: ClaimPageDeletions :many
 SELECT page_id, requested_by, steps_done, attempts, started_at
 FROM docs.page_deletions
@@ -94,6 +113,17 @@ SELECT COUNT(*) FROM docs.pages WHERE deleted_at IS NOT NULL
 
 func (q *Queries) CountTrash(ctx context.Context) (int64, error) {
 	row := q.db.QueryRow(ctx, countTrash)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countUntopicedPages = `-- name: CountUntopicedPages :one
+SELECT COUNT(*) FROM docs.pages WHERE topic_id IS NULL AND deleted_at IS NULL
+`
+
+func (q *Queries) CountUntopicedPages(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countUntopicedPages)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -245,6 +275,30 @@ func (q *Queries) LastSiblingSortKey(ctx context.Context, arg LastSiblingSortKey
 	return sort_key, err
 }
 
+const listPageTags = `-- name: ListPageTags :many
+SELECT tag FROM docs.page_tags WHERE page_id = $1 ORDER BY tag
+`
+
+func (q *Queries) ListPageTags(ctx context.Context, pageID pgtype.UUID) ([]string, error) {
+	rows, err := q.db.Query(ctx, listPageTags, pageID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var tag string
+		if err := rows.Scan(&tag); err != nil {
+			return nil, err
+		}
+		items = append(items, tag)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPages = `-- name: ListPages :many
 SELECT id, created_by, title, parent_id, path::text AS path, sort_key,
        lifecycle_state, deleted_at, created_at, updated_at
@@ -297,6 +351,148 @@ func (q *Queries) ListPages(ctx context.Context, arg ListPagesParams) ([]ListPag
 			&i.DeletedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPagesByTopic = `-- name: ListPagesByTopic :many
+SELECT id, created_by, title, parent_id, path::text AS path, sort_key,
+       lifecycle_state, deleted_at, created_at, updated_at, topic_id
+FROM docs.pages
+WHERE topic_id = $1 AND deleted_at IS NULL
+ORDER BY updated_at DESC
+`
+
+type ListPagesByTopicRow struct {
+	ID             pgtype.UUID
+	CreatedBy      pgtype.UUID
+	Title          string
+	ParentID       pgtype.UUID
+	Path           string
+	SortKey        string
+	LifecycleState string
+	DeletedAt      pgtype.Timestamptz
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+	TopicID        pgtype.UUID
+}
+
+func (q *Queries) ListPagesByTopic(ctx context.Context, topicID pgtype.UUID) ([]ListPagesByTopicRow, error) {
+	rows, err := q.db.Query(ctx, listPagesByTopic, topicID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListPagesByTopicRow
+	for rows.Next() {
+		var i ListPagesByTopicRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.CreatedBy,
+			&i.Title,
+			&i.ParentID,
+			&i.Path,
+			&i.SortKey,
+			&i.LifecycleState,
+			&i.DeletedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.TopicID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTagFacets = `-- name: ListTagFacets :many
+SELECT pt.tag,
+       COUNT(*) AS page_count,
+       COUNT(DISTINCT p.topic_id) AS topics_spanned
+FROM docs.page_tags pt
+JOIN docs.pages p ON p.id = pt.page_id AND p.deleted_at IS NULL
+GROUP BY pt.tag
+ORDER BY COUNT(*) DESC, pt.tag
+LIMIT $1
+`
+
+type ListTagFacetsRow struct {
+	Tag           string
+	PageCount     int64
+	TopicsSpanned int64
+}
+
+// Search's facet rail: every tag with how many live pages carry it, most
+// used first. The tag-with-a-topic-count join is what makes ui-mockups
+// § 10b's "a tag that lives in three topics is doing real work" real —
+// topics_spanned is the distinct topic count across the tag's pages.
+func (q *Queries) ListTagFacets(ctx context.Context, limit int32) ([]ListTagFacetsRow, error) {
+	rows, err := q.db.Query(ctx, listTagFacets, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListTagFacetsRow
+	for rows.Next() {
+		var i ListTagFacetsRow
+		if err := rows.Scan(&i.Tag, &i.PageCount, &i.TopicsSpanned); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTopics = `-- name: ListTopics :many
+SELECT t.id, t.name, t.color_key, t.created_at,
+       COUNT(p.id) FILTER (WHERE p.deleted_at IS NULL) AS page_count
+FROM docs.topics t
+LEFT JOIN docs.pages p ON p.topic_id = t.id
+GROUP BY t.id, t.name, t.color_key, t.created_at
+ORDER BY t.name
+`
+
+type ListTopicsRow struct {
+	ID        pgtype.UUID
+	Name      string
+	ColorKey  string
+	CreatedAt pgtype.Timestamptz
+	PageCount int64
+}
+
+// With the page count each carries, since every screen that lists topics
+// also shows how much is in them (ui-mockups § 10b). Excludes deleted pages
+// from the count — a topic is not "still busy" because its pages are in the
+// trash.
+func (q *Queries) ListTopics(ctx context.Context) ([]ListTopicsRow, error) {
+	rows, err := q.db.Query(ctx, listTopics)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListTopicsRow
+	for rows.Next() {
+		var i ListTopicsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.ColorKey,
+			&i.CreatedAt,
+			&i.PageCount,
 		); err != nil {
 			return nil, err
 		}
@@ -454,6 +650,23 @@ func (q *Queries) RecordPageDeletionStep(ctx context.Context, arg RecordPageDele
 	return err
 }
 
+const removePageTag = `-- name: RemovePageTag :execrows
+DELETE FROM docs.page_tags WHERE page_id = $1 AND tag = lower($2::text)
+`
+
+type RemovePageTagParams struct {
+	PageID pgtype.UUID
+	Tag    string
+}
+
+func (q *Queries) RemovePageTag(ctx context.Context, arg RemovePageTagParams) (int64, error) {
+	result, err := q.db.Exec(ctx, removePageTag, arg.PageID, arg.Tag)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const renamePage = `-- name: RenamePage :one
 UPDATE docs.pages SET title = $2, updated_at = NOW()
 WHERE id = $1 AND deleted_at IS NULL
@@ -597,6 +810,27 @@ type RewriteDescendantPathsParams struct {
 // portion off the front of each descendant's path.
 func (q *Queries) RewriteDescendantPaths(ctx context.Context, arg RewriteDescendantPathsParams) (int64, error) {
 	result, err := q.db.Exec(ctx, rewriteDescendantPaths, arg.NewPrefix, arg.OldPrefix, arg.PageID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const setPageTopic = `-- name: SetPageTopic :execrows
+UPDATE docs.pages SET topic_id = $1, updated_at = NOW()
+WHERE id = $2 AND deleted_at IS NULL
+`
+
+type SetPageTopicParams struct {
+	TopicID pgtype.UUID
+	PageID  pgtype.UUID
+}
+
+// NULL clears it back to untopiced, which is a real state rather than a
+// failure — assignment is the user's call (ui-mockups § 10b: "suggestion
+// available, assignment is yours").
+func (q *Queries) SetPageTopic(ctx context.Context, arg SetPageTopicParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setPageTopic, arg.TopicID, arg.PageID)
 	if err != nil {
 		return 0, err
 	}
