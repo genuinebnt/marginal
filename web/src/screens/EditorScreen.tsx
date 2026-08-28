@@ -130,6 +130,7 @@ export function EditorScreen() {
               collab={collab}
               onRename={handleRename}
               diagnostics={diagnostics ?? undefined}
+              actorId={actorId}
             />
             <InspectorRail
               page={activePage}
