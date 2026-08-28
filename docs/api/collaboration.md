@@ -492,3 +492,53 @@ yet (matching `docs/api/diagnostics.md`'s own empty-array convention);
 `current_step` is `-1` in that case. An invalid page or block id is a
 `400`; a malformed confirmed log (fails to even replay) is a `500`, same
 partial-result contract as §5.
+
+---
+
+## 7. `GET /collab/pages/{id}/diff?from={n}&to={m}` — two revisions, plus every block move between them
+
+Plain HTTP, read-only, same shape as §5/§6. Backs `docs/ui-mockups/
+diff.html`: "block-level MOVE detection, which a flat text diff cannot
+express... a moved block must read as MOVED, not as delete + insert."
+
+```
+GET /collab/pages/{id}/diff?from=3&to=9
+```
+
+```json
+{
+  "before": { /* session.Snapshot — steps[from].After, unchanged */ },
+  "after":  { /* session.Snapshot — steps[to].After, unchanged */ },
+  "moves": [
+    { "block_id": "...", "from_parent": null, "from": null, "to_parent": null, "to": "...", "step": 6 }
+  ]
+}
+```
+
+`from`/`to` index into the same confirmed step array §5's `steps` is
+indexed by — `from == to` is a valid, zero-length diff; `from > to` is a
+`400`. `before`/`after` are exactly two already-computed `Trace` entries,
+picked rather than recomputed — the same "the client draws what Go
+already computed" principle §5 states, extended to picking two entries
+instead of one.
+
+`moves` is every `MoveBlock` op strictly after `from` and at or before
+`to` — a filter over the confirmed log, not a second algorithm:
+`documentcore.MoveBlock` already carries `from`/`to` (RFC-002 §3), so
+detecting a move between two revisions needs no geometry or heuristic,
+only reading what the op log already recorded. `moves` is `[]`, never
+`null`, when nothing moved.
+
+**This endpoint does not compute the LCS text diff itself.** That runs
+client-side, compiled to wasm (`services/textdiff` via `document-service/
+cmd/diffwasm`) — `diff.html`'s own "token granularity switching (word ↔
+character), recomputed live" needs interactive response to a toggle, the
+same reasoning `graph.html`'s force layout/Voronoi views already have
+for running in the browser (`ADR-012`). A client picks one block's text
+out of `before`/`after`, tokenizes it (word or character — its own
+choice), and calls the wasm bridge directly; this endpoint's only job is
+handing over the two document states to pick from.
+
+`from`/`to` out of `[0, len(steps))`, or malformed, is a `400`; a
+malformed confirmed log (fails to even replay) is a `500`, same
+partial-result contract as §5.

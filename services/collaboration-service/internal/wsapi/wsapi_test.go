@@ -94,6 +94,7 @@ func newTestServerWithRepo(t *testing.T, opts *websocket.AcceptOptions) (*httpte
 	mux.HandleFunc("/collab/pages/{id}", NewHandler(mgr, opts).ServeHTTP)
 	mux.HandleFunc("/collab/pages/{id}/trace", NewTraceHandler(repo, "server-actor"))
 	mux.HandleFunc("/collab/pages/{id}/blocks/{blockId}/palimpsest", NewPalimpsestHandler(repo, "server-actor"))
+	mux.HandleFunc("/collab/pages/{id}/diff", NewDiffHandler(repo, "server-actor"))
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	return srv, mgr, repo
@@ -872,4 +873,105 @@ func TestPalimpsestEndpointKeepsDeletedCharactersOverTheRealWire(t *testing.T) {
 	assert.NotNil(t, body.Chars[0].DeleteStep, "'h' must be marked deleted")
 	assert.Equal(t, 'i', body.Chars[1].Rune)
 	assert.NotNil(t, body.Chars[1].DeleteStep, "'i' must be marked deleted too")
+}
+
+// TestDiffEndpointReturnsBothSnapshotsAndDetectsAMove is diff.html's own
+// "block-level MOVE detection, which a flat text diff cannot express" —
+// exercised through the real wire: two blocks inserted, then a real
+// MoveBlock op reordering them, and GET .../diff must report exactly
+// that move plus both revisions' real snapshots.
+func TestDiffEndpointReturnsBothSnapshotsAndDetectsAMove(t *testing.T) {
+	srv, _, repo := newTestServerWithRepo(t, nil)
+	pageID := uuid.Must(uuid.NewV7())
+	conn, closeConn := dial(t, srv, pageID, uuid.Must(uuid.NewV7()))
+	defer closeConn()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	var snap serverMessage
+	require.NoError(t, wsjson.Read(ctx, conn, &snap))
+
+	blockA := insertBlock(t, ctx, conn) // step 0
+	blockB := documentcore.BlockID(uuid.Must(uuid.NewV7()))
+	moveOp, err := pageop.Marshal(pageop.Block{
+		Op: documentcore.InsertBlock{ID: blockB, After: &blockA, Kind: documentcore.NewParagraph(), Content: documentcore.Content{Text: ""}},
+	})
+	require.NoError(t, err)
+	require.NoError(t, wsjson.Write(ctx, conn, clientMessage{Type: "op", Op: moveOp})) // step 1
+	var ack serverMessage
+	require.NoError(t, wsjson.Read(ctx, conn, &ack))
+
+	move, err := pageop.Marshal(pageop.Block{
+		Op: documentcore.MoveBlock{ID: blockA, FromParent: nil, From: nil, ToParent: nil, To: &blockB},
+	})
+	require.NoError(t, err)
+	require.NoError(t, wsjson.Write(ctx, conn, clientMessage{Type: "op", Op: move})) // step 2 — A moves after B
+	require.NoError(t, wsjson.Read(ctx, conn, &ack))
+
+	require.Eventually(t, func() bool {
+		got, _ := repo.ListForPage(context.Background(), pageID)
+		return len(got) == 3
+	}, time.Second, time.Millisecond)
+
+	resp, err := http.Get(srv.URL + "/collab/pages/" + pageID.String() + "/diff?from=0&to=2")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var body struct {
+		Before struct {
+			Blocks []struct {
+				ID documentcore.BlockID `json:"id"`
+			} `json:"blocks"`
+		} `json:"before"`
+		After struct {
+			Blocks []struct {
+				ID documentcore.BlockID `json:"id"`
+			} `json:"blocks"`
+		} `json:"after"`
+		Moves []struct {
+			BlockID documentcore.BlockID `json:"block_id"`
+			Step    int                  `json:"step"`
+		} `json:"moves"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+
+	require.Len(t, body.Before.Blocks, 1, "step 0's snapshot only has block A")
+	assert.Equal(t, blockA, body.Before.Blocks[0].ID)
+
+	require.Len(t, body.After.Blocks, 2, "step 2's snapshot has both blocks, reordered")
+	assert.Equal(t, blockB, body.After.Blocks[0].ID)
+	assert.Equal(t, blockA, body.After.Blocks[1].ID)
+
+	require.Len(t, body.Moves, 1, "exactly the one MoveBlock op between steps 0 and 2")
+	assert.Equal(t, blockA, body.Moves[0].BlockID)
+	assert.Equal(t, 2, body.Moves[0].Step)
+}
+
+func TestDiffEndpointRejectsFromGreaterThanTo(t *testing.T) {
+	srv, _, repo := newTestServerWithRepo(t, nil)
+	pageID := uuid.Must(uuid.NewV7())
+	conn, closeConn := dial(t, srv, pageID, uuid.Must(uuid.NewV7()))
+	defer closeConn()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	var snap serverMessage
+	require.NoError(t, wsjson.Read(ctx, conn, &snap))
+	_ = insertBlock(t, ctx, conn)
+
+	require.Eventually(t, func() bool {
+		got, _ := repo.ListForPage(context.Background(), pageID)
+		return len(got) == 1
+	}, time.Second, time.Millisecond)
+
+	resp, err := http.Get(srv.URL + "/collab/pages/" + pageID.String() + "/diff?from=0&to=0")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode, "from == to is valid — a zero-length diff")
+
+	resp2, err := http.Get(srv.URL + "/collab/pages/" + pageID.String() + "/diff?from=3&to=1")
+	require.NoError(t, err)
+	defer resp2.Body.Close()
+	assert.Equal(t, http.StatusBadRequest, resp2.StatusCode)
 }
