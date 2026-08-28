@@ -20,7 +20,6 @@ import (
 	"syscall"
 
 	"github.com/coder/websocket"
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/nats-io/nats.go"
@@ -87,10 +86,25 @@ func run() error {
 	}
 
 	// This process's own identity for Lamport ItemIDs (internal/doctext),
-	// not an editing user's — fresh per process start is fine: it only
-	// needs to be unique among concurrently-running instances, which a
-	// UUIDv7 is with overwhelming probability.
-	serverActor := uuid.Must(uuid.NewV7()).String()
+	// not an editing user's — and it MUST be stable across restarts, not
+	// fresh per process start (a real bug this repo shipped with until
+	// found live): anchor.ItemID{Actor, Counter} is embedded in every
+	// persisted op that names an anchor (DeleteText.Range, InsertText's
+	// own inverse), so a later replay (session.open, Trace, RestoreTo,
+	// palimpsest.Build — anything that calls applyReplayedOp) using a
+	// DIFFERENT serverActor generates DIFFERENT ItemIDs for the same
+	// historical inserts, and every anchor resolution against
+	// already-persisted history then fails with "anchor refers to an
+	// item this text never saw." A single collaboration-service instance
+	// never has two concurrently-running processes racing to assign the
+	// SAME actor's ids at once (this is a stateful, one-writer-per-page
+	// service — ARCHITECTURE.md), so there is no uniqueness problem a
+	// fresh-per-restart value was ever actually solving; there was only
+	// a stability problem it was silently causing. Configurable (in case
+	// a future multi-instance deploy genuinely needs two collaboration-
+	// service processes each writing under their own distinct tag), but
+	// the default must be fixed forever, not regenerated.
+	serverActor := envconfig.EnvOr("COLLAB_SERVER_ACTOR", "server")
 
 	repo := opstore.NewPostgresRepo(pool)
 	manager := session.NewManager(repo, walDir, serverActor)
@@ -111,7 +125,7 @@ func run() error {
 	mux.HandleFunc("/collab/pages/{id}/blocks/{blockId}/palimpsest", wsapi.NewPalimpsestHandler(repo, serverActor))
 	mux.HandleFunc("/collab/pages/{id}/diff", wsapi.NewDiffHandler(repo, serverActor))
 
-	httpServer := &http.Server{Addr: httpAddr, Handler: mux}
+	httpServer := &http.Server{Addr: httpAddr, Handler: allowCORS(mux)}
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -125,6 +139,33 @@ func run() error {
 	case err := <-errCh:
 		return err
 	}
+}
+
+// allowCORS covers this mux's plain HTTP routes (the WebSocket upgrade
+// itself is governed separately, by wsAcceptOptions' own cross-origin
+// check below — coder/websocket never consults this header). A real
+// gap this one: GET /collab/pages/{id}/trace|diff and .../palimpsest
+// were reachable by curl from day one (curl doesn't enforce CORS) but
+// silently failed from the actual browser History/Trace/Diff screens
+// call them from — a cross-origin fetch with no
+// Access-Control-Allow-Origin response header never reaches the
+// caller's .then/.catch at all, it fails at the browser's own network
+// layer. "*" is the same safe default api-gateway's own CORS setup
+// already uses and for the same reason: nothing on this transport uses
+// cookies or any other ambient credential a wildcard origin could leak
+// (actor identity is the unauthenticated header/query stand-in pages.md/
+// auth.md document).
+func allowCORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", http.MethodGet)
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // wsAcceptOptions controls coder/websocket's cross-origin check.
