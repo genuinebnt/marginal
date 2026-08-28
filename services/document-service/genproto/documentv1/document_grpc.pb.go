@@ -38,6 +38,14 @@ const (
 	PageService_DeletePage_FullMethodName    = "/marginal.document.v1.PageService/DeletePage"
 	PageService_ListBacklinks_FullMethodName = "/marginal.document.v1.PageService/ListBacklinks"
 	PageService_ListBlocks_FullMethodName    = "/marginal.document.v1.PageService/ListBlocks"
+	PageService_PreviewDelete_FullMethodName = "/marginal.document.v1.PageService/PreviewDelete"
+	PageService_ListTrash_FullMethodName     = "/marginal.document.v1.PageService/ListTrash"
+	PageService_RestorePage_FullMethodName   = "/marginal.document.v1.PageService/RestorePage"
+	PageService_ListTopics_FullMethodName    = "/marginal.document.v1.PageService/ListTopics"
+	PageService_SetPageTopic_FullMethodName  = "/marginal.document.v1.PageService/SetPageTopic"
+	PageService_AddPageTag_FullMethodName    = "/marginal.document.v1.PageService/AddPageTag"
+	PageService_RemovePageTag_FullMethodName = "/marginal.document.v1.PageService/RemovePageTag"
+	PageService_ListTagFacets_FullMethodName = "/marginal.document.v1.PageService/ListTagFacets"
 )
 
 // PageServiceClient is the client API for PageService service.
@@ -64,6 +72,16 @@ type PageServiceClient interface {
 	// the caller already imports marginal/documentcore and can unmarshal
 	// them directly, and this table's payload columns are already JSONB.
 	ListBlocks(ctx context.Context, in *ListBlocksRequest, opts ...grpc.CallOption) (*ListBlocksResponse, error)
+	// v2.6.0 — the delete saga, made observable and reversible.
+	PreviewDelete(ctx context.Context, in *PreviewDeleteRequest, opts ...grpc.CallOption) (*PreviewDeleteResponse, error)
+	ListTrash(ctx context.Context, in *ListTrashRequest, opts ...grpc.CallOption) (*ListTrashResponse, error)
+	RestorePage(ctx context.Context, in *RestorePageRequest, opts ...grpc.CallOption) (*Page, error)
+	// v2.7.0 — classification.
+	ListTopics(ctx context.Context, in *ListTopicsRequest, opts ...grpc.CallOption) (*ListTopicsResponse, error)
+	SetPageTopic(ctx context.Context, in *SetPageTopicRequest, opts ...grpc.CallOption) (*Page, error)
+	AddPageTag(ctx context.Context, in *AddPageTagRequest, opts ...grpc.CallOption) (*Page, error)
+	RemovePageTag(ctx context.Context, in *RemovePageTagRequest, opts ...grpc.CallOption) (*Page, error)
+	ListTagFacets(ctx context.Context, in *ListTagFacetsRequest, opts ...grpc.CallOption) (*ListTagFacetsResponse, error)
 }
 
 type pageServiceClient struct {
@@ -154,6 +172,86 @@ func (c *pageServiceClient) ListBlocks(ctx context.Context, in *ListBlocksReques
 	return out, nil
 }
 
+func (c *pageServiceClient) PreviewDelete(ctx context.Context, in *PreviewDeleteRequest, opts ...grpc.CallOption) (*PreviewDeleteResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PreviewDeleteResponse)
+	err := c.cc.Invoke(ctx, PageService_PreviewDelete_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *pageServiceClient) ListTrash(ctx context.Context, in *ListTrashRequest, opts ...grpc.CallOption) (*ListTrashResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListTrashResponse)
+	err := c.cc.Invoke(ctx, PageService_ListTrash_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *pageServiceClient) RestorePage(ctx context.Context, in *RestorePageRequest, opts ...grpc.CallOption) (*Page, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Page)
+	err := c.cc.Invoke(ctx, PageService_RestorePage_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *pageServiceClient) ListTopics(ctx context.Context, in *ListTopicsRequest, opts ...grpc.CallOption) (*ListTopicsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListTopicsResponse)
+	err := c.cc.Invoke(ctx, PageService_ListTopics_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *pageServiceClient) SetPageTopic(ctx context.Context, in *SetPageTopicRequest, opts ...grpc.CallOption) (*Page, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Page)
+	err := c.cc.Invoke(ctx, PageService_SetPageTopic_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *pageServiceClient) AddPageTag(ctx context.Context, in *AddPageTagRequest, opts ...grpc.CallOption) (*Page, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Page)
+	err := c.cc.Invoke(ctx, PageService_AddPageTag_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *pageServiceClient) RemovePageTag(ctx context.Context, in *RemovePageTagRequest, opts ...grpc.CallOption) (*Page, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Page)
+	err := c.cc.Invoke(ctx, PageService_RemovePageTag_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *pageServiceClient) ListTagFacets(ctx context.Context, in *ListTagFacetsRequest, opts ...grpc.CallOption) (*ListTagFacetsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListTagFacetsResponse)
+	err := c.cc.Invoke(ctx, PageService_ListTagFacets_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // PageServiceServer is the server API for PageService service.
 // All implementations must embed UnimplementedPageServiceServer
 // for forward compatibility.
@@ -178,6 +276,16 @@ type PageServiceServer interface {
 	// the caller already imports marginal/documentcore and can unmarshal
 	// them directly, and this table's payload columns are already JSONB.
 	ListBlocks(context.Context, *ListBlocksRequest) (*ListBlocksResponse, error)
+	// v2.6.0 — the delete saga, made observable and reversible.
+	PreviewDelete(context.Context, *PreviewDeleteRequest) (*PreviewDeleteResponse, error)
+	ListTrash(context.Context, *ListTrashRequest) (*ListTrashResponse, error)
+	RestorePage(context.Context, *RestorePageRequest) (*Page, error)
+	// v2.7.0 — classification.
+	ListTopics(context.Context, *ListTopicsRequest) (*ListTopicsResponse, error)
+	SetPageTopic(context.Context, *SetPageTopicRequest) (*Page, error)
+	AddPageTag(context.Context, *AddPageTagRequest) (*Page, error)
+	RemovePageTag(context.Context, *RemovePageTagRequest) (*Page, error)
+	ListTagFacets(context.Context, *ListTagFacetsRequest) (*ListTagFacetsResponse, error)
 	mustEmbedUnimplementedPageServiceServer()
 }
 
@@ -211,6 +319,30 @@ func (UnimplementedPageServiceServer) ListBacklinks(context.Context, *ListBackli
 }
 func (UnimplementedPageServiceServer) ListBlocks(context.Context, *ListBlocksRequest) (*ListBlocksResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListBlocks not implemented")
+}
+func (UnimplementedPageServiceServer) PreviewDelete(context.Context, *PreviewDeleteRequest) (*PreviewDeleteResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method PreviewDelete not implemented")
+}
+func (UnimplementedPageServiceServer) ListTrash(context.Context, *ListTrashRequest) (*ListTrashResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListTrash not implemented")
+}
+func (UnimplementedPageServiceServer) RestorePage(context.Context, *RestorePageRequest) (*Page, error) {
+	return nil, status.Error(codes.Unimplemented, "method RestorePage not implemented")
+}
+func (UnimplementedPageServiceServer) ListTopics(context.Context, *ListTopicsRequest) (*ListTopicsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListTopics not implemented")
+}
+func (UnimplementedPageServiceServer) SetPageTopic(context.Context, *SetPageTopicRequest) (*Page, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetPageTopic not implemented")
+}
+func (UnimplementedPageServiceServer) AddPageTag(context.Context, *AddPageTagRequest) (*Page, error) {
+	return nil, status.Error(codes.Unimplemented, "method AddPageTag not implemented")
+}
+func (UnimplementedPageServiceServer) RemovePageTag(context.Context, *RemovePageTagRequest) (*Page, error) {
+	return nil, status.Error(codes.Unimplemented, "method RemovePageTag not implemented")
+}
+func (UnimplementedPageServiceServer) ListTagFacets(context.Context, *ListTagFacetsRequest) (*ListTagFacetsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListTagFacets not implemented")
 }
 func (UnimplementedPageServiceServer) mustEmbedUnimplementedPageServiceServer() {}
 func (UnimplementedPageServiceServer) testEmbeddedByValue()                     {}
@@ -377,6 +509,150 @@ func _PageService_ListBlocks_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _PageService_PreviewDelete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PreviewDeleteRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PageServiceServer).PreviewDelete(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PageService_PreviewDelete_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PageServiceServer).PreviewDelete(ctx, req.(*PreviewDeleteRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _PageService_ListTrash_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListTrashRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PageServiceServer).ListTrash(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PageService_ListTrash_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PageServiceServer).ListTrash(ctx, req.(*ListTrashRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _PageService_RestorePage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RestorePageRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PageServiceServer).RestorePage(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PageService_RestorePage_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PageServiceServer).RestorePage(ctx, req.(*RestorePageRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _PageService_ListTopics_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListTopicsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PageServiceServer).ListTopics(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PageService_ListTopics_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PageServiceServer).ListTopics(ctx, req.(*ListTopicsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _PageService_SetPageTopic_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetPageTopicRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PageServiceServer).SetPageTopic(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PageService_SetPageTopic_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PageServiceServer).SetPageTopic(ctx, req.(*SetPageTopicRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _PageService_AddPageTag_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AddPageTagRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PageServiceServer).AddPageTag(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PageService_AddPageTag_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PageServiceServer).AddPageTag(ctx, req.(*AddPageTagRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _PageService_RemovePageTag_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RemovePageTagRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PageServiceServer).RemovePageTag(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PageService_RemovePageTag_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PageServiceServer).RemovePageTag(ctx, req.(*RemovePageTagRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _PageService_ListTagFacets_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListTagFacetsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PageServiceServer).ListTagFacets(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PageService_ListTagFacets_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PageServiceServer).ListTagFacets(ctx, req.(*ListTagFacetsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // PageService_ServiceDesc is the grpc.ServiceDesc for PageService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -415,6 +691,38 @@ var PageService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListBlocks",
 			Handler:    _PageService_ListBlocks_Handler,
+		},
+		{
+			MethodName: "PreviewDelete",
+			Handler:    _PageService_PreviewDelete_Handler,
+		},
+		{
+			MethodName: "ListTrash",
+			Handler:    _PageService_ListTrash_Handler,
+		},
+		{
+			MethodName: "RestorePage",
+			Handler:    _PageService_RestorePage_Handler,
+		},
+		{
+			MethodName: "ListTopics",
+			Handler:    _PageService_ListTopics_Handler,
+		},
+		{
+			MethodName: "SetPageTopic",
+			Handler:    _PageService_SetPageTopic_Handler,
+		},
+		{
+			MethodName: "AddPageTag",
+			Handler:    _PageService_AddPageTag_Handler,
+		},
+		{
+			MethodName: "RemovePageTag",
+			Handler:    _PageService_RemovePageTag_Handler,
+		},
+		{
+			MethodName: "ListTagFacets",
+			Handler:    _PageService_ListTagFacets_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

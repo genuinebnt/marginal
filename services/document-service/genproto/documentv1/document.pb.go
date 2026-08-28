@@ -97,8 +97,12 @@ type Page struct {
 	CreatedAt      *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	UpdatedAt      *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	DeletedAt      *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=deleted_at,json=deletedAt,proto3,oneof" json:"deleted_at,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// v2.7.0. One owned topic (absent = untopiced, a real state the UI
+	// reports rather than a gap), and any number of free-form tags.
+	Topic         *Topic   `protobuf:"bytes,11,opt,name=topic,proto3,oneof" json:"topic,omitempty"`
+	Tags          []string `protobuf:"bytes,12,rep,name=tags,proto3" json:"tags,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Page) Reset() {
@@ -201,6 +205,90 @@ func (x *Page) GetDeletedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *Page) GetTopic() *Topic {
+	if x != nil {
+		return x.Topic
+	}
+	return nil
+}
+
+func (x *Page) GetTags() []string {
+	if x != nil {
+		return x.Tags
+	}
+	return nil
+}
+
+// A topic is singular per page and carries a colour KEY, never a hex value
+// — the palette lives in the design system (DESIGN_GUIDELINES.md §3.4).
+type Topic struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	ColorKey      string                 `protobuf:"bytes,3,opt,name=color_key,json=colorKey,proto3" json:"color_key,omitempty"`     // protocol|storage|interface|operations|research
+	PageCount     int32                  `protobuf:"varint,4,opt,name=page_count,json=pageCount,proto3" json:"page_count,omitempty"` // live pages only; 0 unless returned by ListTopics
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Topic) Reset() {
+	*x = Topic{}
+	mi := &file_document_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Topic) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Topic) ProtoMessage() {}
+
+func (x *Topic) ProtoReflect() protoreflect.Message {
+	mi := &file_document_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Topic.ProtoReflect.Descriptor instead.
+func (*Topic) Descriptor() ([]byte, []int) {
+	return file_document_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *Topic) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *Topic) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *Topic) GetColorKey() string {
+	if x != nil {
+		return x.ColorKey
+	}
+	return ""
+}
+
+func (x *Topic) GetPageCount() int32 {
+	if x != nil {
+		return x.PageCount
+	}
+	return 0
+}
+
 type CreatePageRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Title         string                 `protobuf:"bytes,1,opt,name=title,proto3" json:"title,omitempty"`
@@ -212,7 +300,7 @@ type CreatePageRequest struct {
 
 func (x *CreatePageRequest) Reset() {
 	*x = CreatePageRequest{}
-	mi := &file_document_proto_msgTypes[1]
+	mi := &file_document_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -224,7 +312,7 @@ func (x *CreatePageRequest) String() string {
 func (*CreatePageRequest) ProtoMessage() {}
 
 func (x *CreatePageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_document_proto_msgTypes[1]
+	mi := &file_document_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -237,7 +325,7 @@ func (x *CreatePageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreatePageRequest.ProtoReflect.Descriptor instead.
 func (*CreatePageRequest) Descriptor() ([]byte, []int) {
-	return file_document_proto_rawDescGZIP(), []int{1}
+	return file_document_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *CreatePageRequest) GetTitle() string {
@@ -270,7 +358,7 @@ type GetPageRequest struct {
 
 func (x *GetPageRequest) Reset() {
 	*x = GetPageRequest{}
-	mi := &file_document_proto_msgTypes[2]
+	mi := &file_document_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -282,7 +370,7 @@ func (x *GetPageRequest) String() string {
 func (*GetPageRequest) ProtoMessage() {}
 
 func (x *GetPageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_document_proto_msgTypes[2]
+	mi := &file_document_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -295,7 +383,7 @@ func (x *GetPageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetPageRequest.ProtoReflect.Descriptor instead.
 func (*GetPageRequest) Descriptor() ([]byte, []int) {
-	return file_document_proto_rawDescGZIP(), []int{2}
+	return file_document_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *GetPageRequest) GetId() string {
@@ -316,7 +404,7 @@ type ListPagesRequest struct {
 
 func (x *ListPagesRequest) Reset() {
 	*x = ListPagesRequest{}
-	mi := &file_document_proto_msgTypes[3]
+	mi := &file_document_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -328,7 +416,7 @@ func (x *ListPagesRequest) String() string {
 func (*ListPagesRequest) ProtoMessage() {}
 
 func (x *ListPagesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_document_proto_msgTypes[3]
+	mi := &file_document_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -341,7 +429,7 @@ func (x *ListPagesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPagesRequest.ProtoReflect.Descriptor instead.
 func (*ListPagesRequest) Descriptor() ([]byte, []int) {
-	return file_document_proto_rawDescGZIP(), []int{3}
+	return file_document_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *ListPagesRequest) GetParentId() string {
@@ -375,7 +463,7 @@ type ListPagesResponse struct {
 
 func (x *ListPagesResponse) Reset() {
 	*x = ListPagesResponse{}
-	mi := &file_document_proto_msgTypes[4]
+	mi := &file_document_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -387,7 +475,7 @@ func (x *ListPagesResponse) String() string {
 func (*ListPagesResponse) ProtoMessage() {}
 
 func (x *ListPagesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_document_proto_msgTypes[4]
+	mi := &file_document_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -400,7 +488,7 @@ func (x *ListPagesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPagesResponse.ProtoReflect.Descriptor instead.
 func (*ListPagesResponse) Descriptor() ([]byte, []int) {
-	return file_document_proto_rawDescGZIP(), []int{4}
+	return file_document_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *ListPagesResponse) GetPages() []*Page {
@@ -427,7 +515,7 @@ type RenamePageRequest struct {
 
 func (x *RenamePageRequest) Reset() {
 	*x = RenamePageRequest{}
-	mi := &file_document_proto_msgTypes[5]
+	mi := &file_document_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -439,7 +527,7 @@ func (x *RenamePageRequest) String() string {
 func (*RenamePageRequest) ProtoMessage() {}
 
 func (x *RenamePageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_document_proto_msgTypes[5]
+	mi := &file_document_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -452,7 +540,7 @@ func (x *RenamePageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RenamePageRequest.ProtoReflect.Descriptor instead.
 func (*RenamePageRequest) Descriptor() ([]byte, []int) {
-	return file_document_proto_rawDescGZIP(), []int{5}
+	return file_document_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *RenamePageRequest) GetId() string {
@@ -480,7 +568,7 @@ type ReparentPageRequest struct {
 
 func (x *ReparentPageRequest) Reset() {
 	*x = ReparentPageRequest{}
-	mi := &file_document_proto_msgTypes[6]
+	mi := &file_document_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -492,7 +580,7 @@ func (x *ReparentPageRequest) String() string {
 func (*ReparentPageRequest) ProtoMessage() {}
 
 func (x *ReparentPageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_document_proto_msgTypes[6]
+	mi := &file_document_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -505,7 +593,7 @@ func (x *ReparentPageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReparentPageRequest.ProtoReflect.Descriptor instead.
 func (*ReparentPageRequest) Descriptor() ([]byte, []int) {
-	return file_document_proto_rawDescGZIP(), []int{6}
+	return file_document_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ReparentPageRequest) GetId() string {
@@ -538,7 +626,7 @@ type DeletePageRequest struct {
 
 func (x *DeletePageRequest) Reset() {
 	*x = DeletePageRequest{}
-	mi := &file_document_proto_msgTypes[7]
+	mi := &file_document_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -550,7 +638,7 @@ func (x *DeletePageRequest) String() string {
 func (*DeletePageRequest) ProtoMessage() {}
 
 func (x *DeletePageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_document_proto_msgTypes[7]
+	mi := &file_document_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -563,7 +651,7 @@ func (x *DeletePageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeletePageRequest.ProtoReflect.Descriptor instead.
 func (*DeletePageRequest) Descriptor() ([]byte, []int) {
-	return file_document_proto_rawDescGZIP(), []int{7}
+	return file_document_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *DeletePageRequest) GetId() string {
@@ -582,7 +670,7 @@ type ListBacklinksRequest struct {
 
 func (x *ListBacklinksRequest) Reset() {
 	*x = ListBacklinksRequest{}
-	mi := &file_document_proto_msgTypes[8]
+	mi := &file_document_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -594,7 +682,7 @@ func (x *ListBacklinksRequest) String() string {
 func (*ListBacklinksRequest) ProtoMessage() {}
 
 func (x *ListBacklinksRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_document_proto_msgTypes[8]
+	mi := &file_document_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -607,7 +695,7 @@ func (x *ListBacklinksRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListBacklinksRequest.ProtoReflect.Descriptor instead.
 func (*ListBacklinksRequest) Descriptor() ([]byte, []int) {
-	return file_document_proto_rawDescGZIP(), []int{8}
+	return file_document_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ListBacklinksRequest) GetPageId() string {
@@ -626,7 +714,7 @@ type ListBacklinksResponse struct {
 
 func (x *ListBacklinksResponse) Reset() {
 	*x = ListBacklinksResponse{}
-	mi := &file_document_proto_msgTypes[9]
+	mi := &file_document_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -638,7 +726,7 @@ func (x *ListBacklinksResponse) String() string {
 func (*ListBacklinksResponse) ProtoMessage() {}
 
 func (x *ListBacklinksResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_document_proto_msgTypes[9]
+	mi := &file_document_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -651,7 +739,7 @@ func (x *ListBacklinksResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListBacklinksResponse.ProtoReflect.Descriptor instead.
 func (*ListBacklinksResponse) Descriptor() ([]byte, []int) {
-	return file_document_proto_rawDescGZIP(), []int{9}
+	return file_document_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ListBacklinksResponse) GetBacklinks() []*Backlink {
@@ -673,7 +761,7 @@ type Backlink struct {
 
 func (x *Backlink) Reset() {
 	*x = Backlink{}
-	mi := &file_document_proto_msgTypes[10]
+	mi := &file_document_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -685,7 +773,7 @@ func (x *Backlink) String() string {
 func (*Backlink) ProtoMessage() {}
 
 func (x *Backlink) ProtoReflect() protoreflect.Message {
-	mi := &file_document_proto_msgTypes[10]
+	mi := &file_document_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -698,7 +786,7 @@ func (x *Backlink) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Backlink.ProtoReflect.Descriptor instead.
 func (*Backlink) Descriptor() ([]byte, []int) {
-	return file_document_proto_rawDescGZIP(), []int{10}
+	return file_document_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *Backlink) GetFromPage() string {
@@ -738,7 +826,7 @@ type ListBlocksRequest struct {
 
 func (x *ListBlocksRequest) Reset() {
 	*x = ListBlocksRequest{}
-	mi := &file_document_proto_msgTypes[11]
+	mi := &file_document_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -750,7 +838,7 @@ func (x *ListBlocksRequest) String() string {
 func (*ListBlocksRequest) ProtoMessage() {}
 
 func (x *ListBlocksRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_document_proto_msgTypes[11]
+	mi := &file_document_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -763,7 +851,7 @@ func (x *ListBlocksRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListBlocksRequest.ProtoReflect.Descriptor instead.
 func (*ListBlocksRequest) Descriptor() ([]byte, []int) {
-	return file_document_proto_rawDescGZIP(), []int{11}
+	return file_document_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ListBlocksRequest) GetPageId() string {
@@ -782,7 +870,7 @@ type ListBlocksResponse struct {
 
 func (x *ListBlocksResponse) Reset() {
 	*x = ListBlocksResponse{}
-	mi := &file_document_proto_msgTypes[12]
+	mi := &file_document_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -794,7 +882,7 @@ func (x *ListBlocksResponse) String() string {
 func (*ListBlocksResponse) ProtoMessage() {}
 
 func (x *ListBlocksResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_document_proto_msgTypes[12]
+	mi := &file_document_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -807,7 +895,7 @@ func (x *ListBlocksResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListBlocksResponse.ProtoReflect.Descriptor instead.
 func (*ListBlocksResponse) Descriptor() ([]byte, []int) {
-	return file_document_proto_rawDescGZIP(), []int{12}
+	return file_document_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *ListBlocksResponse) GetBlocks() []*Block {
@@ -829,7 +917,7 @@ type Block struct {
 
 func (x *Block) Reset() {
 	*x = Block{}
-	mi := &file_document_proto_msgTypes[13]
+	mi := &file_document_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -841,7 +929,7 @@ func (x *Block) String() string {
 func (*Block) ProtoMessage() {}
 
 func (x *Block) ProtoReflect() protoreflect.Message {
-	mi := &file_document_proto_msgTypes[13]
+	mi := &file_document_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -854,7 +942,7 @@ func (x *Block) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Block.ProtoReflect.Descriptor instead.
 func (*Block) Descriptor() ([]byte, []int) {
-	return file_document_proto_rawDescGZIP(), []int{13}
+	return file_document_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *Block) GetId() string {
@@ -885,11 +973,801 @@ func (x *Block) GetContentJson() string {
 	return ""
 }
 
+type PreviewDeleteRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PreviewDeleteRequest) Reset() {
+	*x = PreviewDeleteRequest{}
+	mi := &file_document_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PreviewDeleteRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PreviewDeleteRequest) ProtoMessage() {}
+
+func (x *PreviewDeleteRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_document_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PreviewDeleteRequest.ProtoReflect.Descriptor instead.
+func (*PreviewDeleteRequest) Descriptor() ([]byte, []int) {
+	return file_document_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *PreviewDeleteRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+type PreviewDeleteResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Descendants   []*Page                `protobuf:"bytes,1,rep,name=descendants,proto3" json:"descendants,omitempty"` // the LTREE subtree this delete cascades to
+	Referrers     []*Page                `protobuf:"bytes,2,rep,name=referrers,proto3" json:"referrers,omitempty"`     // pages whose [[links]] would dangle
+	BlockCount    int32                  `protobuf:"varint,3,opt,name=block_count,json=blockCount,proto3" json:"block_count,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PreviewDeleteResponse) Reset() {
+	*x = PreviewDeleteResponse{}
+	mi := &file_document_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PreviewDeleteResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PreviewDeleteResponse) ProtoMessage() {}
+
+func (x *PreviewDeleteResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_document_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PreviewDeleteResponse.ProtoReflect.Descriptor instead.
+func (*PreviewDeleteResponse) Descriptor() ([]byte, []int) {
+	return file_document_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *PreviewDeleteResponse) GetDescendants() []*Page {
+	if x != nil {
+		return x.Descendants
+	}
+	return nil
+}
+
+func (x *PreviewDeleteResponse) GetReferrers() []*Page {
+	if x != nil {
+		return x.Referrers
+	}
+	return nil
+}
+
+func (x *PreviewDeleteResponse) GetBlockCount() int32 {
+	if x != nil {
+		return x.BlockCount
+	}
+	return 0
+}
+
+type ListTrashRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Limit         int32                  `protobuf:"varint,1,opt,name=limit,proto3" json:"limit,omitempty"`
+	Offset        int32                  `protobuf:"varint,2,opt,name=offset,proto3" json:"offset,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListTrashRequest) Reset() {
+	*x = ListTrashRequest{}
+	mi := &file_document_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListTrashRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListTrashRequest) ProtoMessage() {}
+
+func (x *ListTrashRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_document_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListTrashRequest.ProtoReflect.Descriptor instead.
+func (*ListTrashRequest) Descriptor() ([]byte, []int) {
+	return file_document_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *ListTrashRequest) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+func (x *ListTrashRequest) GetOffset() int32 {
+	if x != nil {
+		return x.Offset
+	}
+	return 0
+}
+
+type ListTrashResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Entries       []*TrashEntry          `protobuf:"bytes,1,rep,name=entries,proto3" json:"entries,omitempty"`
+	Total         int32                  `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListTrashResponse) Reset() {
+	*x = ListTrashResponse{}
+	mi := &file_document_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListTrashResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListTrashResponse) ProtoMessage() {}
+
+func (x *ListTrashResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_document_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListTrashResponse.ProtoReflect.Descriptor instead.
+func (*ListTrashResponse) Descriptor() ([]byte, []int) {
+	return file_document_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *ListTrashResponse) GetEntries() []*TrashEntry {
+	if x != nil {
+		return x.Entries
+	}
+	return nil
+}
+
+func (x *ListTrashResponse) GetTotal() int32 {
+	if x != nil {
+		return x.Total
+	}
+	return 0
+}
+
+type TrashEntry struct {
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Page    *Page                  `protobuf:"bytes,1,opt,name=page,proto3" json:"page,omitempty"`
+	PurgeAt *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=purge_at,json=purgeAt,proto3" json:"purge_at,omitempty"` // derived: deleted_at + window
+	// Present only while the saga runs. A finished saga has no progress to
+	// report, so absence here is how a caller tells 'deleting' from 'deleted'
+	// without re-reading lifecycle_state.
+	Progress      *SagaProgress `protobuf:"bytes,3,opt,name=progress,proto3,oneof" json:"progress,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TrashEntry) Reset() {
+	*x = TrashEntry{}
+	mi := &file_document_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TrashEntry) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TrashEntry) ProtoMessage() {}
+
+func (x *TrashEntry) ProtoReflect() protoreflect.Message {
+	mi := &file_document_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TrashEntry.ProtoReflect.Descriptor instead.
+func (*TrashEntry) Descriptor() ([]byte, []int) {
+	return file_document_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *TrashEntry) GetPage() *Page {
+	if x != nil {
+		return x.Page
+	}
+	return nil
+}
+
+func (x *TrashEntry) GetPurgeAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.PurgeAt
+	}
+	return nil
+}
+
+func (x *TrashEntry) GetProgress() *SagaProgress {
+	if x != nil {
+		return x.Progress
+	}
+	return nil
+}
+
+type SagaProgress struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	StepsDone []string               `protobuf:"bytes,1,rep,name=steps_done,json=stepsDone,proto3" json:"steps_done,omitempty"` // in completion order
+	StepsLeft []string               `protobuf:"bytes,2,rep,name=steps_left,json=stepsLeft,proto3" json:"steps_left,omitempty"`
+	Attempts  int32                  `protobuf:"varint,3,opt,name=attempts,proto3" json:"attempts,omitempty"` // > 1 means it resumed after a crash
+	LastError *string                `protobuf:"bytes,4,opt,name=last_error,json=lastError,proto3,oneof" json:"last_error,omitempty"`
+	// Steps with no backing store at this repo's scope (embeddings, blobs).
+	// Sent so the UI can render them as "no store yet" rather than as work
+	// performed or silently drop them.
+	NotApplicable []string `protobuf:"bytes,5,rep,name=not_applicable,json=notApplicable,proto3" json:"not_applicable,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SagaProgress) Reset() {
+	*x = SagaProgress{}
+	mi := &file_document_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SagaProgress) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SagaProgress) ProtoMessage() {}
+
+func (x *SagaProgress) ProtoReflect() protoreflect.Message {
+	mi := &file_document_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SagaProgress.ProtoReflect.Descriptor instead.
+func (*SagaProgress) Descriptor() ([]byte, []int) {
+	return file_document_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *SagaProgress) GetStepsDone() []string {
+	if x != nil {
+		return x.StepsDone
+	}
+	return nil
+}
+
+func (x *SagaProgress) GetStepsLeft() []string {
+	if x != nil {
+		return x.StepsLeft
+	}
+	return nil
+}
+
+func (x *SagaProgress) GetAttempts() int32 {
+	if x != nil {
+		return x.Attempts
+	}
+	return 0
+}
+
+func (x *SagaProgress) GetLastError() string {
+	if x != nil && x.LastError != nil {
+		return *x.LastError
+	}
+	return ""
+}
+
+func (x *SagaProgress) GetNotApplicable() []string {
+	if x != nil {
+		return x.NotApplicable
+	}
+	return nil
+}
+
+type RestorePageRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RestorePageRequest) Reset() {
+	*x = RestorePageRequest{}
+	mi := &file_document_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RestorePageRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RestorePageRequest) ProtoMessage() {}
+
+func (x *RestorePageRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_document_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RestorePageRequest.ProtoReflect.Descriptor instead.
+func (*RestorePageRequest) Descriptor() ([]byte, []int) {
+	return file_document_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *RestorePageRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+type ListTopicsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListTopicsRequest) Reset() {
+	*x = ListTopicsRequest{}
+	mi := &file_document_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListTopicsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListTopicsRequest) ProtoMessage() {}
+
+func (x *ListTopicsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_document_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListTopicsRequest.ProtoReflect.Descriptor instead.
+func (*ListTopicsRequest) Descriptor() ([]byte, []int) {
+	return file_document_proto_rawDescGZIP(), []int{22}
+}
+
+type ListTopicsResponse struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Topics         []*Topic               `protobuf:"bytes,1,rep,name=topics,proto3" json:"topics,omitempty"`
+	UntopicedPages int32                  `protobuf:"varint,2,opt,name=untopiced_pages,json=untopicedPages,proto3" json:"untopiced_pages,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *ListTopicsResponse) Reset() {
+	*x = ListTopicsResponse{}
+	mi := &file_document_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListTopicsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListTopicsResponse) ProtoMessage() {}
+
+func (x *ListTopicsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_document_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListTopicsResponse.ProtoReflect.Descriptor instead.
+func (*ListTopicsResponse) Descriptor() ([]byte, []int) {
+	return file_document_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *ListTopicsResponse) GetTopics() []*Topic {
+	if x != nil {
+		return x.Topics
+	}
+	return nil
+}
+
+func (x *ListTopicsResponse) GetUntopicedPages() int32 {
+	if x != nil {
+		return x.UntopicedPages
+	}
+	return 0
+}
+
+// topic_id absent clears the assignment back to untopiced.
+type SetPageTopicRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	PageId        string                 `protobuf:"bytes,1,opt,name=page_id,json=pageId,proto3" json:"page_id,omitempty"`
+	TopicId       *string                `protobuf:"bytes,2,opt,name=topic_id,json=topicId,proto3,oneof" json:"topic_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetPageTopicRequest) Reset() {
+	*x = SetPageTopicRequest{}
+	mi := &file_document_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetPageTopicRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetPageTopicRequest) ProtoMessage() {}
+
+func (x *SetPageTopicRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_document_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetPageTopicRequest.ProtoReflect.Descriptor instead.
+func (*SetPageTopicRequest) Descriptor() ([]byte, []int) {
+	return file_document_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *SetPageTopicRequest) GetPageId() string {
+	if x != nil {
+		return x.PageId
+	}
+	return ""
+}
+
+func (x *SetPageTopicRequest) GetTopicId() string {
+	if x != nil && x.TopicId != nil {
+		return *x.TopicId
+	}
+	return ""
+}
+
+type AddPageTagRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	PageId        string                 `protobuf:"bytes,1,opt,name=page_id,json=pageId,proto3" json:"page_id,omitempty"`
+	Tag           string                 `protobuf:"bytes,2,opt,name=tag,proto3" json:"tag,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AddPageTagRequest) Reset() {
+	*x = AddPageTagRequest{}
+	mi := &file_document_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AddPageTagRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AddPageTagRequest) ProtoMessage() {}
+
+func (x *AddPageTagRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_document_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AddPageTagRequest.ProtoReflect.Descriptor instead.
+func (*AddPageTagRequest) Descriptor() ([]byte, []int) {
+	return file_document_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *AddPageTagRequest) GetPageId() string {
+	if x != nil {
+		return x.PageId
+	}
+	return ""
+}
+
+func (x *AddPageTagRequest) GetTag() string {
+	if x != nil {
+		return x.Tag
+	}
+	return ""
+}
+
+type RemovePageTagRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	PageId        string                 `protobuf:"bytes,1,opt,name=page_id,json=pageId,proto3" json:"page_id,omitempty"`
+	Tag           string                 `protobuf:"bytes,2,opt,name=tag,proto3" json:"tag,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RemovePageTagRequest) Reset() {
+	*x = RemovePageTagRequest{}
+	mi := &file_document_proto_msgTypes[26]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RemovePageTagRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RemovePageTagRequest) ProtoMessage() {}
+
+func (x *RemovePageTagRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_document_proto_msgTypes[26]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RemovePageTagRequest.ProtoReflect.Descriptor instead.
+func (*RemovePageTagRequest) Descriptor() ([]byte, []int) {
+	return file_document_proto_rawDescGZIP(), []int{26}
+}
+
+func (x *RemovePageTagRequest) GetPageId() string {
+	if x != nil {
+		return x.PageId
+	}
+	return ""
+}
+
+func (x *RemovePageTagRequest) GetTag() string {
+	if x != nil {
+		return x.Tag
+	}
+	return ""
+}
+
+type ListTagFacetsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Limit         int32                  `protobuf:"varint,1,opt,name=limit,proto3" json:"limit,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListTagFacetsRequest) Reset() {
+	*x = ListTagFacetsRequest{}
+	mi := &file_document_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListTagFacetsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListTagFacetsRequest) ProtoMessage() {}
+
+func (x *ListTagFacetsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_document_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListTagFacetsRequest.ProtoReflect.Descriptor instead.
+func (*ListTagFacetsRequest) Descriptor() ([]byte, []int) {
+	return file_document_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *ListTagFacetsRequest) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+type ListTagFacetsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Facets        []*TagFacet            `protobuf:"bytes,1,rep,name=facets,proto3" json:"facets,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListTagFacetsResponse) Reset() {
+	*x = ListTagFacetsResponse{}
+	mi := &file_document_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListTagFacetsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListTagFacetsResponse) ProtoMessage() {}
+
+func (x *ListTagFacetsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_document_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListTagFacetsResponse.ProtoReflect.Descriptor instead.
+func (*ListTagFacetsResponse) Descriptor() ([]byte, []int) {
+	return file_document_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *ListTagFacetsResponse) GetFacets() []*TagFacet {
+	if x != nil {
+		return x.Facets
+	}
+	return nil
+}
+
+type TagFacet struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Tag       string                 `protobuf:"bytes,1,opt,name=tag,proto3" json:"tag,omitempty"`
+	PageCount int32                  `protobuf:"varint,2,opt,name=page_count,json=pageCount,proto3" json:"page_count,omitempty"`
+	// Distinct topics the tag's pages span. ui-mockups § 10b: "a tag that
+	// lives in three topics is doing real work — it names a technique, not a
+	// subject."
+	TopicsSpanned int32 `protobuf:"varint,3,opt,name=topics_spanned,json=topicsSpanned,proto3" json:"topics_spanned,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TagFacet) Reset() {
+	*x = TagFacet{}
+	mi := &file_document_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TagFacet) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TagFacet) ProtoMessage() {}
+
+func (x *TagFacet) ProtoReflect() protoreflect.Message {
+	mi := &file_document_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TagFacet.ProtoReflect.Descriptor instead.
+func (*TagFacet) Descriptor() ([]byte, []int) {
+	return file_document_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *TagFacet) GetTag() string {
+	if x != nil {
+		return x.Tag
+	}
+	return ""
+}
+
+func (x *TagFacet) GetPageCount() int32 {
+	if x != nil {
+		return x.PageCount
+	}
+	return 0
+}
+
+func (x *TagFacet) GetTopicsSpanned() int32 {
+	if x != nil {
+		return x.TopicsSpanned
+	}
+	return 0
+}
+
 var File_document_proto protoreflect.FileDescriptor
 
 const file_document_proto_rawDesc = "" +
 	"\n" +
-	"\x0edocument.proto\x12\x14marginal.document.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1bgoogle/protobuf/empty.proto\"\xbe\x03\n" +
+	"\x0edocument.proto\x12\x14marginal.document.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1bgoogle/protobuf/empty.proto\"\x94\x04\n" +
 	"\x04Page\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -905,10 +1783,19 @@ const file_document_proto_rawDesc = "" +
 	"updated_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12>\n" +
 	"\n" +
 	"deleted_at\x18\n" +
-	" \x01(\v2\x1a.google.protobuf.TimestampH\x01R\tdeletedAt\x88\x01\x01B\f\n" +
+	" \x01(\v2\x1a.google.protobuf.TimestampH\x01R\tdeletedAt\x88\x01\x01\x126\n" +
+	"\x05topic\x18\v \x01(\v2\x1b.marginal.document.v1.TopicH\x02R\x05topic\x88\x01\x01\x12\x12\n" +
+	"\x04tags\x18\f \x03(\tR\x04tagsB\f\n" +
 	"\n" +
 	"_parent_idB\r\n" +
-	"\v_deleted_at\"~\n" +
+	"\v_deleted_atB\b\n" +
+	"\x06_topic\"g\n" +
+	"\x05Topic\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1b\n" +
+	"\tcolor_key\x18\x03 \x01(\tR\bcolorKey\x12\x1d\n" +
+	"\n" +
+	"page_count\x18\x04 \x01(\x05R\tpageCount\"~\n" +
 	"\x11CreatePageRequest\x12\x14\n" +
 	"\x05title\x18\x01 \x01(\tR\x05title\x12 \n" +
 	"\tparent_id\x18\x02 \x01(\tH\x00R\bparentId\x88\x01\x01\x12\x19\n" +
@@ -962,12 +1849,66 @@ const file_document_proto_rawDesc = "" +
 	"\tkind_json\x18\x03 \x01(\tR\bkindJson\x12!\n" +
 	"\fcontent_json\x18\x04 \x01(\tR\vcontentJsonB\f\n" +
 	"\n" +
-	"_parent_id*\x88\x01\n" +
+	"_parent_id\"&\n" +
+	"\x14PreviewDeleteRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\"\xb0\x01\n" +
+	"\x15PreviewDeleteResponse\x12<\n" +
+	"\vdescendants\x18\x01 \x03(\v2\x1a.marginal.document.v1.PageR\vdescendants\x128\n" +
+	"\treferrers\x18\x02 \x03(\v2\x1a.marginal.document.v1.PageR\treferrers\x12\x1f\n" +
+	"\vblock_count\x18\x03 \x01(\x05R\n" +
+	"blockCount\"@\n" +
+	"\x10ListTrashRequest\x12\x14\n" +
+	"\x05limit\x18\x01 \x01(\x05R\x05limit\x12\x16\n" +
+	"\x06offset\x18\x02 \x01(\x05R\x06offset\"e\n" +
+	"\x11ListTrashResponse\x12:\n" +
+	"\aentries\x18\x01 \x03(\v2 .marginal.document.v1.TrashEntryR\aentries\x12\x14\n" +
+	"\x05total\x18\x02 \x01(\x05R\x05total\"\xc5\x01\n" +
+	"\n" +
+	"TrashEntry\x12.\n" +
+	"\x04page\x18\x01 \x01(\v2\x1a.marginal.document.v1.PageR\x04page\x125\n" +
+	"\bpurge_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\apurgeAt\x12C\n" +
+	"\bprogress\x18\x03 \x01(\v2\".marginal.document.v1.SagaProgressH\x00R\bprogress\x88\x01\x01B\v\n" +
+	"\t_progress\"\xc2\x01\n" +
+	"\fSagaProgress\x12\x1d\n" +
+	"\n" +
+	"steps_done\x18\x01 \x03(\tR\tstepsDone\x12\x1d\n" +
+	"\n" +
+	"steps_left\x18\x02 \x03(\tR\tstepsLeft\x12\x1a\n" +
+	"\battempts\x18\x03 \x01(\x05R\battempts\x12\"\n" +
+	"\n" +
+	"last_error\x18\x04 \x01(\tH\x00R\tlastError\x88\x01\x01\x12%\n" +
+	"\x0enot_applicable\x18\x05 \x03(\tR\rnotApplicableB\r\n" +
+	"\v_last_error\"$\n" +
+	"\x12RestorePageRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\"\x13\n" +
+	"\x11ListTopicsRequest\"r\n" +
+	"\x12ListTopicsResponse\x123\n" +
+	"\x06topics\x18\x01 \x03(\v2\x1b.marginal.document.v1.TopicR\x06topics\x12'\n" +
+	"\x0funtopiced_pages\x18\x02 \x01(\x05R\x0euntopicedPages\"[\n" +
+	"\x13SetPageTopicRequest\x12\x17\n" +
+	"\apage_id\x18\x01 \x01(\tR\x06pageId\x12\x1e\n" +
+	"\btopic_id\x18\x02 \x01(\tH\x00R\atopicId\x88\x01\x01B\v\n" +
+	"\t_topic_id\">\n" +
+	"\x11AddPageTagRequest\x12\x17\n" +
+	"\apage_id\x18\x01 \x01(\tR\x06pageId\x12\x10\n" +
+	"\x03tag\x18\x02 \x01(\tR\x03tag\"A\n" +
+	"\x14RemovePageTagRequest\x12\x17\n" +
+	"\apage_id\x18\x01 \x01(\tR\x06pageId\x12\x10\n" +
+	"\x03tag\x18\x02 \x01(\tR\x03tag\",\n" +
+	"\x14ListTagFacetsRequest\x12\x14\n" +
+	"\x05limit\x18\x01 \x01(\x05R\x05limit\"O\n" +
+	"\x15ListTagFacetsResponse\x126\n" +
+	"\x06facets\x18\x01 \x03(\v2\x1e.marginal.document.v1.TagFacetR\x06facets\"b\n" +
+	"\bTagFacet\x12\x10\n" +
+	"\x03tag\x18\x01 \x01(\tR\x03tag\x12\x1d\n" +
+	"\n" +
+	"page_count\x18\x02 \x01(\x05R\tpageCount\x12%\n" +
+	"\x0etopics_spanned\x18\x03 \x01(\x05R\rtopicsSpanned*\x88\x01\n" +
 	"\x0eLifecycleState\x12\x1f\n" +
 	"\x1bLIFECYCLE_STATE_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16LIFECYCLE_STATE_ACTIVE\x10\x01\x12\x1c\n" +
 	"\x18LIFECYCLE_STATE_DELETING\x10\x02\x12\x1b\n" +
-	"\x17LIFECYCLE_STATE_DELETED\x10\x032\xcf\x05\n" +
+	"\x17LIFECYCLE_STATE_DELETED\x10\x032\xba\v\n" +
 	"\vPageService\x12Q\n" +
 	"\n" +
 	"CreatePage\x12'.marginal.document.v1.CreatePageRequest\x1a\x1a.marginal.document.v1.Page\x12K\n" +
@@ -980,7 +1921,17 @@ const file_document_proto_rawDesc = "" +
 	"DeletePage\x12'.marginal.document.v1.DeletePageRequest\x1a\x16.google.protobuf.Empty\x12h\n" +
 	"\rListBacklinks\x12*.marginal.document.v1.ListBacklinksRequest\x1a+.marginal.document.v1.ListBacklinksResponse\x12_\n" +
 	"\n" +
-	"ListBlocks\x12'.marginal.document.v1.ListBlocksRequest\x1a(.marginal.document.v1.ListBlocksResponseB/Z-marginal/document-service/genproto/documentv1b\x06proto3"
+	"ListBlocks\x12'.marginal.document.v1.ListBlocksRequest\x1a(.marginal.document.v1.ListBlocksResponse\x12h\n" +
+	"\rPreviewDelete\x12*.marginal.document.v1.PreviewDeleteRequest\x1a+.marginal.document.v1.PreviewDeleteResponse\x12\\\n" +
+	"\tListTrash\x12&.marginal.document.v1.ListTrashRequest\x1a'.marginal.document.v1.ListTrashResponse\x12S\n" +
+	"\vRestorePage\x12(.marginal.document.v1.RestorePageRequest\x1a\x1a.marginal.document.v1.Page\x12_\n" +
+	"\n" +
+	"ListTopics\x12'.marginal.document.v1.ListTopicsRequest\x1a(.marginal.document.v1.ListTopicsResponse\x12U\n" +
+	"\fSetPageTopic\x12).marginal.document.v1.SetPageTopicRequest\x1a\x1a.marginal.document.v1.Page\x12Q\n" +
+	"\n" +
+	"AddPageTag\x12'.marginal.document.v1.AddPageTagRequest\x1a\x1a.marginal.document.v1.Page\x12W\n" +
+	"\rRemovePageTag\x12*.marginal.document.v1.RemovePageTagRequest\x1a\x1a.marginal.document.v1.Page\x12h\n" +
+	"\rListTagFacets\x12*.marginal.document.v1.ListTagFacetsRequest\x1a+.marginal.document.v1.ListTagFacetsResponseB/Z-marginal/document-service/genproto/documentv1b\x06proto3"
 
 var (
 	file_document_proto_rawDescOnce sync.Once
@@ -995,55 +1946,96 @@ func file_document_proto_rawDescGZIP() []byte {
 }
 
 var file_document_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_document_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
+var file_document_proto_msgTypes = make([]protoimpl.MessageInfo, 30)
 var file_document_proto_goTypes = []any{
 	(LifecycleState)(0),           // 0: marginal.document.v1.LifecycleState
 	(*Page)(nil),                  // 1: marginal.document.v1.Page
-	(*CreatePageRequest)(nil),     // 2: marginal.document.v1.CreatePageRequest
-	(*GetPageRequest)(nil),        // 3: marginal.document.v1.GetPageRequest
-	(*ListPagesRequest)(nil),      // 4: marginal.document.v1.ListPagesRequest
-	(*ListPagesResponse)(nil),     // 5: marginal.document.v1.ListPagesResponse
-	(*RenamePageRequest)(nil),     // 6: marginal.document.v1.RenamePageRequest
-	(*ReparentPageRequest)(nil),   // 7: marginal.document.v1.ReparentPageRequest
-	(*DeletePageRequest)(nil),     // 8: marginal.document.v1.DeletePageRequest
-	(*ListBacklinksRequest)(nil),  // 9: marginal.document.v1.ListBacklinksRequest
-	(*ListBacklinksResponse)(nil), // 10: marginal.document.v1.ListBacklinksResponse
-	(*Backlink)(nil),              // 11: marginal.document.v1.Backlink
-	(*ListBlocksRequest)(nil),     // 12: marginal.document.v1.ListBlocksRequest
-	(*ListBlocksResponse)(nil),    // 13: marginal.document.v1.ListBlocksResponse
-	(*Block)(nil),                 // 14: marginal.document.v1.Block
-	(*timestamppb.Timestamp)(nil), // 15: google.protobuf.Timestamp
-	(*emptypb.Empty)(nil),         // 16: google.protobuf.Empty
+	(*Topic)(nil),                 // 2: marginal.document.v1.Topic
+	(*CreatePageRequest)(nil),     // 3: marginal.document.v1.CreatePageRequest
+	(*GetPageRequest)(nil),        // 4: marginal.document.v1.GetPageRequest
+	(*ListPagesRequest)(nil),      // 5: marginal.document.v1.ListPagesRequest
+	(*ListPagesResponse)(nil),     // 6: marginal.document.v1.ListPagesResponse
+	(*RenamePageRequest)(nil),     // 7: marginal.document.v1.RenamePageRequest
+	(*ReparentPageRequest)(nil),   // 8: marginal.document.v1.ReparentPageRequest
+	(*DeletePageRequest)(nil),     // 9: marginal.document.v1.DeletePageRequest
+	(*ListBacklinksRequest)(nil),  // 10: marginal.document.v1.ListBacklinksRequest
+	(*ListBacklinksResponse)(nil), // 11: marginal.document.v1.ListBacklinksResponse
+	(*Backlink)(nil),              // 12: marginal.document.v1.Backlink
+	(*ListBlocksRequest)(nil),     // 13: marginal.document.v1.ListBlocksRequest
+	(*ListBlocksResponse)(nil),    // 14: marginal.document.v1.ListBlocksResponse
+	(*Block)(nil),                 // 15: marginal.document.v1.Block
+	(*PreviewDeleteRequest)(nil),  // 16: marginal.document.v1.PreviewDeleteRequest
+	(*PreviewDeleteResponse)(nil), // 17: marginal.document.v1.PreviewDeleteResponse
+	(*ListTrashRequest)(nil),      // 18: marginal.document.v1.ListTrashRequest
+	(*ListTrashResponse)(nil),     // 19: marginal.document.v1.ListTrashResponse
+	(*TrashEntry)(nil),            // 20: marginal.document.v1.TrashEntry
+	(*SagaProgress)(nil),          // 21: marginal.document.v1.SagaProgress
+	(*RestorePageRequest)(nil),    // 22: marginal.document.v1.RestorePageRequest
+	(*ListTopicsRequest)(nil),     // 23: marginal.document.v1.ListTopicsRequest
+	(*ListTopicsResponse)(nil),    // 24: marginal.document.v1.ListTopicsResponse
+	(*SetPageTopicRequest)(nil),   // 25: marginal.document.v1.SetPageTopicRequest
+	(*AddPageTagRequest)(nil),     // 26: marginal.document.v1.AddPageTagRequest
+	(*RemovePageTagRequest)(nil),  // 27: marginal.document.v1.RemovePageTagRequest
+	(*ListTagFacetsRequest)(nil),  // 28: marginal.document.v1.ListTagFacetsRequest
+	(*ListTagFacetsResponse)(nil), // 29: marginal.document.v1.ListTagFacetsResponse
+	(*TagFacet)(nil),              // 30: marginal.document.v1.TagFacet
+	(*timestamppb.Timestamp)(nil), // 31: google.protobuf.Timestamp
+	(*emptypb.Empty)(nil),         // 32: google.protobuf.Empty
 }
 var file_document_proto_depIdxs = []int32{
 	0,  // 0: marginal.document.v1.Page.lifecycle_state:type_name -> marginal.document.v1.LifecycleState
-	15, // 1: marginal.document.v1.Page.created_at:type_name -> google.protobuf.Timestamp
-	15, // 2: marginal.document.v1.Page.updated_at:type_name -> google.protobuf.Timestamp
-	15, // 3: marginal.document.v1.Page.deleted_at:type_name -> google.protobuf.Timestamp
-	1,  // 4: marginal.document.v1.ListPagesResponse.pages:type_name -> marginal.document.v1.Page
-	11, // 5: marginal.document.v1.ListBacklinksResponse.backlinks:type_name -> marginal.document.v1.Backlink
-	14, // 6: marginal.document.v1.ListBlocksResponse.blocks:type_name -> marginal.document.v1.Block
-	2,  // 7: marginal.document.v1.PageService.CreatePage:input_type -> marginal.document.v1.CreatePageRequest
-	3,  // 8: marginal.document.v1.PageService.GetPage:input_type -> marginal.document.v1.GetPageRequest
-	4,  // 9: marginal.document.v1.PageService.ListPages:input_type -> marginal.document.v1.ListPagesRequest
-	6,  // 10: marginal.document.v1.PageService.RenamePage:input_type -> marginal.document.v1.RenamePageRequest
-	7,  // 11: marginal.document.v1.PageService.ReparentPage:input_type -> marginal.document.v1.ReparentPageRequest
-	8,  // 12: marginal.document.v1.PageService.DeletePage:input_type -> marginal.document.v1.DeletePageRequest
-	9,  // 13: marginal.document.v1.PageService.ListBacklinks:input_type -> marginal.document.v1.ListBacklinksRequest
-	12, // 14: marginal.document.v1.PageService.ListBlocks:input_type -> marginal.document.v1.ListBlocksRequest
-	1,  // 15: marginal.document.v1.PageService.CreatePage:output_type -> marginal.document.v1.Page
-	1,  // 16: marginal.document.v1.PageService.GetPage:output_type -> marginal.document.v1.Page
-	5,  // 17: marginal.document.v1.PageService.ListPages:output_type -> marginal.document.v1.ListPagesResponse
-	1,  // 18: marginal.document.v1.PageService.RenamePage:output_type -> marginal.document.v1.Page
-	1,  // 19: marginal.document.v1.PageService.ReparentPage:output_type -> marginal.document.v1.Page
-	16, // 20: marginal.document.v1.PageService.DeletePage:output_type -> google.protobuf.Empty
-	10, // 21: marginal.document.v1.PageService.ListBacklinks:output_type -> marginal.document.v1.ListBacklinksResponse
-	13, // 22: marginal.document.v1.PageService.ListBlocks:output_type -> marginal.document.v1.ListBlocksResponse
-	15, // [15:23] is the sub-list for method output_type
-	7,  // [7:15] is the sub-list for method input_type
-	7,  // [7:7] is the sub-list for extension type_name
-	7,  // [7:7] is the sub-list for extension extendee
-	0,  // [0:7] is the sub-list for field type_name
+	31, // 1: marginal.document.v1.Page.created_at:type_name -> google.protobuf.Timestamp
+	31, // 2: marginal.document.v1.Page.updated_at:type_name -> google.protobuf.Timestamp
+	31, // 3: marginal.document.v1.Page.deleted_at:type_name -> google.protobuf.Timestamp
+	2,  // 4: marginal.document.v1.Page.topic:type_name -> marginal.document.v1.Topic
+	1,  // 5: marginal.document.v1.ListPagesResponse.pages:type_name -> marginal.document.v1.Page
+	12, // 6: marginal.document.v1.ListBacklinksResponse.backlinks:type_name -> marginal.document.v1.Backlink
+	15, // 7: marginal.document.v1.ListBlocksResponse.blocks:type_name -> marginal.document.v1.Block
+	1,  // 8: marginal.document.v1.PreviewDeleteResponse.descendants:type_name -> marginal.document.v1.Page
+	1,  // 9: marginal.document.v1.PreviewDeleteResponse.referrers:type_name -> marginal.document.v1.Page
+	20, // 10: marginal.document.v1.ListTrashResponse.entries:type_name -> marginal.document.v1.TrashEntry
+	1,  // 11: marginal.document.v1.TrashEntry.page:type_name -> marginal.document.v1.Page
+	31, // 12: marginal.document.v1.TrashEntry.purge_at:type_name -> google.protobuf.Timestamp
+	21, // 13: marginal.document.v1.TrashEntry.progress:type_name -> marginal.document.v1.SagaProgress
+	2,  // 14: marginal.document.v1.ListTopicsResponse.topics:type_name -> marginal.document.v1.Topic
+	30, // 15: marginal.document.v1.ListTagFacetsResponse.facets:type_name -> marginal.document.v1.TagFacet
+	3,  // 16: marginal.document.v1.PageService.CreatePage:input_type -> marginal.document.v1.CreatePageRequest
+	4,  // 17: marginal.document.v1.PageService.GetPage:input_type -> marginal.document.v1.GetPageRequest
+	5,  // 18: marginal.document.v1.PageService.ListPages:input_type -> marginal.document.v1.ListPagesRequest
+	7,  // 19: marginal.document.v1.PageService.RenamePage:input_type -> marginal.document.v1.RenamePageRequest
+	8,  // 20: marginal.document.v1.PageService.ReparentPage:input_type -> marginal.document.v1.ReparentPageRequest
+	9,  // 21: marginal.document.v1.PageService.DeletePage:input_type -> marginal.document.v1.DeletePageRequest
+	10, // 22: marginal.document.v1.PageService.ListBacklinks:input_type -> marginal.document.v1.ListBacklinksRequest
+	13, // 23: marginal.document.v1.PageService.ListBlocks:input_type -> marginal.document.v1.ListBlocksRequest
+	16, // 24: marginal.document.v1.PageService.PreviewDelete:input_type -> marginal.document.v1.PreviewDeleteRequest
+	18, // 25: marginal.document.v1.PageService.ListTrash:input_type -> marginal.document.v1.ListTrashRequest
+	22, // 26: marginal.document.v1.PageService.RestorePage:input_type -> marginal.document.v1.RestorePageRequest
+	23, // 27: marginal.document.v1.PageService.ListTopics:input_type -> marginal.document.v1.ListTopicsRequest
+	25, // 28: marginal.document.v1.PageService.SetPageTopic:input_type -> marginal.document.v1.SetPageTopicRequest
+	26, // 29: marginal.document.v1.PageService.AddPageTag:input_type -> marginal.document.v1.AddPageTagRequest
+	27, // 30: marginal.document.v1.PageService.RemovePageTag:input_type -> marginal.document.v1.RemovePageTagRequest
+	28, // 31: marginal.document.v1.PageService.ListTagFacets:input_type -> marginal.document.v1.ListTagFacetsRequest
+	1,  // 32: marginal.document.v1.PageService.CreatePage:output_type -> marginal.document.v1.Page
+	1,  // 33: marginal.document.v1.PageService.GetPage:output_type -> marginal.document.v1.Page
+	6,  // 34: marginal.document.v1.PageService.ListPages:output_type -> marginal.document.v1.ListPagesResponse
+	1,  // 35: marginal.document.v1.PageService.RenamePage:output_type -> marginal.document.v1.Page
+	1,  // 36: marginal.document.v1.PageService.ReparentPage:output_type -> marginal.document.v1.Page
+	32, // 37: marginal.document.v1.PageService.DeletePage:output_type -> google.protobuf.Empty
+	11, // 38: marginal.document.v1.PageService.ListBacklinks:output_type -> marginal.document.v1.ListBacklinksResponse
+	14, // 39: marginal.document.v1.PageService.ListBlocks:output_type -> marginal.document.v1.ListBlocksResponse
+	17, // 40: marginal.document.v1.PageService.PreviewDelete:output_type -> marginal.document.v1.PreviewDeleteResponse
+	19, // 41: marginal.document.v1.PageService.ListTrash:output_type -> marginal.document.v1.ListTrashResponse
+	1,  // 42: marginal.document.v1.PageService.RestorePage:output_type -> marginal.document.v1.Page
+	24, // 43: marginal.document.v1.PageService.ListTopics:output_type -> marginal.document.v1.ListTopicsResponse
+	1,  // 44: marginal.document.v1.PageService.SetPageTopic:output_type -> marginal.document.v1.Page
+	1,  // 45: marginal.document.v1.PageService.AddPageTag:output_type -> marginal.document.v1.Page
+	1,  // 46: marginal.document.v1.PageService.RemovePageTag:output_type -> marginal.document.v1.Page
+	29, // 47: marginal.document.v1.PageService.ListTagFacets:output_type -> marginal.document.v1.ListTagFacetsResponse
+	32, // [32:48] is the sub-list for method output_type
+	16, // [16:32] is the sub-list for method input_type
+	16, // [16:16] is the sub-list for extension type_name
+	16, // [16:16] is the sub-list for extension extendee
+	0,  // [0:16] is the sub-list for field type_name
 }
 
 func init() { file_document_proto_init() }
@@ -1052,18 +2044,21 @@ func file_document_proto_init() {
 		return
 	}
 	file_document_proto_msgTypes[0].OneofWrappers = []any{}
-	file_document_proto_msgTypes[1].OneofWrappers = []any{}
-	file_document_proto_msgTypes[3].OneofWrappers = []any{}
+	file_document_proto_msgTypes[2].OneofWrappers = []any{}
 	file_document_proto_msgTypes[4].OneofWrappers = []any{}
-	file_document_proto_msgTypes[6].OneofWrappers = []any{}
-	file_document_proto_msgTypes[13].OneofWrappers = []any{}
+	file_document_proto_msgTypes[5].OneofWrappers = []any{}
+	file_document_proto_msgTypes[7].OneofWrappers = []any{}
+	file_document_proto_msgTypes[14].OneofWrappers = []any{}
+	file_document_proto_msgTypes[19].OneofWrappers = []any{}
+	file_document_proto_msgTypes[20].OneofWrappers = []any{}
+	file_document_proto_msgTypes[24].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_document_proto_rawDesc), len(file_document_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   14,
+			NumMessages:   30,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

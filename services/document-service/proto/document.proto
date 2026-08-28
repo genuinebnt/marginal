@@ -37,6 +37,18 @@ service PageService {
   // the caller already imports marginal/documentcore and can unmarshal
   // them directly, and this table's payload columns are already JSONB.
   rpc ListBlocks(ListBlocksRequest) returns (ListBlocksResponse);
+
+  // v2.6.0 — the delete saga, made observable and reversible.
+  rpc PreviewDelete(PreviewDeleteRequest) returns (PreviewDeleteResponse);
+  rpc ListTrash    (ListTrashRequest)     returns (ListTrashResponse);
+  rpc RestorePage  (RestorePageRequest)   returns (Page);
+
+  // v2.7.0 — classification.
+  rpc ListTopics    (ListTopicsRequest)    returns (ListTopicsResponse);
+  rpc SetPageTopic  (SetPageTopicRequest)  returns (Page);
+  rpc AddPageTag    (AddPageTagRequest)    returns (Page);
+  rpc RemovePageTag (RemovePageTagRequest) returns (Page);
+  rpc ListTagFacets (ListTagFacetsRequest) returns (ListTagFacetsResponse);
 }
 
 enum LifecycleState {
@@ -57,6 +69,19 @@ message Page {
   google.protobuf.Timestamp created_at = 8;
   google.protobuf.Timestamp updated_at = 9;
   optional google.protobuf.Timestamp deleted_at = 10;
+  // v2.7.0. One owned topic (absent = untopiced, a real state the UI
+  // reports rather than a gap), and any number of free-form tags.
+  optional Topic topic          = 11;
+  repeated string tags          = 12;
+}
+
+// A topic is singular per page and carries a colour KEY, never a hex value
+// — the palette lives in the design system (DESIGN_GUIDELINES.md §3.4).
+message Topic {
+  string id        = 1;
+  string name      = 2;
+  string color_key = 3;  // protocol|storage|interface|operations|research
+  int32  page_count = 4; // live pages only; 0 unless returned by ListTopics
 }
 
 message CreatePageRequest {
@@ -111,4 +136,61 @@ message Block {
   optional string parent_id = 2;
   string kind_json = 3;    // documentcore.BlockKind's own tagged-object JSON
   string content_json = 4; // documentcore.Content's own JSON ({text, marks})
+}
+
+
+// ---------------------------------------------------------------- v2.6.0
+
+message PreviewDeleteRequest  { string id = 1; }
+message PreviewDeleteResponse {
+  repeated Page descendants = 1;  // the LTREE subtree this delete cascades to
+  repeated Page referrers   = 2;  // pages whose [[links]] would dangle
+  int32         block_count = 3;
+}
+
+message ListTrashRequest  { int32 limit = 1; int32 offset = 2; }
+message ListTrashResponse  {
+  repeated TrashEntry entries = 1;
+  int32               total   = 2;
+}
+message TrashEntry {
+  Page                      page     = 1;
+  google.protobuf.Timestamp purge_at = 2;  // derived: deleted_at + window
+  // Present only while the saga runs. A finished saga has no progress to
+  // report, so absence here is how a caller tells 'deleting' from 'deleted'
+  // without re-reading lifecycle_state.
+  optional SagaProgress     progress = 3;
+}
+message SagaProgress {
+  repeated string steps_done = 1;  // in completion order
+  repeated string steps_left = 2;
+  int32           attempts   = 3;  // > 1 means it resumed after a crash
+  optional string last_error = 4;
+  // Steps with no backing store at this repo's scope (embeddings, blobs).
+  // Sent so the UI can render them as "no store yet" rather than as work
+  // performed or silently drop them.
+  repeated string not_applicable = 5;
+}
+
+message RestorePageRequest { string id = 1; }
+
+// ---------------------------------------------------------------- v2.7.0
+
+message ListTopicsRequest  {}
+message ListTopicsResponse { repeated Topic topics = 1; int32 untopiced_pages = 2; }
+
+// topic_id absent clears the assignment back to untopiced.
+message SetPageTopicRequest  { string page_id = 1; optional string topic_id = 2; }
+message AddPageTagRequest    { string page_id = 1; string tag = 2; }
+message RemovePageTagRequest { string page_id = 1; string tag = 2; }
+
+message ListTagFacetsRequest  { int32 limit = 1; }
+message ListTagFacetsResponse { repeated TagFacet facets = 1; }
+message TagFacet {
+  string tag            = 1;
+  int32  page_count     = 2;
+  // Distinct topics the tag's pages span. ui-mockups § 10b: "a tag that
+  // lives in three topics is doing real work — it names a technique, not a
+  // subject."
+  int32  topics_spanned = 3;
 }

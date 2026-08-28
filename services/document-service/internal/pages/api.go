@@ -216,7 +216,15 @@ func (s *Server) GetPage(ctx context.Context, req *documentv1.GetPageRequest) (*
 	if err != nil {
 		return nil, toStatus(err)
 	}
-	return toProto(page), nil
+	// Classification travels with every page read rather than needing a
+	// second round trip: a topic chip is drawn wherever a page title is,
+	// so a caller that has the page but not its topic has an incomplete
+	// page (v2.7.0, ui-mockups § 10b).
+	out := toProto(page)
+	if err := s.attachClassification(ctx, out, id); err != nil {
+		return nil, toStatus(err)
+	}
+	return out, nil
 }
 
 const (
@@ -389,4 +397,12 @@ func (s *Server) ListBlocks(ctx context.Context, req *documentv1.ListBlocksReque
 		}
 	}
 	return &documentv1.ListBlocksResponse{Blocks: out}, nil
+}
+
+func parseTopicID(s string) (TopicID, error) {
+	id, err := uuid.Parse(s)
+	if err != nil {
+		return TopicID{}, status.Error(codes.InvalidArgument, "topic id must be a UUID")
+	}
+	return TopicID(id), nil
 }

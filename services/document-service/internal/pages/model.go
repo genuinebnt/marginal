@@ -82,3 +82,29 @@ type NewPage struct {
 	ParentID  *PageID
 	After     *PageID
 }
+
+// TopicID is a topic's identity. Its own type rather than a bare uuid.UUID
+// for the same reason PageID is: the two are structurally identical and
+// swapping them at a call site would compile.
+type TopicID uuid.UUID
+
+func (t TopicID) String() string { return uuid.UUID(t).String() }
+
+// Topic is one owned classification (v2.7.0, ui-mockups § 10b). ColorKey
+// names a hue in the design system's categorical ramp; it is deliberately
+// not a hex value, so retuning the palette does not need a data migration.
+type Topic struct {
+	ID        TopicID
+	Name      string
+	ColorKey  string
+	PageCount int // live pages only; zero unless the query computed it
+}
+
+// TagFacet is one tag with its usage, for search's facet rail. TopicsSpanned
+// is what makes "a tag that lives in three topics is doing real work"
+// (ui-mockups § 10b) a computed fact rather than a claim.
+type TagFacet struct {
+	Tag           string
+	PageCount     int
+	TopicsSpanned int
+}
