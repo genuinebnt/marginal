@@ -640,6 +640,22 @@ a{color:#E8873C}a:hover{color:#F2A264}
         <span class="lbl">LIVE IN THIS PAGE</span>
         <div style="display:flex;align-items:center;gap:8px"><div class="dot" style="width:6px;height:6px;background:#A98CE8"><div class="ping" style="background:rgba(169,140,232,.55)"></div></div><span style="font-size:12px;color:#D2CFC8">Ada</span><span class="mono" style="margin-left:auto;font-size:10px;color:#585550">block 7f3a</span></div>
         <div style="display:flex;align-items:center;gap:8px"><div style="width:6px;height:6px;background:#7D9EC9"></div><span style="font-size:12px;color:#D2CFC8">Assistant</span><span class="mono" style="margin-left:auto;font-size:10px;color:#585550">reading</span></div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">THIS PAGE</span>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">blocks</span><span class="mono" style="font-size:11px;color:#E4E2DC">31</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">rev</span><span class="mono" style="font-size:11px;color:#E4E2DC">1 208</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">unflushed ops</span><span class="mono" style="font-size:11px;color:#3FCFA8">0</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">anchors resolved</span><span class="mono" style="font-size:11px;color:#3FCFA8">412 / 412</span></div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">TOPIC &amp; TAGS</span>
+        <div class="tgrow"><span class="tpc tpc-proto"><i></i>PROTOCOL</span><span class="tg">crdt</span><span class="tg">lamport</span><span class="tg" style="border-style:dashed;color:#585550">＋</span></div>
+        <div style="font-size:11px;line-height:1.6;color:#585550">Both commit as ops — <span class="mono" style="color:#8C8880">SetPageTopic</span>, <span class="mono" style="color:#8C8880">AddTag</span> — so both undo per actor and both appear in the trace like any other edit.</div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">KEYBOARD</span>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">command palette</span><span class="mono" style="font-size:11px;color:#E4E2DC">⌘K</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">link a page</span><span class="mono" style="font-size:11px;color:#E4E2DC">[ [</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">slash menu</span><span class="mono" style="font-size:11px;color:#E4E2DC">/</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">undo yours</span><span class="mono" style="font-size:11px;color:#E4E2DC">⌘Z</span></div>
       </div>
     </div>
   </div>
@@ -1004,6 +1020,15 @@ a{color:#E8873C}a:hover{color:#F2A264}
         <div style="height:1px;background:rgba(255,255,255,.07)"></div>
         <span class="lbl">RECENT QUERIES</span>
         <div class="mono" style="font-size:11px;line-height:1.95;color:#8C8880">anchor invariant<br>lamport tiebreak<br>outbox depth</div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">WHY THESE, IN THIS ORDER</span>
+        <div style="font-size:11.5px;line-height:1.65;color:#8C8880">Score is BM25 over title and block text. A page whose <span style="color:#7AA8E8">topic</span> matches a selected facet gets a small boost; a page carrying more tags gets nothing, because the moment tags boost rank, people farm them.</div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">WHAT THE INDEX HAS NOT SEEN</span>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">edits in the last 2.4 s</span><span class="mono" style="font-size:11px;color:#E0A34E">3 ops</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">pages created today</span><span class="mono" style="font-size:11px;color:#E4E2DC">2</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">pages deleted, not yet purged</span><span class="mono" style="font-size:11px;color:#E0A34E">1</span></div>
+        <div style="font-size:11px;line-height:1.6;color:#585550">The tree is authoritative and the index trails it. Saying so beats implying a transaction that does not exist.</div>
       </div>
     </div>
   </div>
@@ -1408,6 +1433,19 @@ a{color:#E8873C}a:hover{color:#F2A264}
         <div class="mono" style="font-size:10.5px;line-height:1.95;color:#8C8880">M&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;16<br>Mmax0&nbsp;&nbsp;&nbsp;&nbsp;32<br>efSearch&nbsp;&nbsp;64<br>pruning&nbsp;&nbsp;&nbsp;heuristic</div>
         <div style="height:1px;background:rgba(255,255,255,.07)"></div>
         <div style="font-size:11.5px;color:#8C8880;line-height:1.65">Speed without recall is half a result, so the exact answer is computed beside every query.</div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">FILTER RIDES THE DESCENT</span>
+        <div style="font-size:11.5px;line-height:1.65;color:#8C8880">Topic and tag constraints are applied <b style="color:#C3BFB7;font-weight:500">during</b> greedy descent, not to the result set. Post-filtering asks for k=5, throws three away and ships two — and recall collapses exactly when the filter is narrow, which is when someone is relying on it.</div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">THREE SIGNALS, KEPT APART</span>
+        <div style="display:flex;align-items:center;gap:9px"><span style="flex:1;font-size:11.5px;color:#9B968D">embedding cosine</span><div style="width:74px;height:4px;background:rgba(255,255,255,.06)"><div style="width:100%;height:100%;background:#E8873C"></div></div><span class="mono" style="font-size:9.5px;color:#8C8880;width:34px;text-align:right">.91</span></div>
+        <div style="display:flex;align-items:center;gap:9px"><span style="flex:1;font-size:11.5px;color:#9B968D">tag overlap</span><div style="width:74px;height:4px;background:rgba(255,255,255,.06)"><div style="width:60%;height:100%;background:#7AA8E8"></div></div><span class="mono" style="font-size:9.5px;color:#8C8880;width:34px;text-align:right">3/5</span></div>
+        <div style="display:flex;align-items:center;gap:9px"><span style="flex:1;font-size:11.5px;color:#9B968D">graph distance</span><div style="width:74px;height:4px;background:rgba(255,255,255,.06)"><div style="width:82%;height:100%;background:#5AC8B4"></div></div><span class="mono" style="font-size:9.5px;color:#8C8880;width:34px;text-align:right">1 hop</span></div>
+        <div style="font-size:11px;line-height:1.6;color:#585550">Never blended into one number. A blended score is unarguable, and an unarguable score is one you cannot debug when it puts the wrong page first.</div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">index build</span><span class="mono" style="font-size:11px;color:#E4E2DC">2.1 s</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">memory</span><span class="mono" style="font-size:11px;color:#E4E2DC">11 MB</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">recall@5 vs brute force</span><span class="mono" style="font-size:11px;color:#3FCFA8">5 / 5</span></div>
       </div>
     </div>
   </div>
@@ -1505,6 +1543,18 @@ a{color:#E8873C}a:hover{color:#F2A264}
         <div style="display:flex;gap:9px;align-items:baseline"><span style="color:#3FCFA8;font-size:10px">✓</span><span style="font-size:12px;color:#8C8880">Prose edits walk nothing</span></div>
         <div style="height:1px;background:rgba(255,255,255,.07)"></div>
         <div style="font-size:11.5px;line-height:1.65;color:#8C8880">Three edits, three costs: adding a <span class="mono" style="color:#E8873C">{<span>{ref}</span>}</span> seeds one page, dropping one seeds nothing, editing prose walks nothing at all.</div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">PROPAGATION COST</span>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">nodes in graph</span><span class="mono" style="font-size:11px;color:#E4E2DC">41</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">visited last pass</span><span class="mono" style="font-size:11px;color:#3FCFA8">6</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">full recompute would be</span><span class="mono" style="font-size:11px;color:#6E6A63">41</span></div>
+        <div style="font-size:11px;line-height:1.6;color:#585550">The gap between 6 and 41 is the entire argument for incremental invalidation. It only holds because edges are explicit — a guessed citation would have to walk everything.</div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">CYCLES</span>
+        <div style="font-size:11.5px;line-height:1.65;color:#8C8880"><span class="mono" style="color:#9B968D">a = {{b}}, b = {{a}}</span> is refused at write time by three-colour DFS — the same routine the link graph already runs. Second use of an algorithm, not a second algorithm.</div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">WHY NOT 2-SAT</span>
+        <div style="font-size:11.5px;line-height:1.65;color:#8C8880">With explicit names a contradiction is <b style="color:#C3BFB7;font-weight:500">two definitions of one key</b> — a hash collision. The useful half becomes trivial and the hard half disappears.</div>
       </div>
     </div>
   </div>
@@ -1737,6 +1787,17 @@ enum Op { InsertText }
         <div class="mono" style="font-size:10.5px;line-height:1.95;color:#8C8880">lex&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;0.4 ms<br>parse&nbsp;&nbsp;&nbsp;&nbsp;0.9 ms<br>project&nbsp;&nbsp;0.3 ms<br>replay&nbsp;&nbsp;&nbsp;0.3 ms</div>
         <div style="height:1px;background:rgba(255,255,255,.07)"></div>
         <div style="font-size:11.5px;line-height:1.65;color:#8C8880">The header says HOLDS because the replayed tree was compared, not because we are confident.</div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">THE PROPERTY UNDER TEST</span>
+        <div style="font-size:11.5px;line-height:1.65;color:#8C8880">For any input, replaying the emitted ops into an empty tree must equal the tree the pipeline produced directly. 12 000 randomised inputs, <b style="color:#3FCFA8;font-weight:500">0 mismatches</b>.</div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">inputs generated</span><span class="mono" style="font-size:11px;color:#E4E2DC">12 000</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">shrink failures</span><span class="mono" style="font-size:11px;color:#3FCFA8">0</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">slowest input</span><span class="mono" style="font-size:11px;color:#E4E2DC">2.1 MB html</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">parse budget</span><span class="mono" style="font-size:11px;color:#E4E2DC">120 ms</span></div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">WHY A PIPELINE</span>
+        <div style="font-size:11.5px;line-height:1.65;color:#8C8880">Paste and import are the same path. Anything that can enter the tree has to become ops first, which means anything pasted is undoable, attributable and replayable — properties that are impossible to add later.</div>
       </div>
     </div>
   </div>
@@ -1945,6 +2006,17 @@ enum Op { InsertText }
         <div class="mono" style="font-size:10.5px;line-height:1.95;color:#8C8880">InsertText&nbsp;&nbsp;&nbsp;<span style="color:#3FCFA8">✓</span><br>DeleteText&nbsp;&nbsp;&nbsp;<span style="color:#3FCFA8">✓</span><br>SetMark&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#3FCFA8">✓</span><br>InsertBlock&nbsp;&nbsp;<span style="color:#3FCFA8">✓</span><br>DeleteBlock&nbsp;&nbsp;<span style="color:#3FCFA8">✓</span><br>MoveBlock&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#3FCFA8">✓</span><br>SetAttr&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#3FCFA8">✓</span></div>
         <div style="height:1px;background:rgba(255,255,255,.07)"></div>
         <div style="font-size:11.5px;line-height:1.65;color:#8C8880">Two ops once carried payloads that did not match their offsets. The law check caught it on the first run.</div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">THE LAW</span>
+        <div class="mono" style="font-size:10.5px;line-height:1.75;color:#9B968D">apply(invert(op),<br>&nbsp;&nbsp;apply(op, doc)) == doc</div>
+        <div style="font-size:11px;line-height:1.6;color:#585550">Re-checked at every step by replaying, never asserted from what <span class="mono" style="color:#8C8880">invert()</span> claims. The badge turns amber the moment it fails — which is the only reason a badge saying “holds” is worth anything.</div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">WHAT MAKES IT POSSIBLE</span>
+        <div style="font-size:11.5px;line-height:1.65;color:#8C8880"><span class="mono" style="color:#9B968D">DeleteText</span> keeps the removed text. <span class="mono" style="color:#9B968D">DeleteBlock</span> keeps the whole subtree. <span class="mono" style="color:#9B968D">MoveBlock</span> keeps <span class="mono" style="color:#9B968D">from</span> as well as <span class="mono" style="color:#9B968D">to</span>. An op recorded with only its destination would make this screen impossible.</div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">ops in this trace</span><span class="mono" style="font-size:11px;color:#E4E2DC">9</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">kinds exercised</span><span class="mono" style="font-size:11px;color:#3FCFA8">7 of 7</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">law failures</span><span class="mono" style="font-size:11px;color:#3FCFA8">0</span></div>
       </div>
     </div>
   </div>
@@ -2021,6 +2093,19 @@ enum Op { InsertText }
         <div style="height:1px;background:rgba(255,255,255,.07)"></div>
         <span class="lbl">TWO INSTRUMENTS</span>
         <div class="mono" style="font-size:10.5px;line-height:1.9;color:#8C8880">structural digest&nbsp;&nbsp;<span style="color:#3FCFA8">agrees</span><br>intent ledger&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#E0A34E">flags 1</span></div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">THE FOUR LENSES</span>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">prediction</span><span class="mono" style="font-size:11px;color:#E4E2DC">local echo, 0 ms</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">rollback</span><span class="mono" style="font-size:11px;color:#E4E2DC">on server disagree</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">transform</span><span class="mono" style="font-size:11px;color:#E4E2DC">block + text tiers</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">log</span><span class="mono" style="font-size:11px;color:#E4E2DC">the source of truth</span></div>
+        <div style="font-size:11px;line-height:1.6;color:#585550">All four read one op log. They are four views of one system, not four systems — which is the only reason a disagreement between them means something.</div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">RECONCILIATION</span>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">predicted ops in flight</span><span class="mono" style="font-size:11px;color:#E4E2DC">3</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">rolled back this session</span><span class="mono" style="font-size:11px;color:#E0A34E">1</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">replay matches incremental</span><span class="mono" style="font-size:11px;color:#3FCFA8">yes</span></div>
+        <div style="font-size:11px;line-height:1.6;color:#585550">Replaying from empty must equal the incrementally-maintained view. That equality is checked continuously, not asserted in a comment.</div>
       </div>
     </div>
   </div>
@@ -2083,6 +2168,18 @@ enum Op { InsertText }
         <div style="font-size:11.5px;line-height:1.65;color:#8C8880">The full table is O(n·m) in time and space. It is shown here because seeing the table is the point — a production diff should use Myers and never build it.</div>
         <div style="height:1px;background:rgba(255,255,255,.07)"></div>
         <div style="display:flex;gap:8px"><span class="chip chip-e">RESTORE 1188</span><span class="chip">EXPORT PATCH</span></div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">COST OF THIS DIFF</span>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">tokens compared</span><span class="mono" style="font-size:11px;color:#E4E2DC">412 × 388</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">DP cells filled</span><span class="mono" style="font-size:11px;color:#E4E2DC">159 856</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">common subsequence</span><span class="mono" style="font-size:11px;color:#E4E2DC">371</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">edit distance</span><span class="mono" style="font-size:11px;color:#E4E2DC">58</span></div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">WHY NOT MYERS HERE</span>
+        <div style="font-size:11.5px;line-height:1.65;color:#8C8880">Myers walks the same edit graph in <b style="color:#C3BFB7;font-weight:500">O(n·d)</b> and is what history should use. The full table is drawn because the table is the thing worth seeing — the argument against it is only legible once you have looked at it.</div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">BLOCK MOVES</span>
+        <div style="font-size:11.5px;line-height:1.65;color:#8C8880">A moved block reads as <span style="color:#A98CE8">MOVED</span>, never delete + insert. <span class="mono" style="color:#9B968D">MoveBlock</span> carries <span class="mono" style="color:#9B968D">from</span> as well as <span class="mono" style="color:#9B968D">to</span> so it can be inverted — the diff reads that, it does not infer it.</div>
       </div>
     </div>
   </div>
@@ -2238,6 +2335,17 @@ enum Op { InsertText }
         <div style="height:1px;background:rgba(255,255,255,.07)"></div>
         <span class="lbl">UNDO IS PER ACTOR</span>
         <div style="font-size:11.5px;line-height:1.65;color:#8C8880">Your ⌘Z pops your stack only — it never inverts Ada's ops, even the ones that landed after yours.</div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">THIS PARAGRAPH, AS STORED</span>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">chars ever inserted</span><span class="mono" style="font-size:11px;color:#E4E2DC">1 044</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">live now</span><span class="mono" style="font-size:11px;color:#E4E2DC">612</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">tombstoned</span><span class="mono" style="font-size:11px;color:#A98CE8">432</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">versions addressable</span><span class="mono" style="font-size:11px;color:#E4E2DC">1 208</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">copies made</span><span class="mono" style="font-size:11px;color:#3FCFA8">0</span></div>
+        <div style="font-size:11px;line-height:1.6;color:#585550">Reading version <span class="mono" style="color:#8C8880">v</span> is the filter <span class="mono" style="color:#9B968D">ins ≤ v &lt; del</span> over one array. History costs storage, never time, and never a second copy of the text.</div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">UNDO IS PER ACTOR</span>
+        <div style="font-size:11.5px;line-height:1.65;color:#8C8880">Your stack holds your inverses. Undoing yours leaves every interleaved edit of Ada’s exactly where it is — which is only possible because each op carries its own inverse rather than the document carrying a snapshot.</div>
       </div>
     </div>
   </div>
@@ -2427,6 +2535,17 @@ enum Op { InsertText }
         <div style="height:1px;background:rgba(255,255,255,.07)"></div>
         <span class="lbl">RULE</span>
         <div style="font-size:11.5px;line-height:1.65;color:#8C8880">If a preference could change what another person sees, it is not a preference. Font size is view state; a heading level is not.</div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">STARTUP vs RUNTIME</span>
+        <div style="font-size:11.5px;line-height:1.65;color:#8C8880">A setting is <span class="mono" style="color:#E0A34E">startup</span> when changing it would leave live objects holding stale configuration — a bucket name, an index analyser, an auth provider. Everything else applies on the next request.</div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">user settings</span><span class="mono" style="font-size:11px;color:#E4E2DC">24 · all runtime</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">workspace settings</span><span class="mono" style="font-size:11px;color:#E4E2DC">38</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">… of which startup</span><span class="mono" style="font-size:11px;color:#E0A34E">6</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">page settings</span><span class="mono" style="font-size:11px;color:#E4E2DC">4</span></div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">WHERE THEY LIVE</span>
+        <div style="font-size:11.5px;line-height:1.65;color:#8C8880">Server-side per person, never in this browser. A self-hosted notebook is read from more than one device, and a preference that does not follow you is a preference you set twice.</div>
       </div>
     </div>
   </div>
@@ -2491,6 +2610,32 @@ enum Op { InsertText }
           <div class="mono" style="font-size:10px;color:#585550;margin-top:7px">Monday · nothing was rewritten</div>
         </div>
       </div>
+
+      <!-- Cleared-by-acting is the claim; this is the evidence for it. -->
+      <div style="margin-top:auto;padding-top:20px;border-top:1px solid rgba(255,255,255,.07);display:grid;grid-template-columns:1fr 1fr 1.1fr;gap:26px">
+        <div>
+          <div class="lbl" style="margin-bottom:11px">HOW THIS INBOX EMPTIES</div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;align-items:center;gap:9px"><span style="flex:1;font-size:11.5px;color:#D2CFC8">Resolved by acting</span><div style="width:66px;height:5px;background:rgba(255,255,255,.06)"><div style="width:84%;height:100%;background:#3FCFA8"></div></div><span class="mono" style="font-size:9.5px;color:#8C8880;width:30px;text-align:right">84%</span></div>
+            <div style="display:flex;align-items:center;gap:9px"><span style="flex:1;font-size:11.5px;color:#9B968D">Marked read</span><div style="width:66px;height:5px;background:rgba(255,255,255,.06)"><div style="width:11%;height:100%;background:rgba(255,255,255,.25)"></div></div><span class="mono" style="font-size:9.5px;color:#8C8880;width:30px;text-align:right">11%</span></div>
+            <div style="display:flex;align-items:center;gap:9px"><span style="flex:1;font-size:11.5px;color:#9B968D">Expired unread</span><div style="width:66px;height:5px;background:rgba(255,255,255,.06)"><div style="width:5%;height:100%;background:#E0A34E"></div></div><span class="mono" style="font-size:9.5px;color:#8C8880;width:30px;text-align:right">5%</span></div>
+          </div>
+          <div style="font-size:11px;line-height:1.6;color:#585550;margin-top:11px">The 5% is the number to watch. Anything routinely expiring unread should not have been a notification.</div>
+        </div>
+        <div>
+          <div class="lbl" style="margin-bottom:11px">BY SOURCE · 7 DAYS</div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;align-items:center;gap:9px"><div style="width:6px;height:6px;background:#A98CE8"></div><span style="flex:1;font-size:11.5px;color:#D2CFC8">Mentions</span><span class="mono" style="font-size:10.5px;color:#8C8880">18</span></div>
+            <div style="display:flex;align-items:center;gap:9px"><div style="width:6px;height:6px;background:#7D9EC9"></div><span style="flex:1;font-size:11.5px;color:#D2CFC8">Assistant proposals</span><span class="mono" style="font-size:10.5px;color:#8C8880">11</span></div>
+            <div style="display:flex;align-items:center;gap:9px"><div style="width:6px;height:6px;background:#E0A34E"></div><span style="flex:1;font-size:11.5px;color:#D2CFC8">Stale facts</span><span class="mono" style="font-size:10.5px;color:#8C8880">6</span></div>
+            <div style="display:flex;align-items:center;gap:9px"><div style="width:6px;height:6px;background:#3FCFA8"></div><span style="flex:1;font-size:11.5px;color:#9B968D">Space invitations</span><span class="mono" style="font-size:10.5px;color:#8C8880">2</span></div>
+          </div>
+        </div>
+        <div>
+          <div class="lbl" style="margin-bottom:11px">WHAT NEVER NOTIFIES</div>
+          <div style="font-size:11.5px;line-height:1.7;color:#8C8880">Your own ops. Presence. Anything in a muted space. Someone editing a page you happen to have open — you can already see them doing it, and a notification for something visible is noise wearing a badge.</div>
+        </div>
+      </div>
     </div>
     <div class="insp">
       <div class="insp-t"><span class="it it-on">DELIVERY</span><span class="it">MUTED</span></div>
@@ -2505,6 +2650,16 @@ enum Op { InsertText }
         <div style="height:1px;background:rgba(255,255,255,.07)"></div>
         <span class="lbl">MUTED</span>
         <div class="mono" style="font-size:11px;line-height:1.9;color:#8C8880">Archive/* <span style="color:#585550">all activity</span><br>own ops <span style="color:#585550">always</span></div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">WHY AN ANCHOR, NOT A COPY</span>
+        <div style="font-size:11.5px;line-height:1.65;color:#8C8880">Storing the quoted text would freeze it. Storing the anchor means opening a mention a week later lands on the right words even after everything around them was rewritten — and if the words were deleted, it says so instead of quoting a ghost.</div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">THIS INBOX</span>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">unread</span><span class="mono" style="font-size:11px;color:#E8873C">6</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">need a decision</span><span class="mono" style="font-size:11px;color:#E8873C">2</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">resolved by acting</span><span class="mono" style="font-size:11px;color:#3FCFA8">84%</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">median time to clear</span><span class="mono" style="font-size:11px;color:#E4E2DC">3 h</span></div>
+        <div style="font-size:11px;line-height:1.6;color:#585550">Cleared by acting rather than by marking read — the two buttons on a decision are the whole design.</div>
       </div>
     </div>
   </div>
@@ -2567,6 +2722,34 @@ enum Op { InsertText }
           <span class="mono" style="font-size:10px;color:#585550;width:70px;text-align:right">queued</span>
         </div>
       </div>
+
+      <!-- Where the bytes actually go, and the one number that matters when
+           someone asks why the disk is full. -->
+      <div style="margin-top:26px;padding-top:20px;border-top:1px solid rgba(255,255,255,.07);display:grid;grid-template-columns:1.1fr 1fr;gap:28px">
+        <div>
+          <div class="lbl" style="margin-bottom:12px">STORE BY KIND · 412 MB</div>
+          <div style="display:flex;height:10px;gap:1px;margin-bottom:12px">
+            <div style="flex:52;background:#7AA8E8"></div><div style="flex:24;background:#C48AE0"></div><div style="flex:14;background:#5AC8B4"></div><div style="flex:7;background:#D6A660"></div><div style="flex:3;background:rgba(224,163,78,.55)"></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:7px">
+            <div style="display:flex;align-items:center;gap:9px"><span style="width:6px;height:6px;background:#7AA8E8"></span><span style="flex:1;font-size:12px;color:#D2CFC8">Images</span><span class="mono" style="font-size:10.5px;color:#8C8880;width:52px;text-align:right">214 MB</span><span class="mono" style="font-size:10px;color:#585550;width:44px;text-align:right">862</span></div>
+            <div style="display:flex;align-items:center;gap:9px"><span style="width:6px;height:6px;background:#C48AE0"></span><span style="flex:1;font-size:12px;color:#D2CFC8">Attachments</span><span class="mono" style="font-size:10.5px;color:#8C8880;width:52px;text-align:right">99 MB</span><span class="mono" style="font-size:10px;color:#585550;width:44px;text-align:right">184</span></div>
+            <div style="display:flex;align-items:center;gap:9px"><span style="width:6px;height:6px;background:#5AC8B4"></span><span style="flex:1;font-size:12px;color:#D2CFC8">Published renders</span><span class="mono" style="font-size:10.5px;color:#8C8880;width:52px;text-align:right">58 MB</span><span class="mono" style="font-size:10px;color:#585550;width:44px;text-align:right">141</span></div>
+            <div style="display:flex;align-items:center;gap:9px"><span style="width:6px;height:6px;background:#D6A660"></span><span style="flex:1;font-size:12px;color:#9B968D">Backups</span><span class="mono" style="font-size:10.5px;color:#8C8880;width:52px;text-align:right">37 MB</span><span class="mono" style="font-size:10px;color:#585550;width:44px;text-align:right">14</span></div>
+            <div style="display:flex;align-items:center;gap:9px"><span style="width:6px;height:6px;background:rgba(224,163,78,.55)"></span><span style="flex:1;font-size:12px;color:#E0A34E">Orphaned</span><span class="mono" style="font-size:10.5px;color:#E0A34E;width:52px;text-align:right">4.2 MB</span><span class="mono" style="font-size:10px;color:#585550;width:44px;text-align:right">3</span></div>
+          </div>
+        </div>
+        <div>
+          <div class="lbl" style="margin-bottom:12px">RECENTLY UPLOADED</div>
+          <div style="display:flex;flex-direction:column">
+            <div class="row" style="padding:8px 0"><span class="mono" style="flex:1;font-size:11.5px;color:#D2CFC8">tree-diagram.png</span><span class="mono" style="font-size:10px;color:#585550">240 KB</span><span class="mono" style="font-size:10px;color:#585550;width:62px;text-align:right">4 min ago</span></div>
+            <div class="row" style="padding:8px 0"><span class="mono" style="flex:1;font-size:11.5px;color:#D2CFC8">wavefront.svg</span><span class="mono" style="font-size:10px;color:#585550">18 KB</span><span class="mono" style="font-size:10px;color:#585550;width:62px;text-align:right">2 h ago</span></div>
+            <div class="row" style="padding:8px 0"><span class="mono" style="flex:1;font-size:11.5px;color:#D2CFC8">bench-p99.csv</span><span class="mono" style="font-size:10px;color:#585550">1.1 MB</span><span class="mono" style="font-size:10px;color:#585550;width:62px;text-align:right">yesterday</span></div>
+            <div class="row" style="padding:8px 0;border-bottom:0"><span class="mono" style="flex:1;font-size:11.5px;color:#6E6A63">lsm-levels.png</span><span class="mono" style="font-size:10px;color:#585550">96 KB</span><span class="mono" style="font-size:10px;color:#E0A34E;width:62px;text-align:right">queued</span></div>
+          </div>
+          <div style="margin-top:16px;font-size:11.5px;line-height:1.65;color:#585550">Every object is content-addressed. Uploading a file that already exists returns the existing key and copies nothing — which is why the count above is objects, never uploads.</div>
+        </div>
+      </div>
     </div>
     <div class="insp">
       <div class="insp-t"><span class="it it-on">SELECTED</span><span class="it">STORE</span></div>
@@ -2580,6 +2763,17 @@ enum Op { InsertText }
         <div style="height:1px;background:rgba(255,255,255,.07)"></div>
         <span class="lbl">USED IN</span>
         <div class="mono" style="font-size:11px;line-height:1.9;color:#8C8880">Sync protocol notes<br>Block model</div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">ORPHANS · 3 · 4.2 MB</span>
+        <div style="font-size:11.5px;line-height:1.65;color:#8C8880">Objects no block references any more. They are found by walking blocks and subtracting, never by trusting a reference count that could have drifted.</div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">oldest orphan</span><span class="mono" style="font-size:11px;color:#E4E2DC">18 d</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">reclaimable</span><span class="mono" style="font-size:11px;color:#E0A34E">4.2 MB</span></div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">DEDUPLICATION</span>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">objects</span><span class="mono" style="font-size:11px;color:#E4E2DC">1 204</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">distinct hashes</span><span class="mono" style="font-size:11px;color:#E4E2DC">1 187</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">saved by content hash</span><span class="mono" style="font-size:11px;color:#3FCFA8">31 MB</span></div>
+        <div style="font-size:11px;line-height:1.6;color:#585550">The same diagram pasted into four pages is one object with four references. Delete three and the bytes stay; delete the fourth and they become an orphan on the purge schedule.</div>
       </div>
     </div>
   </div>
@@ -2640,6 +2834,55 @@ enum Op { InsertText }
         <div style="font-size:12.5px;line-height:1.6;color:#D2CFC8;flex:1">Two plugins request <span class="mono" style="color:#E0A34E">NETWORK</span>. Grants are per plugin and per workspace, revocable without uninstalling — a revoked capability fails the call, it does not crash the page.</div>
         <span class="chip chip-a">REVIEW GRANTS</span>
       </div>
+
+      <!-- The capability matrix. A directory whose entries do not state what
+           they may touch is a list of names, and a list of names is how
+           supply-chain problems arrive politely. -->
+      <div style="margin-top:24px;padding-top:20px;border-top:1px solid rgba(255,255,255,.07)">
+        <div class="lbl" style="margin-bottom:13px">WHAT EACH ONE MAY TOUCH · DECLARED AT INSTALL, ENFORCED AT CALL</div>
+        <div style="display:grid;grid-template-columns:1.5fr repeat(5,86px) 78px;gap:0;align-items:center;font-size:11.5px">
+          <span></span>
+          <span class="mono" style="font-size:8.5px;letter-spacing:.12em;color:#585550;text-align:center;padding-bottom:9px">READ TREE</span>
+          <span class="mono" style="font-size:8.5px;letter-spacing:.12em;color:#585550;text-align:center;padding-bottom:9px">EMIT OPS</span>
+          <span class="mono" style="font-size:8.5px;letter-spacing:.12em;color:#585550;text-align:center;padding-bottom:9px">NETWORK</span>
+          <span class="mono" style="font-size:8.5px;letter-spacing:.12em;color:#585550;text-align:center;padding-bottom:9px">STORAGE</span>
+          <span class="mono" style="font-size:8.5px;letter-spacing:.12em;color:#585550;text-align:center;padding-bottom:9px">UI SLOT</span>
+          <span class="mono" style="font-size:8.5px;letter-spacing:.12em;color:#585550;text-align:right;padding-bottom:9px">CPU / FRAME</span>
+
+          <div style="padding:10px 0;border-top:1px solid rgba(255,255,255,.07);display:flex;align-items:center;gap:9px"><span style="width:6px;height:6px;background:#5AC8B4"></span><span style="color:#D2CFC8">Mermaid diagrams</span></div>
+          <span style="text-align:center;color:#3FCFA8;border-top:1px solid rgba(255,255,255,.07);padding:10px 0">✓</span>
+          <span style="text-align:center;color:#4B4842;border-top:1px solid rgba(255,255,255,.07);padding:10px 0">—</span>
+          <span style="text-align:center;color:#4B4842;border-top:1px solid rgba(255,255,255,.07);padding:10px 0">—</span>
+          <span style="text-align:center;color:#4B4842;border-top:1px solid rgba(255,255,255,.07);padding:10px 0">—</span>
+          <span style="text-align:center;color:#3FCFA8;border-top:1px solid rgba(255,255,255,.07);padding:10px 0">block</span>
+          <span class="mono" style="text-align:right;font-size:10px;color:#8C8880;border-top:1px solid rgba(255,255,255,.07);padding:10px 0">4 ms</span>
+
+          <div style="padding:10px 0;border-top:1px solid rgba(255,255,255,.07);display:flex;align-items:center;gap:9px"><span style="width:6px;height:6px;background:#7AA8E8"></span><span style="color:#D2CFC8">Zotero citations</span></div>
+          <span style="text-align:center;color:#3FCFA8;border-top:1px solid rgba(255,255,255,.07);padding:10px 0">✓</span>
+          <span style="text-align:center;color:#3FCFA8;border-top:1px solid rgba(255,255,255,.07);padding:10px 0">✓</span>
+          <span style="text-align:center;color:#E0A34E;border-top:1px solid rgba(255,255,255,.07);padding:10px 0">1 host</span>
+          <span style="text-align:center;color:#3FCFA8;border-top:1px solid rgba(255,255,255,.07);padding:10px 0">own</span>
+          <span style="text-align:center;color:#3FCFA8;border-top:1px solid rgba(255,255,255,.07);padding:10px 0">panel</span>
+          <span class="mono" style="text-align:right;font-size:10px;color:#8C8880;border-top:1px solid rgba(255,255,255,.07);padding:10px 0">9 ms</span>
+
+          <div style="padding:10px 0;border-top:1px solid rgba(255,255,255,.07);display:flex;align-items:center;gap:9px"><span style="width:6px;height:6px;background:#D6A660"></span><span style="color:#D2CFC8">Prose linter</span></div>
+          <span style="text-align:center;color:#3FCFA8;border-top:1px solid rgba(255,255,255,.07);padding:10px 0">✓</span>
+          <span style="text-align:center;color:#4B4842;border-top:1px solid rgba(255,255,255,.07);padding:10px 0">—</span>
+          <span style="text-align:center;color:#4B4842;border-top:1px solid rgba(255,255,255,.07);padding:10px 0">—</span>
+          <span style="text-align:center;color:#4B4842;border-top:1px solid rgba(255,255,255,.07);padding:10px 0">—</span>
+          <span style="text-align:center;color:#3FCFA8;border-top:1px solid rgba(255,255,255,.07);padding:10px 0">gutter</span>
+          <span class="mono" style="text-align:right;font-size:10px;color:#E0A34E;border-top:1px solid rgba(255,255,255,.07);padding:10px 0">14 ms</span>
+
+          <div style="padding:10px 0;border-top:1px solid rgba(255,255,255,.07);display:flex;align-items:center;gap:9px;opacity:.6"><span style="width:6px;height:6px;background:#D07C8A"></span><span style="color:#9B968D">Calendar sync</span><span class="chip chip-a" style="padding:1px 6px;font-size:8px">PAUSED</span></div>
+          <span style="text-align:center;color:#4B4842;border-top:1px solid rgba(255,255,255,.07);padding:10px 0">—</span>
+          <span style="text-align:center;color:#3FCFA8;border-top:1px solid rgba(255,255,255,.07);padding:10px 0">✓</span>
+          <span style="text-align:center;color:#E0A34E;border-top:1px solid rgba(255,255,255,.07);padding:10px 0">2 hosts</span>
+          <span style="text-align:center;color:#3FCFA8;border-top:1px solid rgba(255,255,255,.07);padding:10px 0">own</span>
+          <span style="text-align:center;color:#4B4842;border-top:1px solid rgba(255,255,255,.07);padding:10px 0">—</span>
+          <span class="mono" style="text-align:right;font-size:10px;color:#E0A34E;border-top:1px solid rgba(255,255,255,.07);padding:10px 0">killed</span>
+        </div>
+        <div style="margin-top:14px;font-size:11.5px;line-height:1.65;color:#585550;max-width:720px">Calendar sync overran its frame budget four times in a row and was terminated. It stays installed and paused rather than uninstalled — a plugin that misbehaves is a bug report, not a verdict, and the person who installed it should get to decide which.</div>
+      </div>
     </div>
     <div class="insp">
       <div class="insp-t"><span class="it it-on">CAPABILITIES</span><span class="it">API</span></div>
@@ -2653,6 +2896,17 @@ enum Op { InsertText }
         <div style="height:1px;background:rgba(255,255,255,.07)"></div>
         <span class="lbl">NEVER GRANTABLE</span>
         <div class="mono" style="font-size:10.5px;line-height:1.9;color:#585550">write the op log directly<br>read another space<br>see another actor's undo stack</div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">SANDBOX</span>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">runtime</span><span class="mono" style="font-size:11px;color:#E4E2DC">worker · no DOM</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">tree access</span><span class="mono" style="font-size:11px;color:#3FCFA8">none</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">network</span><span class="mono" style="font-size:11px;color:#E4E2DC">declared hosts only</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">wall clock budget</span><span class="mono" style="font-size:11px;color:#E4E2DC">16 ms / frame</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">killed this week</span><span class="mono" style="font-size:11px;color:#E0A34E">1</span></div>
+        <div style="font-size:11px;line-height:1.6;color:#585550">A plugin that overruns its budget is terminated, not throttled. A slow editor is indistinguishable from a broken one, and only one of them is recoverable.</div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">WHAT A PLUGIN CANNOT DO</span>
+        <div style="font-size:11.5px;line-height:1.65;color:#8C8880">Write to the tree directly, read another space, hold a socket, or persist anything outside its own keyspace. Every mutation it wants goes through the same <span class="mono" style="color:#9B968D">Op</span> pipeline a person uses — so plugin edits undo, replay and attribute exactly like anyone else’s.</div>
       </div>
     </div>
   </div>
@@ -2709,6 +2963,59 @@ enum Op { InsertText }
         <div style="display:flex;gap:2px;align-items:center"><div style="width:190px;font-size:12px;color:#9B968D">Move or delete pages</div><div style="flex:1;text-align:center;color:#3FCFA8;font-size:11px">✓</div><div style="flex:1;text-align:center;color:#3FCFA8;font-size:11px">✓</div><div style="flex:1;text-align:center;color:#4B4842;font-size:11px">—</div><div style="flex:1;text-align:center;color:#4B4842;font-size:11px">—</div><div style="flex:1;text-align:center;color:#4B4842;font-size:11px">—</div></div>
         <div style="display:flex;gap:2px;align-items:center"><div style="width:190px;font-size:12px;color:#9B968D">Change membership</div><div style="flex:1;text-align:center;color:#3FCFA8;font-size:11px">✓</div><div style="flex:1;text-align:center;color:#4B4842;font-size:11px">—</div><div style="flex:1;text-align:center;color:#4B4842;font-size:11px">—</div><div style="flex:1;text-align:center;color:#4B4842;font-size:11px">—</div><div style="flex:1;text-align:center;color:#4B4842;font-size:11px">—</div></div>
       </div>
+
+      <!-- Membership, drawn. The matrix above says what a role permits; this
+           says who actually holds one, which is the question people ask. -->
+      <div style="margin-top:26px;padding-top:20px;border-top:1px solid rgba(255,255,255,.07);display:grid;grid-template-columns:1.15fr 1fr;gap:30px">
+        <div>
+          <div class="lbl" style="margin-bottom:12px">MEMBERSHIP · 14 PEOPLE ACROSS 4 SPACES</div>
+          <div style="display:grid;grid-template-columns:1.4fr repeat(4,1fr);gap:0;align-items:center;font-size:11.5px">
+            <span></span>
+            <span class="mono" style="font-size:8.5px;letter-spacing:.1em;color:#585550;text-align:center;padding-bottom:9px">PRODUCT</span>
+            <span class="mono" style="font-size:8.5px;letter-spacing:.1em;color:#585550;text-align:center;padding-bottom:9px">RESEARCH</span>
+            <span class="mono" style="font-size:8.5px;letter-spacing:.1em;color:#585550;text-align:center;padding-bottom:9px">ARCHIVE</span>
+            <span class="mono" style="font-size:8.5px;letter-spacing:.1em;color:#585550;text-align:center;padding-bottom:9px">PRIVATE</span>
+
+            <div style="padding:9px 0;border-top:1px solid rgba(255,255,255,.07);display:flex;align-items:center;gap:9px"><div class="av av-you" style="width:19px;height:19px;font-size:8px">GN</div><span style="color:#D2CFC8">Genuine</span></div>
+            <span class="mono" style="text-align:center;font-size:9.5px;color:#E8873C;border-top:1px solid rgba(255,255,255,.07);padding:9px 0">owner</span>
+            <span class="mono" style="text-align:center;font-size:9.5px;color:#3FCFA8;border-top:1px solid rgba(255,255,255,.07);padding:9px 0">editor</span>
+            <span class="mono" style="text-align:center;font-size:9.5px;color:#8C8880;border-top:1px solid rgba(255,255,255,.07);padding:9px 0">reader</span>
+            <span class="mono" style="text-align:center;font-size:9.5px;color:#E8873C;border-top:1px solid rgba(255,255,255,.07);padding:9px 0">owner</span>
+
+            <div style="padding:9px 0;border-top:1px solid rgba(255,255,255,.07);display:flex;align-items:center;gap:9px"><div class="av av-them" style="width:19px;height:19px;font-size:8px">AD</div><span style="color:#D2CFC8">Ada</span></div>
+            <span class="mono" style="text-align:center;font-size:9.5px;color:#3FCFA8;border-top:1px solid rgba(255,255,255,.07);padding:9px 0">editor</span>
+            <span class="mono" style="text-align:center;font-size:9.5px;color:#E8873C;border-top:1px solid rgba(255,255,255,.07);padding:9px 0">owner</span>
+            <span class="mono" style="text-align:center;font-size:9.5px;color:#8C8880;border-top:1px solid rgba(255,255,255,.07);padding:9px 0">reader</span>
+            <span class="mono" style="text-align:center;font-size:9.5px;color:#4B4842;border-top:1px solid rgba(255,255,255,.07);padding:9px 0">—</span>
+
+            <div style="padding:9px 0;border-top:1px solid rgba(255,255,255,.07);display:flex;align-items:center;gap:9px"><div class="av" style="width:19px;height:19px;font-size:8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.16);color:#9B968D">RK</div><span style="color:#D2CFC8">Rina</span></div>
+            <span class="mono" style="text-align:center;font-size:9.5px;color:#3FCFA8;border-top:1px solid rgba(255,255,255,.07);padding:9px 0">editor</span>
+            <span class="mono" style="text-align:center;font-size:9.5px;color:#4B4842;border-top:1px solid rgba(255,255,255,.07);padding:9px 0">—</span>
+            <span class="mono" style="text-align:center;font-size:9.5px;color:#8C8880;border-top:1px solid rgba(255,255,255,.07);padding:9px 0">reader</span>
+            <span class="mono" style="text-align:center;font-size:9.5px;color:#4B4842;border-top:1px solid rgba(255,255,255,.07);padding:9px 0">—</span>
+
+            <div style="padding:9px 0;border-top:1px solid rgba(255,255,255,.07);display:flex;align-items:center;gap:9px"><div class="av av-ai" style="width:19px;height:19px;font-size:8px">✦</div><span style="color:#9B968D">Assistant</span></div>
+            <span class="mono" style="text-align:center;font-size:9.5px;color:#3FCFA8;border-top:1px solid rgba(255,255,255,.07);padding:9px 0">editor</span>
+            <span class="mono" style="text-align:center;font-size:9.5px;color:#3FCFA8;border-top:1px solid rgba(255,255,255,.07);padding:9px 0">editor</span>
+            <span class="mono" style="text-align:center;font-size:9.5px;color:#4B4842;border-top:1px solid rgba(255,255,255,.07);padding:9px 0">—</span>
+            <span class="mono" style="text-align:center;font-size:9.5px;color:#4B4842;border-top:1px solid rgba(255,255,255,.07);padding:9px 0">—</span>
+          </div>
+          <div class="mono" style="font-size:10px;color:#585550;margin-top:11px">10 more · the assistant holds a role like anyone else, and can be removed from one</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:18px">
+          <div>
+            <div class="lbl" style="margin-bottom:11px">PENDING INVITATIONS · 2</div>
+            <div style="display:flex;flex-direction:column;gap:9px">
+              <div style="display:flex;align-items:center;gap:10px"><span style="flex:1;font-size:12px;color:#D2CFC8">tom@…</span><span class="mono" style="font-size:9.5px;color:#8C8880">Research · editor</span><span class="mono" style="font-size:9.5px;color:#585550">2 d</span></div>
+              <div style="display:flex;align-items:center;gap:10px"><span style="flex:1;font-size:12px;color:#9B968D">nina@…</span><span class="mono" style="font-size:9.5px;color:#8C8880">Product · reader</span><span class="mono" style="font-size:9.5px;color:#E0A34E">expires 1 d</span></div>
+            </div>
+          </div>
+          <div>
+            <div class="lbl" style="margin-bottom:11px">THE ONE RULE</div>
+            <div style="font-size:11.5px;line-height:1.7;color:#8C8880">Nobody can grant a role above their own. An editor cannot mint an owner, and an owner removing themselves from the last owner seat is refused rather than warned about — a workspace with no owner is not a state worth supporting.</div>
+          </div>
+        </div>
+      </div>
     </div>
     <div class="insp">
       <div class="insp-t"><span class="it it-on">INVITE</span><span class="it">AUDIT</span></div>
@@ -2723,6 +3030,19 @@ enum Op { InsertText }
         <div style="height:1px;background:rgba(255,255,255,.07)"></div>
         <span class="lbl">RULE</span>
         <div style="font-size:11.5px;line-height:1.65;color:#8C8880">A role is checked when an op arrives, not when the UI renders. Hiding a button is a courtesy; the server is the rule.</div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">WHY MEMBERSHIP, NOT FLAGS</span>
+        <div style="font-size:11.5px;line-height:1.65;color:#8C8880">Permission is a property of a <b style="color:#C3BFB7;font-weight:500">space</b>, resolved once per request. Per-page flags mean a page whose parent moved silently changes who can read it, and nobody finds out until the wrong person does.</div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">RESOLUTION</span>
+        <div class="mono" style="font-size:10.5px;line-height:1.85;color:#8C8880">page → space → membership<br>→ role → capability</div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">resolved at</span><span class="mono" style="font-size:11px;color:#E8873C">can_apply()</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">second auth path</span><span class="mono" style="font-size:11px;color:#3FCFA8">none</span></div>
+        <div style="font-size:11px;line-height:1.6;color:#585550">One chokepoint. Every op passes it, including the assistant’s and every plugin’s.</div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">spaces</span><span class="mono" style="font-size:11px;color:#E4E2DC">4</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">people</span><span class="mono" style="font-size:11px;color:#E4E2DC">14</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">orphaned members</span><span class="mono" style="font-size:11px;color:#3FCFA8">0</span></div>
       </div>
     </div>
   </div>
@@ -2917,6 +3237,14 @@ enum Op { InsertText }
         <div style="height:1px;background:rgba(255,255,255,.07)"></div>
         <span class="lbl">FORWARD REACHABLE</span>
         <div style="font-size:11.5px;line-height:1.6;color:#8C8880">Computed by the same directed BFS the graph screen runs — this panel is a second reader of that result, not a second implementation of it.</div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">WHY A SAGA</span>
+        <div style="font-size:11.5px;line-height:1.65;color:#8C8880">A cascading delete crosses four services. Doing it in one transaction is impossible; doing it without one means a crash leaves half a page deleted. Idempotent steps plus a stored cursor means a crash is a pause, not a corruption.</div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">steps</span><span class="mono" style="font-size:11px;color:#E4E2DC">5</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">idempotent</span><span class="mono" style="font-size:11px;color:#3FCFA8">all</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">resumed after restart</span><span class="mono" style="font-size:11px;color:#E0A34E">yes</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">partial states possible</span><span class="mono" style="font-size:11px;color:#3FCFA8">0</span></div>
       </div>
     </div>
   </div>
@@ -3017,6 +3345,14 @@ id, so peers merge concurrent…</pre>
         <div style="height:1px;background:rgba(255,255,255,.07)"></div>
         <span class="lbl">WHAT DOES NOT EXPORT</span>
         <div style="font-size:11.5px;line-height:1.7;color:#8C8880">Presence, cursors, session state, the search index, the HNSW graph. All of it is derived — an export carries facts, never caches, and a cache that survives an export is a cache that can be wrong on arrival.</div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">WHAT THE ROUND TRIP PROVES</span>
+        <div style="font-size:11.5px;line-height:1.65;color:#8C8880">That the exporter and importer agree. It does not prove the export is <i>useful</i> — a person still has to open a .md file somewhere else and find it readable, which is why markdown is the default rather than the op log.</div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">last run</span><span class="mono" style="font-size:11px;color:#E4E2DC">04:12</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">pages compared</span><span class="mono" style="font-size:11px;color:#E4E2DC">1 908</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">byte diffs</span><span class="mono" style="font-size:11px;color:#3FCFA8">0</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">runtime</span><span class="mono" style="font-size:11px;color:#E4E2DC">41 s</span></div>
       </div>
     </div>
   </div>
@@ -3096,6 +3432,19 @@ id, so peers merge concurrent…</pre>
         <div style="height:1px;background:rgba(255,255,255,.07)"></div>
         <span class="lbl">DISABLED WHILE OFFLINE</span>
         <div class="mono" style="font-size:10.5px;line-height:1.9;color:#585550">search · graph · lab<br>invite · publish</div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">WHAT KEEPS WORKING</span>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">typing</span><span class="mono" style="font-size:11px;color:#3FCFA8">yes</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">undo / redo</span><span class="mono" style="font-size:11px;color:#3FCFA8">yes</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">local search</span><span class="mono" style="font-size:11px;color:#3FCFA8">yes</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">opening a cached page</span><span class="mono" style="font-size:11px;color:#3FCFA8">yes</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">presence</span><span class="mono" style="font-size:11px;color:#E0A34E">no</span></div>
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">publishing</span><span class="mono" style="font-size:11px;color:#E0A34E">no</span></div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">WHAT HAPPENS ON RECONNECT</span>
+        <div style="font-size:11.5px;line-height:1.65;color:#8C8880">The queued ops flush in order, the server transforms anything that raced them, and the local view rolls back only where it genuinely disagreed. Nothing is dropped and nothing is silently overwritten — the queue depth above is the honest number.</div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <div style="font-size:11px;line-height:1.6;color:#585550">Retry is exponential with jitter and caps at 30 s. The spinner in the top bar is the only spinner in the app, and it means this.</div>
       </div>
     </div>
   </div>
