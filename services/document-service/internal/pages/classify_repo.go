@@ -130,3 +130,36 @@ func (r *PostgresRepo) ListTagFacets(ctx context.Context, limit int) ([]TagFacet
 	}
 	return out, nil
 }
+
+// ClassificationFor batch-loads topics and tags for many pages at once.
+// ListPages decorates 50 rows at a time, and doing that with PageTopic/
+// PageTags per row would be 100 round trips to annotate a list that cost
+// one — the N+1 this exists to avoid.
+func (r *PostgresRepo) ClassificationFor(ctx context.Context, ids []PageID) (map[PageID]Topic, map[PageID][]string, error) {
+	pg := make([]pgtype.UUID, 0, len(ids))
+	for _, id := range ids {
+		pg = append(pg, toPgUUID(uuid.UUID(id)))
+	}
+
+	topicRows, err := r.q.TopicsForPages(ctx, pg)
+	if err != nil {
+		return nil, nil, fmt.Errorf("pages: topics for pages: %w", err)
+	}
+	topics := make(map[PageID]Topic, len(topicRows))
+	for _, row := range topicRows {
+		topics[PageID(fromPgUUID(row.PageID))] = Topic{
+			ID: TopicID(fromPgUUID(row.ID)), Name: row.Name, ColorKey: row.ColorKey,
+		}
+	}
+
+	tagRows, err := r.q.TagsForPages(ctx, pg)
+	if err != nil {
+		return nil, nil, fmt.Errorf("pages: tags for pages: %w", err)
+	}
+	tags := make(map[PageID][]string, len(tagRows))
+	for _, row := range tagRows {
+		id := PageID(fromPgUUID(row.PageID))
+		tags[id] = append(tags[id], row.Tag)
+	}
+	return topics, tags, nil
+}

@@ -13,6 +13,9 @@ export interface Page {
   created_at: string;
   updated_at: string;
   deleted_at?: string;
+  /** v2.7.0 — absent when untopiced, a real reported state. */
+  topic?: PageTopic | null;
+  tags?: string[];
 }
 
 export function createPage(actorId: string, title: string, parentId?: string, after?: string): Promise<Page> {
@@ -27,6 +30,12 @@ export function createPage(actorId: string, title: string, parentId?: string, af
 // subtree walk (pages.md § List: "direct children only"), so a full tree
 // is built by calling this once per expanded node, not once for
 // everything (usePageTree.ts).
+export interface PageTopic {
+  id: string;
+  name: string;
+  color_key: string;
+}
+
 export function listPages(actorId: string, parentId?: string): Promise<{ pages: Page[]; next_cursor?: string }> {
   const url = new URL(`${GATEWAY_URL}/pages`);
   if (parentId) url.searchParams.set("parent_id", parentId);

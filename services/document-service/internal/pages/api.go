@@ -256,8 +256,28 @@ func (s *Server) ListPages(ctx context.Context, req *documentv1.ListPagesRequest
 	}
 
 	resp := &documentv1.ListPagesResponse{Pages: make([]*documentv1.Page, len(pagesList))}
+	// Classification travels with the list for the same reason it travels
+	// with GetPage: a topic chip is drawn wherever a page title is. Batched
+	// into two queries for the whole page rather than two per row.
+	ids := make([]PageID, 0, len(pagesList))
+	for _, p := range pagesList {
+		ids = append(ids, p.ID)
+	}
+	topics, tags, err := s.repo.ClassificationFor(ctx, ids)
+	if err != nil {
+		return nil, toStatus(err)
+	}
 	for i, p := range pagesList {
-		resp.Pages[i] = toProto(p)
+		out := toProto(p)
+		if t, ok := topics[p.ID]; ok {
+			out.Topic = toProtoTopic(t)
+		}
+		if g, ok := tags[p.ID]; ok {
+			out.Tags = g
+		} else {
+			out.Tags = []string{}
+		}
+		resp.Pages[i] = out
 	}
 	if int32(len(pagesList)) == limit {
 		cursor := pagesList[len(pagesList)-1].SortKey

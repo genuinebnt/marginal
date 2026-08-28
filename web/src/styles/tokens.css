@@ -1,0 +1,159 @@
+/*
+  Marginal — V2 design tokens.
+
+  Transcribed from docs/ui-mockups/v2/index.html via its own
+  DESIGN_GUIDELINES.md. Every value here appears in that file; nothing is
+  invented, interpolated, or "rounded to a nicer number." If a value looks
+  arbitrary it is because it was tuned — §2.1 of the guidelines is explicit
+  that the type scale is not on a neat progression.
+
+  The rule that governs edits to this file: adding a colour, a radius, a
+  font, or a motion is a SPEC change, not an implementation detail. It needs
+  a stated reason and it belongs in DESIGN_GUIDELINES.md in the same commit.
+
+  This palette is NOT themeable. The mockup commits to one look, so there is
+  no light-mode block and no prefers-color-scheme swap — the tokens below
+  are the whole story, and body paints an explicit ground so nothing borrows
+  a host theme.
+*/
+
+:root {
+  /* ─── surfaces, darkest to lightest (guidelines §3.1) ─── */
+  --published: #0B0C0D;  /* the one screen with no chrome */
+  --ground:    #0E0F10;  /* screen default */
+  --rail:      #0F1012;  /* left rail, inspector, sub-nav */
+  --bar:       #111214;  /* top bar, status bar, floating panels */
+  --raised:    #131415;  /* palette, dropdowns, cards */
+  --sunken:    #141617;  /* text inputs, filter fields */
+  --selected:  #181A1B;  /* an active row */
+
+  /* Borders are always white at low alpha, never a colour — so one value
+     works over every surface above without a per-surface table. */
+  --rule:        rgba(255, 255, 255, .07);
+  --rule-strong: rgba(255, 255, 255, .14);
+  --rule-mid:    rgba(255, 255, 255, .11);
+
+  /* ─── ink, five steps (§3.2) ─── */
+  --ink-1: #EFEDE7;  /* the single most important string on screen */
+  --ink-2: #E4E2DC;  /* primary text, active values */
+  --ink-3: #D2CFC8;  /* body text in lists and panels */
+  --ink-4: #C3BFB7;  /* emphasis inside muted copy */
+  --ink-5: #9B968D;  /* secondary */
+  --ink-6: #8C8880;  /* tertiary — most panel body copy lives here */
+  --ink-7: #6E6A63;  /* quaternary */
+  --ink-8: #585550;  /* labels, metadata, the explanatory sentence */
+  --ink-9: #4B4842;  /* faintest — separators in text, a tag's # prefix */
+
+  /* ─── semantic hues (§3.3) — each means EXACTLY one thing ───
+
+     Breaking this is the most common failure. If you need to distinguish
+     five things that are merely "different from each other", you may not
+     reach for these — use the categorical ramp below. A reader who learns
+     that amber means "diagnostic" AND "topic: operations" has learned that
+     amber means nothing.
+
+     There is no red anywhere. A notebook has no compile step; nothing in it
+     is broken. The most severe state available is amber, and it reads as
+     advisory. */
+  --ember:  #E8873C;  /* brand, current selection, chrome accent */
+  --amber:  #E0A34E;  /* a diagnostic, a warning, a lag — never an error */
+  --teal:   #3FCFA8;  /* you, and healthy state */
+  --violet: #A98CE8;  /* another person */
+  --slate:  #7D9EC9;  /* the assistant — not a person */
+
+  /* ─── categorical ramp (§3.4) — topics ONLY ───
+     Deliberately disjoint from the semantic five above. These colour graph
+     nodes, topic chips, and topic-sliced charts; nothing else. The keys
+     match docs.topics.color_key, which stores a key precisely so this table
+     can be retuned without a data migration. */
+  --topic-protocol:   #7AA8E8;
+  --topic-storage:    #C48AE0;
+  --topic-interface:  #5AC8B4;
+  --topic-operations: #D6A660;
+  --topic-research:   #D07C8A;
+
+  /* ─── type (§2) ───
+     Three families, each with one job. The rule that produces the look:
+     if it is a value, it is mono; if it is prose, it is serif; everything
+     else is sans. A count beside a label is mono. A person's name in a list
+     is sans. A page title is serif — including inside a search result. */
+  --sans:  'Archivo', ui-sans-serif, system-ui, sans-serif;
+  --mono:  'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --serif: 'Spectral', Georgia, 'Times New Roman', serif;
+
+  /* ─── geometry (§4) ───
+     Zero, everywhere. The three pill exceptions set their own 999px
+     inline; there is no --radius token because there is no radius. This
+     single decision does more to produce the reference's character than any
+     other, which is why it is stated as an absence rather than a value. */
+  --pill: 999px;
+
+  /* ─── chrome heights (§1.1) — fixed, not content-driven ─── */
+  --h-bar:    46px;
+  --h-sub:    32px;
+  --h-status: 27px;
+  --w-rail:   238px;
+  --w-insp:   296px;
+
+  /* ─── motion (§7) ───
+     Six motions exist. Adding a seventh needs a reason. Nothing here
+     exceeds 320ms, because anything over 320ms is a bug. */
+  --dur-1: .12s;   /* colour, border */
+  --dur-2: .18s;   /* hover, background */
+  --dur-3: .30s;   /* entrances */
+  --ease:  cubic-bezier(.22, 1, .36, 1);
+
+  /* Only overlays get shadow. Cards have a 1px border and nothing else. */
+  --shadow-overlay: 0 24px 64px -16px rgba(0, 0, 0, .78);
+}
+
+/* Explicit ground: the artifact/host paints behind the page, so a
+   transparent body borrows a theme that is not ours. */
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink-2);
+  font-family: var(--sans);
+  font-size: 12px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-synthesis: none;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+/* Guidelines §4: zero radius everywhere. Asserted globally rather than
+   left to each component, so a stray radius from a library or a habit is
+   overridden rather than shipped. The pill cases opt back in explicitly. */
+* { border-radius: 0; }
+
+/* §1.3 — no visible scrollbars anywhere. Position is carried by the
+   progress hairline and the status bar. Content continuing past the fold
+   is correct: a document does that. */
+* { scrollbar-width: none; }
+*::-webkit-scrollbar { width: 0; height: 0; display: none; }
+
+/* Anything that columns up must actually line up. */
+:where(.mono, .rd-v, .lbl, code, pre, kbd) { font-variant-numeric: tabular-nums; }
+
+::selection { background: rgba(232, 135, 60, .26); }
+
+:where(a, button, input, select, textarea, [tabindex]:not([tabindex="-1"])):focus-visible {
+  outline: 1px solid var(--ember);
+  outline-offset: 1px;
+}
+
+/* §7 — everything pressable moves half a pixel. Cheap, and it is what makes
+   the whole set feel wired up rather than printed. */
+:where(button, a, .row, .tr, .it, .tb, .chip, .facet):active { transform: translateY(.5px); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}

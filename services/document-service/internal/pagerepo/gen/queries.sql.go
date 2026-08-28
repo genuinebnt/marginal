@@ -894,3 +894,70 @@ func (q *Queries) StartPageDeletion(ctx context.Context, arg StartPageDeletionPa
 	_, err := q.db.Exec(ctx, startPageDeletion, arg.PageID, arg.RequestedBy)
 	return err
 }
+
+const tagsForPages = `-- name: TagsForPages :many
+SELECT page_id, tag FROM docs.page_tags
+WHERE page_id = ANY($1::uuid[])
+ORDER BY page_id, tag
+`
+
+func (q *Queries) TagsForPages(ctx context.Context, pageIds []pgtype.UUID) ([]DocsPageTag, error) {
+	rows, err := q.db.Query(ctx, tagsForPages, pageIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DocsPageTag
+	for rows.Next() {
+		var i DocsPageTag
+		if err := rows.Scan(&i.PageID, &i.Tag); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const topicsForPages = `-- name: TopicsForPages :many
+SELECT p.id AS page_id, t.id, t.name, t.color_key
+FROM docs.pages p JOIN docs.topics t ON t.id = p.topic_id
+WHERE p.id = ANY($1::uuid[])
+`
+
+type TopicsForPagesRow struct {
+	PageID   pgtype.UUID
+	ID       pgtype.UUID
+	Name     string
+	ColorKey string
+}
+
+// Batch lookup for ListPages. One query for the whole page, not one per row
+// — a tree render asks for 50 pages at a time, and N+1 there is 50 round
+// trips to decorate a list that already cost one.
+func (q *Queries) TopicsForPages(ctx context.Context, pageIds []pgtype.UUID) ([]TopicsForPagesRow, error) {
+	rows, err := q.db.Query(ctx, topicsForPages, pageIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []TopicsForPagesRow
+	for rows.Next() {
+		var i TopicsForPagesRow
+		if err := rows.Scan(
+			&i.PageID,
+			&i.ID,
+			&i.Name,
+			&i.ColorKey,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

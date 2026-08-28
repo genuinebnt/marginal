@@ -260,3 +260,16 @@ SELECT id, created_by, title, parent_id, path::text AS path, sort_key,
 FROM docs.pages
 WHERE topic_id = $1 AND deleted_at IS NULL
 ORDER BY updated_at DESC;
+
+-- name: TopicsForPages :many
+-- Batch lookup for ListPages. One query for the whole page, not one per row
+-- — a tree render asks for 50 pages at a time, and N+1 there is 50 round
+-- trips to decorate a list that already cost one.
+SELECT p.id AS page_id, t.id, t.name, t.color_key
+FROM docs.pages p JOIN docs.topics t ON t.id = p.topic_id
+WHERE p.id = ANY(@page_ids::uuid[]);
+
+-- name: TagsForPages :many
+SELECT page_id, tag FROM docs.page_tags
+WHERE page_id = ANY(@page_ids::uuid[])
+ORDER BY page_id, tag;
