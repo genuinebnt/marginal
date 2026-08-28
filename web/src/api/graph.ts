@@ -29,6 +29,14 @@ export interface BettiNumbers {
 }
 
 export interface GraphAnalysis {
+  /** Per-node Brandes centrality over the undirected view, normalised to
+   *  [0,1]. Always present, empty rather than null. */
+  betweenness: Record<string, number>;
+  /** Newman's Q against the DECLARED partition (topics)... */
+  modularity_by_topic: number;
+  /** ...and against the one the wiring implies. Read together: either alone
+   *  is a number with nothing to compare it to. */
+  modularity_by_component: number;
   component_of: Record<string, number>;
   orphan_components: number[];
   cycle: string[];

@@ -5,7 +5,9 @@
 -- root for graphalgo.Orphans' own root set — a page nobody has nested
 -- under anything else, so it's reachable without already knowing another
 -- page's title.
-SELECT id, title, parent_id
+-- topic_id joins the DECLARED partition onto the graph, so modularity
+-- can be scored against it (graphalgo.Modularity).
+SELECT id, title, parent_id, topic_id
 FROM docs.pages
 WHERE deleted_at IS NULL;
 

@@ -71,6 +71,22 @@ message GraphAnalysis {
   // why some of these are graph facts and some are a stated modelling
   // choice (filling every triangle).
   BettiNumbers betti = 5;
+
+  // betweenness is each page's Brandes centrality over the UNDIRECTED view
+  // (graphalgo.Betweenness), normalised to [0,1]. A page can have few links
+  // and high betweenness — that is the interesting case, because it is a
+  // bridge whose degree never warned you.
+  map<string, double> betweenness = 6;
+
+  // modularity_by_topic is Newman's Q for the partition pages DECLARE
+  // (docs.pages.topic_id). Compared against a partition the graph itself
+  // implies, the gap is the finding: topics scoring much lower would mean
+  // they describe something other than how pages link.
+  double modularity_by_topic = 7;
+
+  // modularity_by_component is Q for the connected components — the
+  // emergent partition, and the honest baseline to read the above against.
+  double modularity_by_component = 8;
 }
 
 message BettiNumbers {

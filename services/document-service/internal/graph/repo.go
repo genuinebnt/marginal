@@ -25,6 +25,9 @@ type Node struct {
 	ID     uuid.UUID
 	Title  string
 	IsRoot bool
+	// Topic is the page's declared classification, "" when untopiced —
+	// the partition graphalgo.Modularity scores the wiring against.
+	Topic string
 }
 
 // LinkGraph is what LoadGraph returns: the graphalgo.Graph ready to feed
@@ -68,7 +71,11 @@ func (r *PostgresRepo) LoadGraph(ctx context.Context) (LinkGraph, error) {
 		id := graphalgo.NodeID(uuid.UUID(p.ID.Bytes).String())
 		isRoot := !p.ParentID.Valid
 		g.Graph.Nodes = append(g.Graph.Nodes, id)
-		g.Nodes[id] = Node{ID: uuid.UUID(p.ID.Bytes), Title: p.Title, IsRoot: isRoot}
+		topic := ""
+		if p.TopicID.Valid {
+			topic = uuid.UUID(p.TopicID.Bytes).String()
+		}
+		g.Nodes[id] = Node{ID: uuid.UUID(p.ID.Bytes), Title: p.Title, IsRoot: isRoot, Topic: topic}
 		if isRoot {
 			g.Roots = append(g.Roots, id)
 		}

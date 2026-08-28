@@ -48,6 +48,13 @@ type graphAnalysisJSON struct {
 	Cycle            []string         `json:"cycle"`
 	Diameter         int32            `json:"diameter"`
 	Betti            bettiNumbersJSON `json:"betti"`
+	// Per-node Brandes centrality, normalised to [0,1]. Always present and
+	// empty rather than null, so a client can index it without a guard.
+	Betweenness map[string]float64 `json:"betweenness"`
+	// Newman's Q against two partitions. Sent together on purpose: either
+	// alone is a number with nothing to read it against.
+	ModularityByTopic     float64 `json:"modularity_by_topic"`
+	ModularityByComponent float64 `json:"modularity_by_component"`
 }
 
 func toGraphAnalysisJSON(a *documentv1.GraphAnalysis) graphAnalysisJSON {
@@ -60,7 +67,14 @@ func toGraphAnalysisJSON(a *documentv1.GraphAnalysis) graphAnalysisJSON {
 		cycle = []string{}
 	}
 	b := a.GetBetti()
+	bc := a.GetBetweenness()
+	if bc == nil {
+		bc = map[string]float64{}
+	}
 	return graphAnalysisJSON{
+		Betweenness:           bc,
+		ModularityByTopic:     a.GetModularityByTopic(),
+		ModularityByComponent: a.GetModularityByComponent(),
 		ComponentOf:      a.GetComponentOf(),
 		OrphanComponents: orphans,
 		Cycle:            cycle,

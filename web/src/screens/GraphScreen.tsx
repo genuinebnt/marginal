@@ -17,7 +17,7 @@
  * says it is about). When they disagree, that disagreement is the finding.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getLinkGraph, type LinkGraph } from "../api/graph";
+import { analyzeGraph, getLinkGraph, type GraphAnalysis, type LinkGraph } from "../api/graph";
 import { getTopics, type Topic } from "../api/topics";
 import { listPages } from "../api/pages";
 import { useAuth } from "../auth/AuthContext";
@@ -36,6 +36,7 @@ export function GraphScreen() {
   const { session } = useAuth();
   const actorId = session?.actorId ?? null;
   const [graph, setGraph] = useState<LinkGraph | null>(null);
+  const [analysis, setAnalysis] = useState<GraphAnalysis | null>(null);
   const [topics, setTopics] = useState<Topic[]>([]);
   // Per-node topic is joined client-side from /pages rather than served on
   // /graph: GraphService owns edges, not page metadata, and widening its
@@ -54,6 +55,7 @@ export function GraphScreen() {
   useEffect(() => {
     if (!actorId) return;
     getLinkGraph(actorId).then(setGraph).catch((e) => setErr(String(e)));
+    analyzeGraph(actorId).then(setAnalysis).catch(() => setAnalysis(null));
     getTopics(actorId).then((r) => setTopics(r.topics)).catch(() => {});
     listPages(actorId)
       .then((r) => setTopicOf(new Map(r.pages.map((p) => [p.id, p.topic?.color_key ?? ""]))))
@@ -242,7 +244,7 @@ export function GraphScreen() {
                     </text>
                     {isSel && (
                       <text x={n.x + r + 8} y={n.y + 13} fontFamily="IBM Plex Mono" fontSize="9.5" fill="#8C8880">
-                        degree {deg} · betweenness {ph("0.31")}
+                        degree {deg} · betweenness {(analysis?.betweenness[n.id] ?? 0).toFixed(3)}
                       </text>
                     )}
                   </g>
@@ -370,8 +372,8 @@ export function GraphScreen() {
             alpha&nbsp;&nbsp;&nbsp;{ph("0.001")} <span style={{ color: "#3FCFA8" }}>cooled</span><br />
             ticks&nbsp;&nbsp;&nbsp;{ph(412)}<br />
             seed&nbsp;&nbsp;&nbsp;&nbsp;0x5EED<br />
-            modularity&nbsp;{ph("0.61")} <span style={{ color: "#585550" }}>by topic</span><br />
-            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{ph("0.68")} <span style={{ color: "#585550" }}>by cluster</span>
+            modularity&nbsp;{(analysis?.modularity_by_topic ?? 0).toFixed(2)} <span style={{ color: "#585550" }}>by topic</span><br />
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{(analysis?.modularity_by_component ?? 0).toFixed(2)} <span style={{ color: "#585550" }}>by component</span>
           </div>
         </Inspector>
       </Body>

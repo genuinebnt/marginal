@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	"strconv"
 
 	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
@@ -67,11 +68,35 @@ func (s *Server) AnalyzeGraph(ctx context.Context, _ *documentv1.AnalyzeGraphReq
 
 	betti := graphalgo.Betti(g.Graph)
 
+	// Brandes' betweenness over the undirected view — a page's role in the
+	// graph, which its degree does not report (graphalgo.Betweenness).
+	bc := graphalgo.Betweenness(g.Graph)
+	betweenness := make(map[string]float64, len(bc))
+	for id, v := range bc {
+		betweenness[string(id)] = v
+	}
+
+	// Q is scored twice, against two different partitions. By TOPIC is what
+	// pages declare; by COMPONENT is what the wiring implies. Reporting one
+	// without the other would be a number with nothing to read it against —
+	// the gap between them is the actual finding.
+	byTopic := make(map[graphalgo.NodeID]string, len(g.Nodes))
+	byComponent := make(map[graphalgo.NodeID]string, len(comp))
+	for id, n := range g.Nodes {
+		byTopic[id] = n.Topic
+	}
+	for id, c := range comp {
+		byComponent[id] = strconv.Itoa(c)
+	}
+
 	return &documentv1.GraphAnalysis{
-		ComponentOf:      componentOf,
-		OrphanComponents: orphanComponents,
-		Cycle:            cycle,
-		Diameter:         int32(graphalgo.Diameter(g.Graph)),
+		Betweenness:           betweenness,
+		ModularityByTopic:     graphalgo.Modularity(g.Graph, byTopic),
+		ModularityByComponent: graphalgo.Modularity(g.Graph, byComponent),
+		ComponentOf:           componentOf,
+		OrphanComponents:      orphanComponents,
+		Cycle:                 cycle,
+		Diameter:              int32(graphalgo.Diameter(g.Graph)),
 		Betti: &documentv1.BettiNumbers{
 			B0:        int32(betti.B0),
 			B1:        int32(betti.B1),

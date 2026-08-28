@@ -12,7 +12,7 @@ import (
 )
 
 const listPagesForGraph = `-- name: ListPagesForGraph :many
-SELECT id, title, parent_id
+SELECT id, title, parent_id, topic_id
 FROM docs.pages
 WHERE deleted_at IS NULL
 `
@@ -21,6 +21,7 @@ type ListPagesForGraphRow struct {
 	ID       pgtype.UUID
 	Title    string
 	ParentID pgtype.UUID
+	TopicID  pgtype.UUID
 }
 
 // Every live page — the link graph's node set (graphalgo.Graph
@@ -29,6 +30,8 @@ type ListPagesForGraphRow struct {
 // root for graphalgo.Orphans' own root set — a page nobody has nested
 // under anything else, so it's reachable without already knowing another
 // page's title.
+// topic_id joins the DECLARED partition onto the graph, so modularity
+// can be scored against it (graphalgo.Modularity).
 func (q *Queries) ListPagesForGraph(ctx context.Context) ([]ListPagesForGraphRow, error) {
 	rows, err := q.db.Query(ctx, listPagesForGraph)
 	if err != nil {
@@ -38,7 +41,12 @@ func (q *Queries) ListPagesForGraph(ctx context.Context) ([]ListPagesForGraphRow
 	var items []ListPagesForGraphRow
 	for rows.Next() {
 		var i ListPagesForGraphRow
-		if err := rows.Scan(&i.ID, &i.Title, &i.ParentID); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.Title,
+			&i.ParentID,
+			&i.TopicID,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

@@ -287,9 +287,22 @@ type GraphAnalysis struct {
 	// (graphalgo.Betti) — see BettiNumbers' own field comments for
 	// why some of these are graph facts and some are a stated modelling
 	// choice (filling every triangle).
-	Betti         *BettiNumbers `protobuf:"bytes,5,opt,name=betti,proto3" json:"betti,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Betti *BettiNumbers `protobuf:"bytes,5,opt,name=betti,proto3" json:"betti,omitempty"`
+	// betweenness is each page's Brandes centrality over the UNDIRECTED view
+	// (graphalgo.Betweenness), normalised to [0,1]. A page can have few links
+	// and high betweenness — that is the interesting case, because it is a
+	// bridge whose degree never warned you.
+	Betweenness map[string]float64 `protobuf:"bytes,6,rep,name=betweenness,proto3" json:"betweenness,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"fixed64,2,opt,name=value"`
+	// modularity_by_topic is Newman's Q for the partition pages DECLARE
+	// (docs.pages.topic_id). Compared against a partition the graph itself
+	// implies, the gap is the finding: topics scoring much lower would mean
+	// they describe something other than how pages link.
+	ModularityByTopic float64 `protobuf:"fixed64,7,opt,name=modularity_by_topic,json=modularityByTopic,proto3" json:"modularity_by_topic,omitempty"`
+	// modularity_by_component is Q for the connected components — the
+	// emergent partition, and the honest baseline to read the above against.
+	ModularityByComponent float64 `protobuf:"fixed64,8,opt,name=modularity_by_component,json=modularityByComponent,proto3" json:"modularity_by_component,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
 }
 
 func (x *GraphAnalysis) Reset() {
@@ -355,6 +368,27 @@ func (x *GraphAnalysis) GetBetti() *BettiNumbers {
 		return x.Betti
 	}
 	return nil
+}
+
+func (x *GraphAnalysis) GetBetweenness() map[string]float64 {
+	if x != nil {
+		return x.Betweenness
+	}
+	return nil
+}
+
+func (x *GraphAnalysis) GetModularityByTopic() float64 {
+	if x != nil {
+		return x.ModularityByTopic
+	}
+	return 0
+}
+
+func (x *GraphAnalysis) GetModularityByComponent() float64 {
+	if x != nil {
+		return x.ModularityByComponent
+	}
+	return 0
 }
 
 type BettiNumbers struct {
@@ -567,16 +601,22 @@ const file_graph_proto_rawDesc = "" +
 	"\tGraphEdge\x12\x1b\n" +
 	"\tfrom_page\x18\x01 \x01(\tR\bfromPage\x12\x17\n" +
 	"\ato_page\x18\x02 \x01(\tR\x06toPage\"\x15\n" +
-	"\x13AnalyzeGraphRequest\"\xc1\x02\n" +
+	"\x13AnalyzeGraphRequest\"\xc1\x04\n" +
 	"\rGraphAnalysis\x12W\n" +
 	"\fcomponent_of\x18\x01 \x03(\v24.marginal.document.v1.GraphAnalysis.ComponentOfEntryR\vcomponentOf\x12+\n" +
 	"\x11orphan_components\x18\x02 \x03(\x05R\x10orphanComponents\x12\x14\n" +
 	"\x05cycle\x18\x03 \x03(\tR\x05cycle\x12\x1a\n" +
 	"\bdiameter\x18\x04 \x01(\x05R\bdiameter\x128\n" +
-	"\x05betti\x18\x05 \x01(\v2\".marginal.document.v1.BettiNumbersR\x05betti\x1a>\n" +
+	"\x05betti\x18\x05 \x01(\v2\".marginal.document.v1.BettiNumbersR\x05betti\x12V\n" +
+	"\vbetweenness\x18\x06 \x03(\v24.marginal.document.v1.GraphAnalysis.BetweennessEntryR\vbetweenness\x12.\n" +
+	"\x13modularity_by_topic\x18\a \x01(\x01R\x11modularityByTopic\x126\n" +
+	"\x17modularity_by_component\x18\b \x01(\x01R\x15modularityByComponent\x1a>\n" +
 	"\x10ComponentOfEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\x05R\x05value:\x028\x01\"\xa1\x01\n" +
+	"\x05value\x18\x02 \x01(\x05R\x05value:\x028\x01\x1a>\n" +
+	"\x10BetweennessEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\x01R\x05value:\x028\x01\"\xa1\x01\n" +
 	"\fBettiNumbers\x12\x0e\n" +
 	"\x02b0\x18\x01 \x01(\x05R\x02b0\x12\x0e\n" +
 	"\x02b1\x18\x02 \x01(\x05R\x02b1\x12\x1b\n" +
@@ -613,7 +653,7 @@ func file_graph_proto_rawDescGZIP() []byte {
 	return file_graph_proto_rawDescData
 }
 
-var file_graph_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_graph_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_graph_proto_goTypes = []any{
 	(*GetLinkGraphRequest)(nil),       // 0: marginal.document.v1.GetLinkGraphRequest
 	(*LinkGraph)(nil),                 // 1: marginal.document.v1.LinkGraph
@@ -625,27 +665,29 @@ var file_graph_proto_goTypes = []any{
 	(*GraphNeighborhoodRequest)(nil),  // 7: marginal.document.v1.GraphNeighborhoodRequest
 	(*GraphNeighborhoodResponse)(nil), // 8: marginal.document.v1.GraphNeighborhoodResponse
 	nil,                               // 9: marginal.document.v1.GraphAnalysis.ComponentOfEntry
-	nil,                               // 10: marginal.document.v1.GraphNeighborhoodResponse.UndirectedDistanceEntry
-	nil,                               // 11: marginal.document.v1.GraphNeighborhoodResponse.ForwardReachableEntry
+	nil,                               // 10: marginal.document.v1.GraphAnalysis.BetweennessEntry
+	nil,                               // 11: marginal.document.v1.GraphNeighborhoodResponse.UndirectedDistanceEntry
+	nil,                               // 12: marginal.document.v1.GraphNeighborhoodResponse.ForwardReachableEntry
 }
 var file_graph_proto_depIdxs = []int32{
 	2,  // 0: marginal.document.v1.LinkGraph.nodes:type_name -> marginal.document.v1.GraphNode
 	3,  // 1: marginal.document.v1.LinkGraph.edges:type_name -> marginal.document.v1.GraphEdge
 	9,  // 2: marginal.document.v1.GraphAnalysis.component_of:type_name -> marginal.document.v1.GraphAnalysis.ComponentOfEntry
 	6,  // 3: marginal.document.v1.GraphAnalysis.betti:type_name -> marginal.document.v1.BettiNumbers
-	10, // 4: marginal.document.v1.GraphNeighborhoodResponse.undirected_distance:type_name -> marginal.document.v1.GraphNeighborhoodResponse.UndirectedDistanceEntry
-	11, // 5: marginal.document.v1.GraphNeighborhoodResponse.forward_reachable:type_name -> marginal.document.v1.GraphNeighborhoodResponse.ForwardReachableEntry
-	0,  // 6: marginal.document.v1.GraphService.GetLinkGraph:input_type -> marginal.document.v1.GetLinkGraphRequest
-	4,  // 7: marginal.document.v1.GraphService.AnalyzeGraph:input_type -> marginal.document.v1.AnalyzeGraphRequest
-	7,  // 8: marginal.document.v1.GraphService.GraphNeighborhood:input_type -> marginal.document.v1.GraphNeighborhoodRequest
-	1,  // 9: marginal.document.v1.GraphService.GetLinkGraph:output_type -> marginal.document.v1.LinkGraph
-	5,  // 10: marginal.document.v1.GraphService.AnalyzeGraph:output_type -> marginal.document.v1.GraphAnalysis
-	8,  // 11: marginal.document.v1.GraphService.GraphNeighborhood:output_type -> marginal.document.v1.GraphNeighborhoodResponse
-	9,  // [9:12] is the sub-list for method output_type
-	6,  // [6:9] is the sub-list for method input_type
-	6,  // [6:6] is the sub-list for extension type_name
-	6,  // [6:6] is the sub-list for extension extendee
-	0,  // [0:6] is the sub-list for field type_name
+	10, // 4: marginal.document.v1.GraphAnalysis.betweenness:type_name -> marginal.document.v1.GraphAnalysis.BetweennessEntry
+	11, // 5: marginal.document.v1.GraphNeighborhoodResponse.undirected_distance:type_name -> marginal.document.v1.GraphNeighborhoodResponse.UndirectedDistanceEntry
+	12, // 6: marginal.document.v1.GraphNeighborhoodResponse.forward_reachable:type_name -> marginal.document.v1.GraphNeighborhoodResponse.ForwardReachableEntry
+	0,  // 7: marginal.document.v1.GraphService.GetLinkGraph:input_type -> marginal.document.v1.GetLinkGraphRequest
+	4,  // 8: marginal.document.v1.GraphService.AnalyzeGraph:input_type -> marginal.document.v1.AnalyzeGraphRequest
+	7,  // 9: marginal.document.v1.GraphService.GraphNeighborhood:input_type -> marginal.document.v1.GraphNeighborhoodRequest
+	1,  // 10: marginal.document.v1.GraphService.GetLinkGraph:output_type -> marginal.document.v1.LinkGraph
+	5,  // 11: marginal.document.v1.GraphService.AnalyzeGraph:output_type -> marginal.document.v1.GraphAnalysis
+	8,  // 12: marginal.document.v1.GraphService.GraphNeighborhood:output_type -> marginal.document.v1.GraphNeighborhoodResponse
+	10, // [10:13] is the sub-list for method output_type
+	7,  // [7:10] is the sub-list for method input_type
+	7,  // [7:7] is the sub-list for extension type_name
+	7,  // [7:7] is the sub-list for extension extendee
+	0,  // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_graph_proto_init() }
@@ -659,7 +701,7 @@ func file_graph_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_graph_proto_rawDesc), len(file_graph_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   12,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
