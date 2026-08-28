@@ -1,0 +1,335 @@
+/*
+  Editor and inspector styles, transcribed from docs/ui-mockups/v2/index.html
+  § 04 EDITOR.
+
+  These classes exist because RichEditorPane and InspectorRail already
+  reference them — 1600 lines of working block-editing, drag-reorder, slash
+  menu, bubble menu, presence and [[ ]] autocomplete that has no reason to be
+  rewritten to change its colours. So rather than touch that logic, the class
+  names it already uses are given the mockup's values.
+
+  Every value below is lifted from § 04's inline styles, not chosen. Where the
+  mockup styles an element inline (its prose, its code block, its callout,
+  its caret tag), that declaration is reproduced here verbatim.
+*/
+
+/* ── the writing column ─────────────────────────────────────────────────── */
+
+/* § 04: padding 38px 0 0, centred, with a 660px measure. The mockup's column
+   is fixed because its artboard is; here it is a max so a narrow window
+   still reads, which is the same intent at a different viewport. */
+.canvas {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 38px 0 0;
+  display: flex;
+  justify-content: center;
+}
+.canvas > * { width: 660px; max-width: calc(100% - 64px); position: relative; }
+
+.dek {
+  font: 400 11.5px 'IBM Plex Mono', monospace;
+  color: #6E6A63;
+  margin-bottom: 12px;
+}
+
+/* Prose. Spectral, because a page body is prose and prose is serif here —
+   the chrome around it stays sans (DESIGN_GUIDELINES.md §2). */
+.editable {
+  font-family: 'Spectral', Georgia, serif;
+  font-size: 17px;
+  line-height: 1.68;
+  color: #D2CFC8;
+  outline: none;
+}
+.editable:empty::before {
+  content: attr(data-placeholder);
+  color: #4B4842;
+}
+
+/* § 04's title: 36px Spectral, tight tracking, its own leading. It carries
+   .editable too (so it stays contenteditable), which is why this must come
+   AFTER that rule — equal specificity, and the later one wins. Bumping
+   specificity instead would work and read worse. */
+.page-title {
+  font-family: 'Spectral', Georgia, serif;
+  font-weight: 500;
+  font-size: 36px;
+  line-height: 1.14;
+  letter-spacing: -.02em;
+  color: #EFEDE7;
+  margin: 10px 0 8px;
+}
+
+.block-row { position: relative; margin: 0 0 16px; }
+.block-row h1, .block-row h2, .block-row h3 {
+  font-family: 'Spectral', Georgia, serif;
+  font-weight: 500;
+  letter-spacing: -.015em;
+  color: #EFEDE7;
+  margin: 0;
+}
+.block-row h1 { font-size: 27px; }
+.block-row h2 { font-size: 22px; }
+.block-row h3 { font-size: 18px; }
+
+.block-row blockquote {
+  margin: 0;
+  padding-left: 15px;
+  border-left: 2px solid rgba(232,135,60,.5);
+  color: #9B968D;
+}
+
+.block-divider {
+  border: 0;
+  border-top: 1px solid rgba(255,255,255,.09);
+  margin: 22px 0;
+}
+
+/* § 04's code block, exactly. */
+.code-editable {
+  display: block;
+  width: 100%;
+  border: 1px solid rgba(255,255,255,.08);
+  background: #111214;
+  padding: 12px 13px;
+  font: 400 12px/1.65 'IBM Plex Mono', monospace;
+  color: #B3AFA7;
+  outline: none;
+  resize: vertical;
+}
+
+/* Inline marks. The page link is violet — the same hue that means "another
+   person" elsewhere is NOT reused here; §3.3 reserves violet for a peer, and
+   this is the mockup's own choice for [[link]], so it stays as drawn. */
+.editable a, .pagelink {
+  color: #A98CE8;
+  text-decoration: underline;
+  text-decoration-color: rgba(169,140,232,.45);
+  text-underline-offset: 3px;
+}
+.editable code {
+  font: 400 .88em 'IBM Plex Mono', monospace;
+  background: rgba(255,255,255,.05);
+  padding: 1px 4px;
+  color: #C3BFB7;
+}
+
+/* ── diagnostics ────────────────────────────────────────────────────────── */
+
+/* Dotted amber, never a red squiggle: a notebook has no compile step, so
+   nothing in it is "broken". A red underline on prose reads as an
+   accusation; dotted amber reads as heads up (RFC-003 §2). */
+.diagnostic-span {
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-decoration-thickness: 1.5px;
+  text-decoration-color: #E0A34E;
+  text-underline-offset: 3px;
+}
+
+/* The left gutter marker — outside the measure, so prose stays flush. */
+.gutter {
+  position: absolute;
+  left: -30px;
+  top: 2px;
+  color: #E0A34E;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.note {
+  display: flex;
+  gap: 11px;
+  padding: 11px 13px;
+  border: 1px solid rgba(125,158,201,.3);
+  background: rgba(125,158,201,.07);
+  font-family: 'Archivo', system-ui, sans-serif;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #9B968D;
+  margin: 0 0 16px;
+}
+
+/* ── presence ───────────────────────────────────────────────────────────── */
+
+.peer-caret {
+  display: inline-block;
+  width: 1.5px;
+  height: .95em;
+  background: #A98CE8;
+  vertical-align: -.12em;
+  margin: 0 1px;
+}
+.peer-caret-tag {
+  font: 600 8.5px 'Archivo', sans-serif;
+  color: #0E0F10;
+  background: #A98CE8;
+  padding: 1px 4px;
+  vertical-align: .5em;
+  margin-left: 2px;
+}
+.peer-selection { background: rgba(169,140,232,.18); }
+
+.avatars { display: flex; gap: 5px; align-items: center; }
+.dot { position: relative; width: 6px; height: 6px; flex: none; }
+
+/* ── floating menus ─────────────────────────────────────────────────────── */
+
+/* Per-block hover controls: insert-below and the drag handle. These live in
+   the LEFT MARGIN, outside the measure — § 04 puts nothing over the prose,
+   and an affordance that covers the text it acts on is worse than no
+   affordance. Revealed on hover so a settled page is just the page.
+
+   Not the bubble menu, which is a different thing with a different trigger
+   (a selection, not a pointer) and is styled below. Giving both the same
+   rule is what put these controls on top of the first line. */
+.block-row > .block-toolbar {
+  position: absolute;
+  left: -56px;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity var(--dur-1) var(--ease);
+}
+.block-row:hover > .block-toolbar,
+.block-row:focus-within > .block-toolbar { opacity: 1; }
+
+/* § 04's bubble menu, raised by a selection. There is no persistent format
+   toolbar: a top strip implies one document-wide edit surface, and this
+   editor is per-block contenteditable (ADR-004). Suppressed inside code
+   blocks by RichEditorPane itself — RFC-001's grammar says Code has no
+   Spans, so offering *bold* there should be unreachable, not just ignored. */
+.bubble {
+  position: absolute;
+  z-index: 20;
+  display: none;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 9px;
+  background: #181A1B;
+  border: 1px solid rgba(255,255,255,.12);
+  box-shadow: 0 24px 64px -16px rgba(0,0,0,.78);
+}
+.bubble.open { display: flex; }
+.bubble button {
+  background: none;
+  border: 0;
+  color: #D2CFC8;
+  font: 400 11px 'Archivo', sans-serif;
+  cursor: pointer;
+  padding: 1px 3px;
+}
+.bubble button:hover { color: #EFEDE7; }
+
+/* The slash menu — "/" at a block start, and the "+" insert bar. A list, so
+   it stacks rather than sitting in a row like the bubble menu. */
+.slash {
+  position: absolute;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1px;
+  padding: 5px;
+  min-width: 210px;
+  max-height: 280px;
+  overflow-y: auto;
+  background: #181A1B;
+  border: 1px solid rgba(255,255,255,.12);
+  box-shadow: 0 24px 64px -16px rgba(0,0,0,.78);
+}
+.palette-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 9px;
+  font-size: 12px;
+  color: #9B968D;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.palette-item:hover, .palette-item[aria-selected="true"] {
+  background: #181A1B;
+  color: #E4E2DC;
+  box-shadow: inset 2px 0 0 #E8873C;
+}
+.menu-divider { height: 1px; background: rgba(255,255,255,.07); margin: 4px 0; }
+.sep { width: 1px; height: 12px; background: rgba(255,255,255,.14); }
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 4px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #6E6A63;
+  font: 400 11px 'IBM Plex Mono', monospace;
+  cursor: pointer;
+}
+.icon-btn:hover { color: #E4E2DC; border-color: rgba(255,255,255,.13); }
+
+/* ── inspector internals ────────────────────────────────────────────────── */
+
+/* Seven candidate tabs is already more than 296px fits, so the strip
+   scrolls horizontally rather than clipping the last one — a tab cut in
+   half reads as a rendering bug, and the panel width is fixed by §1.2. */
+.tabs {
+  display: flex;
+  gap: 2px;
+  padding: 11px 12px 0;
+  border-bottom: 1px solid rgba(255,255,255,.07);
+  overflow-x: auto;
+  flex: none;
+}
+.tab {
+  padding: 6px 6px 8px;
+  font: 600 9.5px 'IBM Plex Mono', monospace;
+  letter-spacing: .1em;
+  color: #6E6A63;
+  white-space: nowrap;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.tab[aria-selected="true"] { color: #E4E2DC; border-bottom: 2px solid #E8873C; margin-bottom: -1px; }
+
+.tabpanel, .panel-body {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+}
+.panel-h, .panel-section {
+  font: 600 8.5px 'IBM Plex Mono', monospace;
+  letter-spacing: .19em;
+  color: #585550;
+}
+.panel-section { margin-top: 4px; }
+
+.lead { font-size: 12.5px; line-height: 1.5; color: #D2CFC8; }
+.meta { font: 400 10px 'IBM Plex Mono', monospace; color: #585550; }
+.muted { color: #585550; font-size: 11.5px; line-height: 1.6; }
+.msg { font-size: 11.5px; line-height: 1.6; color: #8C8880; }
+
+/* An emphasised item carries a 2px left rule and a wash, never a full
+   outline (§4.2). */
+.stripe { width: 2px; background: #E0A34E; flex: none; }
+
+.pill {
+  padding: 3px 9px;
+  border: 1px solid rgba(255,255,255,.14);
+  font: 600 9px 'IBM Plex Mono', monospace;
+  letter-spacing: .08em;
+  color: #9B968D;
+  background: none;
+  cursor: pointer;
+}
+.pill:hover { color: #E4E2DC; border-color: rgba(255,255,255,.24); }

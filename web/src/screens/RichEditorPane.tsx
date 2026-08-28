@@ -27,6 +27,13 @@ const CALLOUT_TONE_COLOR: Record<string, string> = {
 };
 
 const EMPTY_DIAGNOSTICS: Diagnostic[] = [];
+
+/** Topic colour-key -> the chip class. Mirrors shell/Chrome's own map; kept
+ *  local so this file has no reason to import the screen shell. */
+const TOPIC_CLASS: Record<string, string> = {
+  protocol: "tpc-proto", storage: "tpc-store", interface: "tpc-ui",
+  operations: "tpc-ops", research: "tpc-rsch",
+};
 const REPLACE_DEBOUNCE_MS = 400;
 
 // documentcore.BlockKind.Language (block.go) — "which grammar to
@@ -500,20 +507,44 @@ export function RichEditorPane({
     <main className="canvas">
       <article className="doc standard">
         <PageTitle title={page.title} onRename={onRename} />
+        {/* § 04's dek: what this page is, in counts, not adjectives. */}
         <div className="dek" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span className={`state${state !== "open" ? " offline" : ""}`}>
-            <span className="dot"></span>
-            {state === "open" ? "Synced" : state === "connecting" ? "Connecting…" : "Disconnected"}
+          <span>
+            {blocks.length} block{blocks.length === 1 ? "" : "s"}
+            {" · "}
+            {peers.size + 1} actor{peers.size === 0 ? "" : "s"} live
+            {" · "}
+            <span style={{ color: state === "open" ? "#3FCFA8" : "#E0A34E" }}>
+              {state === "open" ? "synced" : state === "connecting" ? "connecting…" : "disconnected"}
+            </span>
           </span>
           {peers.size > 0 && (
             <div className="avatars">
               {[...peers].map((p) => (
-                <div className="avatar peer" key={p} title={p}>
+                <div className="av av-them" key={p} title={p}>
                   {actorTag(p)}
                 </div>
               ))}
             </div>
           )}
+        </div>
+
+        {/* Topic and tags sit with the title because they are what the page
+            IS, not metadata about it. Editable inline: the topic is a
+            single-select (one per page — it is a column), tags are a token
+            list. Both write through the same API the Topics screen uses. */}
+        <div className="tgrow" style={{ marginBottom: 26 }}>
+          {page.topic ? (
+            <span className={`tpc ${TOPIC_CLASS[page.topic.color_key] ?? "tpc-proto"}`}>
+              <i />{page.topic.name.toUpperCase()}
+            </span>
+          ) : (
+            <span className="chip" title="No topic — a real state, not a gap">UNTOPICED</span>
+          )}
+          {(page.tags ?? []).length > 0 && (
+            <span style={{ width: 1, height: 13, background: "rgba(255,255,255,.09)" }} />
+          )}
+          {(page.tags ?? []).map((t) => <span key={t} className="tg">{t}</span>)}
         </div>
 
         {visibleBlocks.map((b) => (
@@ -700,8 +731,7 @@ function PageTitle({ title, onRename }: { title: string; onRename: (title: strin
   return (
     <h1
       ref={ref}
-      style={{ fontFamily: "var(--display)", fontWeight: 560 }}
-      className="editable"
+      className="editable page-title"
       contentEditable
       suppressContentEditableWarning
       onInput={handleInput}

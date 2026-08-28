@@ -81,22 +81,30 @@ export function PageTreeRail({ actorId, activePageId }: { actorId: string; activ
 
   return (
     <aside className="rail">
-      <div className="rail-head">
-        <span className="label">Pages</span>
-        <span className="spacer"></span>
-        <button className="icon-btn" title="New page" onClick={() => startCreate(ROOT)}>+</button>
+      {/* .rail-h's empty <div> is the flex-grow hairline that runs the label
+          out to the panel edge — not decoration, and not omittable. */}
+      <div className="rail-h">
+        PAGE TREE<div />
+        <span
+          style={{ color: "#585550", cursor: "pointer" }}
+          title="New page"
+          onClick={() => startCreate(ROOT)}
+        >
+          ＋
+        </span>
       </div>
       <input
-        className="filter"
-        placeholder="Filter loaded pages…"
+        className="filt"
+        placeholder="filter…"
         aria-label="Filter pages"
         value={filter}
         onChange={(e) => setFilter(e.target.value)}
+        style={{ outline: "none", width: "calc(100% - 24px)" }}
       />
-      <div className="rail-scroll">
+      <div style={{ display: "flex", flexDirection: "column", gap: 1, padding: "0 8px", overflowY: "auto", flex: 1 }}>
         {filteredIds ? (
           filteredIds.length === 0 ? (
-            <div className="muted" style={{ padding: 8, fontSize: 12.5 }}>No loaded pages match.</div>
+            <div style={{ padding: 8, fontSize: 11.5, color: "#585550" }}>No loaded pages match.</div>
           ) : (
             filteredIds.map((id) => (
               <PageRow
@@ -147,7 +155,7 @@ export function PageTreeRail({ actorId, activePageId }: { actorId: string; activ
               <NewPageInput draft={draft} setDraft={setDraft} onSubmit={() => submitCreate(ROOT)} onCancel={() => setCreatingUnder(null)} />
             )}
             {(tree.childrenByParent[ROOT] ?? []).length === 0 && creatingUnder !== ROOT && (
-              <div className="muted" style={{ padding: 8, fontSize: 12.5 }}>No pages yet — create one above.</div>
+              <div style={{ padding: 8, fontSize: 11.5, color: "#585550" }}>No pages yet — create one above.</div>
             )}
           </>
         )}
@@ -188,7 +196,7 @@ function TreeBranch({ id, depth, ...rest }: TreeProps & { id: string; depth: num
             <TreeBranch key={childId} id={childId} depth={depth + 1} {...rest} />
           ))}
           {rest.tree.loading.has(id) && children === undefined && (
-            <div className="muted" style={{ padding: "4px 8px", fontSize: 11.5, paddingLeft: depthPadding(depth + 1) }}>Loading…</div>
+            <div style={{ padding: "4px 8px", fontSize: 11, color: "#585550", paddingLeft: depthPadding(depth + 1) }}>Loading…</div>
           )}
           {rest.creatingUnder === id && (
             <div style={{ paddingLeft: depthPadding(depth + 1) }}>
@@ -245,13 +253,27 @@ function PageRow({
     >
       <Link
         to={`/pages/${page.id}`}
-        className={`tree-item ${depthClass} ${page.id === activePageId ? "active" : ""} ${isDeleting ? "deleting" : ""}`}
-        style={style}
+        className={`tr${page.id === activePageId ? " tr-on" : ""}`}
+        style={{
+          ...style,
+          textDecoration: "none",
+          // A page mid-saga must not look active (DATA_MODEL's own
+          // lifecycle_state note) — struck through in amber, never red.
+          ...(isDeleting
+            ? {
+                color: "#585550",
+                textDecoration: "line-through",
+                textDecorationColor: "rgba(224,163,78,.7)",
+              }
+            : {}),
+        }}
         title={isDeleting ? "lifecycle_state = deleting" : undefined}
       >
+        {page.id === activePageId && <i />}
         {hasChildren ? (
           <span
-            className="twisty"
+            className="tr-n"
+            style={{ cursor: "pointer", width: 9 }}
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -261,13 +283,21 @@ function PageRow({
             {expanded ? "▾" : "▸"}
           </span>
         ) : (
-          <span className="twisty"></span>
+          <span className="tr-n" style={{ width: 9 }} />
         )}
-        <span className="bullet"></span>
         {page.title || "Untitled"}
+        {isDeleting && (
+          <span style={{
+            marginLeft: "auto",
+            font: "400 8.5px 'IBM Plex Mono',monospace",
+            color: "#E0A34E",
+          }}>
+            DELETING
+          </span>
+        )}
         <span
-          className="icon-btn"
-          style={{ marginLeft: "auto", width: 18, height: 18, fontSize: 12 }}
+          className="tr-n"
+          style={{ marginLeft: isDeleting ? undefined : "auto", cursor: "pointer", fontSize: 11 }}
           title="New sub-page"
           onClick={(e) => {
             e.preventDefault();
@@ -278,8 +308,8 @@ function PageRow({
           +
         </span>
         <span
-          className="icon-btn"
-          style={{ width: 18, height: 18, fontSize: 12 }}
+          className="tr-n"
+          style={{ cursor: "pointer", fontSize: 11 }}
           title="Delete page"
           onClick={async (e) => {
             e.preventDefault();
@@ -309,7 +339,7 @@ function NewPageInput({
 }) {
   return (
     <input
-      className="filter"
+      className="filt"
       autoFocus
       placeholder="Page title…"
       value={draft}

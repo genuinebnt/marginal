@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { getPage, renamePage, type Page } from "../api/pages";
 import { getPageDiagnostics, type Diagnostic } from "../api/diagnostics";
@@ -7,6 +7,7 @@ import { useCollabPage } from "../collab/useCollabPage";
 import { RichEditorPane } from "./RichEditorPane";
 import { InspectorRail } from "./InspectorRail";
 import { PageTreeRail } from "./PageTreeRail";
+import { Body, Readout, Screen, StatusBar, TopBar } from "../shell/Chrome";
 
 /**
  * The editor screen for one page: the real nested page tree (rail), the
@@ -23,7 +24,7 @@ import { PageTreeRail } from "./PageTreeRail";
  */
 export function EditorScreen() {
   const { id } = useParams();
-  const { session, logout } = useAuth();
+  const { session } = useAuth();
   const [activePage, setActivePage] = useState<Page | null>(null);
   const [linkCopied, setLinkCopied] = useState(false);
   const [diagnostics, setDiagnostics] = useState<Diagnostic[] | null>(null);
@@ -100,26 +101,38 @@ export function EditorScreen() {
     setTimeout(() => setLinkCopied(false), 2000);
   }
 
-  return (
-    <div className="app">
-      <header className="topbar">
-        <Link to="/pages" className="brand" style={{ textDecoration: "none" }}>
-          <span className="mark"></span>Marginal
-        </Link>
-        <div className="spacer"></div>
-        <button className="btn" onClick={collab.undo} title="Undo your last edit (⌘Z / Ctrl+Z)">
-          ↶ Undo
-        </button>
-        <button className="btn" onClick={collab.redo} title="Redo (⌘⇧Z / Ctrl+Shift+Z)">
-          ↷ Redo
-        </button>
-        <button className="btn" onClick={copyShareLink} title="Copy this page's link so someone else can join">
-          {linkCopied ? "Link copied" : "Copy link"}
-        </button>
-        <button className="btn" onClick={logout}>Sign out</button>
-      </header>
+  // Live peers exclude you, so "2 actors live" counts everyone in the room.
+  const live = collab.peers.size + 1;
+  const unflushed = collab.state === "open" ? 0 : null;
 
-      <div className="body-row">
+  return (
+    <Screen>
+      <TopBar
+        crumb={activePage ? <>page / <b>{activePage.title}</b></> : undefined}
+        readouts={
+          <>
+            <Readout k="BLOCKS" v={collab.blocks.length} />
+            <Readout
+              k="LINK"
+              v={collab.state === "open" ? "live" : collab.state}
+              tone={collab.state === "open" ? "#3FCFA8" : "#E0A34E"}
+            />
+          </>
+        }
+        right={
+          <>
+            {/* Presence lives with the prose (the pane's dek), not up here:
+                an actor id sliced to two characters is noise, and the tag
+                the pane derives is at least stable per actor. */}
+            <div className="btn" onClick={copyShareLink} style={{ cursor: "pointer" }}>
+              {linkCopied ? "COPIED" : "SHARE"}
+              <div className="brk-tl" /><div className="brk-br" />
+            </div>
+          </>
+        }
+      />
+
+      <Body>
         <PageTreeRail actorId={actorId} activePageId={id} />
 
         {activePage ? (
@@ -142,11 +155,22 @@ export function EditorScreen() {
             />
           </>
         ) : (
-          <main className="canvas" style={{ display: "grid", placeItems: "center" }}>
-            <div className="muted">Loading…</div>
-          </main>
+          <div style={{ flex: 1, display: "grid", placeItems: "center", color: "#585550", fontSize: 12 }}>
+            Loading…
+          </div>
         )}
-      </div>
-    </div>
+      </Body>
+
+      <StatusBar
+        route={`/pages/${id ?? ""}`}
+        mechanism="every change is an op · anchors, never offsets"
+        state={
+          collab.state === "open"
+            ? `${live} live · ${unflushed ?? 0} unflushed`
+            : `connection ${collab.state}`
+        }
+        healthy={collab.state === "open"}
+      />
+    </Screen>
   );
 }

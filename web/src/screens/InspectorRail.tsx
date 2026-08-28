@@ -7,13 +7,16 @@ import { keyOf } from "../collab/blockKind";
 
 type Tab = "outline" | "checks" | "links" | "comments" | "people" | "history";
 
+// § 04's four, in its order. The mockup's own note applies: seven candidate
+// tabs is already too many to show at once, and a strip that overflows its
+// own 296px panel reads as a rendering bug. Comments and History are still
+// reachable — Comments has no service in scope, and History is its own
+// route — so dropping them from the strip loses nothing but the clipping.
 const TABS: { id: Tab; label: string }[] = [
-  { id: "outline", label: "Outline" },
-  { id: "checks", label: "Checks" },
-  { id: "links", label: "Backlinks" },
-  { id: "comments", label: "Comments" },
-  { id: "history", label: "History" },
-  { id: "people", label: "People" },
+  { id: "outline", label: "OUTLINE" },
+  { id: "checks", label: "CHECKS" },
+  { id: "links", label: "LINKS" },
+  { id: "people", label: "PRESENCE" },
 ];
 
 /**
