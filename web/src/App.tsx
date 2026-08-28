@@ -10,6 +10,7 @@ import { FactsScreen } from "./screens/FactsScreen";
 import { HistoryScreen } from "./screens/HistoryScreen";
 import { TraceScreen } from "./screens/TraceScreen";
 import { DiffScreen } from "./screens/DiffScreen";
+import { TopicsScreen } from "./screens/TopicsScreen";
 import { SearchScreen } from "./screens/SearchScreen";
 
 function RequireAuth({ children }: { children: ReactElement }) {
@@ -91,6 +92,14 @@ function App() {
         element={
           <RequireAuth>
             <SearchScreen />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/topics"
+        element={
+          <RequireAuth>
+            <TopicsScreen />
           </RequireAuth>
         }
       />
