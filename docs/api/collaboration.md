@@ -167,6 +167,53 @@ in-memory only per session, cleared (like every editor's redo stack) the
 moment a new op commits for that actor, matching `documentcore.History`'s
 existing "a new op invalidates redo" rule.
 
+### 2.2. Restore to a point
+
+```json
+{ "type": "restore", "to_step": 3 }
+```
+
+`docs/ui-mockups/history.html`'s "restore to a point," made real
+(`v2.4.0`) — brings the live document back to its state as of right
+after step `to_step` of this page's own confirmed op log, 0-indexed, the
+same indexing `GET /collab/pages/{id}/trace`'s own `steps` array uses
+(§5). A client builds its scrubber against that endpoint, then sends
+`to_step` from whichever step the scrubber is parked on.
+
+This is **repeated undo, not a restore-from-backup** — the same
+`internal/session.Trace` replay §5 already exposes read-only computes,
+each step's own already-known inverse, applied backward from the current
+tip through the exact same `commitOpLocked` pipeline `"undo"`/`"redo"`
+use (WAL, broadcast, flush-enqueue), most-recent-step first. From every
+other connection's point of view this is indistinguishable from the
+requesting actor submitting that many ordinary `"op"` messages, because
+it is that: each reverted step gets its own `"ack"`/`"broadcast"` frame,
+same as `"undo"`'s own multi-op contract above.
+
+The whole restore becomes **one new undo group** for the requesting
+actor — a single `"undo"` afterward reapplies every step it just
+reverted, in their *original* order (not the restore's own reverse
+order: each step's own precondition, e.g. `SetBlockContent`'s `Prev`,
+was only ever valid against the state that existed right before it, so
+reapplying them out of order fails).
+
+`to_step` must satisfy `0 <= to_step < (the current confirmed step
+count)` — one past the end (i.e. "restore to now") is a **no-op**, not
+an `error` frame, matching `"undo"`/`"redo"`'s own empty-stack contract;
+anything else out of range is an `"error"` frame naming the problem, not
+an `"internal error"` (`session.ErrOutOfRange`). Same not-atomic-across-
+a-multi-step contract as a grouped `"undo"`: if step *k* of the range
+fails to revert (its target was touched by someone else since), the
+steps already reverted stay reverted and the failure surfaces as an
+`"error"` frame — a second `"restore"` (or plain `"undo"`) can be
+retried from there.
+
+Shares `Trace`'s own documented visibility boundary (§5): it replays
+*confirmed* rows, so an op still sitting in this session's own
+not-yet-flushed WAL tail at the moment `"restore"` runs is invisible to
+it — the same accepted gap `Trace` already states plainly, unlikely to
+matter in practice for a manual, deliberate click (flush is sub-second).
+
 `op` is `internal/pageop.Op`, JSON-encoded exactly as `pageop.Marshal`
 produces it — one of two scopes, each nesting its own tier's op:
 
