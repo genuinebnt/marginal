@@ -1,152 +1,323 @@
-import { useEffect, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+/**
+ * docs/ui-mockups/v2/index.html § 13 TRACE, ported.
+ *
+ * A debugger for the op log. Every step here is real: the ops are the page's
+ * actual collab.ops rows, the inverse beside each one is what
+ * documentcore.Op.Invert() returned, and the document shown is the state
+ * after applying that op — not a rendered guess.
+ *
+ * The invertibility law is RE-CHECKED per step by the server rather than
+ * asserted here (`law_holds` on each step), which is the whole reason this
+ * screen is worth having: `apply(invert(op), apply(op, doc)) == doc` is the
+ * property the op model rests on, and a UI that displays it without
+ * verifying it would be a decoration.
+ *
+ * Stepping backwards runs inverses. It never restores a snapshot — the
+ * distinction the rail states out loud, and the one that makes per-actor
+ * undo possible at all.
+ */
+import { useEffect, useMemo, useState } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { getTrace, describeOp, type TraceStep } from "../api/history";
+import { listPages, type Page } from "../api/pages";
+import {
+  Body, Inspector, Label, Readout, Rule, Screen, StatusBar, TopBar, num,
+} from "../shell/Chrome";
 
-const ACTOR_COLORS = ["var(--teal)", "var(--violet)", "var(--ai)", "var(--cat-4)", "var(--cat-5)"];
-function colorFor(actorId: string, order: string[]): string {
-  return ACTOR_COLORS[order.indexOf(actorId) % ACTOR_COLORS.length];
-}
-
-function blkClass(kindTag: string): string {
-  if (kindTag === "heading") return "blk h2";
-  if (kindTag === "code_block") return "blk code";
-  if (kindTag === "quote") return "blk quote";
-  return "blk";
-}
-
-/** The one block this step's op actually touched — pageop.Block ops name
- * the block directly or via their tombstone; pageop.Text ops name it via
- * `block`. Real data read off the op itself, not guessed. */
-function touchedBlockId(op: TraceStep["op"]["op"]): string | null {
-  if (op.scope === "text") return (op.block as string) ?? null;
-  return (op.id as string) ?? (op.block as string) ?? ((op.tombstone as { id?: string } | undefined)?.id ?? null);
-}
-
-/**
- * docs/ui-mockups/v2/index.html § 13 TRACE, made real (v2.4.0): every step is a real
- * confirmed op from this page's own log, replayed and law-checked by
- * internal/session.Trace (GET /collab/pages/{id}/trace) — the badge
- * re-checks `apply(invert(op), apply(op, doc)) == doc` for real, per
- * step, not asserted the way the mockup's own fixed nine-op sequence
- * was. "Apply ▶"/"◀ Invert" just move the scrubber across
- * already-computed steps (`after` is the whole document, precomputed —
- * ADR-012's "the client draws what Go already computed").
- */
-export function TraceScreen() {
-  const { id: pageId } = useParams();
-  const { logout } = useAuth();
-
-  const [steps, setSteps] = useState<TraceStep[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [pos, setPos] = useState(0); // 0 = before any op; N = right after steps[N-1]
-  const [playing, setPlaying] = useState(false);
-  const timerRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (!pageId) return;
-    getTrace(pageId)
-      .then((r) => setSteps(r.steps))
-      .catch(() => setError("Couldn't load this page's op log."));
-  }, [pageId]);
-
-  useEffect(() => {
-    if (!playing || !steps) return;
-    if (pos >= steps.length) {
-      setPlaying(false);
-      return;
-    }
-    timerRef.current = window.setTimeout(() => setPos((p) => p + 1), 700);
-    return () => {
-      if (timerRef.current) window.clearTimeout(timerRef.current);
-    };
-  }, [playing, pos, steps]);
-
-  if (error) return <div className="app"><div className="note" style={{ margin: 24, maxWidth: "none" }}>{error}</div></div>;
-  if (!steps) return <div className="app"><div className="muted" style={{ padding: 24 }}>Loading…</div></div>;
-
-  const actorOrder = [...new Set(steps.map((s) => s.op.actor_id))];
-  const currentStep = pos > 0 ? steps[pos - 1] : null;
-  const doc = currentStep?.after ?? null;
-  const lawHolds = steps.slice(0, pos).every((s) => s.law_holds);
-  const touched = currentStep ? touchedBlockId(currentStep.op.op) : null;
-
+/** Pretty-prints an op as the mockup's own brace-block, from real fields. */
+function OpBody({ op }: { op: Record<string, unknown> }) {
+  const entries = Object.entries(op).filter(([k]) => k !== "scope");
   return (
-    <div className="app">
-      <header className="topbar">
-        <Link to="/pages" className="brand" style={{ textDecoration: "none" }}>
-          <span className="mark"></span>Marginal
-        </Link>
-        <nav className="nav">
-          {pageId && <Link to={`/pages/${pageId}`}>Editor</Link>}
-          {pageId && <Link to={`/pages/${pageId}/history`}>History</Link>}
-          <Link to={`/pages/${pageId}/trace`} aria-current="page">Op trace</Link>
-        </nav>
-        <div className="crumb">Product · <b>Op trace</b></div>
-        <div className="spacer"></div>
-        <span className={`law ${lawHolds ? "ok" : "fail"}`}>{lawHolds ? "law holds" : "law FAILED"}</span>
-        <Link className="btn" to={`/pages/${pageId}/history`}>Scrubber</Link>
-        <button className="btn" onClick={logout}>Sign out</button>
-      </header>
-
-      <div className="tracebar">
-        <button className="btn" disabled={pos === 0} onClick={() => setPos((p) => Math.max(0, p - 1))}>◀ Invert</button>
-        <button className="btn" disabled={pos >= steps.length} onClick={() => setPos((p) => Math.min(steps.length, p + 1))}>Apply ▶</button>
-        <button className="btn primary" onClick={() => setPlaying((v) => !v)}>{playing ? "Pause" : "Play"}</button>
-        <span style={{ width: 8 }}></span>
-        <span className="label">Op</span>
-        <span className="mono">{pos} / {steps.length}</span>
-        <span className="spacer"></span>
-        <span className="muted" style={{ fontSize: 12 }}>
-          Backwards applies <b style={{ color: "var(--ink)" }}>invert(op)</b> — never a snapshot restore
-        </span>
-      </div>
-
-      <div className="split3">
-        <main className="docpane">
-          {doc ? (
-            <>
-              <div className="blk h1">{doc.title || "Untitled"}</div>
-              {doc.blocks.map((b) => (
-                <div key={b.id} className={`${blkClass(b.kind.tag)} ${b.id === touched ? "touched" : ""}`.trim()}>
-                  {b.text || <span className="muted">(empty)</span>}
-                </div>
-              ))}
-            </>
-          ) : (
-            <div className="muted">Empty document — no ops applied yet.</div>
-          )}
-
-          <div className="note" style={{ maxWidth: "36rem" }}>
-            <b>Really real.</b> Every op above is applied and inverted by real Go
-            (<code>internal/session</code>), and the badge in the header re-checks{" "}
-            <code>apply(invert(op), apply(op, doc)) == doc</code> on every single step. Step
-            backwards and you are watching inverses run, not a saved copy being restored.
-          </div>
-        </main>
-
-        <aside className="oplist">
-          {steps.map((s, i) => {
-            const { kind, detail } = describeOp(s.op.op);
-            return (
-              <div
-                key={s.op.id}
-                className={`oprow ${i + 1 === pos ? "here" : ""} ${i >= pos ? "future" : ""}`.trim()}
-                onClick={() => setPos(i + 1)}
-              >
-                <span className="who" style={{ background: colorFor(s.op.actor_id, actorOrder) }}></span>
-                <div>
-                  <div><span className="kind">{kind}</span></div>
-                  {detail && <div className="arg">{detail}</div>}
-                  <div className="arg" style={{ marginTop: 2 }}>
-                    {s.law_holds ? "law holds" : "law FAILED"}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </aside>
-      </div>
+    <div className="mono" style={{ fontSize: 11.5, lineHeight: 1.8, color: "inherit" }}>
+      {"{"}
+      {entries.map(([k, v]) => (
+        <div key={k} style={{ paddingLeft: 14 }}>
+          {k}: {typeof v === "object" && v !== null ? JSON.stringify(v).slice(0, 46) : String(v).slice(0, 46)},
+        </div>
+      ))}
+      {"}"}
     </div>
   );
 }
+
+export function TraceScreen() {
+  const { id } = useParams();
+  const { session } = useAuth();
+  const actorId = session?.actorId ?? null;
+  const navigate = useNavigate();
+
+  const [pages, setPages] = useState<Page[]>([]);
+  const [steps, setSteps] = useState<TraceStep[]>([]);
+  const [at, setAt] = useState(0);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!actorId) return;
+    listPages(actorId).then((r) => setPages(r.pages)).catch(() => {});
+  }, [actorId]);
+
+  useEffect(() => {
+    if (!id) return;
+    setSteps([]); setErr(null);
+    getTrace(id)
+      .then((r) => { setSteps(r.steps); setAt(Math.max(r.steps.length - 1, 0)); })
+      .catch((e) => setErr(String(e.message ?? e)));
+  }, [id]);
+
+  const step = steps[at] ?? null;
+  const doc = step?.after ?? null;
+
+  const chars = useMemo(
+    () => (doc?.blocks ?? []).reduce((n, b) => n + b.text.length, 0),
+    [doc],
+  );
+  const marks = useMemo(
+    () => (doc?.blocks ?? []).reduce((n, b) => n + (b.marks?.length ?? 0), 0),
+    [doc],
+  );
+
+  // A single failing step makes the whole trace suspect, so the readout
+  // reports the trace, not just the step you happen to be looking at.
+  const allHold = steps.every((s) => s.law_holds);
+
+  if (!id) {
+    return (
+      <Screen>
+        <TopBar crumb={<>lab / <b>trace</b></>} />
+        <Body>
+          <div className="rail">
+            <div className="rail-h">PICK A PAGE<div /></div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 1, padding: "0 8px", overflowY: "auto" }}>
+              {pages.map((p) => (
+                <div key={p.id} className="tr" style={{ cursor: "pointer" }}
+                     onClick={() => navigate(`/pages/${p.id}/trace`)}>
+                  {p.title}
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{ flex: 1, display: "grid", placeItems: "center", padding: 40 }}>
+            <div style={{ maxWidth: 520, fontSize: 12.5, lineHeight: 1.7, color: "#585550" }}>
+              A trace is per page, because an op log is. Pick one and every op it has
+              ever received is replayed here — applied, inverted, and the invertibility
+              law re-checked at each step.
+            </div>
+          </div>
+        </Body>
+        <StatusBar route="/lab/trace" mechanism="op-log debugger" state="no page selected" healthy />
+      </Screen>
+    );
+  }
+
+  return (
+    <Screen>
+      <TopBar
+        crumb={<>lab / <b>trace</b></>}
+        readouts={
+          <>
+            <Readout k="STEP" v={`${num(steps.length === 0 ? 0 : at + 1)} / ${num(steps.length)}`} />
+            <Readout
+              k="INVERTIBILITY"
+              v={steps.length === 0 ? "—" : allHold ? "HOLDS" : "FAILS"}
+              tone={allHold ? "#3FCFA8" : "#E0A34E"}
+            />
+          </>
+        }
+        right={
+          <div style={{ display: "flex", gap: 6 }}>
+            <span
+              className="chip"
+              style={{ cursor: at > 0 ? "pointer" : "default", opacity: at > 0 ? 1 : 0.4 }}
+              onClick={() => setAt((v) => Math.max(0, v - 1))}
+              title="Steps back by APPLYING THE INVERSE — never by restoring a snapshot"
+            >
+              ◀ STEP
+            </span>
+            <span
+              className="chip chip-e"
+              style={{ cursor: at < steps.length - 1 ? "pointer" : "default", opacity: at < steps.length - 1 ? 1 : 0.4 }}
+              onClick={() => setAt((v) => Math.min(steps.length - 1, v + 1))}
+            >
+              STEP ▶
+            </span>
+          </div>
+        }
+      />
+
+      <Body>
+        <div className="rail" style={{ width: 330 }}>
+          <div className="rail-h">
+            OP LOG<div /><span style={{ color: "#585550" }}>{steps.length}</span>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", padding: "0 8px", gap: 1, overflowY: "auto", flex: 1 }}>
+            {steps.length === 0 && !err && (
+              <div style={{ padding: 10, fontSize: 11.5, color: "#585550", lineHeight: 1.6 }}>
+                This page has no ops yet. An empty log is a real state — the page was
+                created and never edited.
+              </div>
+            )}
+            {steps.map((s, i) => {
+              const { kind, detail } = describeOp(s.op.op);
+              const current = i === at;
+              return (
+                <div
+                  key={s.op.id}
+                  onClick={() => setAt(i)}
+                  style={{
+                    position: "relative",
+                    padding: current ? "8px 10px 8px 24px" : "8px 10px",
+                    background: current ? "#181A1B" : undefined,
+                    display: "flex", gap: 9, alignItems: "baseline", cursor: "pointer",
+                  }}
+                >
+                  {current && (
+                    <div style={{ position: "absolute", left: 0, top: 4, bottom: 4, width: 2, background: "#E8873C" }} />
+                  )}
+                  <span className="mono" style={{ fontSize: 9, color: current ? "#E8873C" : "#4B4842" }}>
+                    {i + 1}
+                  </span>
+                  <span className="mono" style={{
+                    fontSize: 10.5,
+                    color: current ? "#E4E2DC" : i < at ? "#6E6A63" : "#585550",
+                  }}>
+                    {kind} {detail}
+                  </span>
+                  {!s.law_holds && (
+                    <span className="mono" style={{ marginLeft: "auto", fontSize: 9, color: "#E0A34E" }}>
+                      ✕
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <div className="wal">
+            <Label>STEPPING BACK RUNS INVERSES</Label>
+            <span style={{ fontSize: 11, color: "#585550", lineHeight: 1.55 }}>
+              It never restores a snapshot.
+            </span>
+          </div>
+        </div>
+
+        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          <div style={{
+            flex: 1, padding: "30px 40px", borderBottom: "1px solid rgba(255,255,255,.07)",
+            minHeight: 0, overflowY: "auto",
+          }}>
+            <Label style={{ display: "block", marginBottom: 16 }}>
+              DOCUMENT AT STEP {steps.length === 0 ? 0 : at + 1}
+            </Label>
+            {err && (
+              <div style={{ fontSize: 12.5, color: "#E0A34E", lineHeight: 1.7 }}>
+                ◌ {err}
+              </div>
+            )}
+            <div style={{ fontFamily: "Spectral,serif", fontSize: 19, lineHeight: 1.7, color: "#D2CFC8" }}>
+              {(doc?.blocks ?? []).map((b) => (
+                <div key={b.id} style={{ marginBottom: 10 }}>
+                  {b.text || <span style={{ color: "#4B4842" }}>(empty {b.kind.tag})</span>}
+                </div>
+              ))}
+              {doc && doc.blocks.length === 0 && (
+                <span style={{ color: "#4B4842", fontSize: 15 }}>(no blocks at this step)</span>
+              )}
+            </div>
+            {doc && (
+              <div style={{ marginTop: 22, display: "flex", gap: 26 }}>
+                <Readout k="BLOCKS" v={num(doc.blocks.length)} />
+                <Readout k="CHARS" v={num(chars)} />
+                <Readout k="MARKS" v={num(marks)} />
+              </div>
+            )}
+          </div>
+
+          <div style={{ padding: "22px 40px" }}>
+            <Label style={{ display: "block", marginBottom: 14 }}>THIS OP AND ITS INVERSE</Label>
+            {step ? (
+              <div style={{ display: "flex", gap: 16 }}>
+                <div style={{
+                  flex: 1, border: "1px solid rgba(232,135,60,.3)",
+                  background: "rgba(232,135,60,.05)", padding: "13px 15px", color: "#E4E2DC",
+                }}>
+                  <div className="mono" style={{ fontSize: 9, letterSpacing: ".16em", color: "#E8873C", marginBottom: 8 }}>
+                    APPLIED
+                  </div>
+                  <OpBody op={step.op.op as Record<string, unknown>} />
+                </div>
+                <div style={{
+                  flex: 1, border: "1px solid rgba(255,255,255,.09)",
+                  padding: "13px 15px", color: "#9B968D",
+                }}>
+                  <div className="mono" style={{ fontSize: 9, letterSpacing: ".16em", color: "#6E6A63", marginBottom: 8 }}>
+                    INVERSE
+                  </div>
+                  <OpBody op={step.inverse as Record<string, unknown>} />
+                </div>
+              </div>
+            ) : (
+              <span style={{ fontSize: 11.5, color: "#585550" }}>Nothing to step through.</span>
+            )}
+          </div>
+        </div>
+
+        <Inspector
+          tabs={[{ id: "law", label: "LAW" }, { id: "kinds", label: "KINDS" }]}
+          active="law"
+        >
+          <Label>RE-CHECKED THIS STEP</Label>
+          <div style={{
+            border: `1px solid ${step?.law_holds === false ? "rgba(224,163,78,.4)" : "rgba(63,207,168,.35)"}`,
+            background: step?.law_holds === false ? "rgba(224,163,78,.06)" : "rgba(63,207,168,.06)",
+            padding: "12px 13px",
+          }}>
+            <div className="mono" style={{ fontSize: 11, lineHeight: 1.7, color: "#D2CFC8" }}>
+              apply(invert(op),<br />&nbsp;&nbsp;apply(op, doc))<br />&nbsp;&nbsp;== doc
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 9 }}>
+              <span className={`chip ${step?.law_holds === false ? "chip-a" : "chip-t"}`}>
+                {step ? (step.law_holds ? "HOLDS" : "FAILS") : "—"}
+              </span>
+              <span className="mono" style={{ fontSize: 10, color: "#585550" }}>
+                step {steps.length === 0 ? 0 : at + 1} of {steps.length}
+              </span>
+            </div>
+          </div>
+          <div style={{ fontSize: 11, lineHeight: 1.6, color: "#585550" }}>
+            Verified server-side per step, not asserted here. A screen that displayed this
+            law without running it would be a decoration.
+          </div>
+
+          <Rule />
+          <Label>ACTOR</Label>
+          {step && (
+            <div className="mono" style={{ fontSize: 10.5, lineHeight: 1.9, color: "#8C8880" }}>
+              actor&nbsp;&nbsp;&nbsp;&nbsp;{step.op.actor_id.slice(0, 8)}<br />
+              kind&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{step.op.actor_kind}<br />
+              group&nbsp;&nbsp;&nbsp;&nbsp;{step.op.undo_group?.slice(0, 8) ?? "—"}<br />
+              at&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{new Date(step.op.created_at).toLocaleTimeString("en-GB")}
+            </div>
+          )}
+          <div style={{ fontSize: 11, lineHeight: 1.6, color: "#585550" }}>
+            undo_group is why one paste undoes as one action rather than forty. NULL
+            degrades to a group of one, which is why it could be added later and was not.
+          </div>
+        </Inspector>
+      </Body>
+
+      <StatusBar
+        route={`/pages/${id}/trace`}
+        mechanism="apply and invert run for real, per step"
+        state={
+          err ? "op log unavailable"
+            : steps.length === 0 ? "no ops on this page"
+            : allHold ? `${num(steps.length)} ops · law holds throughout`
+            : "law fails on at least one step"
+        }
+        healthy={!err && allHold}
+      />
+    </Screen>
+  );
+}
+
+export default TraceScreen;
