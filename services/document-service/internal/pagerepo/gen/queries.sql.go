@@ -11,6 +11,94 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const claimPageDeletions = `-- name: ClaimPageDeletions :many
+SELECT page_id, requested_by, steps_done, attempts, started_at
+FROM docs.page_deletions
+WHERE completed_at IS NULL
+ORDER BY started_at
+LIMIT $1
+FOR UPDATE SKIP LOCKED
+`
+
+type ClaimPageDeletionsRow struct {
+	PageID      pgtype.UUID
+	RequestedBy pgtype.UUID
+	StepsDone   []string
+	Attempts    int32
+	StartedAt   pgtype.Timestamptz
+}
+
+// The sweeper's claim. FOR UPDATE SKIP LOCKED so two document-service
+// instances sweep the same table without either blocking or double-running
+// a step — the same pattern marginal/outboxpoll uses for outbox rows.
+// Oldest first, so a saga that keeps failing cannot starve behind newer ones.
+func (q *Queries) ClaimPageDeletions(ctx context.Context, limit int32) ([]ClaimPageDeletionsRow, error) {
+	rows, err := q.db.Query(ctx, claimPageDeletions, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ClaimPageDeletionsRow
+	for rows.Next() {
+		var i ClaimPageDeletionsRow
+		if err := rows.Scan(
+			&i.PageID,
+			&i.RequestedBy,
+			&i.StepsDone,
+			&i.Attempts,
+			&i.StartedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const clearPageDeletion = `-- name: ClearPageDeletion :exec
+DELETE FROM docs.page_deletions WHERE page_id = $1
+`
+
+// Restore drops the saga row rather than marking it. A restored page that
+// is deleted again is a NEW saga, not a resumed one — keeping the old row
+// would make attempts and steps_done describe two different operations.
+func (q *Queries) ClearPageDeletion(ctx context.Context, pageID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, clearPageDeletion, pageID)
+	return err
+}
+
+const completePageDeletion = `-- name: CompletePageDeletion :exec
+WITH done AS (
+    UPDATE docs.page_deletions SET completed_at = NOW(), last_error = NULL, updated_at = NOW()
+    WHERE page_id = $1 AND completed_at IS NULL
+    RETURNING page_id
+)
+UPDATE docs.pages SET lifecycle_state = 'deleted', updated_at = NOW()
+WHERE id = (SELECT page_id FROM done)
+`
+
+// The saga's terminal write: the page leaves 'deleting' for 'deleted' and
+// becomes restorable. Both rows move together so a reader can never see a
+// finished saga over a still-'deleting' page.
+func (q *Queries) CompletePageDeletion(ctx context.Context, pageID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, completePageDeletion, pageID)
+	return err
+}
+
+const countTrash = `-- name: CountTrash :one
+SELECT COUNT(*) FROM docs.pages WHERE deleted_at IS NOT NULL
+`
+
+func (q *Queries) CountTrash(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countTrash)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createPage = `-- name: CreatePage :one
 INSERT INTO docs.pages (id, created_by, title, parent_id, path, sort_key)
 VALUES ($1, $2, $3, $4, $5::ltree, $6)
@@ -66,6 +154,26 @@ func (q *Queries) CreatePage(ctx context.Context, arg CreatePageParams) (CreateP
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const deleteSubtreeLinks = `-- name: DeleteSubtreeLinks :execrows
+DELETE FROM docs.page_links
+WHERE source_page_id IN (
+    SELECT id FROM docs.pages WHERE path <@ $1::ltree
+)
+`
+
+// StepLinksRewritten. Drops only rows where a page in the deleted subtree
+// was the SOURCE — claims made by a page that no longer exists. Rows
+// pointing AT the subtree are left alone on purpose: a [[link]] to a
+// deleted page is a real dangling reference RFC-003's DanglingLink
+// analyzer is meant to report, not a row to tidy away.
+func (q *Queries) DeleteSubtreeLinks(ctx context.Context, parentPath string) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteSubtreeLinks, parentPath)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const getPage = `-- name: GetPage :one
@@ -200,6 +308,82 @@ func (q *Queries) ListPages(ctx context.Context, arg ListPagesParams) ([]ListPag
 	return items, nil
 }
 
+const listTrash = `-- name: ListTrash :many
+SELECT p.id, p.created_by, p.title, p.parent_id, p.path::text AS path, p.sort_key,
+       p.lifecycle_state, p.deleted_at, p.created_at, p.updated_at,
+       p.deleted_at + $3::interval AS purge_at,
+       d.steps_done, d.attempts, d.last_error, d.completed_at
+FROM docs.pages p
+LEFT JOIN docs.page_deletions d ON d.page_id = p.id
+WHERE p.deleted_at IS NOT NULL
+ORDER BY p.deleted_at DESC
+LIMIT $1 OFFSET $2
+`
+
+type ListTrashParams struct {
+	Limit       int32
+	Offset      int32
+	PurgeWindow pgtype.Interval
+}
+
+type ListTrashRow struct {
+	ID             pgtype.UUID
+	CreatedBy      pgtype.UUID
+	Title          string
+	ParentID       pgtype.UUID
+	Path           string
+	SortKey        string
+	LifecycleState string
+	DeletedAt      pgtype.Timestamptz
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+	PurgeAt        int32
+	StepsDone      []string
+	Attempts       *int32
+	LastError      *string
+	CompletedAt    pgtype.Timestamptz
+}
+
+// Both terminal-ish states, newest first: 'deleting' (saga in flight) and
+// 'deleted' (restorable until purge). purge_at is derived from deleted_at
+// at read time rather than stored, so changing the window moves every
+// pending purge without a backfill (DATA_MODEL.md § Page deletions).
+func (q *Queries) ListTrash(ctx context.Context, arg ListTrashParams) ([]ListTrashRow, error) {
+	rows, err := q.db.Query(ctx, listTrash, arg.Limit, arg.Offset, arg.PurgeWindow)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListTrashRow
+	for rows.Next() {
+		var i ListTrashRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.CreatedBy,
+			&i.Title,
+			&i.ParentID,
+			&i.Path,
+			&i.SortKey,
+			&i.LifecycleState,
+			&i.DeletedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.PurgeAt,
+			&i.StepsDone,
+			&i.Attempts,
+			&i.LastError,
+			&i.CompletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const nextSiblingSortKey = `-- name: NextSiblingSortKey :one
 SELECT sort_key FROM docs.pages
 WHERE deleted_at IS NULL
@@ -226,6 +410,48 @@ func (q *Queries) NextSiblingSortKey(ctx context.Context, arg NextSiblingSortKey
 	var sort_key string
 	err := row.Scan(&sort_key)
 	return sort_key, err
+}
+
+const recordPageDeletionFailure = `-- name: RecordPageDeletionFailure :exec
+UPDATE docs.page_deletions
+SET last_error = $1, attempts = attempts + 1, updated_at = NOW()
+WHERE page_id = $2
+`
+
+type RecordPageDeletionFailureParams struct {
+	LastError *string
+	PageID    pgtype.UUID
+}
+
+// Forward-only compensation: a failing step is recorded and retried, never
+// rolled back. attempts is bumped here rather than at claim time so it
+// counts real resumptions, not sweeps that found nothing to do.
+func (q *Queries) RecordPageDeletionFailure(ctx context.Context, arg RecordPageDeletionFailureParams) error {
+	_, err := q.db.Exec(ctx, recordPageDeletionFailure, arg.LastError, arg.PageID)
+	return err
+}
+
+const recordPageDeletionStep = `-- name: RecordPageDeletionStep :exec
+UPDATE docs.page_deletions
+SET steps_done = CASE WHEN $1::text = ANY(steps_done)
+                      THEN steps_done
+                      ELSE array_append(steps_done, $1::text) END,
+    last_error = NULL,
+    updated_at = NOW()
+WHERE page_id = $2
+`
+
+type RecordPageDeletionStepParams struct {
+	Step   string
+	PageID pgtype.UUID
+}
+
+// Appends one completed step. array_append is guarded by NOT (... = ANY ...)
+// so re-running a step that already recorded itself is a no-op rather than a
+// duplicate entry — steps_done is a set that happens to keep its order.
+func (q *Queries) RecordPageDeletionStep(ctx context.Context, arg RecordPageDeletionStepParams) error {
+	_, err := q.db.Exec(ctx, recordPageDeletionStep, arg.Step, arg.PageID)
+	return err
 }
 
 const renamePage = `-- name: RenamePage :one
@@ -329,6 +555,29 @@ func (q *Queries) ReparentPageRow(ctx context.Context, arg ReparentPageRowParams
 	return i, err
 }
 
+const restorePageAndSubtree = `-- name: RestorePageAndSubtree :execrows
+UPDATE docs.pages p
+SET lifecycle_state = 'active', deleted_at = NULL, updated_at = NOW()
+FROM docs.pages target
+WHERE target.id = $1
+  AND target.lifecycle_state = 'deleted'
+  AND (p.id = target.id OR (p.path <@ target.path AND p.deleted_at = target.deleted_at))
+`
+
+// Restore is the inverse of StepTreeDetached and nothing else — the later
+// steps are not undone, they are re-derived: page_links and the FTS index
+// are projections that rebuild from the op log, and the op log was sealed,
+// never deleted. Scoped to rows deleted in the SAME saga (deleted_at equal
+// to the target's) so restoring a page does not resurrect a child that was
+// already in the trash on its own before this delete ran.
+func (q *Queries) RestorePageAndSubtree(ctx context.Context, pageID pgtype.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, restorePageAndSubtree, pageID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const rewriteDescendantPaths = `-- name: RewriteDescendantPaths :execrows
 UPDATE docs.pages
 SET path = $1::ltree || subpath(path, nlevel($2::ltree)),
@@ -390,4 +639,24 @@ func (q *Queries) SoftDeletePage(ctx context.Context, id pgtype.UUID) (int64, er
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const startPageDeletion = `-- name: StartPageDeletion :exec
+INSERT INTO docs.page_deletions (page_id, requested_by)
+VALUES ($1, $2)
+ON CONFLICT (page_id) DO NOTHING
+`
+
+type StartPageDeletionParams struct {
+	PageID      pgtype.UUID
+	RequestedBy pgtype.UUID
+}
+
+// Opens the saga row alongside the soft-delete, in the same transaction
+// (internal/pagesaga). ON CONFLICT DO NOTHING makes a repeated DeletePage
+// idempotent: the second call must not reset steps_done or attempts on a
+// saga already in flight.
+func (q *Queries) StartPageDeletion(ctx context.Context, arg StartPageDeletionParams) error {
+	_, err := q.db.Exec(ctx, startPageDeletion, arg.PageID, arg.RequestedBy)
+	return err
 }

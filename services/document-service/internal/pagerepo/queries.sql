@@ -101,3 +101,105 @@ WHERE id = $1 AND deleted_at IS NULL;
 -- (idempotent Delete) touches nothing on the second pass.
 UPDATE docs.pages SET lifecycle_state = 'deleting', deleted_at = NOW(), updated_at = NOW()
 WHERE path <@ @parent_path::ltree AND id != @page_id AND deleted_at IS NULL;
+
+-- name: StartPageDeletion :exec
+-- Opens the saga row alongside the soft-delete, in the same transaction
+-- (internal/pagesaga). ON CONFLICT DO NOTHING makes a repeated DeletePage
+-- idempotent: the second call must not reset steps_done or attempts on a
+-- saga already in flight.
+INSERT INTO docs.page_deletions (page_id, requested_by)
+VALUES (@page_id, @requested_by)
+ON CONFLICT (page_id) DO NOTHING;
+
+-- name: ClaimPageDeletions :many
+-- The sweeper's claim. FOR UPDATE SKIP LOCKED so two document-service
+-- instances sweep the same table without either blocking or double-running
+-- a step — the same pattern marginal/outboxpoll uses for outbox rows.
+-- Oldest first, so a saga that keeps failing cannot starve behind newer ones.
+SELECT page_id, requested_by, steps_done, attempts, started_at
+FROM docs.page_deletions
+WHERE completed_at IS NULL
+ORDER BY started_at
+LIMIT $1
+FOR UPDATE SKIP LOCKED;
+
+-- name: RecordPageDeletionStep :exec
+-- Appends one completed step. array_append is guarded by NOT (... = ANY ...)
+-- so re-running a step that already recorded itself is a no-op rather than a
+-- duplicate entry — steps_done is a set that happens to keep its order.
+UPDATE docs.page_deletions
+SET steps_done = CASE WHEN @step::text = ANY(steps_done)
+                      THEN steps_done
+                      ELSE array_append(steps_done, @step::text) END,
+    last_error = NULL,
+    updated_at = NOW()
+WHERE page_id = @page_id;
+
+-- name: RecordPageDeletionFailure :exec
+-- Forward-only compensation: a failing step is recorded and retried, never
+-- rolled back. attempts is bumped here rather than at claim time so it
+-- counts real resumptions, not sweeps that found nothing to do.
+UPDATE docs.page_deletions
+SET last_error = @last_error, attempts = attempts + 1, updated_at = NOW()
+WHERE page_id = @page_id;
+
+-- name: CompletePageDeletion :exec
+-- The saga's terminal write: the page leaves 'deleting' for 'deleted' and
+-- becomes restorable. Both rows move together so a reader can never see a
+-- finished saga over a still-'deleting' page.
+WITH done AS (
+    UPDATE docs.page_deletions SET completed_at = NOW(), last_error = NULL, updated_at = NOW()
+    WHERE page_id = @page_id AND completed_at IS NULL
+    RETURNING page_id
+)
+UPDATE docs.pages SET lifecycle_state = 'deleted', updated_at = NOW()
+WHERE id = (SELECT page_id FROM done);
+
+-- name: DeleteSubtreeLinks :execrows
+-- StepLinksRewritten. Drops only rows where a page in the deleted subtree
+-- was the SOURCE — claims made by a page that no longer exists. Rows
+-- pointing AT the subtree are left alone on purpose: a [[link]] to a
+-- deleted page is a real dangling reference RFC-003's DanglingLink
+-- analyzer is meant to report, not a row to tidy away.
+DELETE FROM docs.page_links
+WHERE source_page_id IN (
+    SELECT id FROM docs.pages WHERE path <@ @parent_path::ltree
+);
+
+-- name: ListTrash :many
+-- Both terminal-ish states, newest first: 'deleting' (saga in flight) and
+-- 'deleted' (restorable until purge). purge_at is derived from deleted_at
+-- at read time rather than stored, so changing the window moves every
+-- pending purge without a backfill (DATA_MODEL.md § Page deletions).
+SELECT p.id, p.created_by, p.title, p.parent_id, p.path::text AS path, p.sort_key,
+       p.lifecycle_state, p.deleted_at, p.created_at, p.updated_at,
+       p.deleted_at + @purge_window::interval AS purge_at,
+       d.steps_done, d.attempts, d.last_error, d.completed_at
+FROM docs.pages p
+LEFT JOIN docs.page_deletions d ON d.page_id = p.id
+WHERE p.deleted_at IS NOT NULL
+ORDER BY p.deleted_at DESC
+LIMIT $1 OFFSET $2;
+
+-- name: CountTrash :one
+SELECT COUNT(*) FROM docs.pages WHERE deleted_at IS NOT NULL;
+
+-- name: RestorePageAndSubtree :execrows
+-- Restore is the inverse of StepTreeDetached and nothing else — the later
+-- steps are not undone, they are re-derived: page_links and the FTS index
+-- are projections that rebuild from the op log, and the op log was sealed,
+-- never deleted. Scoped to rows deleted in the SAME saga (deleted_at equal
+-- to the target's) so restoring a page does not resurrect a child that was
+-- already in the trash on its own before this delete ran.
+UPDATE docs.pages p
+SET lifecycle_state = 'active', deleted_at = NULL, updated_at = NOW()
+FROM docs.pages target
+WHERE target.id = @page_id
+  AND target.lifecycle_state = 'deleted'
+  AND (p.id = target.id OR (p.path <@ target.path AND p.deleted_at = target.deleted_at));
+
+-- name: ClearPageDeletion :exec
+-- Restore drops the saga row rather than marking it. A restored page that
+-- is deleted again is a NEW saga, not a resumed one — keeping the old row
+-- would make attempts and steps_done describe two different operations.
+DELETE FROM docs.page_deletions WHERE page_id = @page_id;

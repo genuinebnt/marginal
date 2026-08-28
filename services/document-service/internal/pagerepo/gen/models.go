@@ -20,6 +20,15 @@ type DocsBlock struct {
 	SearchVector interface{}
 }
 
+type DocsOutbox struct {
+	ID          pgtype.UUID
+	AggregateID pgtype.UUID
+	EventType   string
+	Payload     []byte
+	PublishedAt pgtype.Timestamptz
+	CreatedAt   pgtype.Timestamptz
+}
+
 type DocsPage struct {
 	ID             pgtype.UUID
 	CreatedBy      pgtype.UUID
@@ -32,6 +41,17 @@ type DocsPage struct {
 	CreatedAt      pgtype.Timestamptz
 	UpdatedAt      pgtype.Timestamptz
 	SearchVector   interface{}
+}
+
+type DocsPageDeletion struct {
+	PageID      pgtype.UUID
+	RequestedBy pgtype.UUID
+	StepsDone   []string
+	Attempts    int32
+	CompletedAt pgtype.Timestamptz
+	LastError   *string
+	StartedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
 }
 
 type DocsPageLink struct {
