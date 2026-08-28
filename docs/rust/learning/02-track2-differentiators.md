@@ -46,8 +46,8 @@ how an arena-per-pass allocator avoids a million small frees.
 
 ### Read the mockups
 
-`ui-mockups/facts.html` runs the fact graph's topological invalidation, and
-`ui-mockups/graph-algorithms.html` runs the cycle and component detection. Both are faster to
+`ui-mockups/v2/index.html § 10 FACTS` runs the fact graph's topological invalidation, and
+`ui-mockups/v2/index.html § 08 GRAPH ALGORITHMS` runs the cycle and component detection. Both are faster to
 read than a paper and they cannot drift from what they claim.
 
 ## After it works
@@ -118,7 +118,7 @@ precisely.
 | Martin Fowler — [Event Sourcing](https://martinfowler.com/eaaDev/EventSourcing.html) + [CQRS](https://martinfowler.com/bliki/CQRS.html) | article | Short, precise definitions. Useful because both terms are used loosely everywhere else |
 | James Coglan — [**The Myers diff algorithm, parts 1–3**](https://blog.jcoglan.com/2017/02/12/the-myers-diff-algorithm-part-1/) | blog series | **The best explanation of Myers that exists.** Read all three parts. Then you can implement the DP table first and argue against it honestly |
 | Myers — [An O(ND) Difference Algorithm and Its Variations](http://www.xmailserver.org/diff2.pdf) | paper (1986) | The original, after Coglan. Dense, and the divide-and-conquer variation in §4b is the practical one |
-| Skiena — Ch. *Dynamic Programming*, LCS section | owned | The table, formally. `ui-mockups/diff.html` runs it live |
+| Skiena — Ch. *Dynamic Programming*, LCS section | owned | The table, formally. `ui-mockups/v2/index.html § 15 DIFF` runs it live |
 | [**CMU 15-721**](https://15721.courses.cs.cmu.edu/) — **MVCC lectures** | owned course | **This is the palimpsest.** Multi-version storage, tombstones, garbage collection of old versions. Pavlo's MVCC lectures are the best treatment available |
 | Okasaki — *Purely Functional Data Structures* Ch. 2 (or [the thesis, free](https://www.cs.cmu.edu/~rwh/students/okasaki.pdf)) | book/thesis | What "persistent" means: structural sharing, and why an old version costs nothing to keep |
 | [**Chandy–Lamport snapshots**](https://lamport.azurewebsites.net/pubs/chandy.pdf) | paper | Conceptual, and short. A consistent snapshot of a distributed session without stopping it |
@@ -147,5 +147,5 @@ precisely.
 
 | Resource | Why |
 |---|---|
-| [`ui-mockups/history.html`](../ui-mockups/history.html) — reread the palimpsest source | You implemented the real one. Compare against the mockup's 229-char toy and see what the toy elides |
+| [`ui-mockups/v2/index.html § 17 HISTORY`](../../ui-mockups/v2/index.html) — reread the palimpsest source | You implemented the real one. Compare against the mockup's 229-char toy and see what the toy elides |
 | [Datomic's architecture](https://docs.datomic.com/pro/overview/architecture.html) | A commercial database built entirely on immutable facts plus time. The most extreme version of your design |

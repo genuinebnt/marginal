@@ -8,7 +8,7 @@ type Granularity = "char" | "word";
 type View = "text" | "matrix" | "ops";
 
 /**
- * docs/ui-mockups/diff.html, made real (v2.4.0): before/after are two
+ * docs/ui-mockups/v2/index.html § 15 DIFF, made real (v2.4.0): before/after are two
  * real revisions (GET .../diff, backed by internal/session.Trace),
  * block moves/adds/removes are real (a MoveBlock filter over the
  * confirmed log, plus a plain before/after set difference — no

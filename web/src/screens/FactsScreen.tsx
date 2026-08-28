@@ -5,7 +5,7 @@ import { getFacts, getStaleReferences, type FactsGraph, type FactReference } fro
 import { getPage, type Page } from "../api/pages";
 
 /**
- * docs/ui-mockups/facts.html, made real (v2.3.0): the dependency DAG, the
+ * docs/ui-mockups/v2/index.html § 10 FACTS, made real (v2.3.0): the dependency DAG, the
  * cycle check, and the duplicate-name detection are diagnostics-service's
  * own `internal/facts` (graphalgo.DetectCycle/ForwardReachable, unchanged
  * — the same algorithms graph-algorithms.html already runs, applied to

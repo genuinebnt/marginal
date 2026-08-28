@@ -79,7 +79,7 @@ GCP services** that phase genuinely demands.
 | **19 — Assistant** | AI in production | **Vertex AI** or an external provider behind Secret Manager · **`pgvector` enabled on Cloud SQL** via Terraform — the embedding index lives with the data so retrieval can be permission-filtered in one query |
 | **20 — Settings & admin** | — | Runtime config in **Firestore** or Cloud SQL — decide, do not default |
 | **11 — Containers, CI & self-host ops** | The pipeline, plus backups that are restore-tested | Workload Identity Federation for GitHub Actions — **no service account keys in CI** · GCS backup bucket with object versioning **and a retention policy** (write-once, so ransomware cannot rewrite history) · **Artifact Analysis** container scanning · **Binary Authorization** — only signed images run · **Cloud Scheduler** for the nightly backup |
-| **12 — Observability & hardening** | The finish, not the start | **Cloud Trace** · **Managed Prometheus** · Grafana · **Cloud Profiler** — continuous profiling, the real version of `ui-mockups/perf.html` · **log-based metrics + alerting policies** on outbox depth · **IAP** in front of Grafana and the admin console · SLOs · DR drill · cost review |
+| **12 — Observability & hardening** | The finish, not the start | **Cloud Trace** · **Managed Prometheus** · Grafana · **Cloud Profiler** — continuous profiling, the real version of `ui-mockups/v2/index.html § 16 PERF` · **log-based metrics + alerting policies** on outbox depth · **IAP** in front of Grafana and the admin console · SLOs · DR drill · cost review |
 
 ### Evaluated and not used
 

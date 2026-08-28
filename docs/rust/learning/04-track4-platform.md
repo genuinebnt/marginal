@@ -76,7 +76,7 @@ happens to a comment whose anchored text is deleted, and why a counter needs to 
 | Resource | Type | Why |
 |---|---|---|
 | [Google Docs' comment anchoring](https://dl.acm.org/doi/10.1145/3311957) — or any paper on *sticky positions* | paper | The general problem: a stable reference into mutable text. Yours is solved by item ids; know the alternatives |
-| [`ui-mockups/reader.html`](../ui-mockups/reader.html) — comment thread and sidenotes | mockup | The UI contract you are implementing |
+| [`ui-mockups/v2/index.html § 05 READER`](../../ui-mockups/v2/index.html) — comment thread and sidenotes | mockup | The UI contract you are implementing |
 | [Notification/mention parsing](https://spec.commonmark.org/) — CommonMark inlines | spec | `@mention` is another inline mark. Same pipeline as `[[link]]` |
 
 ## After it works

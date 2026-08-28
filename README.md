@@ -75,7 +75,7 @@ Self-hosting is the same compose file plus the built services. Deploying to AWS 
 | [`CLOUD_PORTABILITY.md`](docs/architecture/CLOUD_PORTABILITY.md) | Ports and adapters; local Docker vs AWS |
 | [`AWS_ROADMAP.md`](docs/planning/AWS_ROADMAP.md) | EKS, Pulumi, and honest cost discipline |
 | [`GLOSSARY.md`](docs/architecture/GLOSSARY.md) | Ubiquitous language — and the terms deliberately absent |
-| [`ui-mockups/`](docs/ui-mockups/) | Static visual spec of the editor — open `editor.html` in a browser |
+| [`ui-mockups/`](docs/ui-mockups/) | Static visual spec — open [`v2/index.html`](docs/ui-mockups/v2/index.html) (40 screens) in a browser; [`DESIGN_GUIDELINES.md`](docs/ui-mockups/v2/DESIGN_GUIDELINES.md) is how to implement them 1:1 |
 
 **Decisions:** [ADR-001 scope](docs/architecture/adr/ADR-001-scope-and-service-boundaries.md) · [002 Rust depth](docs/architecture/adr/ADR-002-rust-depth-as-primary-objective.md) · [003 Postgres](docs/architecture/adr/ADR-003-postgresql-and-sqlx.md) · [004 SPA + Rust editor core](docs/architecture/adr/ADR-004-react-spa-with-rust-editor-core.md) · [005 Go reference as answer key](docs/architecture/adr/ADR-005-go-reference-as-answer-key.md) · [006 gRPC](docs/architecture/adr/ADR-006-grpc-selective-transport.md)
 

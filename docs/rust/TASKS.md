@@ -207,7 +207,7 @@ Bounded backward scan. No grammar, no recursion, a fixed lookbehind.
 | 65 | Valid Number | a hand-written scanner with states, no regex |
 
 **Done when:** no per-token allocation, and you can name the bound.
-**Read first, don't port:** `ui-mockups/compiler.html` runs a reference scanner.
+**Read first, don't port:** `ui-mockups/v2/index.html § 11 COMPILER` runs a reference scanner.
 
 **After:** *Crafting Interpreters* Ch. **Scanning** — already mandatory in
 `docs/learning/00-foundations.md` day 9 · [pulldown-cmark](https://github.com/pulldown-cmark/pulldown-cmark),
@@ -404,7 +404,7 @@ what is Rust and what is DOM, so it is design work and it is yours.
 **Story:** C-02. The sequencer rebases each arrival onto its `basedOn`. **Attempt the transform
 before asking for any reference** — the Go reference covers choreography only, never `xform`.
 
-`ui-mockups/netcode.html` runs all of this already. Read it.
+`ui-mockups/v2/index.html § 14 NETCODE` runs all of this already. Read it.
 
 ### Step 40 · Presence, and the caret that rides the transform
 

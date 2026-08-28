@@ -19,7 +19,7 @@ import (
 // TraceStep is one committed op, replayed for real, alongside its own
 // already-computed inverse and whether RFC-002 §3's invertibility law —
 // apply(invert(op), apply(op, doc)) == doc — actually held for it. This
-// is what backs docs/ui-mockups/trace.html's "real" claim against an
+// is what backs docs/ui-mockups/v2/index.html § 13 TRACE's "real" claim against an
 // actual page's actual op log, instead of that mockup's own synthetic,
 // fixed nine-op sequence: the same apply/invert code this package already
 // runs live (Session.open's replay, Session.Undo/Redo's own gesture

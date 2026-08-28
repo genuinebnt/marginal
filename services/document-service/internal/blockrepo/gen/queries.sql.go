@@ -95,7 +95,7 @@ type ListBacklinksForPageRow struct {
 // Pages linking INTO $1 — the "Backlinks" inspector tab's query. Joined
 // to docs.pages for the linking page's own title/lifecycle, since a
 // backlink from a since-deleted page is still worth showing as such
-// (docs/ui-mockups/editor.html's own "Q2 planning · deleted" row).
+// (docs/ui-mockups/v2/index.html § 04 EDITOR's own "Q2 planning · deleted" row).
 func (q *Queries) ListBacklinksForPage(ctx context.Context, targetPage pgtype.UUID) ([]ListBacklinksForPageRow, error) {
 	rows, err := q.db.Query(ctx, listBacklinksForPage, targetPage)
 	if err != nil {

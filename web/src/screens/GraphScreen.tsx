@@ -7,7 +7,7 @@ import { territory } from "../graph-core/wasm";
 import type { TerritoryResult } from "../graph-core/types";
 
 /**
- * docs/ui-mockups/graph.html, made real: the actual [[link]] graph
+ * docs/ui-mockups/v2/index.html § 07 GRAPH, made real: the actual [[link]] graph
  * (docs/api/graph.md's GetLinkGraph), laid out by a real seeded
  * force-directed simulation (graphalgo.LayoutTick, compiled to wasm —
  * ../graph-core/useForceLayout), with a "Territory" mode switching to

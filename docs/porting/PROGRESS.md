@@ -1302,7 +1302,7 @@ mid-build, not a detour.
 
 `web/` is no longer the unmodified Vite scaffold — the last piece named
 in every prior entry. Design system copied verbatim from
-`docs/ui-mockups/mockup.css` per that directory's own rule ("if a mockup
+`docs/ui-mockups/v2/index.html` per that directory's own rule ("if a mockup
 and a doc disagree, the doc wins" — this is the doc) — tokens, dark/light
 theme handling, and every reused CSS class (`.rail`, `.tree-item`,
 `.avatar`, `.auth`, `.canvas`/`.doc`, etc.) come from there, not
@@ -1998,7 +1998,7 @@ product bug, just the test script's own read loop needing to tolerate a
 message type it didn't emit before).
 
 **Not built:** cursor position or "paragraph 4"-style location within
-presence (`docs/ui-mockups/editor.html`'s own aspiration) — this is
+presence (`docs/ui-mockups/v2/index.html § 04 EDITOR`'s own aspiration) — this is
 "someone is on this page," not where. **Still open:** the left rail's
 nested page tree and general editor polish (slash menu, drag reorder,
 marks).

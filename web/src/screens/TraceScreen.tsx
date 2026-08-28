@@ -24,7 +24,7 @@ function touchedBlockId(op: TraceStep["op"]["op"]): string | null {
 }
 
 /**
- * docs/ui-mockups/trace.html, made real (v2.4.0): every step is a real
+ * docs/ui-mockups/v2/index.html § 13 TRACE, made real (v2.4.0): every step is a real
  * confirmed op from this page's own log, replayed and law-checked by
  * internal/session.Trace (GET /collab/pages/{id}/trace) — the badge
  * re-checks `apply(invert(op), apply(op, doc)) == doc` for real, per

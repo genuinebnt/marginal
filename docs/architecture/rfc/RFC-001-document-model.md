@@ -239,7 +239,7 @@ reconcile *text* — and, as the failure above shows, the parse result depends o
 edit has already invalidated. A block tree is parsed **once at input time**, so two editors apply
 ops to *nodes* instead.
 
-> `ui-mockups/compiler.html` runs all six stages because it is showing **paste**. Reading it as the
+> `ui-mockups/v2/index.html § 11 COMPILER` runs all six stages because it is showing **paste**. Reading it as the
 > per-keystroke path is the misunderstanding this section exists to prevent.
 
 ### Invariant: span normalisation

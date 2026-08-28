@@ -169,7 +169,7 @@ Testcontainers + OpenTelemetry. Read it before every phase whose product surface
 |---|---|
 | `domain/wiki.rs` — flat rows → tree, with **dangling-parent and cycle rescue** so a chapter never silently vanishes | 1 tree, 4 `LinkCycle` |
 | `infra/links.rs` + `document_links` — `[[wikilink]]` extraction and storage | 4 symbol table, 7 backlinks |
-| `domain/graph.rs` — typed edges ranked by strength, strongest-wins dedup per unordered pair, tag-edge threshold | 21, and `ui-mockups/graph.html` |
+| `domain/graph.rs` — typed edges ranked by strength, strongest-wins dedup per unordered pair, tag-edge threshold | 21, and `ui-mockups/v2/index.html § 07 GRAPH` |
 | **`infra/discover.rs`** — pgvector HNSW with `ef_search` set explicitly **and reported in the response** | **19** — and it is the same honesty principle as `analytics.html` showing error beside every estimate |
 | `infra/render.rs` — `comrak` + `syntect` + `two-face`, ~1700 lines with tests | 1 (RFC-001 §7), 16 |
 | `infra/grammar.rs` — `harper-core` | RFC-003 §2.1's grammar source |

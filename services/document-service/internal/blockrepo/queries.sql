@@ -58,7 +58,7 @@ ORDER BY position;
 -- Pages linking INTO $1 — the "Backlinks" inspector tab's query. Joined
 -- to docs.pages for the linking page's own title/lifecycle, since a
 -- backlink from a since-deleted page is still worth showing as such
--- (docs/ui-mockups/editor.html's own "Q2 planning · deleted" row).
+-- (docs/ui-mockups/v2/index.html § 04 EDITOR's own "Q2 planning · deleted" row).
 SELECT pl.from_page, pl.from_block, pl.target_title, p.title AS from_page_title, p.deleted_at AS from_page_deleted_at
 FROM docs.page_links pl
 JOIN docs.pages p ON p.id = pl.from_page

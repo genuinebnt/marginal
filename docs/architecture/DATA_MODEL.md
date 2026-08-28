@@ -432,7 +432,7 @@ Both of these clear that bar, which is the only reason they are cheap:
 
 | Column | Needed by | Why not later |
 |---|---|---|
-| `actor_kind` | `can_apply` authorizing a plugin differently from a person (18); history rendering three actor colours, which `ui-mockups/history.html` already does | Backfilling `'user'` is *correct* — every op written before the assistant existed was a user op. Add it after and the default is a guess instead of a fact |
+| `actor_kind` | `can_apply` authorizing a plugin differently from a person (18); history rendering three actor colours, which `ui-mockups/v2/index.html § 17 HISTORY` already does | Backfilling `'user'` is *correct* — every op written before the assistant existed was a user op. Add it after and the default is a guess instead of a fact |
 | `undo_group` | Per-actor undo (5). One paste is many ops; one `## ` keystroke is `SetBlockKind` + `DeleteText`; accepting one assistant proposal is N ops | NULL degrades to a group of one, so this is genuinely addable later — it is here because it costs nothing now and saves a migration on a table you cannot rewrite |
 
 > **Undo pops the newest *group* belonging to this actor, not the newest op.** Without that

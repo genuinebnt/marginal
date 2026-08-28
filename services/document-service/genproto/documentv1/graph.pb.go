@@ -1,5 +1,5 @@
 // GraphService — the gRPC contract for the real [[link]] graph
-// (docs/ui-mockups/graph.html, graph-algorithms.html). See
+// (docs/ui-mockups/v2/index.html § 07 GRAPH, graph-algorithms.html). See
 // docs/api/graph.md, which this file matches field-for-field.
 //
 // Read-only and parameter-light on purpose: every algorithm here

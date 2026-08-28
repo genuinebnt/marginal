@@ -75,7 +75,7 @@ func formatTimestamp(ts *timestamppb.Timestamp) string {
 
 // backlinkJSON is one row of GET /pages/{id}/backlinks — deliberately not
 // a pageJSON: a backlink only ever needs enough to render a row in the
-// inspector (docs/ui-mockups/editor.html's Backlinks tab), not a page's
+// inspector (docs/ui-mockups/v2/index.html § 04 EDITOR's Backlinks tab), not a page's
 // full metadata.
 type backlinkJSON struct {
 	FromPage        string `json:"from_page"`

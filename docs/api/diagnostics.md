@@ -2,7 +2,7 @@
 
 **Status:** Implemented in Go (`services/diagnostics-service/internal/analyzers`,
 `internal/facts`) — `AnalyzePage`, `AnalyzeFacts`, `StaleReferences`, all
-read-only and computed fresh per request. Backs `docs/ui-mockups/facts.html`
+read-only and computed fresh per request. Backs `docs/ui-mockups/v2/index.html § 10 FACTS`
 (`v2.3.0`, `docs/planning/RELEASES.md`) and `InspectorRail`'s "Checks" tab,
 which stops being an honest empty state here — every diagnostic is RFC-003
 §2's own analyzer table, run for real over the actual block tree and link

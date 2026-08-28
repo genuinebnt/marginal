@@ -82,7 +82,7 @@ saga starts.
 | Garcia-Molina & Salem — [**Sagas**](https://www.cs.cornell.edu/andru/cs711/2002fa/reading/sagas.pdf) | paper (1987) | The original, 8 pages. Worth it for the precise definition of a compensating transaction |
 | Skiena — Ch. *Graph Traversal*, topological sort | owned | Saga steps ordered by dependency. Also the reachability closure for the blast radius |
 | **DDIA** Ch. *Transactions* — the *weak isolation* sections | owned | A saga has no isolation. This chapter is what you are giving up, named precisely |
-| [`ui-mockups/graph-algorithms.html`](../ui-mockups/graph-algorithms.html) — *Blast radius* mode | mockup | Forward reachability, running. Faster than prose |
+| [`ui-mockups/v2/index.html § 08 GRAPH ALGORITHMS`](../../ui-mockups/v2/index.html) — *Blast radius* mode | mockup | Forward reachability, running. Faster than prose |
 | [Outbox pattern](https://microservices.io/patterns/data/transactional-outbox.html) — microservices.io | pattern | You already built the outbox in Phase 1. This is the canonical write-up, and the *polling publisher* vs *transaction log tailing* choice |
 
 ### Optional

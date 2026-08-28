@@ -173,7 +173,7 @@ existing "a new op invalidates redo" rule.
 { "type": "restore", "to_step": 3 }
 ```
 
-`docs/ui-mockups/history.html`'s "restore to a point," made real
+`docs/ui-mockups/v2/index.html § 17 HISTORY`'s "restore to a point," made real
 (`v2.4.0`) — brings the live document back to its state as of right
 after step `to_step` of this page's own confirmed op log, 0-indexed, the
 same indexing `GET /collab/pages/{id}/trace`'s own `steps` array uses
@@ -395,7 +395,7 @@ left to `coder/websocket`'s defaults for now.
 ## 5. `GET /collab/pages/{id}/trace` — the op-log debugger's data source
 
 Plain HTTP, not a WebSocket — "give me the whole confirmed replay once,"
-not a live session. Backs `docs/ui-mockups/trace.html`'s "real ops, real
+not a live session. Backs `docs/ui-mockups/v2/index.html § 13 TRACE`'s "real ops, real
 inverses" claim against an actual page's actual op log
 (`internal/session.Trace`), rather than that mockup's own synthetic,
 fixed nine-op sequence. Read-only: never touches a live `Session`, so it's
@@ -443,7 +443,7 @@ log replays cleanly and every step is reported, or none are.
 ## 6. `GET /collab/pages/{id}/blocks/{blockId}/palimpsest` — one block's whole character history
 
 Plain HTTP, read-only, same "give me the whole replay once" shape as §5
-— never touches a live `Session`. Backs `docs/ui-mockups/history.html`'s
+— never touches a live `Session`. Backs `docs/ui-mockups/v2/index.html § 17 HISTORY`'s
 own central claim, made real: "the palimpsest paragraph is a real
 persistent sequence. Its whole edit history is a list of ops applied to
 a tombstoned char array: a delete sets a version stamp, it never

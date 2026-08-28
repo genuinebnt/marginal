@@ -3,7 +3,7 @@
 **Status:** Implemented in Go (`services/document-service/internal/graph`,
 `internal/graphalgo`) — `GetLinkGraph`, `AnalyzeGraph`, `GraphNeighborhood`,
 all three read-only and computed fresh per request. Backs
-`docs/ui-mockups/graph.html`/`graph-algorithms.html` (`v2.2.0`,
+`docs/ui-mockups/v2/index.html § 07 GRAPH`/`graph-algorithms.html` (`v2.2.0`,
 `docs/planning/RELEASES.md`) — every algorithm those mockups draw runs for
 real here, over the actual `[[link]]` graph (`docs.pages`/`docs.page_links`),
 never a second implementation in the browser (`ADR-012`).

@@ -138,7 +138,7 @@ REST at the gateway. The mistake to avoid is designing one and mechanically tran
 
 **Marginal is a compiler that happens to look like a notebook.** The editor front end lexes and
 parses (Phase 1, 16), the op log is a bytecode ISA (Phase 3, RFC-002), and diagnostics are
-incremental semantic analysis (Phase 4, RFC-003). `ui-mockups/compiler.html` runs the front end
+incremental semantic analysis (Phase 4, RFC-003). `ui-mockups/v2/index.html § 11 COMPILER` runs the front end
 so you can see the stages.
 
 > **The method.** Source → tokens → tree → lowered form → analysis. Each arrow is a separate

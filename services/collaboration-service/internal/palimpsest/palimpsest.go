@@ -1,5 +1,5 @@
 // Package palimpsest builds one block's whole character history as a
-// real persistent, tombstoned array — docs/ui-mockups/history.html's own
+// real persistent, tombstoned array — docs/ui-mockups/v2/index.html § 17 HISTORY's own
 // central claim, made real: "the whole edit history is a list of ops
 // applied to a tombstoned char array: a delete sets a version stamp, it
 // never removes. Reading version v is the filter `ins <= v < del`, so

@@ -16,7 +16,7 @@ import (
 )
 
 // moveWire is one MoveBlock op found strictly after "from" and at or
-// before "to" — docs/ui-mockups/diff.html's own "block-level MOVE
+// before "to" — docs/ui-mockups/v2/index.html § 15 DIFF's own "block-level MOVE
 // detection, which a flat text diff cannot express." No algorithm here:
 // MoveBlock already carries From/To (RFC-002 §3, documentcore's own
 // six-variant block ISA), so detecting a move between two revisions is a

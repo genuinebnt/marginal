@@ -3,7 +3,7 @@
 **Status:** Implemented in Go (`services/document-service/internal/search`,
 `internal/bktree`) — `Search`, `SuggestTitles`, both computed fresh (or
 freshly-indexed) per request/refresh, never cached client-side. Backs
-`docs/ui-mockups/search.html` (`v2.5.0`, `docs/planning/RELEASES.md`) —
+`docs/ui-mockups/v2/index.html § 06 SEARCH` (`v2.5.0`, `docs/planning/RELEASES.md`) —
 real full-text search plus real fuzzy title matching, never a second
 implementation in the browser (`ADR-012`).
 **Owners:** `document-service` (gRPC `SearchService`) · `api-gateway` (REST translation)

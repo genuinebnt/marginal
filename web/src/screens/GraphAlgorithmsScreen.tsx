@@ -7,7 +7,7 @@ import { useForceLayout } from "../graph-core/useForceLayout";
 const COMPONENT_COLORS = ["#1F8A75", "#7A5AC2", "#B8791E", "#4F6D9A", "#C2547A", "#5A9BC2"];
 
 /**
- * docs/ui-mockups/graph-algorithms.html, made real: every metric here is
+ * docs/ui-mockups/v2/index.html § 08 GRAPH ALGORITHMS, made real: every metric here is
  * internal/graphalgo's own output (docs/api/graph.md's AnalyzeGraph/
  * GraphNeighborhood), never recomputed in TypeScript. Click a page to
  * pick it as BFS's source — link-distance rings and the forward-only

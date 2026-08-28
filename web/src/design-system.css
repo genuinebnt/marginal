@@ -1,9 +1,11 @@
 /*
   Marginal — the real SPA's design system.
 
-  Copied verbatim from docs/ui-mockups/mockup.css (that directory's own
-  README: "if a mockup and a doc disagree, the doc wins" — this is the
-  doc, not a reinterpretation of it). Tokens first, then a global
+  Copied verbatim from the V1 mockup set's shared mockup.css, which was
+  superseded by docs/ui-mockups/v2/index.html and deleted 2026-08-28 (see
+  that directory's README). This file therefore has no upstream today and
+  still carries V1's palette; reconciling it against v2's is outstanding
+  work, tracked in PROGRESS.md. Tokens first, then a global
   interaction layer, then components. Nothing below the token block uses a
   raw colour value: tints are derived with color-mix so a theme change
   carries everywhere.

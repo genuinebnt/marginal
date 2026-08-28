@@ -376,7 +376,7 @@ Pages plus their links form a directed graph. This is the richest untapped DSA s
 |---|---|---|
 | **Levenshtein edit distance** | The BK-tree's metric — the tree is *useless* without it, and the triangle inequality only holds because it is a true metric | 7 |
 | **LCS / Myers diff** | The version-history diff view — "what changed between these two revisions" | 6 |
-| **Traceback → edit script** | The DP table is only half the algorithm; walking it backwards is what produces insertions and deletions (`ui-mockups/diff.html`) | 6 |
+| **Traceback → edit script** | The DP table is only half the algorithm; walking it backwards is what produces insertions and deletions (`ui-mockups/v2/index.html § 15 DIFF`) | 6 |
 | **O(n·m) vs O(n·d)** | The full table is quadratic in *memory*, which is why Myers walks the edit graph instead. Implement the table first so the argument is yours | 6 |
 | **Needleman–Wunsch** | Global sequence alignment for the merge assistant. Myers answers "what changed"; NW answers "which blocks correspond", which is what a three-way merge display needs | 21 |
 | **Affine gap penalties** | A five-block insertion is one edit, not five. Scoring gap *opening* separately from gap *extension* is what makes an alignment read like a human would describe it | 21 |
@@ -462,7 +462,7 @@ The previous scope had a SIMD-heavy analytics phase; it was cut. What remains is
 
 ### Measurement & visualisation
 
-Everything the performance console draws (`ui-mockups/perf.html`) has to be computed first.
+Everything the performance console draws (`ui-mockups/v2/index.html § 16 PERF`) has to be computed first.
 
 | Concept | Where | Phase |
 |---|---|---|
@@ -705,7 +705,7 @@ is load-bearing rather than derived. Every public item in `domain.rs` gets a doc
 | `subtle` constant-time comparison | Timing-attack resistance |
 | Redis blocklist keyed by `jti` | Revocation with a TTL |
 | tonic unary RPC | Introspection and key rotation (ADR-007) |
-| **First-run claim** | A fresh instance has no accounts. The first person to reach it becomes admin and registration closes behind them — a self-hosted product's first screen is setup, not a login (`ui-mockups/signin.html`) |
+| **First-run claim** | A fresh instance has no accounts. The first person to reach it becomes admin and registration closes behind them — a self-hosted product's first screen is setup, not a login (`ui-mockups/v2/index.html § 03 REGISTER`) |
 | Invitation-only by default | Registration is closed unless an admin opens it (ADR-009 §9) |
 
 **Frontend:** first-run setup screen, login/signup, `httpOnly`+`Secure`+`SameSite=Strict` refresh cookie, access token **in memory only** — never `localStorage` — and single-flight silent refresh so N concurrent 401s trigger one refresh.
@@ -745,9 +745,9 @@ is load-bearing rather than derived. Every public item in `domain.rs` gets a doc
 | **`rkyv` zero-copy wire** | Validate then cast; `criterion` against `bincode` |
 | **Bloom filter dedup** | In-memory fast path before the Redis check |
 | **Merkle tree over the op log** | Reconnect without replaying everything |
-| **Compiler view** | The parse pipeline made visible — raw text → tokens → AST → block tree, side by side, each stage a real intermediate representation the parser actually produces (`ui-mockups/compiler.html`). Real internals rather than a metaphor, which is the same reason the op trace works |
+| **Compiler view** | The parse pipeline made visible — raw text → tokens → AST → block tree, side by side, each stage a real intermediate representation the parser actually produces (`ui-mockups/v2/index.html § 11 COMPILER`). Real internals rather than a metaphor, which is the same reason the op trace works |
 | **BFS as a wavefront** | The graph panel animates a traversal as an expanding frontier — one ring per hop. The most legible way to watch a traversal execute |
-| **Op trace view** | A debugger for the log: step an op, watch the rope change, hit invert and watch it undo. `apply(invert(op), apply(op, tree)) == tree` made visible rather than asserted — the proptest law with a UI (`ui-mockups/trace.html`) |
+| **Op trace view** | A debugger for the log: step an op, watch the rope change, hit invert and watch it undo. `apply(invert(op), apply(op, tree)) == tree` made visible rather than asserted — the proptest law with a UI (`ui-mockups/v2/index.html § 13 TRACE`) |
 | **Cursor motion trails** | Remote carets leave a fading trail during fast movement only. Positions arrive *sampled*, so the trail between jumps is interpolated and partly fictional — know that before tuning it |
 
 **The representation boundary (RFC-001 §2):** `spans` is storage, `rope + anchored marks` is the working format, exactly one conversion site each way. Span array indices are **not** stable under concurrent edit.
@@ -923,7 +923,7 @@ lockstep traversal — not the automaton — to be where the bugs are.
 | **Levenshtein automaton × trie** | A DFA accepting all strings within edit distance *k*, advanced in lockstep with the trie so a subtree that cannot match is never entered. This is what Tantivy does underneath, via `fst` |
 | **Op-driven index maintenance** | `InsertText` dirties a handful of postings, not a document. The diagnostics engine's incremental discipline, second consumer |
 | **BFS shortest path** | Link distance between two pages in the backlinks panel |
-| **Force-free graph layout** | The link-graph panel — a fixed radial layout beats a physics simulation nobody can read (`ui-mockups/search.html`) |
+| **Force-free graph layout** | The link-graph panel — a fixed radial layout beats a physics simulation nobody can read (`ui-mockups/v2/index.html § 06 SEARCH`) |
 | Facets over the index | Scope by space, restrict to titles, code blocks, or comments |
 | **Surfacing index lag** | The index has its own cadence and may trail the write path. The UI states the lag rather than implying a transaction |
 | Purge-pending results | A deleted page leaves the index on the saga's schedule, so it appears marked rather than vanishing (ARCHITECTURE §5) |
@@ -1057,7 +1057,7 @@ holds writing that exists nowhere else, so losing it is losing the product. The 
 |---|---|
 | Scheduled and retained | Daily, then weekly to a year — configured, not remembered |
 | **Restore-tested automatically** | The nightly job restores into a scratch database *and replays the op log* to prove the projection rebuilds. A backup nobody has restored is a hypothesis |
-| Visible in-product | `ui-mockups/admin.html` § Backups — an operator should not need shell access to know whether they are safe |
+| Visible in-product | `ui-mockups/v2/index.html § 18 ADMIN` § Backups — an operator should not need shell access to know whether they are safe |
 | Portable out | `pg_dump` plus the object store. No proprietary export format |
 
 ---
@@ -1068,7 +1068,7 @@ See `CLOUD_ROADMAP.md`. K8s manifests, **two distinct HPA strategies** — `coll
 
 **In-product health.** The metrics that matter are surfaced inside the app, not only in
 Grafana — an operator running one self-hosted instance will not stand up a monitoring stack
-(`ui-mockups/admin.html`). The top row is **outbox depth** and **op-log lag**, because those
+(`ui-mockups/v2/index.html § 18 ADMIN`). The top row is **outbox depth** and **op-log lag**, because those
 are the two that fail quietly; service uptime and session counts are context for them. A
 degradable service reads amber and pages nobody.
 
@@ -1155,7 +1155,7 @@ selection, fonts, reader modes, and ⌘K. Amend RFC-001's grammar first.
 | **`harper-core` → `wasm32`** | Grammar and spelling as a *second diagnostic source* with its own cadence, never a tenth analyzer (RFC-003 §2.1) |
 | Reader prefs as view state | Font, width, spacing must never enter the block tree — the toggle-collapse rule again, with worse consequences |
 | **Outline panel** | A tree walk filtered to headings and notable kinds; one implementation, two placements — editor tab and reader rail |
-| **Panel takeover** | Selecting a configurable block replaces the tabs rather than adding an eighth one (`ui-mockups/editor.html`) |
+| **Panel takeover** | Selecting a configurable block replaces the tabs rather than adding an eighth one (`ui-mockups/v2/index.html § 04 EDITOR`) |
 | Focus mode, reading progress | Both view state. Progress carries scroll position, which matters more once the scrollbar is gone |
 | **Spring scroll in focus mode** | Overshoot-and-settle typewriter scroll. Two catches: it must die under `prefers-reduced-motion`, and taking over scrolling breaks find-in-page |
 | **In-place edit heat** | Word-level edit frequency rendered as texture on the prose itself, derived from the op log. **Not amber→red** — that ramp means *diagnostic* and would collide with squiggles on the same text; use neutral→violet. Historical positions must map through **anchors**, which rebase, so a naive offset replay heats the wrong words. Needs a per-space toggle: in a shared space this is soft surveillance |
@@ -1183,10 +1183,10 @@ newsletter with double opt-in, and first-party analytics.
 | Cache invalidation on publish | The other hard problem, at last |
 | Double opt-in state machine | Typestate over a subscription lifecycle |
 | **Privacy by data structure, not policy** | HyperLogLog counts distinct people from 64 bytes containing no identities; Count-Min counts page frequency without storing a page. **You cannot leak what you never stored**, and memory is constant however large the workspace grows |
-| **Show the error or do not show the number** | Every estimate is displayed beside its exact counterpart. A sketch that hides its error is indistinguishable from a wrong number (`ui-mockups/analytics.html`) |
+| **Show the error or do not show the number** | Every estimate is displayed beside its exact counterpart. A sketch that hides its error is indistinguishable from a wrong number (`ui-mockups/v2/index.html § 12 ANALYTICS`) |
 | Privacy-preserving counting | No cookies, no cross-site identifiers; published pages only (ADR-009 §5) |
 | **Generated share card** | A poster-style image per page — title, three extracted sentences, an edit sparkline, and its four nearest links. Doubles as the OG image. **TextRank is PageRank on a sentence graph**, so it is Phase 21's algorithm reused rather than a new one |
-| **The public site itself** | Landing page, install instructions, and the pitch — pre-rendered by the same pipeline that publishes a page, because it *is* one (`ui-mockups/home.html`). A self-hosted product still has to be chosen before it is installed |
+| **The public site itself** | Landing page, install instructions, and the pitch — pre-rendered by the same pipeline that publishes a page, because it *is* one (`ui-mockups/v2/index.html § 02 HOME`). A self-hosted product still has to be chosen before it is installed |
 
 ---
 
@@ -1281,7 +1281,7 @@ Discover's related pages (Phase 21) and the assistant's retrieval. Write RFC-006
 ### Build HNSW, then measure it against pgvector
 
 Same pattern as Phase 7 ("naive inverted index first, then Tantivy") and Phase 10
-("implement both and benchmark"). Implement HNSW in Rust — `ui-mockups/discover.html`
+("implement both and benchmark"). Implement HNSW in Rust — `ui-mockups/v2/index.html § 09 DISCOVER`
 already proves the design — then benchmark it honestly against
 [`pgvector`](https://github.com/pgvector/pgvector), **with the permission filter in the
 benchmark rather than left out of it.**

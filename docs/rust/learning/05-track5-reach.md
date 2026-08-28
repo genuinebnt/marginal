@@ -6,7 +6,7 @@
 
 **Phase 21 is the DSA-densest phase in the project** — PageRank, Union-Find, MST, Dijkstra,
 Louvain, set cover, sequence alignment, LSH. If you like algorithms, this is the payoff phase, and
-`ui-mockups/graph-algorithms.html`, `graph.html`, and `discover.html` all run pieces of it already.
+`ui-mockups/v2/index.html § 08 GRAPH ALGORITHMS`, `graph.html`, and `discover.html` all run pieces of it already.
 
 ---
 
@@ -204,7 +204,7 @@ cannot undo, when Dijkstra is required over BFS, and what a set-cover approximat
 | Resource | Type | Why |
 |---|---|---|
 | Barnes & Hut — [A hierarchical O(N log N) force-calculation algorithm](https://www.nature.com/articles/324446a0) or [this explainer](http://arborjs.org/docs/barnes-hut) | paper/blog | The quadtree that replaces the O(n²) force loop. The explainer is enough |
-| [`ui-mockups/graph-algorithms.html`](../ui-mockups/graph-algorithms.html) + [`graph.html`](../ui-mockups/graph.html) + [`discover.html`](../ui-mockups/discover.html) | mockups | **Read the source of all three.** They run BFS wavefronts, Betti numbers, exact Voronoi with its Delaunay dual, and HNSW with measured recall. Cheaper than any paper on this list |
+| [`ui-mockups/v2/index.html § 08 GRAPH ALGORITHMS`](../../ui-mockups/v2/index.html) + [`graph.html`](../../ui-mockups/v2/index.html) + [`discover.html`](../../ui-mockups/v2/index.html) | mockups | **Read the source of all three.** They run BFS wavefronts, Betti numbers, exact Voronoi with its Delaunay dual, and HNSW with measured recall. Cheaper than any paper on this list |
 | [Mining of Massive Datasets](http://www.mmds.org/) Ch. 5 (link analysis), Ch. 10 (social graphs) | free book | PageRank variants and community detection, textbook-style |
 | [`petgraph` algorithms](https://docs.rs/petgraph/latest/petgraph/algo/index.html) | docs | What you could have used. Read after implementing, to compare |
 | [Topological sort](https://cp-algorithms.com/graph/topological-sort.html) | reference | Reading order is a topological sort — **not** longest-path or CPM, which is the mistake this project already corrected once |

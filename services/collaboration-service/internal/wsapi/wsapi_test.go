@@ -820,7 +820,7 @@ func TestRestoreOutOfRangeSendsAnErrorFrameNotAnInternalOne(t *testing.T) {
 }
 
 // TestPalimpsestEndpointKeepsDeletedCharactersOverTheRealWire is
-// docs/ui-mockups/history.html's "persistent sequence" claim, exercised
+// docs/ui-mockups/v2/index.html § 17 HISTORY's "persistent sequence" claim, exercised
 // through the real wire: type "hi", delete it all, and GET
 // .../palimpsest must still report both characters, tombstoned — not
 // the empty block a plain live-text read (or GET .../trace's own final

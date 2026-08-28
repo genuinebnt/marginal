@@ -156,7 +156,7 @@ web/                            frontend — React 19 + TS SPA (Vite); real scre
 ├── src/auth/AuthContext.tsx     token storage (localStorage) + the current actor id every other client derives from the JWT `sub` claim
 ├── src/collab/                  useCollabPage.ts — the block-aware WebSocket client for docs/api/collaboration.md (internal/pageop's wire shape), plus the browser's query-param actor-auth workaround; blockKind.ts (BlockKind ⇄ <select> key mapping)
 ├── src/screens/                 AuthPage, DashboardScreen (page grid + create), EditorScreen (rail + RichEditorPane + InspectorRail), GraphScreen + GraphAlgorithmsScreen (v2.2.0), FactsScreen (v2.3.0), HistoryScreen + TraceScreen + DiffScreen (v2.4.0), SearchScreen (v2.5.0)
-└── src/design-system.css        copied from docs/ui-mockups/mockup.css — "if a mockup and a doc disagree, the doc wins," so this stays a copy, not a reinterpretation
+└── src/design-system.css        copied verbatim from the V1 mockups' shared mockup.css, deleted 2026-08-28 when docs/ui-mockups/v2/index.html superseded that set — so it has no upstream today and still carries V1's palette. Reconciling it against v2 (and DESIGN_GUIDELINES.md) is outstanding, not silent drift
 
 testdata/document-core/*.json   golden test vectors for services/documentcore — Go today, Rust later
 

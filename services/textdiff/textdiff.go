@@ -1,4 +1,4 @@
-// Package textdiff is docs/ui-mockups/diff.html's own algorithm, real:
+// Package textdiff is docs/ui-mockups/v2/index.html § 15 DIFF's own algorithm, real:
 // "LCS by the full O(n·m) dynamic-programming table" plus "the traceback
 // that turns that table into an edit script." Pure functions over
 // []string — no I/O, no service dependency, the same

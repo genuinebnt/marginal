@@ -684,7 +684,7 @@ func (s *Session) Redo(ctx context.Context, actorID uuid.UUID, actorKind oplog.A
 // RestoreTo brings the live document back to its state as of right after
 // step toStep of this page's confirmed op log (0-indexed, the same
 // indexing GET /collab/pages/{id}/trace's own "steps" array uses) —
-// docs/ui-mockups/history.html's "restore to a point," made real.
+// docs/ui-mockups/v2/index.html § 17 HISTORY's "restore to a point," made real.
 //
 // This is repeated undo, not a restore-from-backup: RFC-002 §3's whole
 // argument for why undo applies an inverse against current state rather

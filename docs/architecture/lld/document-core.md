@@ -3,7 +3,7 @@
 **Owns:** the document model itself — the parser, the block tree, the rope, anchors, marks, and the op ISA. **The most important crate in the project.**
 **Transport:** none. It is a library.
 **Depends on:** `crates/domain` only. **No tokio, no sqlx, no filesystem, no network** — `wasm32`-clean by rule (`CLAUDE.md` § Crate Layout), enforced in CI.
-**Related:** `RFC-001` (document model, §9 anchors) · `RFC-002` (op ISA) · `lld/collaboration-service.md` (its largest consumer) · `ui-mockups/compiler.html` (the pipeline, running)
+**Related:** `RFC-001` (document model, §9 anchors) · `RFC-002` (op ISA) · `lld/collaboration-service.md` (its largest consumer) · `ui-mockups/v2/index.html § 11 COMPILER` (the pipeline, running)
 
 **Not a service, and that is why this document exists.** Every other LLD covers one deployable.
 This covers one *crate* with **three consumers and four phases**, which is exactly the shape that
@@ -201,7 +201,7 @@ this crate that processes attacker-supplied input.
 | **Paste sanitisation** | No script executes; unknown tags unwrap rather than drop; **pasting Marginal's own copy output reproduces the source blocks exactly** | RFC-001 §4 |
 | **The projection check** | `interpret(emit_ops(lower(ast))) == lower(ast)` — replay reproduces lowering | `compiler.html`, `DATA_MODEL.md` §1 |
 
-**The last row is the one to build early.** `ui-mockups/compiler.html` already runs it and reports
+**The last row is the one to build early.** `ui-mockups/v2/index.html § 11 COMPILER` already runs it and reports
 HOLDS or FAILS from an actual comparison; it is the executable form of *the op log is the source of
 truth and blocks are a projection replay must reproduce.*
 

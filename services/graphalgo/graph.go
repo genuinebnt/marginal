@@ -1,4 +1,4 @@
-// Package graphalgo makes docs/ui-mockups/graph-algorithms.html real:
+// Package graphalgo makes docs/ui-mockups/v2/index.html § 08 GRAPH ALGORITHMS real:
 // connected components, orphan detection, cycle detection, BFS shortest
 // paths (and the per-level frontiers that animate as a "wavefront"),
 // forward reachability ("blast radius"), and graph diameter — pure

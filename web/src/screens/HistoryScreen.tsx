@@ -11,7 +11,7 @@ function colorFor(actorId: string, order: string[]): string {
 }
 
 /**
- * docs/ui-mockups/history.html, made real (v2.4.0): the scrubber walks a
+ * docs/ui-mockups/v2/index.html § 17 HISTORY, made real (v2.4.0): the scrubber walks a
  * real replay (GET .../trace, internal/session.Trace, unchanged from
  * trace.html's own data source), "Restore this version"/"Undo my last
  * edit" send real WS messages (Session.RestoreTo/Undo), and the

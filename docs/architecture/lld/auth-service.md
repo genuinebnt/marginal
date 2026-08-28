@@ -3,7 +3,7 @@
 **Owns:** `auth` schema — users, refresh tokens, and later roles and preferences
 **Transport:** gRPC `AuthService` (ADR-007). HTTP exists only for Kubernetes probes and the JWKS endpoint.
 **Depends on:** PostgreSQL 18, Redis (revocation blocklist). No dependency on `document-service`.
-**Related:** `DATA_MODEL.md` §3 (schema) · `ADR-007` (gRPC east-west) · `ui-mockups/signin.html` (the two screens) · `docs/learning/01-track1-mvp.md` § Phase 2 (reading list)
+**Related:** `DATA_MODEL.md` §3 (schema) · `ADR-007` (gRPC east-west) · `ui-mockups/v2/index.html § 03 REGISTER` (the two screens) · `docs/learning/01-track1-mvp.md` § Phase 2 (reading list)
 
 **Small service, high stakes.** Roughly 900 lines of Rust. Almost every decision has a known-correct
 answer published by OWASP or an RFC, and the work is looking them up rather than inventing.
@@ -250,7 +250,7 @@ person to get an account without an invitation flow this repo's scope
 never built. Everything below this paragraph describes the *original*
 design and is kept for history, not as the current contract.
 
-`ui-mockups/signin.html` asserts that a fresh instance's first screen is **not** a login. An
+`ui-mockups/v2/index.html § 03 REGISTER` asserts that a fresh instance's first screen is **not** a login. An
 instance with zero users offers to create the first administrator; after that, registration is
 invitation-only (ADR-001 — self-hosted, not a public sign-up).
 

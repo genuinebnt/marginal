@@ -4,7 +4,7 @@ import { useAuth } from "../auth/AuthContext";
 import { search, suggestTitles, type SearchHit, type TitleSuggestion } from "../api/search";
 
 /**
- * docs/ui-mockups/search.html, made real (v2.5.0): real full-text search
+ * docs/ui-mockups/v2/index.html § 06 SEARCH, made real (v2.5.0): real full-text search
  * (GET /search, Postgres FTS over docs.pages/docs.blocks' own tsvector
  * columns) and real fuzzy "did you mean" (GET /search/suggest,
  * internal/bktree's BK-tree, unchanged) — nothing here re-derives either

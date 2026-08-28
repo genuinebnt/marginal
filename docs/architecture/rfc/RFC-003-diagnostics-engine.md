@@ -72,7 +72,7 @@ the per-keystroke path makes every keystroke a candidate for cross-page recomput
 definition that may live on another page, so editing a definition invalidates through the op
 event and the reverse index, debounced — never on the keystroke that typed it. Its severity
 ceiling is `hint`: a note whose citation moved on is not broken, which is why
-`ui-mockups/facts.html` is amber and never red.
+`ui-mockups/v2/index.html § 10 FACTS` is amber and never red.
 
 **It is a separate source, not a tenth analyzer.** Two reasons, and both matter for §4:
 

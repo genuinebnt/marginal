@@ -270,7 +270,7 @@ The densest §9 in the project. Each row is a `ROADMAP.md` § Concepts Map item.
 | **Bias at a boundary** | Text typed exactly at a mark edge lands inside iff the anchor's `Bias` says so, deterministically on every replica | Peritext |
 | **Span coalescing** | Adjacent identical mark sets merge in one left-to-right pass; the result is **idempotent** — coalescing twice equals coalescing once | RFC-001 §2 |
 | **Rope → spans projection** | Replaying the op log reproduces exactly the flushed `blocks.content`. This is `DATA_MODEL.md` §1's central rule, as a test | RFC-001 §2 |
-| **Op invertibility** | `apply(invert(op), apply(op, doc)) == doc` for **every** op, proptested, including ops that carry deleted subtrees | RFC-002 §3 · `ui-mockups/trace.html` |
+| **Op invertibility** | `apply(invert(op), apply(op, doc)) == doc` for **every** op, proptested, including ops that carry deleted subtrees | RFC-002 §3 · `ui-mockups/v2/index.html § 13 TRACE` |
 | **CRDT convergence** | Any two replicas that have seen the same set of ops, in any order, hold identical documents. **Proptest with a random interleaving generator** | Peritext · [CRDTs go brrr](https://josephg.com/blog/crdts-go-brrr/) |
 | **Tombstone GC** | An item is reclaimable only when every replica has seen its deletion; reclaiming early breaks anchor resolution for a lagging peer | RFC-002 |
 
@@ -396,7 +396,7 @@ Marks are **byte** ranges (RFC-001 §2). Cursor movement is by **grapheme cluste
 three different indices into the same text and conflating any two of them breaks on the first
 emoji or combining character.
 
-`ui-mockups/compiler.html`'s default text contains an em dash and `café` on purpose. **Your test
+`ui-mockups/v2/index.html § 11 COMPILER`'s default text contains an em dash and `café` on purpose. **Your test
 fixtures must too** — an all-ASCII fixture passes every version of this bug.
 
 ### Tombstones only grow, and the GC is a distributed problem

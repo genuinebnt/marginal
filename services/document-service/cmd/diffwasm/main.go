@@ -1,5 +1,5 @@
 // Command diffwasm compiles textdiff's LCS+traceback to GOOS=js GOARCH=wasm
-// for docs/ui-mockups/diff.html: "token granularity switching (word ↔
+// for docs/ui-mockups/v2/index.html § 15 DIFF: "token granularity switching (word ↔
 // character), recomputed live" needs interactive, client-side response
 // to a toggle — the same reasoning cmd/graphwasm's own doc comment gives
 // for the force layout and Voronoi/Delaunay. document-service is where
