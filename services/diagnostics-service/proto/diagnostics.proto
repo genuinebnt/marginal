@@ -1,0 +1,73 @@
+// DiagnosticsService — the gRPC contract for RFC-003's analyzer engine
+// and ROADMAP.md's fact dependency graph (v2.3.0, docs/planning/RELEASES.md).
+// See docs/api/diagnostics.md, which this file matches field-for-field.
+//
+// diagnostics-service is stateless — no database of its own. It reads
+// document-service's PageService/GraphService as a gRPC client and
+// computes fresh per request (internal/analyzers, internal/facts), the
+// same "no persisted incremental cache" scope cut those packages'
+// own doc comments state plainly. This is what makes RFC-003 §5's
+// degradation story real: kill this service's pod and editing is
+// unaffected, because nothing here is on that path.
+syntax = "proto3";
+
+package marginal.diagnostics.v1;
+
+option go_package = "marginal/diagnostics-service/genproto/diagnosticsv1";
+
+service DiagnosticsService {
+  // AnalyzePage runs every RFC-003 §2 analyzer over one page.
+  rpc AnalyzePage(AnalyzePageRequest) returns (AnalyzePageResponse);
+  // AnalyzeFacts scans every page for {{define name = value}}
+  // definitions and {{name}} references and returns the whole
+  // dependency DAG — duplicates and any rejected cycle included, never
+  // silently dropped.
+  rpc AnalyzeFacts(AnalyzeFactsRequest) returns (AnalyzeFactsResponse);
+  // StaleReferences returns every reference (in prose or inside another
+  // definition's own value) that is, or transitively depends on,
+  // fact_name — dirty-mark propagation, walked forward through the
+  // dependency DAG.
+  rpc StaleReferences(StaleReferencesRequest) returns (StaleReferencesResponse);
+}
+
+message AnalyzePageRequest { string page_id = 1; }
+
+message AnalyzePageResponse { repeated Diagnostic diagnostics = 1; }
+
+message Diagnostic {
+  string analyzer = 1; // one of RFC-003 §2's nine analyzer names, verbatim
+  string severity = 2; // "hint" | "warning" | "info" — never anything higher (RFC-003 §2)
+  string message = 3;
+  optional string block_id = 4; // absent for a page-level diagnostic (DuplicateTitle, OrphanPage, LinkCycle)
+}
+
+message AnalyzeFactsRequest {}
+
+message AnalyzeFactsResponse {
+  repeated Definition definitions = 1;
+  repeated DuplicateGroup duplicates = 2;
+  repeated string cycle = 3; // one example cycle of fact names, closed (first == last); empty if acyclic
+  repeated Reference references = 4;
+}
+
+message Definition {
+  string name = 1;
+  string value = 2;
+  string page_id = 3;
+  string block_id = 4;
+}
+
+message DuplicateGroup {
+  string name = 1;
+  repeated Definition definitions = 2;
+}
+
+message Reference {
+  string name = 1;
+  string page_id = 2;
+  string block_id = 3;
+}
+
+message StaleReferencesRequest { string fact_name = 1; }
+
+message StaleReferencesResponse { repeated Reference references = 1; }
