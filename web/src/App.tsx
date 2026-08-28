@@ -6,6 +6,7 @@ import { DashboardScreen } from "./screens/DashboardScreen";
 import { EditorScreen } from "./screens/EditorScreen";
 import { GraphScreen } from "./screens/GraphScreen";
 import { GraphAlgorithmsScreen } from "./screens/GraphAlgorithmsScreen";
+import { FactsScreen } from "./screens/FactsScreen";
 
 function RequireAuth({ children }: { children: ReactElement }) {
   const { session } = useAuth();
@@ -46,6 +47,14 @@ function App() {
         element={
           <RequireAuth>
             <GraphAlgorithmsScreen />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/facts"
+        element={
+          <RequireAuth>
+            <FactsScreen />
           </RequireAuth>
         }
       />

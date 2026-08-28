@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getBacklinks, type Backlink, type Page } from "../api/pages";
+import { getPageDiagnostics, type Diagnostic } from "../api/diagnostics";
 import type { CollabPage } from "../collab/useCollabPage";
 import { keyOf } from "../collab/blockKind";
 
@@ -21,10 +22,12 @@ const TABS: { id: Tab; label: string }[] = [
  * connected right now, not who has happened to edit);
  * Backlinks reads document-service's docs.page_links
  * (internal/blockproj's projection) via GET /pages/{id}/backlinks.
- * Checks/Comments/History need services this repo doesn't have in scope
- * (`diagnostics-service`, a comments feature, `history-service` —
- * `ADR-011` defers all of them past the Rust port) — those tabs say so
- * plainly rather than showing invented data.
+ * Checks is real too (v2.3.0) — every RFC-003 §2 analyzer, run fresh by
+ * diagnostics-service and read via GET /pages/{id}/diagnostics; nothing
+ * here re-derives a diagnostic in TypeScript (ADR-012). Comments/History
+ * still need services this repo doesn't have in scope (a comments
+ * feature, `history-service`) — those two tabs say so plainly rather
+ * than showing invented data.
  */
 export function InspectorRail({ page, actorId, collab }: { page: Page; actorId: string; collab: CollabPage }) {
   const [tab, setTab] = useState<Tab>("outline");
@@ -47,7 +50,7 @@ export function InspectorRail({ page, actorId, collab }: { page: Page; actorId: 
       <div className="panel-body">
         {tab === "outline" && <OutlinePanel page={page} collab={collab} />}
         {tab === "people" && <PeoplePanel collab={collab} />}
-        {tab === "checks" && <NotBuiltPanel what="Diagnostics" service="diagnostics-service" />}
+        {tab === "checks" && <ChecksPanel page={page} actorId={actorId} />}
         {tab === "links" && <BacklinksPanel page={page} actorId={actorId} />}
         {tab === "comments" && <NotBuiltPanel what="Comments" service="a comments feature (Track 2)" />}
         {tab === "history" && <NotBuiltPanel what="Version history" service="history-service" />}
@@ -100,6 +103,87 @@ function PeoplePanel({ collab }: { collab: CollabPage }) {
       {collab.peers.size === 0 && (
         <div className="muted" style={{ padding: "8px 0", fontSize: 12.5 }}>
           Nobody else is here right now — "Copy link" from the toolbar and open it as a second person to see them here live.
+        </div>
+      )}
+    </section>
+  );
+}
+
+// RFC-003 §2's analyzer table, for the "Passed" section below — an
+// analyzer diagnostics-service didn't report anything for on this page
+// is real "passed" information (cross-referencing the fixed registry
+// against what an actual analysis run actually returned), not a guess.
+const ANALYZERS: { id: string; label: string }[] = [
+  { id: "DanglingPageLink", label: "Every [[page link]] resolves" },
+  { id: "AmbiguousPageLink", label: "No [[page link]] matches more than one title" },
+  { id: "SelfLink", label: "No page links to itself" },
+  { id: "LinkCycle", label: "Not part of a link cycle" },
+  { id: "HeadingSkip", label: "No heading level is skipped" },
+  { id: "EmptyCodeBlock", label: "Every code block has content" },
+  { id: "DuplicateTitle", label: "Title is unique in this workspace" },
+  { id: "OrphanPage", label: "Page is reachable from another page" },
+  { id: "BrokenImage", label: "Every image reference is set" },
+];
+
+/**
+ * Real diagnostics (v2.3.0) — every RFC-003 §2 analyzer, run fresh by
+ * diagnostics-service and read via GET /pages/{id}/diagnostics. Severity
+ * drives presentation (RFC-003 §2): "warning" gets the solid stripe,
+ * "hint"/"info" the faint one — never red, nothing here is a compile
+ * error. The Passed section lists analyzers this run reported nothing
+ * for, so a clean page still shows real work having happened.
+ */
+function ChecksPanel({ page, actorId }: { page: Page; actorId: string }) {
+  const [diagnostics, setDiagnostics] = useState<Diagnostic[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    setDiagnostics(null);
+    setError(null);
+    getPageDiagnostics(actorId, page.id)
+      .then((r) => {
+        if (!cancelled) setDiagnostics(r.diagnostics);
+      })
+      .catch(() => {
+        if (!cancelled) setError("Couldn't run diagnostics.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [page.id, actorId, refreshKey]);
+
+  const found = new Set(diagnostics?.map((d) => d.analyzer));
+  const passed = ANALYZERS.filter((a) => diagnostics && !found.has(a.id));
+
+  return (
+    <section className="tabpanel">
+      <div className="panel-h" style={{ display: "flex", alignItems: "center" }}>
+        Checks{diagnostics ? ` · ${diagnostics.length}` : ""}
+        <button className="icon-btn" style={{ marginLeft: "auto" }} title="Re-run" onClick={() => setRefreshKey((k) => k + 1)}>
+          ↻
+        </button>
+      </div>
+      {error && <div className="muted" style={{ padding: "8px 0", fontSize: 12.5 }}>{error}</div>}
+      {diagnostics?.map((d, i) => (
+        <div className={`check ${d.severity === "warning" ? "warn" : "hint"}`} key={`${d.analyzer}-${i}`}>
+          <span className="stripe"></span>
+          <div>
+            <div className="msg">{d.message}</div>
+            <div className="meta">{d.analyzer}{d.block_id ? ` · block ${d.block_id.slice(0, 8)}` : ""}</div>
+          </div>
+        </div>
+      ))}
+      {passed.length > 0 && (
+        <div className="panel-section">
+          <div className="panel-h">Passed · {passed.length}</div>
+          {passed.map((a) => (
+            <div className="check ok" key={a.id}>
+              <span className="stripe"></span>
+              <div className="msg">{a.label}</div>
+            </div>
+          ))}
         </div>
       )}
     </section>
