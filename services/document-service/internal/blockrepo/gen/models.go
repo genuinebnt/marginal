@@ -9,14 +9,15 @@ import (
 )
 
 type DocsBlock struct {
-	ID        pgtype.UUID
-	PageID    pgtype.UUID
-	Position  int32
-	Kind      []byte
-	Content   []byte
-	UpdatedAt pgtype.Timestamptz
-	ParentID  pgtype.UUID
-	Path      *string
+	ID           pgtype.UUID
+	PageID       pgtype.UUID
+	Position     int32
+	Kind         []byte
+	Content      []byte
+	UpdatedAt    pgtype.Timestamptz
+	ParentID     pgtype.UUID
+	Path         *string
+	SearchVector interface{}
 }
 
 type DocsPage struct {
@@ -30,6 +31,7 @@ type DocsPage struct {
 	DeletedAt      pgtype.Timestamptz
 	CreatedAt      pgtype.Timestamptz
 	UpdatedAt      pgtype.Timestamptz
+	SearchVector   interface{}
 }
 
 type DocsPageLink struct {

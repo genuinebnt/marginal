@@ -2,9 +2,10 @@
 // pages and blocks, and (later) their outbox. See docs/architecture/DATA_MODEL.md
 // and docs/architecture/lld/document-service.md for the full contract.
 //
-// gRPC (PageService) on :9001, HTTP health probes on :8001 — two listeners,
-// per ADR-007: gRPC is the only traffic surface, HTTP never grows a
-// business endpoint. See docs/porting/PROGRESS.md for current status.
+// gRPC (PageService, GraphService, SearchService) on :9001, HTTP health
+// probes on :8001 — two listeners, per ADR-007: gRPC is the only traffic
+// surface, HTTP never grows a business endpoint. See
+// docs/porting/PROGRESS.md for current status.
 package main
 
 import (
@@ -30,6 +31,7 @@ import (
 	"marginal/document-service/internal/graph"
 	"marginal/document-service/internal/migrate"
 	"marginal/document-service/internal/pages"
+	"marginal/document-service/internal/search"
 )
 
 func main() {
@@ -80,9 +82,17 @@ func run() error {
 	grpcAddr := envconfig.EnvOr("DOCUMENT_SERVICE_GRPC_ADDR", ":9001")
 	httpAddr := envconfig.EnvOr("DOCUMENT_SERVICE_HTTP_ADDR", ":8001")
 
+	searchServer, err := search.NewServer(ctx, search.NewPostgresRepo(pool))
+	if err != nil {
+		return err
+	}
+	searchServer.Start(ctx, search.DefaultRefreshInterval)
+	defer searchServer.Stop()
+
 	grpcServer := grpc.NewServer()
 	documentv1.RegisterPageServiceServer(grpcServer, pages.NewServer(pages.NewPostgresRepo(pool)))
 	documentv1.RegisterGraphServiceServer(grpcServer, graph.NewServer(graph.NewPostgresRepo(pool)))
+	documentv1.RegisterSearchServiceServer(grpcServer, searchServer)
 	reflection.Register(grpcServer) // lets grpcurl/grpcui introspect without a .proto file, local dev only
 
 	lis, err := net.Listen("tcp", grpcAddr)
