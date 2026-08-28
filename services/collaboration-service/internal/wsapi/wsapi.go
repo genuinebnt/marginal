@@ -43,17 +43,22 @@ import (
 const outboxBufferSize = 64
 
 // clientMessage is every shape a client sends: an op to apply ("op"), its
-// own current caret/selection ("cursor") — fire-and-forget, no ack — or a
+// own current caret/selection ("cursor") — fire-and-forget, no ack — a
 // request to undo/redo its own most recent gesture ("undo"/"redo" — no
-// further payload, docs/api/collaboration.md §2.1). Cursor is set only
-// for Type "cursor"; a nil BlockID inside it means "not focused in any
-// block right now" (blurred everywhere). UndoGroup is set only for Type
-// "op", optional even then — nil is RFC-002 §3's "group of one."
+// further payload, docs/api/collaboration.md §2.1), or a request to
+// restore the live document to a past point in its own confirmed op log
+// ("restore" — docs/api/collaboration.md §2.2, history.html's "restore
+// to a point," v2.4.0). Cursor is set only for Type "cursor"; a nil
+// BlockID inside it means "not focused in any block right now" (blurred
+// everywhere). UndoGroup is set only for Type "op", optional even then —
+// nil is RFC-002 §3's "group of one." ToStep is set only for Type
+// "restore".
 type clientMessage struct {
-	Type      string          `json:"type"` // "op" | "cursor" | "undo" | "redo"
+	Type      string          `json:"type"` // "op" | "cursor" | "undo" | "redo" | "restore"
 	Op        json.RawMessage `json:"op,omitempty"`
 	UndoGroup *uuid.UUID      `json:"undo_group,omitempty"`
 	Cursor    *cursorPayload  `json:"cursor,omitempty"`
+	ToStep    *int            `json:"to_step,omitempty"`
 }
 
 // cursorPayload is clientMessage's "cursor" shape — see clientMessage's
@@ -264,6 +269,14 @@ func readLoop(ctx context.Context, conn *websocket.Conn, sess *session.Session, 
 			results, err := sess.Redo(ctx, actorID, actorKind, subID)
 			enqueueUndoRedoAcks(sub, results, err)
 
+		case "restore":
+			if msg.ToStep == nil {
+				sub.enqueue(serverMessage{Type: "error", Message: "restore message missing to_step"})
+				continue
+			}
+			results, err := sess.RestoreTo(ctx, actorID, actorKind, *msg.ToStep, subID)
+			enqueueUndoRedoAcks(sub, results, err)
+
 		case "cursor":
 			if msg.Cursor == nil {
 				sub.enqueue(serverMessage{Type: "error", Message: "cursor message missing cursor payload"})
@@ -312,6 +325,7 @@ func clientSafeMessage(err error) string {
 	switch {
 	case errors.Is(err, session.ErrDenied),
 		errors.Is(err, session.ErrUnknownBlock),
+		errors.Is(err, session.ErrOutOfRange),
 		errors.Is(err, ops.ErrUnknownAnchor),
 		errors.Is(err, anchor.ErrOutOfBounds),
 		errors.Is(err, doctext.ErrOutOfBounds),

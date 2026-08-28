@@ -744,3 +744,75 @@ func TestTraceEndpointRejectsAnInvalidPageID(t *testing.T) {
 	defer resp.Body.Close()
 	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 }
+
+// TestRestoreOverTheWireActsLikeUndoingMultipleSteps is docs/api/
+// collaboration.md §2.2's own contract, exercised through the real wire:
+// a "restore" message acks one frame per reverted step, each also
+// visible to another connection's own broadcast, indistinguishable from
+// that many ordinary "op" submissions.
+func TestRestoreOverTheWireActsLikeUndoingMultipleSteps(t *testing.T) {
+	srv, _, repo := newTestServerWithRepo(t, nil)
+	pageID := uuid.Must(uuid.NewV7())
+	actorA := uuid.Must(uuid.NewV7())
+	connA, closeA := dial(t, srv, pageID, actorA)
+	defer closeA()
+	connB, closeB := dial(t, srv, pageID, uuid.Must(uuid.NewV7()))
+	defer closeB()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	var snap serverMessage
+	require.NoError(t, wsjson.Read(ctx, connA, &snap)) // A's own snapshot
+	require.NoError(t, wsjson.Read(ctx, connB, &snap)) // B's own snapshot
+	var presence serverMessage
+	require.NoError(t, wsjson.Read(ctx, connA, &presence)) // A sees B join
+
+	blockA := insertBlock(t, ctx, connA)
+	var bAck serverMessage
+	require.NoError(t, wsjson.Read(ctx, connB, &bAck)) // B's broadcast of A's InsertBlock
+
+	require.NoError(t, wsjson.Write(ctx, connA, clientMessage{Type: "op", Op: insertTextOp(blockA, "hello")}))
+	var ack serverMessage
+	require.NoError(t, wsjson.Read(ctx, connA, &ack))
+	require.NoError(t, wsjson.Read(ctx, connB, &bAck)) // B's broadcast of the InsertText
+
+	require.Eventually(t, func() bool {
+		got, _ := repo.ListForPage(context.Background(), pageID)
+		return len(got) == 2
+	}, time.Second, time.Millisecond, "both ops must flush before restore reads the confirmed log")
+
+	// Restore to right after step 0 (the InsertBlock alone) — the
+	// InsertText must revert.
+	toStep := 0
+	require.NoError(t, wsjson.Write(ctx, connA, clientMessage{Type: "restore", ToStep: &toStep}))
+	require.NoError(t, wsjson.Read(ctx, connA, &ack))
+	assert.Equal(t, "ack", ack.Type)
+	require.NoError(t, wsjson.Read(ctx, connB, &bAck), "B must see the restore's own op broadcast too")
+	assert.Equal(t, "broadcast", bAck.Type)
+}
+
+func TestRestoreOutOfRangeSendsAnErrorFrameNotAnInternalOne(t *testing.T) {
+	srv, _, repo := newTestServerWithRepo(t, nil)
+	pageID := uuid.Must(uuid.NewV7())
+	conn, closeConn := dial(t, srv, pageID, uuid.Must(uuid.NewV7()))
+	defer closeConn()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	var snap serverMessage
+	require.NoError(t, wsjson.Read(ctx, conn, &snap))
+
+	blockID := insertBlock(t, ctx, conn)
+	_ = blockID
+	require.Eventually(t, func() bool {
+		got, _ := repo.ListForPage(context.Background(), pageID)
+		return len(got) == 1
+	}, time.Second, time.Millisecond)
+
+	toStep := 5
+	require.NoError(t, wsjson.Write(ctx, conn, clientMessage{Type: "restore", ToStep: &toStep}))
+	var errFrame serverMessage
+	require.NoError(t, wsjson.Read(ctx, conn, &errFrame))
+	assert.Equal(t, "error", errFrame.Type)
+	assert.Contains(t, errFrame.Message, "out of range")
+}
