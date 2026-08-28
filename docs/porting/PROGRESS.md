@@ -3252,3 +3252,124 @@ the way from `internal/graphalgo` through `GraphService`, `graphrest`,
 the wasm bridge, and both frontend screens. Per `RELEASES.md`'s
 dependency-checked order, `v2.3.0` (Diagnostics & the fact graph) is
 next.
+
+## 2026-08-27/28 — v2.3.0: Diagnostics & the fact graph, complete
+
+Branch `v2.3.0`, cut from `master` after tagging `v2.1.0-release`
+(`v2.2.0` merged separately). New service: `diagnostics-service` —
+stateless, no database of its own, no NATS subscription; a gRPC client
+of `document-service`'s `PageService`/`GraphService`, computing every
+result fresh per request. RFC-003 §5's own argument justifies the
+separate deployable (ADR-001): killing this service's pod doesn't touch
+editing, a real degradation story a shared-with-editing service
+couldn't tell.
+
+**`internal/analyzers`** (pure, dependency-free — same discipline
+`graphalgo` set): all nine RFC-003 §2 analyzers, real. `DanglingPageLink`/
+`AmbiguousPageLink` share one resolution pass (both ask "what does this
+`[[name]]` resolve to?", differing only in which `Resolution` they
+flag); `SelfLink`; `LinkCycle` reuses `graphalgo.DetectCycle` unchanged;
+`HeadingSkip`; `EmptyCodeBlock`; `DuplicateTitle` (a page's own title
+resolving `Ambiguous` against itself); `OrphanPage` reuses
+`graphalgo.Components`/`Orphans` unchanged. Two honest, stated scope
+cuts: computed fresh per request rather than RFC-003 §4's salsa-style
+incremental memoisation (fast enough at this repo's demo scale — a real
+query-invalidation engine would be speculative infrastructure this
+repo's speed rules say to skip); `BrokenImage` flags only a zero-value
+`file_id`, since there's no upload/asset pipeline yet. 22 unit tests
+plus a `rapid` property test (`AnalyzeAll` never panics on adversarial
+random pages/graphs). Commit `a390bdc`.
+
+**`internal/facts`** — the fact dependency graph, this repo's own
+concretization of RFC-003 §4/`ROADMAP.md`'s "define a value once,
+reference it anywhere" (neither doc pins a literal syntax): a block
+whose *entire* text matches `{{define name = value}}` is a definition,
+`{{name}}` anywhere else is a reference. `graphalgo.DetectCycle`/
+`ForwardReachable` reused unchanged a second time — fact names instead
+of page ids, the concrete payoff of having pulled `graphalgo` into its
+own top-level module during `v2.2.0`. Duplicate names and cycle members
+are excluded from `definitions` rather than resolved arbitrarily.
+`StaleReferences` walks the dependency DAG forward from a changed fact
+name — dirty-mark propagation. 7 unit tests, including a pinned repro of
+`ROADMAP.md`'s own `a = {{b}}, b = {{a}}` cycle example. Commit `f2eac11`.
+
+**`DiagnosticsService`** gRPC (`AnalyzePage`/`AnalyzeFacts`/
+`StaleReferences`) + `cmd/main.go`, wired end to end: `internal/service`
+translates document-service's `Block.kind_json`/`content_json`
+JSON-passthrough fields into `documentcore.BlockKind`/`Content` and
+feeds the analyzers/facts packages. 3 bufconn integration tests against
+a hand-written fake `document-service`. Commit `d089b1e`.
+
+**Real, live-only bug found via `grpcurl`:** after building and
+redeploying, every RPC returned a generic `Internal` error with no
+detail. Root-caused by adding `slog.Error` logging (previously absent —
+a real gap, since the generic client-facing message alone gave no way
+to diagnose in production) and re-running, which surfaced
+`Unauthenticated: pages: missing actor-id` — every document-service RPC
+requires that gRPC metadata (`document-service/internal/pages/api.go`'s
+temporary, unverified actor-identity stand-in), and diagnostics-service's
+outgoing calls weren't attaching it. Fixed with `Server.systemActor` +
+`withActor(ctx)`, applied to all 5 outgoing call sites. **Not caught by
+the bufconn tests** — the fake `document-service` never checks auth
+metadata at all — only a real end-to-end `grpcurl` smoke test against
+the actual running stack surfaced it. Re-verified live afterward:
+`AnalyzePage` correctly found the real seeded `LinkCycle` on "Alpha" and
+`OrphanPage` on "Orphan A"; a real `{{define ack-budget = 40ms}}` +
+`{{ack-budget}}` reference, written through a temporary script over the
+real WebSocket pipeline, resolved correctly through both `AnalyzeFacts`
+and `StaleReferences`. Dockerfile + `docker-compose.yml` wiring in the
+same commit. Commit `eb00ce7`.
+
+**`diagnosticsrest`** (api-gateway) + `docs/api/diagnostics.md`: the
+REST mapping (`GET /pages/{id}/diagnostics`, `GET /facts`,
+`GET /facts/{name}/stale`), same shape as `pagesrest`/`graphrest`;
+`cycle`/`definitions`/`duplicates`/`references` always `[]`, never
+`null`, when empty. 4 bufconn translation tests. Verified live via
+`curl` against the real running stack — matches the `grpcurl` results
+above through the full REST chain. Commit `a8905a0`.
+
+**Frontend.** `InspectorRail`'s "Checks" tab stops being an honest empty
+state: `GET /pages/{id}/diagnostics`, rendered with RFC-003 §2's
+severity-drives-presentation rule (`warning` gets the solid stripe,
+`hint`/`info` the faint one, nothing ever red) using the mockup's own
+existing `.check`/`.stripe` classes. A "Passed" section cross-references
+the fixed RFC-003 §2 analyzer registry against what the run actually
+reported, so a clean page still shows real work having happened rather
+than an empty tab. `FactsScreen.tsx` makes `facts.html` real: reads
+diagnostics-service's fact DAG via `GET /facts` (definitions, duplicate
+names, the cycle, every reference, real page titles resolved via
+`GetPage`) and calls `GET /facts/{name}/stale` on demand to highlight
+which references would go stale. Unlike the mockup's client-side
+simulation, editing happens in the real editor — this screen is the
+read side, drawing what Go already computed, never re-deriving the DAG
+or the propagation in TypeScript. Linked from the Graph/Algorithms nav.
+Commit `395b045`.
+
+**`RELEASES.md`'s own v2.3.0 acceptance line calls for "real inline
+squiggles/quick-fixes in the editor,"** not just a Checks-tab list —
+`editor.html`'s own doc comment settles what "inline" means here:
+diagnostics live in a LEFT GUTTER, dotted amber, never a red squiggle
+(RFC-003 §2). `RichEditorPane`'s `BlockRow` now renders that exact
+`.gutter` marker (CSS already ported from the mockup, previously
+unused) on any block diagnostics-service flagged, title-tooltipped with
+every analyzer/message pair. The `GET /pages/{id}/diagnostics` fetch
+was lifted from `InspectorRail` up to `EditorScreen` (the same reasoning
+`EditorScreen` already gives for lifting `useCollabPage` itself) since
+the gutter and the Checks tab are two views of one `AnalyzePage` run,
+not two separate passes. Commit `4ddb2eb`.
+
+Verified end to end against the real running stack: wrote a genuine
+dangling `[[No Such Page]]` link into the seeded "Home" page over a real
+WebSocket connection (same pipeline `seed-graph-demo.mjs` uses), and
+`GET /pages/{id}/diagnostics` correctly returned it — left as a
+permanent, intentional demo fixture, the same "something genuinely
+there to find" reasoning `v2.2.0`'s own seed data used. `tsc --noEmit`/
+`oxlint`/`go vet`/`gofmt`/full test suites clean throughout; the Vite
+dev server served every touched module without a transform error.
+
+**`v2.3.0` (Diagnostics & the fact graph) is complete and shipped** —
+`InspectorRail`'s Checks tab, the editor's left-gutter markers, and
+`facts.html`'s dependency-DAG screen are all real, backed by
+`diagnostics-service`'s own analyzers/facts packages, never a second
+implementation in TypeScript. Per `RELEASES.md`'s order, `v2.4.0`
+(History, Trace & Diff) is next.

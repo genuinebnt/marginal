@@ -29,6 +29,14 @@ service PageService {
   // service's own database, not because it's page metadata like the rest
   // of this RPC set.
   rpc ListBacklinks(ListBacklinksRequest) returns (ListBacklinksResponse);
+  // ListBlocks reads docs.blocks (blockproj's own projection) — same
+  // reasoning as ListBacklinks: this is diagnostics-service's read path
+  // onto a page's actual prose (v2.3.0), not page metadata. kind_json/
+  // content_json are documentcore.BlockKind/Content's own JSON shapes,
+  // passed through verbatim rather than re-modelled as proto messages —
+  // the caller already imports marginal/documentcore and can unmarshal
+  // them directly, and this table's payload columns are already JSONB.
+  rpc ListBlocks(ListBlocksRequest) returns (ListBlocksResponse);
 }
 
 enum LifecycleState {
@@ -92,4 +100,15 @@ message Backlink {
   string from_page_title = 2;
   bool from_page_deleted = 3; // linking page's own lifecycle — a backlink from a since-deleted page is still worth showing as such
   string target_title = 4;    // the literal text written, e.g. "Backlink Target" — may differ in case from this page's own title
+}
+
+message ListBlocksRequest { string page_id = 1; }
+
+message ListBlocksResponse { repeated Block blocks = 1; }
+
+message Block {
+  string id = 1;
+  optional string parent_id = 2;
+  string kind_json = 3;    // documentcore.BlockKind's own tagged-object JSON
+  string content_json = 4; // documentcore.Content's own JSON ({text, marks})
 }

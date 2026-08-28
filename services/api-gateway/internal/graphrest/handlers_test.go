@@ -23,7 +23,7 @@ import (
 )
 
 // fakeGraphService is a small hand-written GraphService implementation —
-// this package tests REST↔gRPC translation, not internal/graphalgo's own
+// this package tests REST↔gRPC translation, not graphalgo's own
 // algorithms (already covered by document-service's own tests), so a
 // real backend isn't needed here.
 type fakeGraphService struct {

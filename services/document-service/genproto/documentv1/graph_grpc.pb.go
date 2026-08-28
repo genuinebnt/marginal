@@ -3,7 +3,7 @@
 // docs/api/graph.md, which this file matches field-for-field.
 //
 // Read-only and parameter-light on purpose: every algorithm here
-// (internal/graphalgo) is a pure function over docs.pages/docs.page_links
+// (graphalgo) is a pure function over docs.pages/docs.page_links
 // as of right now, computed fresh per request — there is no persisted
 // "graph" state of its own to keep consistent, unlike PageService's own
 // rows.
@@ -44,7 +44,7 @@ type GraphServiceClient interface {
 	GetLinkGraph(ctx context.Context, in *GetLinkGraphRequest, opts ...grpc.CallOption) (*LinkGraph, error)
 	// AnalyzeGraph runs every parameter-free algorithm once, over the whole
 	// graph: connected components, orphan detection, cycle detection, and
-	// diameter (internal/graphalgo).
+	// diameter (graphalgo).
 	AnalyzeGraph(ctx context.Context, in *AnalyzeGraphRequest, opts ...grpc.CallOption) (*GraphAnalysis, error)
 	// GraphNeighborhood is the one parameterized view: BFS shortest-path
 	// distances (undirected — "link distance" doesn't care which way a
@@ -101,7 +101,7 @@ type GraphServiceServer interface {
 	GetLinkGraph(context.Context, *GetLinkGraphRequest) (*LinkGraph, error)
 	// AnalyzeGraph runs every parameter-free algorithm once, over the whole
 	// graph: connected components, orphan detection, cycle detection, and
-	// diameter (internal/graphalgo).
+	// diameter (graphalgo).
 	AnalyzeGraph(context.Context, *AnalyzeGraphRequest) (*GraphAnalysis, error)
 	// GraphNeighborhood is the one parameterized view: BFS shortest-path
 	// distances (undirected — "link distance" doesn't care which way a

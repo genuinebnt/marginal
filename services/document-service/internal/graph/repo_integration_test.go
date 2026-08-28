@@ -15,9 +15,9 @@ import (
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
 	"marginal/document-service/internal/graph"
-	"marginal/document-service/internal/graphalgo"
 	"marginal/document-service/internal/migrate"
 	"marginal/document-service/internal/pages"
+	"marginal/graphalgo"
 )
 
 // Real Postgres via testcontainers-go, never a mock — the standing rule

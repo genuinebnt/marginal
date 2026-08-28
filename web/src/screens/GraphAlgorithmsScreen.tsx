@@ -157,6 +157,7 @@ export function GraphAlgorithmsScreen() {
         <nav className="nav">
           <Link to="/graph">Graph</Link>
           <Link to="/graph/algorithms" aria-current="page">Algorithms</Link>
+          <Link to="/facts">Facts</Link>
         </nav>
         <div className="spacer"></div>
         <button className="btn" onClick={logout}>Sign out</button>

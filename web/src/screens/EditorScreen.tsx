@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { getPage, renamePage, type Page } from "../api/pages";
+import { getPageDiagnostics, type Diagnostic } from "../api/diagnostics";
 import { useCollabPage } from "../collab/useCollabPage";
 import { RichEditorPane } from "./RichEditorPane";
 import { InspectorRail } from "./InspectorRail";
@@ -25,6 +26,9 @@ export function EditorScreen() {
   const { session, logout } = useAuth();
   const [activePage, setActivePage] = useState<Page | null>(null);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [diagnostics, setDiagnostics] = useState<Diagnostic[] | null>(null);
+  const [diagnosticsError, setDiagnosticsError] = useState<string | null>(null);
+  const [diagnosticsRefreshKey, setDiagnosticsRefreshKey] = useState(0);
 
   if (!session) throw new Error("EditorScreen requires an authenticated session");
   const { actorId } = session;
@@ -35,6 +39,26 @@ export function EditorScreen() {
     setActivePage(null);
     getPage(actorId, id).then(setActivePage).catch(() => setActivePage(null));
   }, [id, actorId]);
+
+  // Fetched once here (v2.3.0), not once per consumer: RichEditorPane's
+  // left-gutter markers and InspectorRail's Checks tab are two views of
+  // the exact same AnalyzePage run, not two separate diagnostic passes.
+  useEffect(() => {
+    if (!id) return;
+    let cancelled = false;
+    setDiagnostics(null);
+    setDiagnosticsError(null);
+    getPageDiagnostics(actorId, id)
+      .then((r) => {
+        if (!cancelled) setDiagnostics(r.diagnostics);
+      })
+      .catch(() => {
+        if (!cancelled) setDiagnosticsError("Couldn't run diagnostics.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [id, actorId, diagnosticsRefreshKey]);
 
   // ⌘Z/Ctrl+Z and ⌘⇧Z/Ctrl+Y — real per-actor undo/redo (v2.1.0), not the
   // browser's own native contenteditable undo. Captured at the document
@@ -100,8 +124,21 @@ export function EditorScreen() {
 
         {activePage ? (
           <>
-            <RichEditorPane key={activePage.id} page={activePage} collab={collab} onRename={handleRename} />
-            <InspectorRail page={activePage} actorId={actorId} collab={collab} />
+            <RichEditorPane
+              key={activePage.id}
+              page={activePage}
+              collab={collab}
+              onRename={handleRename}
+              diagnostics={diagnostics ?? undefined}
+            />
+            <InspectorRail
+              page={activePage}
+              actorId={actorId}
+              collab={collab}
+              diagnostics={diagnostics}
+              diagnosticsError={diagnosticsError}
+              onRefreshDiagnostics={() => setDiagnosticsRefreshKey((k) => k + 1)}
+            />
           </>
         ) : (
           <main className="canvas" style={{ display: "grid", placeItems: "center" }}>

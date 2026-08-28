@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type DragEvent, type ElementType, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import type { Page } from "../api/pages";
+import type { Diagnostic } from "../api/diagnostics";
 import type { CollabPage, BlockView } from "../collab/useCollabPage";
 import type { BlockKind } from "../collab/types";
 import { KIND_LABELS, KIND_ORDER, kindFromKey, keyOf, type BlockKindKey } from "../collab/blockKind";
@@ -23,6 +24,7 @@ const CALLOUT_TONE_COLOR: Record<string, string> = {
   success: "var(--green, #22c55e)",
 };
 
+const EMPTY_DIAGNOSTICS: Diagnostic[] = [];
 const REPLACE_DEBOUNCE_MS = 400;
 const BLOCK_ID_ATTR = "data-block-id";
 
@@ -83,7 +85,21 @@ function actorTag(actorId: string): string {
  * the edited region can be dropped rather than guessed at; see that
  * function's own doc comment.
  */
-export function RichEditorPane({ page, collab, onRename }: { page: Page; collab: CollabPage; onRename: (title: string) => void }) {
+export function RichEditorPane({
+  page,
+  collab,
+  onRename,
+  diagnostics = [],
+}: {
+  page: Page;
+  collab: CollabPage;
+  onRename: (title: string) => void;
+  /** RFC-003 §2's own diagnostics for this page (v2.3.0), keyed to a
+   * block by `block_id` — rendered as editor.html's own LEFT GUTTER
+   * marker (dotted amber, never a red squiggle), never re-derived here.
+   * Optional so every existing caller/test keeps compiling unchanged. */
+  diagnostics?: Diagnostic[];
+}) {
   const { state, ready, blocks, peers, cursors, setCursor, setBlockText, setBlockContent, insertBlock, deleteBlock, setBlockKind, moveBlock } = collab;
   const pendingFocusId = useRef<string | null>(null);
   const rowRefs = useRef<Map<string, HTMLElement>>(new Map());
@@ -102,6 +118,14 @@ export function RichEditorPane({ page, collab, onRename }: { page: Page; collab:
   // Toggle does not touch collab at all.
   const [collapsedToggles, setCollapsedToggles] = useState<Set<string>>(new Set());
   const [peerCarets, setPeerCarets] = useState<Map<string, { rects: DOMRect[]; caretRect: DOMRect }>>(new Map());
+
+  const diagnosticsByBlock = new Map<string, Diagnostic[]>();
+  for (const d of diagnostics) {
+    if (!d.block_id) continue;
+    const list = diagnosticsByBlock.get(d.block_id) ?? [];
+    list.push(d);
+    diagnosticsByBlock.set(d.block_id, list);
+  }
 
   // Recomputes every peer's on-screen caret/selection whenever their
   // reported offsets or this page's own block text changes — DOM
@@ -404,6 +428,7 @@ export function RichEditorPane({ page, collab, onRename }: { page: Page; collab:
             block={b}
             depth={depthOf(b.id)}
             listContext={listContextOf(b)}
+            diagnostics={diagnosticsByBlock.get(b.id) ?? EMPTY_DIAGNOSTICS}
             collapsed={collapsedToggles.has(b.id)}
             onToggleCollapse={() =>
               setCollapsedToggles((prev) => {
@@ -635,6 +660,7 @@ function BlockRow({
   block,
   depth,
   listContext,
+  diagnostics,
   collapsed,
   onToggleCollapse,
   onToggleChecked,
@@ -663,6 +689,10 @@ function BlockRow({
    * lists). null for every other kind, including List itself (which
    * never gets a row of its own). */
   listContext: { kind: "bulleted" | "numbered" | "todo"; index: number } | null;
+  /** This block's own diagnostics (v2.3.0) — never empty-vs-absent
+   * ambiguity, RichEditorPane always passes EMPTY_DIAGNOSTICS rather than
+   * undefined. */
+  diagnostics: Diagnostic[];
   /** Toggle-only view state (RFC-001 §1: not model state) — whether this
    * block's children are currently hidden. Meaningless for any other kind. */
   collapsed: boolean;
@@ -823,6 +853,11 @@ function BlockRow({
         borderBottom: dropZone === "after" ? "2px solid var(--violet)" : "2px solid transparent",
       }}
     >
+      {diagnostics.length > 0 && (
+        <span className="gutter" title={diagnostics.map((d) => `${d.analyzer} — ${d.message}`).join("\n")}>
+          ◌
+        </span>
+      )}
       <div className="block-toolbar">
         <span
           className="icon-btn"

@@ -332,6 +332,32 @@ func (r *PostgresRepo) ListBacklinks(ctx context.Context, id PageID) ([]Backlink
 	return out, nil
 }
 
+// ListBlocks reads docs.blocks directly via the pool, same reasoning as
+// ListBacklinks above: that table also belongs to internal/blockproj's
+// projection, not this file's own pagerepo.
+func (r *PostgresRepo) ListBlocks(ctx context.Context, id PageID) ([]Block, error) {
+	bq := blockrepo.New(r.pool)
+	rows, err := bq.ListBlocksForPage(ctx, toPgUUID(uuid.UUID(id)))
+	if err != nil {
+		return nil, fmt.Errorf("pages: list blocks: %w", err)
+	}
+	out := make([]Block, len(rows))
+	for i, row := range rows {
+		var parentID *BlockID
+		if row.ParentID.Valid {
+			id := BlockID(fromPgUUID(row.ParentID))
+			parentID = &id
+		}
+		out[i] = Block{
+			ID:          BlockID(fromPgUUID(row.ID)),
+			ParentID:    parentID,
+			KindJSON:    row.Kind,
+			ContentJSON: row.Content,
+		}
+	}
+	return out, nil
+}
+
 // pathLabel is the LTREE label for a page: LTREE labels may only contain
 // letters, digits, and underscores, so a UUID's hyphens don't survive —
 // "p" + the hex digits, prefixed to guarantee a non-digit start.

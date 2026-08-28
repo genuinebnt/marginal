@@ -110,9 +110,10 @@ truth for what's implemented and what's next.
 | `collaboration-service` | 8002 | **Stateful** — rope per doc, scales on connection count. **Owns `collab`** — the op log and its outbox |
 | `notification-service` | 8007 | Pulled back into scope 2026-08-26 — real logic now: consumes `auth.user_registered` (`DATA_MODEL.md` §10, the one event topic Track 1 can actually produce) over NATS, persists a welcome notification, serves `GET /notifications` directly (not proxied — same convention as `collaboration-service`'s WebSocket). Every other notification-worthy topic still needs a feature that's out of scope (mentions/comments, sharing, RBAC) |
 | `api-gateway` | 8000 | Pulled back into scope 2026-08-26, at the "minimum to reach portable code" — **not** the full 11-service design's `api-gateway` (RS256 verify, rate limit, circuit breaker, WS consistent-hash routing, all still absent). A thin REST↔gRPC shim only: translates `pages.md`/`auth.md` §2's REST contract onto `document-service`/`auth-service`'s gRPC, so a browser can call them at all. `collaboration-service`'s WebSocket is reached directly, not proxied — a persistent connection isn't a request/response resource |
+| `diagnostics-service` | 8008 | Pulled back into scope `v2.3.0` (`ADR-012`) — RFC-003 §5's own argument: diagnostics can die without touching editing, a real degradation story a service sharing `document-service`'s own deployable couldn't tell. Stateless, no database of its own, no NATS — a gRPC client of `document-service`'s `PageService`/`GraphService`, computing `AnalyzePage`/`AnalyzeFacts`/`StaleReferences` fresh per request |
 
-The other 6 services from the full design (`diagnostics-service`,
-`history-service`, `search-service`, `publishing-service`, `plugin-service`,
+The other 5 services from the full design (`history-service`,
+`search-service`, `publishing-service`, `plugin-service`,
 `assistant-service`) are out of scope for this repo — see `ADR-011`. A
 service exists only if it differs in **scaling profile, state, failure
 mode, or deploy cadence**; owning a different noun is not sufficient
@@ -124,12 +125,13 @@ mode, or deploy cadence**; owning a different noun is not sufficient
 
 ```
 go.work                         at repo root — one Go module per service, no wrapper directory
-docker-compose.yml              local dev stack — all 5 services + one Postgres each + Redis + web/'s Vite dev server; `docker compose up --build`
+docker-compose.yml              local dev stack — all 6 services + one Postgres each (diagnostics-service has none — stateless) + Redis + web/'s Vite dev server; `docker compose up --build`
 
 services/                       backend, kept separate from web/; each has its own Dockerfile
 ├── documentcore/                its own module (marginal/documentcore), no cmd — page.go, block.go, operation.go, history.go, inline.go; imported by document-service (wasm bridge) AND collaboration-service (block-op session state) — moved out of document-service/internal in the block-collab reconciliation pass so neither has to reimplement the other's Page.Apply
 ├── envconfig/                   its own module (marginal/envconfig), no cmd — EnvOr/RequiredEnv; every cmd/main.go imports it instead of each declaring its own copy (idiomatic-Go review pass, 2026-08-27)
 ├── outboxpoll/                  its own module (marginal/outboxpoll), no cmd — the shared FOR UPDATE SKIP LOCKED claim-publish-mark Poller; auth-service's and collaboration-service's own internal/outbox each plug in their own sqlc queries + wireEvent shape via Claim/MarkPublished/BuildEnvelope closures (same review pass)
+├── graphalgo/                    its own module (marginal/graphalgo), no cmd — Components/Orphans/DetectCycle/BFS/ShortestPath/ForwardReachable/Diameter/Betti/Voronoi/Delaunay/LayoutTick, pure functions, no I/O (v2.2.0's Graph Explorer); imported by document-service (GraphService + cmd/graphwasm) AND diagnostics-service (the facts dependency DAG reuses DetectCycle/ForwardReachable directly — NodeID is a plain string, not page-specific)
 ├── document-service/
 │   ├── go.mod, cmd/main.go
 │   ├── cmd/wasm/                GOOS=js GOARCH=wasm entrypoint — the editor core's browser build; imports marginal/documentcore
@@ -138,15 +140,17 @@ services/                       backend, kept separate from web/; each has its o
 ├── auth-service/                genproto/authv1/ at the same non-internal path, same reason; internal/outbox publishes auth.user_registered
 ├── collaboration-service/       session.Session now holds a documentcore.Page per page (block ops) alongside the flat doctext.Text (character ops within a block's own content) — see docs/architecture/DATA_MODEL.md § collab.ops → docs.blocks
 ├── notification-service/        internal/notify — NATS consumer + Postgres + GET /notifications; see the Services table above
-└── api-gateway/                 thin REST↔gRPC shim — see the Services table above; internal/{pagesrest,authrest,apierror,actorctx}
+├── diagnostics-service/         internal/analyzers (RFC-003 §2's nine analyzers, pure) + internal/facts (the fact dependency DAG) + internal/service (DiagnosticsService gRPC, a document-service client); genproto/diagnosticsv1/ at the same non-internal path as every other service, same cross-module-import reason
+└── api-gateway/                 thin REST↔gRPC shim — see the Services table above; internal/{pagesrest,graphrest,diagnosticsrest,authrest,apierror,actorctx}
 
 web/                            frontend — React 19 + TS SPA (Vite); real screens, not a scaffold
 ├── public/documentcore.wasm     built by services/document-service/scripts/build-wasm.sh, gitignored — NOT yet wired to any screen (see note below)
 ├── src/document-core/           types.ts (wire types) + wasm.ts (the JSON bridge) + history.ts (thin undo/redo bookkeeping)
-├── src/api/                     REST clients — auth.ts, pages.ts, notifications.ts, one shared http.ts (pages.md/auth.md §2's error shape)
+├── src/graph-core/               useForceLayout.ts + wasm.ts — cmd/graphwasm's browser build (v2.2.0's seeded layout + Voronoi/Delaunay), the same JSON-bridge pattern as document-core/
+├── src/api/                     REST clients — auth.ts, pages.ts, graph.ts, diagnostics.ts, notifications.ts, one shared http.ts (pages.md/auth.md §2's error shape)
 ├── src/auth/AuthContext.tsx     token storage (localStorage) + the current actor id every other client derives from the JWT `sub` claim
 ├── src/collab/                  useCollabPage.ts — the block-aware WebSocket client for docs/api/collaboration.md (internal/pageop's wire shape), plus the browser's query-param actor-auth workaround; blockKind.ts (BlockKind ⇄ <select> key mapping)
-├── src/screens/                 AuthPage, DashboardScreen (page grid + create), EditorScreen (rail + RichEditorPane + InspectorRail)
+├── src/screens/                 AuthPage, DashboardScreen (page grid + create), EditorScreen (rail + RichEditorPane + InspectorRail), GraphScreen + GraphAlgorithmsScreen (v2.2.0), FactsScreen (v2.3.0)
 └── src/design-system.css        copied from docs/ui-mockups/mockup.css — "if a mockup and a doc disagree, the doc wins," so this stays a copy, not a reinterpretation
 
 testdata/document-core/*.json   golden test vectors for services/documentcore — Go today, Rust later
@@ -211,10 +215,11 @@ open indefinitely (no idle-eviction), matching this repo's demo scale.
 | `docs/architecture/PROJECT_STRUCTURE.md` | Layout + principles — governs every file placement |
 | `docs/architecture/rfc/RFC-001-document-model.md` | Block tree, spans, input rules, paste — language-agnostic |
 | `docs/architecture/rfc/RFC-002-operation-model.md` | **Op ISA, invertibility, log versioning, WAL** — language-agnostic |
-| `docs/architecture/rfc/RFC-003-diagnostics-engine.md` | Analyzers, symbol table, incrementality (`v2.2.0`, `RELEASES.md`) |
+| `docs/architecture/rfc/RFC-003-diagnostics-engine.md` | Analyzers, symbol table, incrementality (`v2.3.0`, `RELEASES.md`) |
 | `docs/architecture/lld/document-service.md` | Module map, type contracts, invariants, build order |
 | `docs/api/pages.md` | Pages contract — gRPC `PageService` §1 + the gateway's REST mapping §2 |
 | `docs/api/graph.md` | Graph Explorer contract — gRPC `GraphService` §1 + the gateway's REST mapping §2 (`v2.2.0`) |
+| `docs/api/diagnostics.md` | Diagnostics/facts contract — gRPC `DiagnosticsService` §1 + the gateway's REST mapping §2 (`v2.3.0`) |
 | `docs/api/auth.md` | Auth contract — gRPC `AuthService` §1 + the gateway's REST mapping §2 |
 | `docs/api/collaboration.md` | Collaboration contract — the WebSocket wire format (one contract, no REST projection) |
 | `docs/architecture/ARCHITECTURE.md` | Service map, event bus, request flows |

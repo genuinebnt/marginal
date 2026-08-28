@@ -1,6 +1,6 @@
 // Package graph is GraphService's translation layer: load the live link
 // graph from Postgres (docs.pages, docs.page_links), run
-// internal/graphalgo's pure algorithms over it, translate the result to
+// graphalgo's pure algorithms over it, translate the result to
 // documentv1's proto types. No algorithm lives in this package — that's
 // graphalgo's whole reason to exist as its own dependency-free package;
 // this one only does I/O and wire translation, the same split
@@ -14,12 +14,12 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"marginal/document-service/internal/graphalgo"
 	"marginal/document-service/internal/graphrepo/gen"
+	"marginal/graphalgo"
 )
 
 // Node is one page as graph.LoadGraph reads it: identity, title, and
-// whether it's a root (no parent) — internal/graphalgo.Orphans' own root
+// whether it's a root (no parent) — graphalgo.Orphans' own root
 // set is built from exactly this flag.
 type Node struct {
 	ID     uuid.UUID

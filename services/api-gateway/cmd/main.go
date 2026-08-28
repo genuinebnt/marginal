@@ -26,9 +26,11 @@ import (
 	"marginal/envconfig"
 
 	authv1 "marginal/auth-service/genproto/authv1"
+	diagnosticsv1 "marginal/diagnostics-service/genproto/diagnosticsv1"
 	documentv1 "marginal/document-service/genproto/documentv1"
 
 	"marginal/api-gateway/internal/authrest"
+	"marginal/api-gateway/internal/diagnosticsrest"
 	"marginal/api-gateway/internal/graphrest"
 	"marginal/api-gateway/internal/pagesrest"
 )
@@ -65,10 +67,11 @@ func main() {
 func run() error {
 	documentAddr := envconfig.EnvOr("DOCUMENT_SERVICE_GRPC_ADDR", "localhost:9001")
 	authAddr := envconfig.EnvOr("AUTH_SERVICE_GRPC_ADDR", "localhost:9006")
+	diagnosticsAddr := envconfig.EnvOr("DIAGNOSTICS_SERVICE_GRPC_ADDR", "localhost:9008")
 
 	// insecure.NewCredentials(): east-west traffic within this repo's
 	// deployment topology (ADR-007) — TLS termination, if any, happens at
-	// the network edge, not between the gateway and its two backends.
+	// the network edge, not between the gateway and its backends.
 	documentConn, err := grpc.NewClient(documentAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return err
@@ -81,8 +84,15 @@ func run() error {
 	}
 	defer func() { _ = authConn.Close() }()
 
+	diagnosticsConn, err := grpc.NewClient(diagnosticsAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = diagnosticsConn.Close() }()
+
 	pages := pagesrest.NewHandler(documentv1.NewPageServiceClient(documentConn))
 	graphHandler := graphrest.NewHandler(documentv1.NewGraphServiceClient(documentConn))
+	diagnosticsHandler := diagnosticsrest.NewHandler(diagnosticsv1.NewDiagnosticsServiceClient(diagnosticsConn))
 	auth := authrest.NewHandler(authv1.NewAuthServiceClient(authConn))
 
 	r := chi.NewRouter()
@@ -114,10 +124,11 @@ func run() error {
 	})
 	pages.Mount(r)
 	graphHandler.Mount(r)
+	diagnosticsHandler.Mount(r)
 	auth.Mount(r)
 
 	addr := envconfig.EnvOr("API_GATEWAY_HTTP_ADDR", ":8000")
-	slog.Info("api-gateway listening", "addr", addr, "document_service", documentAddr, "auth_service", authAddr)
+	slog.Info("api-gateway listening", "addr", addr, "document_service", documentAddr, "auth_service", authAddr, "diagnostics_service", diagnosticsAddr)
 	return http.ListenAndServe(addr, r)
 }
 

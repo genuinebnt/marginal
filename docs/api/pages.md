@@ -2,11 +2,13 @@
 
 **Status:** Implemented in Go (`services/document-service/internal/pages`) —
 all six page-metadata RPCs, including ReparentPage's transactional subtree LTREE
-rewrite, plus a seventh, `ListBacklinks`, reading `docs.page_links`
-(`internal/blockproj`'s projection of `collab.ops_flushed` — see
-`docs/porting/PROGRESS.md`'s backlinks entries), not page metadata like
-the rest of this contract; kept on this service only because that table
-lives in this service's own database. DeletePage is a simple soft delete, and — unlike the earlier note
+rewrite, plus two more that read tables belonging to `internal/blockproj`'s own
+projection of `collab.ops_flushed`, not page metadata: `ListBacklinks`
+(`docs.page_links` — see `docs/porting/PROGRESS.md`'s backlinks entries) and
+`ListBlocks` (`docs.blocks` — v2.3.0's diagnostics-service, the one caller;
+no REST mapping exists for it, since it's an east-west call, never a browser
+one, per ADR-007). Both live on this service only because those tables live
+in this service's own database. DeletePage is a simple soft delete, and — unlike the earlier note
 here — **that's the terminal state for this repo, not a deferred step**:
 `ARCHITECTURE.md` §5's full saga coordinates with `search-service`,
 `diagnostics-service`, and `history-service`, none of which exist in this
@@ -45,6 +47,7 @@ service PageService {
   rpc ReparentPage (ReparentPageRequest) returns (Page);
   rpc DeletePage   (DeletePageRequest)   returns (google.protobuf.Empty);
   rpc ListBacklinks(ListBacklinksRequest) returns (ListBacklinksResponse);
+  rpc ListBlocks(ListBlocksRequest) returns (ListBlocksResponse);
 }
 ```
 
@@ -73,6 +76,7 @@ service PageService {
   rpc ReparentPage (ReparentPageRequest) returns (Page);
   rpc DeletePage   (DeletePageRequest)   returns (google.protobuf.Empty);
   rpc ListBacklinks(ListBacklinksRequest) returns (ListBacklinksResponse);
+  rpc ListBlocks(ListBlocksRequest) returns (ListBlocksResponse);
 }
 
 enum LifecycleState {
@@ -111,6 +115,15 @@ message Backlink {
   bool from_page_deleted    = 3;
   string target_title       = 4;
 }
+
+message ListBlocksRequest  { string page_id = 1; }
+message ListBlocksResponse { repeated Block blocks = 1; }
+message Block {
+  string id                 = 1;
+  optional string parent_id = 2;
+  string kind_json          = 3; // documentcore.BlockKind's own JSON shape
+  string content_json       = 4; // documentcore.Content's own JSON shape
+}
 ```
 
 The enum's zero value is `UNSPECIFIED`, not `ACTIVE`. proto3 cannot distinguish an unset
@@ -134,6 +147,14 @@ message Backlink {
   string from_page_title = 2;
   bool from_page_deleted = 3;
   string target_title = 4;
+}
+message ListBlocksRequest  { string page_id = 1; }
+message ListBlocksResponse { repeated Block blocks = 1; }
+message Block {
+  string id = 1;
+  optional string parent_id = 2;
+  string kind_json = 3;
+  string content_json = 4;
 }
 ```
 
