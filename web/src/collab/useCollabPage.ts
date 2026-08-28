@@ -105,6 +105,12 @@ export interface CollabPage {
    * moment any new op commits for this actor — the same "a new edit
    * invalidates redo" rule every editor holds itself to. */
   redo: () => void;
+  /** Restores the live document to its state as of right after step
+   * toStep of GET .../trace's own "steps" array (docs/api/
+   * collaboration.md §2.2) — history.html's "restore to a point," real:
+   * repeated undo server-side, never a snapshot swap. Same "ack" path as
+   * undo/redo, no separate reducer needed here either. */
+  restoreTo: (toStep: number) => void;
 }
 
 interface liveBlock {
@@ -522,6 +528,7 @@ export function useCollabPage(pageId: string, actorId: string): CollabPage {
 
   const undo = useCallback(() => send({ type: "undo" }), [send]);
   const redo = useCallback(() => send({ type: "redo" }), [send]);
+  const restoreTo = useCallback((toStep: number) => send({ type: "restore", to_step: toStep }), [send]);
 
-  return { state, ready, blocks, peers, cursors, setCursor, setBlockText, setBlockContent, insertBlock, deleteBlock, setBlockKind, moveBlock, undo, redo };
+  return { state, ready, blocks, peers, cursors, setCursor, setBlockText, setBlockContent, insertBlock, deleteBlock, setBlockKind, moveBlock, undo, redo, restoreTo };
 }

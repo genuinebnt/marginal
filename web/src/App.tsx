@@ -7,6 +7,9 @@ import { EditorScreen } from "./screens/EditorScreen";
 import { GraphScreen } from "./screens/GraphScreen";
 import { GraphAlgorithmsScreen } from "./screens/GraphAlgorithmsScreen";
 import { FactsScreen } from "./screens/FactsScreen";
+import { HistoryScreen } from "./screens/HistoryScreen";
+import { TraceScreen } from "./screens/TraceScreen";
+import { DiffScreen } from "./screens/DiffScreen";
 
 function RequireAuth({ children }: { children: ReactElement }) {
   const { session } = useAuth();
@@ -55,6 +58,30 @@ function App() {
         element={
           <RequireAuth>
             <FactsScreen />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/pages/:id/history"
+        element={
+          <RequireAuth>
+            <HistoryScreen />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/pages/:id/trace"
+        element={
+          <RequireAuth>
+            <TraceScreen />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/pages/:id/diff"
+        element={
+          <RequireAuth>
+            <DiffScreen />
           </RequireAuth>
         }
       />
