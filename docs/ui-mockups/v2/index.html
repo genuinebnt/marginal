@@ -89,6 +89,32 @@ a{color:#E8873C}a:hover{color:#F2A264}
 .tg-on{border-color:rgba(232,135,60,.45);color:#E8873C;background:rgba(232,135,60,.08)}
 .tg-on::before{color:rgba(232,135,60,.55)}
 .tgrow{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+/* ── top-bar utilities ──────────────────────────────────────────────────────
+   The right end of every top bar, in a fixed order so it never moves between
+   routes: clock, ⌘K, bell, admin (owners only), then you. Muscle memory is a
+   feature; a control that relocates per screen is a control you re-find. */
+.clk{display:flex;flex-direction:column;align-items:flex-end;gap:1px;line-height:1}
+.clk b{font:500 12px 'IBM Plex Mono',monospace;color:#E4E2DC;font-weight:500;letter-spacing:.02em}
+.clk span{font:400 8.5px 'IBM Plex Mono',monospace;letter-spacing:.1em;color:#585550}
+.icb{position:relative;width:26px;height:26px;flex:none;display:flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,.11);color:#8C8880;font-size:12px}
+.icb:hover{color:#E4E2DC;border-color:rgba(255,255,255,.2)}
+.icb-on{color:#E8873C;border-color:rgba(232,135,60,.4);background:rgba(232,135,60,.08)}
+/* Unread count sits ON the bell, not beside it — a badge that can be read
+   without moving your eye is the only kind worth drawing. */
+.bdg{position:absolute;top:-5px;right:-5px;min-width:14px;height:14px;padding:0 3px;display:flex;align-items:center;justify-content:center;background:#E8873C;color:#0E0F10;font:600 8.5px 'IBM Plex Mono',monospace}
+.kbd{padding:2px 6px;border:1px solid rgba(255,255,255,.13);font:500 9.5px 'IBM Plex Mono',monospace;color:#8C8880;white-space:nowrap}
+/* ── ⌘K palette ─────────────────────────────────────────────────────────── */
+.scrim{position:absolute;inset:0;background:rgba(6,7,8,.72);backdrop-filter:blur(2px);z-index:20}
+.pal{position:absolute;left:50%;top:76px;transform:translateX(-50%);width:748px;background:#131415;border:1px solid rgba(255,255,255,.14);box-shadow:0 30px 90px -20px rgba(0,0,0,.95);z-index:21;display:flex;flex-direction:column;overflow:hidden}
+.pal-q{display:flex;align-items:center;gap:11px;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.08)}
+.pal-q input,.pal-qt{flex:1;font:400 15px 'IBM Plex Mono',monospace;color:#E4E2DC;background:transparent;border:0;outline:none}
+.pal-s{padding:7px 16px 5px;font:600 8.5px 'IBM Plex Mono',monospace;letter-spacing:.19em;color:#585550;display:flex;align-items:center;gap:9px}
+.pal-s div{flex:1;height:1px;background:rgba(255,255,255,.06)}
+.pi{display:flex;align-items:center;gap:12px;padding:8px 16px;font-size:13px;color:#9B968D}
+.pi-on{background:rgba(232,135,60,.09);box-shadow:inset 2px 0 0 #E8873C;color:#E4E2DC}
+.pi-i{width:20px;flex:none;text-align:center;font-size:12px;color:#6E6A63}
+.pi-on .pi-i{color:#E8873C}
+.pi-m{margin-left:auto;font:400 10px 'IBM Plex Mono',monospace;color:#585550;white-space:nowrap}
 @keyframes blink{0%,45%{opacity:1}55%,100%{opacity:0}}
 @keyframes pulse{0%{transform:scale(1);opacity:1}70%{transform:scale(2.6);opacity:0}100%{opacity:0}}
 @keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
@@ -471,7 +497,7 @@ a{color:#E8873C}a:hover{color:#F2A264}
     <div class="rd"><span class="rd-k">ACK P99</span><span class="rd-v" style="color:#3FCFA8">4 ms</span></div>
     <div class="spark"><div style="width:3px;height:6px;background:rgba(232,135,60,.35)"></div><div style="width:3px;height:11px;background:rgba(232,135,60,.5)"></div><div style="width:3px;height:8px;background:rgba(232,135,60,.4)"></div><div style="width:3px;height:15px;background:#E8873C"></div><div style="width:3px;height:9px;background:rgba(232,135,60,.45)"></div></div>
     <div class="vr"></div>
-    <div style="display:flex;gap:5px"><div class="av av-you">GN</div><div class="av av-them">AD</div><div class="av av-ai">✦</div></div>
+    <div style="display:flex;gap:5px"><div class="clk"><b>14:06</b><span>THU 12 MAR</span></div><span class="kbd">⌘K</span><div class="icb">◎<div class="bdg">6</div></div><div class="icb">⚙</div><div class="av av-you">GN</div><div class="av av-them">AD</div><div class="av av-ai">✦</div></div>
     <div class="btn">SHARE<div class="brk-tl"></div><div class="brk-br"></div></div>
   </div>
   <div class="body">
@@ -562,7 +588,7 @@ a{color:#E8873C}a:hover{color:#F2A264}
     <div style="display:flex;align-items:center;gap:7px"><span class="rd-k">WIDTH</span><span class="chip" style="padding:2px 7px">S</span><span class="chip chip-e" style="padding:2px 7px">M</span><span class="chip" style="padding:2px 7px">L</span></div>
     <div style="display:flex;align-items:center;gap:7px"><span class="rd-k">TYPE</span><span class="chip chip-e" style="padding:2px 7px">SERIF</span><span class="chip" style="padding:2px 7px">SANS</span></div>
     <div class="vr"></div>
-    <div class="av av-you">GN</div>
+    <div class="clk"><b>14:06</b><span>THU 12 MAR</span></div><span class="kbd">⌘K</span><div class="icb">◎<div class="bdg">6</div></div><div class="icb">⚙</div><div class="av av-you">GN</div>
   </div>
   <div style="height:2px;flex:none;background:rgba(255,255,255,.06);position:relative;z-index:7"><div style="width:58%;height:100%;background:#E8873C"></div></div>
   <div class="body">
@@ -687,6 +713,64 @@ a{color:#E8873C}a:hover{color:#F2A264}
   </div>
   <div class="status"><span>/p/sync-protocol-notes/read</span><span>view prefs · user scope</span><div style="flex:1"></div><span>focus mode ⌥F</span><span style="color:#3FCFA8">● tree untouched by view state</span></div>
 </div>
+<div class="tag"><b>05b</b> PUBLISHED PAGE <i>the same page with the workspace taken away — what a stranger gets</i></div>
+<div class="sc" style="background:#0B0C0D">
+  <div class="scan"></div>
+  <!-- No app chrome at all: no tabs, no rails, no presence. A published page
+       is a static pre-render served from the object store, so there is no
+       socket to show state for and nothing to be logged into. -->
+  <div class="bar" style="background:#0B0C0D;border-bottom-color:rgba(255,255,255,.05)">
+    <span class="wm" style="color:#8C8880">m<span style="color:#E8873C">/</span>arginal</span>
+    <span class="crumb" style="color:#4B4842">published from a self-hosted instance</span>
+    <div style="flex:1"></div>
+    <span class="chip" style="border-color:rgba(255,255,255,.1);color:#585550">READ ONLY</span>
+    <div class="btn" style="border-color:rgba(232,135,60,.4);color:#E8873C">RUN YOUR OWN<div class="brk-tl"></div><div class="brk-br"></div></div>
+  </div>
+  <div style="height:2px;flex:none;background:rgba(255,255,255,.05);position:relative;z-index:7"><div style="width:31%;height:100%;background:rgba(232,135,60,.55)"></div></div>
+  <div class="body" style="overflow:hidden">
+    <div style="flex:1;min-width:0;padding:64px 0 0;display:flex;justify-content:center;overflow:hidden">
+      <div style="width:640px">
+        <div class="tgrow" style="margin-bottom:20px">
+          <span class="tpc tpc-proto"><i></i>PROTOCOL</span>
+          <span class="tg">crdt</span><span class="tg">convergence</span><span class="tg">lamport</span>
+        </div>
+        <h1 class="h1" style="font-size:44px;line-height:1.1;margin:0 0 14px">Sync protocol notes</h1>
+        <div class="mono" style="font-size:11.5px;color:#585550;margin-bottom:40px">Ada Lovelace · published 12 March · 6 min · <span style="color:#4B4842">rev 1 208, frozen</span></div>
+        <div style="font-family:Spectral,serif;font-size:18.5px;line-height:1.84;color:#CFCCC5">
+          <p style="margin:0 0 24px">Every op carries a stable block id, so peers merge concurrent edits without a conflict dialog. Ordering resolves by comparing Lamport timestamps, then actor id as a tiebreak.</p>
+          <p style="margin:0 0 24px">A rope is the wrong primitive here. What we want is a tree of addressable nodes, each one a unit of intent.</p>
+        </div>
+        <div style="border-left:2px solid rgba(232,135,60,.5);padding:2px 0 2px 16px;margin:0 0 24px">
+          <div style="font-family:Spectral,serif;font-size:17px;line-height:1.7;color:#9B968D;font-style:italic">Two people editing a tree apply operations to nodes, which converge. Two people editing text apply operations to offsets, which do not.</div>
+        </div>
+        <div style="font-family:Spectral,serif;font-size:18.5px;line-height:1.84;color:#CFCCC5">
+          <p style="margin:0 0 30px">The acknowledgement budget is 40&nbsp;ms — <span class="mono" style="font-size:12.5px;color:#6E6A63">frozen at publish; the live page's value may have moved since</span>.</p>
+        </div>
+
+        <!-- Transclusion, resolved and frozen. The live page reads {{ack-budget}}
+             from the facts DAG; a published page cannot, because the reader has
+             no workspace to resolve it against — so it ships the value and says
+             so rather than shipping a broken template. -->
+        <div style="display:flex;gap:11px;padding:12px 15px;border:1px solid rgba(255,255,255,.07);background:#111213;margin-bottom:34px">
+          <span style="color:#585550;font-size:11px">⌾</span>
+          <div style="flex:1;font-size:11.5px;line-height:1.6;color:#6E6A63">One value on this page was transcluded from another and has been <b style="color:#8C8880;font-weight:500">resolved at publish time</b>. Published pages carry values, never live references — a stranger has no workspace to resolve them against.</div>
+        </div>
+
+        <div style="padding-top:24px;border-top:1px solid rgba(255,255,255,.07);display:flex;gap:26px">
+          <div>
+            <div class="lbl" style="margin-bottom:9px">MORE IN PROTOCOL</div>
+            <div style="font-size:13px;line-height:2;color:#8C8880">Anchors vs offsets<br>Operation model<br>Per-actor undo</div>
+          </div>
+          <div style="flex:1">
+            <div class="lbl" style="margin-bottom:9px">WHAT IS NOT HERE</div>
+            <div style="font-size:11.5px;line-height:1.7;color:#585550">Comments, presence, diagnostics, history, the page tree, and the other 1&nbsp;907 pages. Publishing exports one page, not a window into the instance — the reader cannot walk anywhere you did not publish.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="status" style="background:#0B0C0D"><span>/pub/sync-protocol-notes</span><span>static pre-render · no socket · no session</span><div style="flex:1"></div><span style="color:#585550">served from the object store · 14 KB, one request</span></div>
+</div>
 <div class="tag"><b>06</b> SEARCH <i>results · facets · fuzzy suggestions · the index may lag</i></div>
 <div class="sc">
   <div class="scan"></div>
@@ -698,7 +782,7 @@ a{color:#E8873C}a:hover{color:#F2A264}
     <div class="rd"><span class="rd-k">INDEX LAG</span><span class="rd-v" style="color:#E0A34E">2.4 s</span></div>
     <div class="rd"><span class="rd-k">QUERY</span><span class="rd-v">8 ms</span></div>
     <div class="vr"></div>
-    <div class="av av-you">GN</div>
+    <div class="clk"><b>14:06</b><span>THU 12 MAR</span></div><span class="kbd">⌘K</span><div class="icb">◎<div class="bdg">6</div></div><div class="icb">⚙</div><div class="av av-you">GN</div>
   </div>
   <div class="body">
     <div class="rail">
@@ -868,7 +952,7 @@ a{color:#E8873C}a:hover{color:#F2A264}
     <div class="rd"><span class="rd-k">EDGES</span><span class="rd-v">4 122</span></div>
     <div class="rd"><span class="rd-k">ALPHA</span><span class="rd-v" style="color:#3FCFA8">0.001</span></div>
     <div class="vr"></div>
-    <div class="av av-you">GN</div>
+    <div class="clk"><b>14:06</b><span>THU 12 MAR</span></div><span class="kbd">⌘K</span><div class="icb">◎<div class="bdg">6</div></div><div class="icb">⚙</div><div class="av av-you">GN</div>
   </div>
   <div class="sub"><span class="sb sb-on">FORCE</span><span class="sb">TERRITORY · VORONOI</span><span class="sb">DELAUNAY DUAL</span><div style="flex:1"></div><span class="sb" style="color:#3FCFA8">SIMULATION COOLED</span></div>
   <div class="body">
@@ -984,7 +1068,7 @@ a{color:#E8873C}a:hover{color:#F2A264}
     <div class="rd"><span class="rd-k">VISITED</span><span class="rd-v">37 / 1 908</span></div>
     <div class="rd"><span class="rd-k">FRONTIER</span><span class="rd-v" style="color:#E8873C">6</span></div>
     <div class="vr"></div>
-    <div class="av av-you">GN</div>
+    <div class="clk"><b>14:06</b><span>THU 12 MAR</span></div><span class="kbd">⌘K</span><div class="icb">◎<div class="bdg">6</div></div><div class="icb">⚙</div><div class="av av-you">GN</div>
   </div>
   <div class="sub"><span class="sb sb-on">BFS · SHORTEST PATH</span><span class="sb">COMPONENTS</span><span class="sb">CYCLES · 3-COLOUR DFS</span><span class="sb">REACHABILITY</span><span class="sb">BLAST RADIUS</span><span class="sb">TOPOLOGY</span></div>
   <div class="body">
@@ -1032,7 +1116,53 @@ a{color:#E8873C}a:hover{color:#F2A264}
         <div style="height:1px;background:rgba(255,255,255,.07)"></div>
         <div style="display:flex;flex-direction:column;gap:8px">
           <span class="lbl">TOPOLOGY</span>
-          <div class="mono" style="font-size:10.5px;line-height:1.9;color:#8C8880">β₀ components&nbsp;&nbsp;4<br>β₁ independent loops&nbsp;&nbsp;3</div>
+          <div class="mono" style="font-size:10.5px;line-height:1.9;color:#8C8880">β₀ components&nbsp;&nbsp;4<br>β₁ independent loops&nbsp;&nbsp;3<br>β₁ clique complex&nbsp;&nbsp;1<br>triangles filled&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;5</div>
+          <div style="font-size:11px;line-height:1.55;color:#585550">Filling every triangle kills 2 of 3 loops. The one that survives is a real hole, not three pages citing each other.</div>
+        </div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+
+        <!-- BFS frontier widths: the wavefront on the canvas, as data. The
+             shape is the argument — a frontier that stops growing is a graph
+             that stops connecting. -->
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <span class="lbl">FRONTIER BY LEVEL</span>
+          <div style="display:flex;align-items:flex-end;gap:5px;height:46px">
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px"><div style="width:100%;height:12%;background:#3FCFA8"></div><span class="mono" style="font-size:8.5px;color:#585550">0</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px"><div style="width:100%;height:34%;background:#E8873C"></div><span class="mono" style="font-size:8.5px;color:#585550">1</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px"><div style="width:100%;height:74%;background:#E8873C"></div><span class="mono" style="font-size:8.5px;color:#585550">2</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px"><div style="width:100%;height:100%;background:#E8873C"></div><span class="mono" style="font-size:8.5px;color:#585550">3</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px"><div style="width:100%;height:52%;background:rgba(232,135,60,.55)"></div><span class="mono" style="font-size:8.5px;color:#585550">4</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px"><div style="width:100%;height:18%;background:rgba(232,135,60,.35)"></div><span class="mono" style="font-size:8.5px;color:#585550">5</span></div>
+          </div>
+          <div class="mono" style="font-size:10px;color:#8C8880">1 → 3 → 7 → 12 → 9 → 5 · 37 reached</div>
+          <div style="font-size:11px;line-height:1.55;color:#585550">1 871 pages never enter the queue. They are unreachable by following links, not merely far.</div>
+        </div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+
+        <!-- Topic homogeneity per component — the one place the two
+             classifications get scored against each other numerically. -->
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <span class="lbl">TOPIC PURITY PER COMPONENT</span>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <div style="display:flex;align-items:center;gap:8px"><span class="mono" style="font-size:9.5px;color:#585550;width:14px">C0</span><div style="flex:1;display:flex;height:6px;gap:1px"><div style="flex:8;background:#7AA8E8"></div><div style="flex:2;background:#C48AE0"></div></div><span class="mono" style="font-size:9.5px;color:#8C8880;width:26px;text-align:right">.80</span></div>
+            <div style="display:flex;align-items:center;gap:8px"><span class="mono" style="font-size:9.5px;color:#585550;width:14px">C1</span><div style="flex:1;display:flex;height:6px;gap:1px"><div style="flex:9;background:#C48AE0"></div><div style="flex:1;background:#D07C8A"></div></div><span class="mono" style="font-size:9.5px;color:#8C8880;width:26px;text-align:right">.90</span></div>
+            <div style="display:flex;align-items:center;gap:8px"><span class="mono" style="font-size:9.5px;color:#585550;width:14px">C2</span><div style="flex:1;display:flex;height:6px;gap:1px"><div style="flex:4;background:#D07C8A"></div><div style="flex:3;background:#7AA8E8"></div><div style="flex:3;background:#D6A660"></div></div><span class="mono" style="font-size:9.5px;color:#8C8880;width:26px;text-align:right">.40</span></div>
+            <div style="display:flex;align-items:center;gap:8px"><span class="mono" style="font-size:9.5px;color:#585550;width:14px">C3</span><div style="flex:1;display:flex;height:6px;gap:1px"><div style="flex:1;background:#5AC8B4"></div></div><span class="mono" style="font-size:9.5px;color:#8C8880;width:26px;text-align:right">1.0</span></div>
+          </div>
+          <div style="font-size:11px;line-height:1.55;color:#585550">C2 is three topics tangled into one link component — the candidate for a split, and the only row here that suggests an action.</div>
+        </div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <span class="lbl">WHAT EACH ONE COST</span>
+          <div style="display:grid;grid-template-columns:1fr auto auto;gap:5px 10px;font:400 10px 'IBM Plex Mono',monospace;color:#8C8880">
+            <span style="color:#585550">algorithm</span><span style="color:#585550;text-align:right">visits</span><span style="color:#585550;text-align:right">ms</span>
+            <span>BFS</span><span style="text-align:right">37</span><span style="text-align:right">0.4</span>
+            <span>flood fill</span><span style="text-align:right">1 908</span><span style="text-align:right">3.1</span>
+            <span>3-colour DFS</span><span style="text-align:right">1 908</span><span style="text-align:right">4.0</span>
+            <span>all-pairs BFS</span><span style="text-align:right;color:#E0A34E">1 908²</span><span style="text-align:right;color:#E0A34E">812</span>
+          </div>
+          <div style="font-size:11px;line-height:1.55;color:#585550">Diameter is the expensive one and it is cached — recomputed on a link write, never on a render.</div>
         </div>
       </div>
     </div>
@@ -1051,7 +1181,7 @@ a{color:#E8873C}a:hover{color:#F2A264}
     <div class="rd"><span class="rd-k">HOPS</span><span class="rd-v">11</span></div>
     <div class="rd"><span class="rd-k">EXACT SCAN</span><span class="rd-v" style="color:#6E6A63">1 908</span></div>
     <div class="vr"></div>
-    <div class="av av-you">GN</div>
+    <div class="clk"><b>14:06</b><span>THU 12 MAR</span></div><span class="kbd">⌘K</span><div class="icb">◎<div class="bdg">6</div></div><div class="icb">⚙</div><div class="av av-you">GN</div>
   </div>
   <div class="body">
     <div style="width:392px;flex:none;box-sizing:border-box;background:#0F1012;border-right:1px solid rgba(255,255,255,.07);display:flex;flex-direction:column">
@@ -1226,7 +1356,7 @@ a{color:#E8873C}a:hover{color:#F2A264}
     <div class="rd"><span class="rd-k">VISITED</span><span class="rd-v" style="color:#E0A34E">6 / 41</span></div>
     <div class="rd"><span class="rd-k">CYCLES</span><span class="rd-v" style="color:#3FCFA8">0</span></div>
     <div class="vr"></div>
-    <div class="av av-you">GN</div>
+    <div class="clk"><b>14:06</b><span>THU 12 MAR</span></div><span class="kbd">⌘K</span><div class="icb">◎<div class="bdg">6</div></div><div class="icb">⚙</div><div class="av av-you">GN</div>
   </div>
   <div class="sub"><span class="sb sb-on">DEFINITIONS</span><span class="sb">DEPENDENCY DAG</span><span class="sb">DIRTY PROPAGATION</span><div style="flex:1"></div><span class="sb">edit a definition and only what is downstream is marked</span></div>
   <div class="body">
@@ -1312,6 +1442,146 @@ a{color:#E8873C}a:hover{color:#F2A264}
   </div>
   <div class="status"><span>/facts</span><span>topological dirty propagation</span><div style="flex:1"></div><span style="color:#3FCFA8">● 6 visited of 41 · incremental beats full recompute</span></div>
 </div>
+<div class="tag"><b>10b</b> TOPICS &amp; TAGS <i>one owned classification, many free labels — and what each is for</i></div>
+<div class="sc">
+  <div class="scan"></div>
+  <div class="bar">
+    <span class="wm">m<span style="color:#E8873C">/</span>arginal</span>
+    <div class="tabs"><span class="tb">Write</span><span class="tb">Read</span><span class="tb">Search</span><span class="tb tb-on">Graph</span><span class="tb">History</span><span class="tb">Lab</span></div>
+    <span class="crumb">workspace / <b>topics</b></span>
+    <div style="flex:1"></div>
+    <div class="rd"><span class="rd-k">TOPICS</span><span class="rd-v">5</span></div>
+    <div class="rd"><span class="rd-k">TAGS</span><span class="rd-v">34</span></div>
+    <div class="rd"><span class="rd-k">UNTOPICED</span><span class="rd-v" style="color:#E0A34E">62</span></div>
+    <div class="vr"></div>
+    <div class="clk"><b>14:06</b><span>THU 12 MAR</span></div><span class="kbd">⌘K</span><div class="icb">◎<div class="bdg">6</div></div><div class="icb">⚙</div><div class="av av-you">GN</div>
+  </div>
+  <div class="sub"><span class="sb sb-on">TOPICS</span><span class="sb">TAGS</span><span class="sb">CO-OCCURRENCE</span><span class="sb">UNTOPICED · 62</span><div style="flex:1"></div><span class="sb" style="color:#585550">a topic is a column · a tag is a label</span></div>
+  <div class="body">
+    <div class="rail" style="width:250px">
+      <div class="rail-h">TOPIC<div></div><span style="color:#585550">5</span></div>
+      <div style="display:flex;flex-direction:column;padding:0 8px;gap:1px">
+        <div class="tr tr-on"><i></i><span style="width:6px;height:6px;background:#7AA8E8;flex:none"></span>Protocol<span style="margin-left:auto" class="tr-n">612</span></div>
+        <div class="tr"><span style="width:6px;height:6px;background:#C48AE0;flex:none"></span>Storage<span style="margin-left:auto" class="tr-n">488</span></div>
+        <div class="tr"><span style="width:6px;height:6px;background:#D07C8A;flex:none"></span>Research<span style="margin-left:auto" class="tr-n">401</span></div>
+        <div class="tr"><span style="width:6px;height:6px;background:#5AC8B4;flex:none"></span>Interface<span style="margin-left:auto" class="tr-n">277</span></div>
+        <div class="tr"><span style="width:6px;height:6px;background:#D6A660;flex:none"></span>Operations<span style="margin-left:auto" class="tr-n">130</span></div>
+        <div class="tr" style="color:#E0A34E"><span style="width:6px;height:6px;border:1px solid #E0A34E;flex:none"></span>— none —<span style="margin-left:auto" class="tr-n" style="color:#E0A34E">62</span></div>
+      </div>
+      <div style="margin:16px 12px 0;padding-top:14px;border-top:1px solid rgba(255,255,255,.07)">
+        <span class="lbl">RENAMING IS SAFE</span>
+        <div style="font-size:11px;line-height:1.6;color:#8C8880;margin-top:8px">A topic is stored by id, not by name. Rename <span class="mono" style="color:#7AA8E8">Protocol</span> and 612 pages follow — no reindex, no rewrite, and the graph keeps its colour.</div>
+      </div>
+      <div class="wal">
+        <span class="lbl">MERGE</span>
+        <div style="font-size:11px;line-height:1.55;color:#8C8880">Merging two topics is one <span class="mono" style="color:#9B968D">UPDATE</span> and one invalidation. Splitting one is not — it needs a human to say which page went where.</div>
+      </div>
+    </div>
+
+    <div style="flex:1;min-width:0;padding:26px 30px;overflow:hidden;display:flex;flex-direction:column">
+      <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:4px">
+        <span class="tpc tpc-proto" style="padding:4px 11px;font-size:10px"><i></i>PROTOCOL</span>
+        <h1 class="h1" style="font-size:23px">612 pages</h1>
+        <span class="mono" style="font-size:11px;color:#585550">32% of the workspace · 1 480 internal links · 214 crossing out</span>
+        <div style="flex:1"></div>
+        <span class="chip">RENAME</span><span class="chip">MERGE INTO…</span>
+      </div>
+      <div style="font-size:12.5px;color:#8C8880;line-height:1.6;margin-bottom:22px;max-width:640px">How ops move between peers and converge. Ordering, anchors, acknowledgement. <span style="color:#585550">Described once here, not restated on every page.</span></div>
+
+      <!-- Tag cloud sized by count, NOT coloured. Colour is reserved for the
+           topic; a tag cloud that also carries hue is two encodings fighting. -->
+      <div class="lbl" style="margin-bottom:12px">TAGS INSIDE THIS TOPIC · 18 OF 34</div>
+      <div class="tgrow" style="gap:7px;margin-bottom:26px;align-items:baseline">
+        <span class="tg" style="font-size:14px;padding:4px 11px;color:#E4E2DC;border-color:rgba(255,255,255,.2)">crdt<span style="color:#585550;margin-left:6px;font-size:9.5px">211</span></span>
+        <span class="tg" style="font-size:12.5px;padding:3px 10px;color:#D2CFC8">anchors<span style="color:#585550;margin-left:5px;font-size:9px">148</span></span>
+        <span class="tg" style="font-size:12px;padding:3px 9px;color:#C3BFB7">op-log<span style="color:#585550;margin-left:5px;font-size:9px">132</span></span>
+        <span class="tg" style="font-size:11.5px">lamport<span style="color:#585550;margin-left:5px;font-size:9px">96</span></span>
+        <span class="tg" style="font-size:11px">convergence<span style="color:#585550;margin-left:5px;font-size:9px">81</span></span>
+        <span class="tg" style="font-size:11px">block-id<span style="color:#585550;margin-left:5px;font-size:9px">74</span></span>
+        <span class="tg">undo<span style="color:#585550;margin-left:5px;font-size:9px">63</span></span>
+        <span class="tg">inverse<span style="color:#585550;margin-left:5px;font-size:9px">55</span></span>
+        <span class="tg">rope<span style="color:#585550;margin-left:5px;font-size:9px">44</span></span>
+        <span class="tg" style="opacity:.75">ot<span style="color:#585550;margin-left:5px;font-size:9px">31</span></span>
+        <span class="tg" style="opacity:.7">rebase<span style="color:#585550;margin-left:5px;font-size:9px">22</span></span>
+        <span class="tg" style="opacity:.65">tombstone<span style="color:#585550;margin-left:5px;font-size:9px">18</span></span>
+        <span class="tg" style="opacity:.6">wal<span style="color:#585550;margin-left:5px;font-size:9px">12</span></span>
+        <span class="tg" style="opacity:.55">vector-clock<span style="color:#585550;margin-left:5px;font-size:9px">9</span></span>
+        <span class="tg" style="opacity:.5">causal<span style="color:#585550;margin-left:5px;font-size:9px">6</span></span>
+        <span class="tg" style="opacity:.45">gc<span style="color:#585550;margin-left:5px;font-size:9px">4</span></span>
+        <span class="tg" style="opacity:.4;border-style:dashed">sync-v1<span style="color:#585550;margin-left:5px;font-size:9px">1</span></span>
+        <span class="tg" style="opacity:.4;border-style:dashed">wip<span style="color:#585550;margin-left:5px;font-size:9px">1</span></span>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1.25fr 1fr;gap:28px;flex:1;min-height:0">
+        <div style="display:flex;flex-direction:column;min-height:0">
+          <div class="lbl" style="margin-bottom:11px">PAGES · MOST LINKED FIRST</div>
+          <div style="display:flex;flex-direction:column">
+            <div class="row" style="padding:9px 0"><span style="flex:1;font-size:13px;color:#EFEDE7">Sync protocol notes</span><div class="tgrow"><span class="tg">crdt</span><span class="tg">lamport</span></div><span class="mono" style="font-size:10px;color:#8C8880;width:34px;text-align:right">9</span></div>
+            <div class="row" style="padding:9px 0"><span style="flex:1;font-size:13px;color:#D2CFC8">Anchors vs offsets</span><div class="tgrow"><span class="tg">anchors</span><span class="tg">crdt</span></div><span class="mono" style="font-size:10px;color:#8C8880;width:34px;text-align:right">7</span></div>
+            <div class="row" style="padding:9px 0"><span style="flex:1;font-size:13px;color:#D2CFC8">Operation model</span><div class="tgrow"><span class="tg">op-log</span><span class="tg">inverse</span></div><span class="mono" style="font-size:10px;color:#8C8880;width:34px;text-align:right">6</span></div>
+            <div class="row" style="padding:9px 0"><span style="flex:1;font-size:13px;color:#D2CFC8">Per-actor undo</span><div class="tgrow"><span class="tg">undo</span><span class="tg">inverse</span></div><span class="mono" style="font-size:10px;color:#8C8880;width:34px;text-align:right">5</span></div>
+            <div class="row" style="padding:9px 0"><span style="flex:1;font-size:13px;color:#9B968D">Vector clocks, briefly</span><div class="tgrow"><span class="tg">vector-clock</span></div><span class="mono" style="font-size:10px;color:#8C8880;width:34px;text-align:right">2</span></div>
+            <div class="row" style="padding:9px 0;border-bottom:0"><span style="flex:1;font-size:13px;color:#6E6A63">Sync v1 (superseded)</span><div class="tgrow"><span class="tg" style="border-style:dashed">sync-v1</span></div><span class="mono" style="font-size:10px;color:#4B4842;width:34px;text-align:right">0</span></div>
+          </div>
+          <div class="mono" style="font-size:10px;color:#585550;margin-top:11px">606 more · sorted by in-degree, not recency</div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:18px;min-height:0">
+          <div>
+            <div class="lbl" style="margin-bottom:10px">WHERE THIS TOPIC LINKS TO</div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <div style="display:flex;align-items:center;gap:9px"><span style="width:6px;height:6px;background:#C48AE0"></span><span style="flex:1;font-size:12px;color:#D2CFC8">Storage</span><div style="width:70px;height:4px;background:rgba(255,255,255,.06)"><div style="width:82%;height:100%;background:#C48AE0"></div></div><span class="mono" style="font-size:9.5px;color:#8C8880;width:26px;text-align:right">118</span></div>
+              <div style="display:flex;align-items:center;gap:9px"><span style="width:6px;height:6px;background:#D07C8A"></span><span style="flex:1;font-size:12px;color:#D2CFC8">Research</span><div style="width:70px;height:4px;background:rgba(255,255,255,.06)"><div style="width:44%;height:100%;background:#D07C8A"></div></div><span class="mono" style="font-size:9.5px;color:#8C8880;width:26px;text-align:right">63</span></div>
+              <div style="display:flex;align-items:center;gap:9px"><span style="width:6px;height:6px;background:#5AC8B4"></span><span style="flex:1;font-size:12px;color:#9B968D">Interface</span><div style="width:70px;height:4px;background:rgba(255,255,255,.06)"><div style="width:18%;height:100%;background:#5AC8B4"></div></div><span class="mono" style="font-size:9.5px;color:#8C8880;width:26px;text-align:right">26</span></div>
+              <div style="display:flex;align-items:center;gap:9px"><span style="width:6px;height:6px;background:#D6A660"></span><span style="flex:1;font-size:12px;color:#9B968D">Operations</span><div style="width:70px;height:4px;background:rgba(255,255,255,.06)"><div style="width:5%;height:100%;background:#D6A660"></div></div><span class="mono" style="font-size:9.5px;color:#8C8880;width:26px;text-align:right">7</span></div>
+            </div>
+          </div>
+          <div>
+            <div class="lbl" style="margin-bottom:10px">TAGS THAT ESCAPE THIS TOPIC</div>
+            <div style="display:flex;flex-direction:column;gap:7px">
+              <div style="display:flex;align-items:center;gap:9px"><span class="tg" style="width:78px;justify-content:flex-start">rope</span><div style="flex:1;display:flex;height:5px;gap:1px"><div style="flex:44;background:#7AA8E8"></div><div style="flex:56;background:#C48AE0"></div></div><span class="mono" style="font-size:9px;color:#585550">44/100</span></div>
+              <div style="display:flex;align-items:center;gap:9px"><span class="tg" style="width:78px;justify-content:flex-start">tombstone</span><div style="flex:1;display:flex;height:5px;gap:1px"><div style="flex:18;background:#7AA8E8"></div><div style="flex:47;background:#C48AE0"></div></div><span class="mono" style="font-size:9px;color:#585550">18/65</span></div>
+              <div style="display:flex;align-items:center;gap:9px"><span class="tg" style="width:78px;justify-content:flex-start">wal</span><div style="flex:1;display:flex;height:5px;gap:1px"><div style="flex:12;background:#7AA8E8"></div><div style="flex:29;background:#C48AE0"></div><div style="flex:7;background:#D6A660"></div></div><span class="mono" style="font-size:9px;color:#585550">12/48</span></div>
+            </div>
+            <div style="font-size:11px;line-height:1.6;color:#585550;margin-top:10px">A tag that lives in three topics is doing real work — it names a technique, not a subject. That is the difference the two axes exist to keep.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="insp" style="width:300px">
+      <div class="insp-t"><span class="it it-on">HYGIENE</span><span class="it">HISTORY</span></div>
+      <div style="padding:14px;display:flex;flex-direction:column;gap:13px">
+        <span class="lbl">UNTOPICED · 62</span>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="flex:1;height:5px;background:rgba(255,255,255,.06)"><div style="width:97%;height:100%;background:#3FCFA8"></div></div>
+          <span class="mono" style="font-size:10px;color:#8C8880">97%</span>
+        </div>
+        <div style="font-size:11.5px;line-height:1.6;color:#8C8880">62 pages carry no topic. They still render, still search, still link — they simply do not colour on the graph and never surface as a topic-scoped Discover neighbour.</div>
+        <div style="display:flex;gap:7px"><span class="chip chip-e" style="padding:3px 9px">SUGGEST FROM TEXT</span><span class="chip" style="padding:3px 9px">REVIEW</span></div>
+        <div style="font-size:11px;line-height:1.6;color:#585550">Suggestion runs the same embedding index Discover uses and proposes the nearest topic. It never assigns one — a wrong topic is worse than none, because none is visibly none.</div>
+
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">TAG HYGIENE</span>
+        <div style="display:flex;flex-direction:column;gap:9px">
+          <div style="display:flex;gap:9px"><span style="color:#E0A34E;font-size:10px">◌</span><div style="flex:1"><div style="font-size:12px;color:#D2CFC8">2 tags used once</div><div class="mono" style="font-size:10px;color:#585550;margin-top:2px">sync-v1 · wip</div></div></div>
+          <div style="display:flex;gap:9px"><span style="color:#E0A34E;font-size:10px">◌</span><div style="flex:1"><div style="font-size:12px;color:#D2CFC8">Near-duplicate pair</div><div class="mono" style="font-size:10px;color:#585550;margin-top:2px">op-log · oplog <span style="color:#4B4842">· d=1</span></div></div></div>
+          <div style="display:flex;gap:9px"><span style="color:#3FCFA8;font-size:10px">✓</span><div style="flex:1"><div style="font-size:12px;color:#8C8880">No tag over 40 chars</div></div></div>
+        </div>
+        <div style="font-size:11px;line-height:1.6;color:#585550">Near-duplicates come from the same BK-tree that powers “did you mean”. Second use of an algorithm, not a second algorithm.</div>
+
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">WHY BOTH</span>
+        <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 10px;font-size:11.5px;line-height:1.5;color:#8C8880">
+          <span class="mono" style="font-size:9px;letter-spacing:.1em;color:#7AA8E8">TOPIC</span><span>one, owned, indexed. Clusters the graph, scopes Discover, colours nothing else.</span>
+          <span class="mono" style="font-size:9px;letter-spacing:.1em;color:#8C8880">TAG</span><span>many, free, cheap. Facets search, never boosts rank, never picks a hue.</span>
+        </div>
+        <div style="font-size:11px;line-height:1.6;color:#585550">Collapse them into one field and you get folders — one axis, argued over forever, and a page that is genuinely two things has to lie.</div>
+      </div>
+    </div>
+  </div>
+  <div class="status"><span>/topics/protocol</span><span>topic by id · rename is free</span><div style="flex:1"></div><span style="color:#E0A34E">◌ 62 untopiced · suggestion available, assignment is yours</span></div>
+</div>
 <div class="tag"><b>11</b> COMPILER <i>paste and import as a pipeline — buffer → tokens → AST → tree → ops</i></div>
 <div class="sc">
   <div class="scan"></div>
@@ -1323,7 +1593,7 @@ a{color:#E8873C}a:hover{color:#F2A264}
     <div class="rd"><span class="rd-k">BYTES READ</span><span class="rd-v">48</span></div>
     <div class="rd"><span class="rd-k">PROJECTION</span><span class="rd-v" style="color:#3FCFA8">HOLDS</span></div>
     <div class="vr"></div>
-    <div class="av av-you">GN</div>
+    <div class="clk"><b>14:06</b><span>THU 12 MAR</span></div><span class="kbd">⌘K</span><div class="icb">◎<div class="bdg">6</div></div><div class="icb">⚙</div><div class="av av-you">GN</div>
   </div>
   <div class="sub"><span class="sb">BUFFER</span><span class="sb">TOKENS</span><span class="sb sb-on">AST</span><span class="sb">BLOCK TREE</span><span class="sb">OPS</span><div style="flex:1"></div><span class="sb">TRIGGER: <span style="color:#E8873C">## + space</span></span></div>
   <div class="body">
@@ -1415,7 +1685,7 @@ enum Op { InsertText }
     <div class="rd"><span class="rd-k">STREAM</span><span class="rd-v">18 402 events</span></div>
     <div class="rd"><span class="rd-k">MEMORY</span><span class="rd-v" style="color:#3FCFA8">3.1 KB</span></div>
     <div class="vr"></div>
-    <div class="av av-you">GN</div>
+    <div class="clk"><b>14:06</b><span>THU 12 MAR</span></div><span class="kbd">⌘K</span><div class="icb">◎<div class="bdg">6</div></div><div class="icb">⚙</div><div class="av av-you">GN</div>
   </div>
   <div class="body" style="flex-direction:column;padding:26px 32px;overflow:hidden">
     <div style="display:flex;gap:26px;flex:1;min-height:0">
@@ -1500,7 +1770,7 @@ enum Op { InsertText }
     <div class="rd"><span class="rd-k">STEP</span><span class="rd-v">4 / 7</span></div>
     <div class="rd"><span class="rd-k">INVERTIBILITY</span><span class="rd-v" style="color:#3FCFA8">HOLDS</span></div>
     <div class="vr"></div>
-    <div style="display:flex;gap:6px"><span class="chip">◀ STEP</span><span class="chip chip-e">STEP ▶</span></div>
+    <div style="display:flex;gap:6px"><span class="chip">◀ STEP</span><span class="chip chip-e">STEP ▶</span></div><div class="vr"></div><div class="clk"><b>14:06</b><span>THU 12 MAR</span></div><span class="kbd">⌘K</span><div class="icb">◎<div class="bdg">6</div></div><div class="icb">⚙</div><div class="av av-you">GN</div>
   </div>
   <div class="body">
     <div class="rail" style="width:330px">
@@ -1573,7 +1843,7 @@ enum Op { InsertText }
     <div class="rd"><span class="rd-k">LOSS</span><span class="rd-v" style="color:#E0A34E">4%</span></div>
     <div class="rd"><span class="rd-k">TRANSFORM</span><span class="rd-v" style="color:#3FCFA8">ON</span></div>
     <div class="vr"></div>
-    <div style="display:flex;gap:5px"><div class="av av-you">GN</div><div class="av av-them">AD</div></div>
+    <div style="display:flex;gap:5px"><div class="clk"><b>14:06</b><span>THU 12 MAR</span></div><span class="kbd">⌘K</span><div class="icb">◎<div class="bdg">6</div></div><div class="icb">⚙</div><div class="av av-you">GN</div><div class="av av-them">AD</div></div>
   </div>
   <div class="sub"><span class="sb sb-on">PREDICTION · ROLLBACK</span><span class="sb">TREE · MERKLE</span><span class="sb">CAUSALITY · DAG</span><span class="sb">LOG · LSM</span><div style="flex:1"></div><span class="sb" style="color:#E0A34E">2 INSTRUMENTS DISAGREE ON PURPOSE</span></div>
   <div class="body">
@@ -1649,7 +1919,7 @@ enum Op { InsertText }
     <div class="rd"><span class="rd-k">TABLE</span><span class="rd-v">28 × 31</span></div>
     <div class="rd"><span class="rd-k">COST</span><span class="rd-v" style="color:#E0A34E">O(n·m)</span></div>
     <div class="vr"></div>
-    <div style="display:flex;gap:6px"><span class="chip chip-e">WORD</span><span class="chip">CHAR</span></div>
+    <div style="display:flex;gap:6px"><span class="chip chip-e">WORD</span><span class="chip">CHAR</span></div><div class="vr"></div><div class="clk"><b>14:06</b><span>THU 12 MAR</span></div><span class="kbd">⌘K</span><div class="icb">◎<div class="bdg">6</div></div><div class="icb">⚙</div><div class="av av-you">GN</div>
   </div>
   <div class="body">
     <div style="flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden">
@@ -1710,7 +1980,7 @@ enum Op { InsertText }
     <div class="rd"><span class="rd-k">SCAN</span><span class="rd-v">1.8 GB/s</span></div>
     <div class="rd"><span class="rd-k">SAMPLES</span><span class="rd-v">10 000</span></div>
     <div class="vr"></div>
-    <span class="chip chip-e">RUN AGAIN</span>
+    <span class="chip chip-e">RUN AGAIN</span><div class="vr"></div><div class="clk"><b>14:06</b><span>THU 12 MAR</span></div><span class="kbd">⌘K</span><div class="icb">◎<div class="bdg">6</div></div><div class="icb">⚙</div><div class="av av-you">GN</div>
   </div>
   <div class="body" style="flex-direction:column;padding:24px 30px;overflow:hidden">
     <div style="display:flex;gap:26px;flex:1;min-height:0">
@@ -1784,7 +2054,7 @@ enum Op { InsertText }
     <div class="rd"><span class="rd-k">LIVE AT HEAD</span><span class="rd-v" style="color:#3FCFA8">145</span></div>
     <div class="rd"><span class="rd-k">COPIES</span><span class="rd-v">0</span></div>
     <div class="vr"></div>
-    <div style="display:flex;gap:6px"><span class="chip">TEXT</span><span class="chip chip-e">PALIMPSEST</span></div>
+    <div style="display:flex;gap:6px"><span class="chip">TEXT</span><span class="chip chip-e">PALIMPSEST</span></div><div class="vr"></div><div class="clk"><b>14:06</b><span>THU 12 MAR</span></div><span class="kbd">⌘K</span><div class="icb">◎<div class="bdg">6</div></div><div class="icb">⚙</div><div class="av av-you">GN</div>
   </div>
   <div class="body">
     <div class="rail" style="width:250px">
@@ -1864,7 +2134,7 @@ enum Op { InsertText }
     <div class="rd"><span class="rd-k">OUTBOX DEPTH</span><span class="rd-v" style="color:#3FCFA8">14</span></div>
     <div class="rd"><span class="rd-k">OP-LOG LAG</span><span class="rd-v" style="color:#E0A34E">2.4 s</span></div>
     <div class="vr"></div>
-    <div class="av av-you">GN</div>
+    <div class="clk"><b>14:06</b><span>THU 12 MAR</span></div><span class="kbd">⌘K</span><div class="icb">◎<div class="bdg">6</div></div><div class="icb">⚙</div><div class="av av-you">GN</div>
   </div>
   <div class="body">
     <div class="rail" style="width:212px">
@@ -1927,7 +2197,7 @@ enum Op { InsertText }
     <div style="flex:1"></div>
     <span class="chip">WORKSPACE</span><span class="chip chip-e">USER</span><span class="chip">PAGE</span>
     <div class="vr"></div>
-    <div class="av av-you">GN</div>
+    <div class="clk"><b>14:06</b><span>THU 12 MAR</span></div><span class="kbd">⌘K</span><div class="icb">◎<div class="bdg">6</div></div><div class="icb">⚙</div><div class="av av-you">GN</div>
   </div>
   <div class="body">
     <div class="rail" style="width:230px">
@@ -1958,6 +2228,32 @@ enum Op { InsertText }
       <div class="row" style="padding:9px 0"><span style="flex:1;font-size:13px;color:#9B968D">Ask the assistant</span><span class="mono" style="font-size:11px;color:#E4E2DC;padding:3px 8px;border:1px solid rgba(255,255,255,.14)">⌘ J</span></div>
       <div class="row" style="padding:9px 0"><span style="flex:1;font-size:13px;color:#9B968D">Command palette</span><span class="mono" style="font-size:11px;color:#E4E2DC;padding:3px 8px;border:1px solid rgba(255,255,255,.14)">⌘ K</span></div>
       <div class="row" style="padding:9px 0;border-bottom:0"><span style="flex:1;font-size:13px;color:#9B968D">Link a page</span><span class="mono" style="font-size:11px;color:#E4E2DC;padding:3px 8px;border:1px solid rgba(255,255,255,.14)">[ [</span></div>
+
+      <!-- Per-topic reading defaults. This is the one genuinely per-user use
+           of topic: a research paper wants a serif measure, a protocol note
+           wants mono. It changes nothing anyone else sees, which is exactly
+           the test the RULE panel on the right states. -->
+      <h1 class="h1" style="font-size:22px;margin:34px 0 6px">Per-topic defaults</h1>
+      <p style="font-size:12.5px;color:#8C8880;margin:0 0 18px;line-height:1.6">Reading preferences can differ by what a page is about. Anything set here overrides the defaults above for pages carrying that topic, and still never touches the tree.</p>
+      <div style="display:grid;grid-template-columns:1fr auto auto auto;align-items:center">
+        <span class="mono" style="font-size:9px;letter-spacing:.14em;color:#585550;padding-bottom:8px">TOPIC</span>
+        <span class="mono" style="font-size:9px;letter-spacing:.14em;color:#585550;padding:0 14px 8px;text-align:center">TYPE</span>
+        <span class="mono" style="font-size:9px;letter-spacing:.14em;color:#585550;padding:0 14px 8px;text-align:center">WIDTH</span>
+        <span class="mono" style="font-size:9px;letter-spacing:.14em;color:#585550;padding-bottom:8px;text-align:right">DIAGNOSTICS</span>
+        <div style="padding:9px 0;border-top:1px solid rgba(255,255,255,.07)"><span class="tpc tpc-proto"><i></i>PROTOCOL</span></div>
+        <span style="padding:9px 14px;text-align:center;font-size:12px;color:#D2CFC8;border-top:1px solid rgba(255,255,255,.07)">Mono</span>
+        <span style="padding:9px 14px;text-align:center;font-size:12px;color:#D2CFC8;border-top:1px solid rgba(255,255,255,.07)">Wide</span>
+        <div style="padding:9px 0;text-align:right;border-top:1px solid rgba(255,255,255,.07)"><span class="chip chip-e" style="padding:2px 7px">ALL</span></div>
+        <div style="padding:9px 0;border-top:1px solid rgba(255,255,255,.07)"><span class="tpc tpc-rsch"><i></i>RESEARCH</span></div>
+        <span style="padding:9px 14px;text-align:center;font-size:12px;color:#D2CFC8;border-top:1px solid rgba(255,255,255,.07)">Serif</span>
+        <span style="padding:9px 14px;text-align:center;font-size:12px;color:#D2CFC8;border-top:1px solid rgba(255,255,255,.07)">Standard</span>
+        <div style="padding:9px 0;text-align:right;border-top:1px solid rgba(255,255,255,.07)"><span class="chip" style="padding:2px 7px">STRUCTURAL</span></div>
+        <div style="padding:9px 0;border-top:1px solid rgba(255,255,255,.07)"><span class="tpc tpc-ops"><i></i>OPERATIONS</span></div>
+        <span style="padding:9px 14px;text-align:center;font-size:12px;color:#585550;border-top:1px solid rgba(255,255,255,.07)">inherit</span>
+        <span style="padding:9px 14px;text-align:center;font-size:12px;color:#585550;border-top:1px solid rgba(255,255,255,.07)">inherit</span>
+        <div style="padding:9px 0;text-align:right;border-top:1px solid rgba(255,255,255,.07)"><span class="chip" style="padding:2px 7px">NONE</span></div>
+      </div>
+      <div style="margin-top:12px;font-size:11.5px;color:#585550;line-height:1.6">Two topics left on <span class="mono" style="color:#8C8880">inherit</span>. Overrides are opt-in per topic — a workspace with forty topics should not need forty rows configured before it reads correctly.</div>
     </div>
     <div class="insp" style="width:290px">
       <div class="insp-t"><span class="it it-on">SCOPES</span><span class="it">CHANGED</span></div>
@@ -1993,7 +2289,7 @@ enum Op { InsertText }
     <div class="rd"><span class="rd-k">UNREAD</span><span class="rd-v" style="color:#E8873C">6</span></div>
     <div class="vr"></div>
     <span class="chip">MARK ALL READ</span>
-    <div class="av av-you">GN</div>
+    <div class="clk"><b>14:06</b><span>THU 12 MAR</span></div><span class="kbd">⌘K</span><div class="icb">◎<div class="bdg">6</div></div><div class="icb">⚙</div><div class="av av-you">GN</div>
   </div>
   <div class="sub"><span class="sb sb-on">ALL · 6</span><span class="sb">MENTIONS · 2</span><span class="sb">PROPOSALS · 2</span><span class="sb">CHECKS · 1</span><span class="sb">INVITES · 1</span><div style="flex:1"></div><span class="sb">acting on an item clears it — there is no “read” button per row</span></div>
   <div class="body">
@@ -2071,7 +2367,7 @@ enum Op { InsertText }
     <div class="rd"><span class="rd-k">STORED</span><span class="rd-v">1.9 GB</span></div>
     <div class="rd"><span class="rd-k">ORPHANED</span><span class="rd-v" style="color:#E0A34E">3</span></div>
     <div class="vr"></div>
-    <div class="btn">UPLOAD<div class="brk-tl"></div><div class="brk-br"></div></div>
+    <div class="btn">UPLOAD<div class="brk-tl"></div><div class="brk-br"></div></div><div class="vr"></div><div class="clk"><b>14:06</b><span>THU 12 MAR</span></div><span class="kbd">⌘K</span><div class="icb">◎<div class="bdg">6</div></div><div class="icb">⚙</div><div class="av av-you">GN</div>
   </div>
   <div class="sub"><span class="sb sb-on">ALL · 148</span><span class="sb">IMAGES · 112</span><span class="sb">FILES · 33</span><span class="sb">ORPHANED · 3</span><div style="flex:1"></div><span class="sb">a block references a key; deleting the block does not delete the object</span></div>
   <div class="body">
@@ -2146,7 +2442,7 @@ enum Op { InsertText }
     <div class="rd"><span class="rd-k">INSTALLED</span><span class="rd-v">4</span></div>
     <div class="rd"><span class="rd-k">SANDBOXED</span><span class="rd-v" style="color:#3FCFA8">4 / 4</span></div>
     <div class="vr"></div>
-    <div class="av av-you">GN</div>
+    <div class="clk"><b>14:06</b><span>THU 12 MAR</span></div><span class="kbd">⌘K</span><div class="icb">◎<div class="bdg">6</div></div><div class="icb">⚙</div><div class="av av-you">GN</div>
   </div>
   <div class="sub"><span class="sb sb-on">INSTALLED</span><span class="sb">DIRECTORY</span><span class="sb">CAPABILITIES</span><span class="sb">BUILD YOUR OWN</span><div style="flex:1"></div><span class="sb">a plugin declares block kinds and ops — it cannot reach the tree directly</span></div>
   <div class="body">
@@ -2219,7 +2515,7 @@ enum Op { InsertText }
     <div class="rd"><span class="rd-k">SPACES</span><span class="rd-v">4</span></div>
     <div class="rd"><span class="rd-k">PEOPLE</span><span class="rd-v">14</span></div>
     <div class="vr"></div>
-    <div class="btn">NEW SPACE<div class="brk-tl"></div><div class="brk-br"></div></div>
+    <div class="btn">NEW SPACE<div class="brk-tl"></div><div class="brk-br"></div></div><div class="vr"></div><div class="clk"><b>14:06</b><span>THU 12 MAR</span></div><span class="kbd">⌘K</span><div class="icb">◎<div class="bdg">6</div></div><div class="icb">⚙</div><div class="av av-you">GN</div>
   </div>
   <div class="body">
     <div class="rail" style="width:250px">
@@ -2278,6 +2574,300 @@ enum Op { InsertText }
   </div>
   <div class="status"><span>/spaces</span><span>membership, not per-page flags</span><div style="flex:1"></div><span style="color:#3FCFA8">● 4 spaces · 14 people · 0 orphaned members</span></div>
 </div>
+<div class="tag"><b>23b</b> PROFILE <i>a person as their op log — what they wrote, where, and when</i></div>
+<div class="sc">
+  <div class="scan"></div>
+  <div class="bar">
+    <span class="wm">m<span style="color:#E8873C">/</span>arginal</span>
+    <div class="tabs"><span class="tb">Write</span><span class="tb">Read</span><span class="tb">Search</span><span class="tb">Graph</span><span class="tb">History</span><span class="tb">Lab</span></div>
+    <span class="crumb">people / <b>ada</b></span>
+    <div style="flex:1"></div>
+    <div class="rd"><span class="rd-k">OPS AUTHORED</span><span class="rd-v">48 210</span></div>
+    <div class="rd"><span class="rd-k">PAGES TOUCHED</span><span class="rd-v">312</span></div>
+    <div class="vr"></div>
+    <div class="clk"><b>14:06</b><span>THU 12 MAR</span></div><span class="kbd">⌘K</span><div class="icb">◎<div class="bdg">6</div></div><div class="icb">⚙</div><div class="av av-you">GN</div>
+  </div>
+  <div class="body">
+    <div class="rail" style="width:262px">
+      <div style="padding:22px 16px 16px;display:flex;flex-direction:column;align-items:flex-start;gap:11px">
+        <div class="av av-them" style="width:56px;height:56px;font-size:19px">AD</div>
+        <div>
+          <div style="font-family:Spectral,serif;font-size:21px;color:#EFEDE7">Ada Lovelace</div>
+          <div class="mono" style="font-size:11px;color:#6E6A63;margin-top:3px">@ada · joined 14 months ago</div>
+        </div>
+        <div style="font-size:12px;line-height:1.6;color:#8C8880">Writes about ordering and the parts of a protocol that only bite under concurrency.</div>
+        <div style="display:flex;align-items:center;gap:7px"><div style="width:7px;height:7px;background:#A98CE8"></div><span class="mono" style="font-size:10.5px;color:#8C8880">editing now · Block model</span></div>
+      </div>
+      <div style="height:1px;background:rgba(255,255,255,.07);margin:0 14px"></div>
+      <div style="padding:14px 16px;display:flex;flex-direction:column;gap:12px">
+        <div>
+          <span class="lbl">WRITES MOSTLY IN</span>
+          <div style="display:flex;flex-direction:column;gap:6px;margin-top:9px">
+            <div style="display:flex;align-items:center;gap:8px"><span style="width:6px;height:6px;background:#7AA8E8"></span><span style="flex:1;font-size:12px;color:#D2CFC8">Protocol</span><div style="width:52px;height:4px;background:rgba(255,255,255,.06)"><div style="width:100%;height:100%;background:#7AA8E8"></div></div></div>
+            <div style="display:flex;align-items:center;gap:8px"><span style="width:6px;height:6px;background:#D07C8A"></span><span style="flex:1;font-size:12px;color:#D2CFC8">Research</span><div style="width:52px;height:4px;background:rgba(255,255,255,.06)"><div style="width:46%;height:100%;background:#D07C8A"></div></div></div>
+            <div style="display:flex;align-items:center;gap:8px"><span style="width:6px;height:6px;background:#C48AE0"></span><span style="flex:1;font-size:12px;color:#9B968D">Storage</span><div style="width:52px;height:4px;background:rgba(255,255,255,.06)"><div style="width:19%;height:100%;background:#C48AE0"></div></div></div>
+          </div>
+        </div>
+        <div>
+          <span class="lbl">SIGNATURE TAGS</span>
+          <div class="tgrow" style="margin-top:9px"><span class="tg">lamport</span><span class="tg">convergence</span><span class="tg">ot</span><span class="tg">causal</span></div>
+        </div>
+      </div>
+      <div class="wal">
+        <span class="lbl">HOW THIS IS BUILT</span>
+        <div style="font-size:11px;line-height:1.55;color:#8C8880">Every figure here is a <span class="mono" style="color:#9B968D">GROUP BY actor</span> over the op log. Nothing is a counter that could drift out of sync with what actually happened.</div>
+      </div>
+    </div>
+
+    <div style="flex:1;min-width:0;padding:26px 32px;overflow:hidden;display:flex;flex-direction:column">
+      <!-- Contribution grid, but honest: it counts OPS, and it says that the
+           number is ops rather than "contributions", because one paste is a
+           hundred ops and one afternoon of thinking is none. -->
+      <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:14px">
+        <h1 class="h1" style="font-size:20px">48 210 ops over 52 weeks</h1>
+        <span class="mono" style="font-size:11px;color:#585550">one square per day · shade is op count, and op count is not merit</span>
+      </div>
+      <div style="display:flex;gap:3px;margin-bottom:8px">
+        <div style="display:flex;flex-direction:column;gap:3px;justify-content:space-around;padding-right:5px"><span class="mono" style="font-size:8px;color:#4B4842">M</span><span class="mono" style="font-size:8px;color:#4B4842">W</span><span class="mono" style="font-size:8px;color:#4B4842">F</span></div>
+        <div style="flex:1;display:grid;grid-template-columns:repeat(52,1fr);grid-auto-rows:11px;grid-auto-flow:column;gap:3px">
+          <div style="background:rgba(255,255,255,.045)"></div><div style="background:rgba(232,135,60,.18)"></div><div style="background:rgba(232,135,60,.5)"></div><div style="background:rgba(232,135,60,.28)"></div><div style="background:rgba(255,255,255,.045)"></div><div style="background:rgba(255,255,255,.045)"></div><div style="background:rgba(232,135,60,.14)"></div>
+          <div style="background:rgba(232,135,60,.3)"></div><div style="background:rgba(232,135,60,.72)"></div><div style="background:rgba(232,135,60,.4)"></div><div style="background:rgba(255,255,255,.045)"></div><div style="background:rgba(232,135,60,.22)"></div><div style="background:rgba(232,135,60,.55)"></div><div style="background:rgba(255,255,255,.045)"></div>
+          <div style="background:rgba(232,135,60,.9)"></div><div style="background:rgba(232,135,60,.45)"></div><div style="background:rgba(255,255,255,.045)"></div><div style="background:rgba(232,135,60,.62)"></div><div style="background:rgba(232,135,60,.2)"></div><div style="background:rgba(255,255,255,.045)"></div><div style="background:rgba(232,135,60,.35)"></div>
+          <div style="background:rgba(232,135,60,.5)"></div><div style="background:rgba(255,255,255,.045)"></div><div style="background:rgba(232,135,60,.28)"></div><div style="background:rgba(232,135,60,.78)"></div><div style="background:rgba(232,135,60,.36)"></div><div style="background:rgba(255,255,255,.045)"></div><div style="background:rgba(255,255,255,.045)"></div>
+          <div style="background:rgba(255,255,255,.045)"></div><div style="background:rgba(232,135,60,.24)"></div><div style="background:rgba(232,135,60,.6)"></div><div style="background:rgba(232,135,60,.44)"></div><div style="background:rgba(232,135,60,.16)"></div><div style="background:rgba(255,255,255,.045)"></div><div style="background:rgba(232,135,60,.3)"></div>
+          <div style="background:rgba(232,135,60,.68)"></div><div style="background:rgba(232,135,60,.32)"></div><div style="background:rgba(255,255,255,.045)"></div><div style="background:rgba(232,135,60,.5)"></div><div style="background:rgba(232,135,60,.85)"></div><div style="background:rgba(232,135,60,.26)"></div><div style="background:rgba(255,255,255,.045)"></div>
+          <div style="background:rgba(232,135,60,.4)"></div><div style="background:rgba(255,255,255,.045)"></div><div style="background:rgba(232,135,60,.55)"></div><div style="background:rgba(232,135,60,.2)"></div><div style="background:rgba(255,255,255,.045)"></div><div style="background:rgba(232,135,60,.7)"></div><div style="background:rgba(232,135,60,.34)"></div>
+          <div style="background:rgba(255,255,255,.045)"></div><div style="background:rgba(232,135,60,.48)"></div><div style="background:rgba(232,135,60,.15)"></div><div style="background:rgba(232,135,60,.62)"></div><div style="background:rgba(255,255,255,.045)"></div><div style="background:rgba(232,135,60,.38)"></div><div style="background:rgba(232,135,60,.8)"></div>
+          <div style="background:rgba(232,135,60,.25)"></div><div style="background:rgba(255,255,255,.045)"></div><div style="background:rgba(232,135,60,.52)"></div><div style="background:rgba(232,135,60,.3)"></div><div style="background:rgba(232,135,60,.66)"></div><div style="background:rgba(255,255,255,.045)"></div><div style="background:rgba(232,135,60,.18)"></div>
+          <div style="background:rgba(232,135,60,.58)"></div><div style="background:rgba(232,135,60,.42)"></div><div style="background:rgba(255,255,255,.045)"></div><div style="background:rgba(232,135,60,.22)"></div><div style="background:rgba(232,135,60,.75)"></div><div style="background:rgba(232,135,60,.35)"></div><div style="background:rgba(255,255,255,.045)"></div>
+          <div style="background:rgba(255,255,255,.045)"></div><div style="background:rgba(232,135,60,.3)"></div><div style="background:rgba(232,135,60,.55)"></div><div style="background:rgba(232,135,60,.88)"></div><div style="background:rgba(232,135,60,.4)"></div><div style="background:rgba(255,255,255,.045)"></div><div style="background:rgba(232,135,60,.2)"></div>
+          <div style="background:rgba(232,135,60,.46)"></div><div style="background:rgba(255,255,255,.045)"></div><div style="background:rgba(232,135,60,.64)"></div><div style="background:rgba(232,135,60,.28)"></div><div style="background:rgba(255,255,255,.045)"></div><div style="background:rgba(232,135,60,.52)"></div><div style="background:rgba(232,135,60,.36)"></div>
+          <div style="background:rgba(255,255,255,.045)"></div><div style="background:rgba(232,135,60,.7)"></div><div style="background:rgba(232,135,60,.24)"></div><div style="background:rgba(232,135,60,.48)"></div><div style="background:rgba(232,135,60,.6)"></div><div style="background:rgba(255,255,255,.045)"></div><div style="background:rgba(232,135,60,.32)"></div>
+          <div style="background:rgba(232,135,60,.82)"></div><div style="background:rgba(232,135,60,.38)"></div><div style="background:rgba(255,255,255,.045)"></div><div style="background:rgba(232,135,60,.26)"></div><div style="background:rgba(232,135,60,.56)"></div><div style="background:rgba(232,135,60,.44)"></div><div style="background:rgba(255,255,255,.045)"></div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:24px"><span class="mono" style="font-size:9.5px;color:#4B4842">less</span><div style="width:11px;height:11px;background:rgba(255,255,255,.045)"></div><div style="width:11px;height:11px;background:rgba(232,135,60,.25)"></div><div style="width:11px;height:11px;background:rgba(232,135,60,.5)"></div><div style="width:11px;height:11px;background:rgba(232,135,60,.75)"></div><div style="width:11px;height:11px;background:#E8873C"></div><span class="mono" style="font-size:9.5px;color:#4B4842">more</span><div style="flex:1"></div><span class="mono" style="font-size:10px;color:#585550">longest streak 23 days · quietest week 0 · both fine</span></div>
+
+      <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:30px;flex:1;min-height:0">
+        <div>
+          <div class="lbl" style="margin-bottom:12px">RECENT · FROM THE OP LOG, NOT AN ACTIVITY TABLE</div>
+          <div style="display:flex;flex-direction:column">
+            <div class="row" style="padding:10px 0"><span class="mono" style="font-size:9.5px;color:#585550;width:56px">14:06</span><span class="mono" style="font-size:9.5px;color:#7AA8E8;width:88px">InsertText</span><span style="flex:1;font-size:12.5px;color:#D2CFC8">Sync protocol notes</span><span class="tg">crdt</span></div>
+            <div class="row" style="padding:10px 0"><span class="mono" style="font-size:9.5px;color:#585550;width:56px">13:52</span><span class="mono" style="font-size:9.5px;color:#C48AE0;width:88px">MoveBlock</span><span style="flex:1;font-size:12.5px;color:#D2CFC8">Block model</span><span class="tg">block-id</span></div>
+            <div class="row" style="padding:10px 0"><span class="mono" style="font-size:9.5px;color:#585550;width:56px">13:40</span><span class="mono" style="font-size:9.5px;color:#D6A660;width:88px">SetTitle</span><span style="flex:1;font-size:12.5px;color:#D2CFC8">Anchors vs offsets</span><span class="tg">anchors</span></div>
+            <div class="row" style="padding:10px 0"><span class="mono" style="font-size:9.5px;color:#585550;width:56px">11:18</span><span class="mono" style="font-size:9.5px;color:#5AC8B4;width:88px">AddTag</span><span style="flex:1;font-size:12.5px;color:#D2CFC8">CRDT survey</span><span class="tg">survey</span></div>
+            <div class="row" style="padding:10px 0;border-bottom:0"><span class="mono" style="font-size:9.5px;color:#585550;width:56px">09:02</span><span class="mono" style="font-size:9.5px;color:#7AA8E8;width:88px">InsertBlock</span><span style="flex:1;font-size:12.5px;color:#9B968D">Per-actor undo</span><span class="tg">undo</span></div>
+          </div>
+          <div class="mono" style="font-size:10px;color:#585550;margin-top:11px">every row is one row of collab.ops — clicking opens the trace at that op</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:16px">
+          <div>
+            <div class="lbl" style="margin-bottom:10px">MOST EDITED WITH</div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <div style="display:flex;align-items:center;gap:9px"><div class="av av-you" style="width:19px;height:19px;font-size:8px">GN</div><span style="flex:1;font-size:12px;color:#D2CFC8">Genuine</span><span class="mono" style="font-size:10px;color:#8C8880">41 pages</span></div>
+              <div style="display:flex;align-items:center;gap:9px"><div class="av" style="width:19px;height:19px;font-size:8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.16);color:#9B968D">RK</div><span style="flex:1;font-size:12px;color:#D2CFC8">Rina</span><span class="mono" style="font-size:10px;color:#8C8880">12 pages</span></div>
+              <div style="display:flex;align-items:center;gap:9px"><div class="av av-ai" style="width:19px;height:19px;font-size:8px">✦</div><span style="flex:1;font-size:12px;color:#9B968D">Assistant</span><span class="mono" style="font-size:10px;color:#8C8880">88 pages</span></div>
+            </div>
+          </div>
+          <div>
+            <div class="lbl" style="margin-bottom:10px">UNDO RATE</div>
+            <div style="display:flex;align-items:baseline;gap:9px"><span class="mono" style="font-size:22px;color:#E4E2DC">2.1%</span><span style="font-size:11.5px;color:#585550">of own ops later inverted</span></div>
+            <div style="font-size:11px;line-height:1.6;color:#585550;margin-top:8px">Shown because it is measurable, not because it is a target. A high rate means someone is experimenting, which is the point of having undo.</div>
+          </div>
+          <div style="margin-top:auto;padding-top:14px;border-top:1px solid rgba(255,255,255,.07)">
+            <div class="lbl" style="margin-bottom:8px">VISIBLE TO</div>
+            <div style="font-size:11.5px;line-height:1.6;color:#8C8880">Members of the 3 spaces you share. A profile is a view over the op log filtered by what the viewer may already read — it never widens access.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="status"><span>/u/ada</span><span>GROUP BY actor over collab.ops</span><div style="flex:1"></div><span style="color:#3FCFA8">● no counters · nothing here can drift</span></div>
+</div>
+
+<div class="tag"><b>23c</b> TRASH &amp; RESTORE <i>the delete saga, visible — deleting is a state, not an event</i></div>
+<div class="sc">
+  <div class="scan"></div>
+  <div class="bar">
+    <span class="wm">m<span style="color:#E8873C">/</span>arginal</span>
+    <div class="tabs"><span class="tb">Write</span><span class="tb">Read</span><span class="tb">Search</span><span class="tb">Graph</span><span class="tb">History</span><span class="tb">Lab</span></div>
+    <span class="crumb">workspace / <b>trash</b></span>
+    <div style="flex:1"></div>
+    <div class="rd"><span class="rd-k">DELETING</span><span class="rd-v" style="color:#E0A34E">1</span></div>
+    <div class="rd"><span class="rd-k">DELETED</span><span class="rd-v">23</span></div>
+    <div class="rd"><span class="rd-k">PURGE IN</span><span class="rd-v">21 d</span></div>
+    <div class="vr"></div>
+    <div class="clk"><b>14:06</b><span>THU 12 MAR</span></div><span class="kbd">⌘K</span><div class="icb">◎<div class="bdg">6</div></div><div class="icb">⚙</div><div class="av av-you">GN</div>
+  </div>
+  <div class="sub"><span class="sb sb-on">IN TRASH · 24</span><span class="sb">PURGED · 108</span><span class="sb">ORPHANED BLOBS · 3</span><div style="flex:1"></div><span class="sb" style="color:#E0A34E">1 saga resuming after restart</span></div>
+  <div class="body">
+    <div style="flex:1;min-width:0;padding:26px 32px;overflow:hidden;display:flex;flex-direction:column">
+      <!-- The saga in progress, drawn as the state machine it is. This is the
+           one screen that shows a delete is not instantaneous, which is the
+           only honest thing to show given cascading deletes cross services. -->
+      <div style="border:1px solid rgba(224,163,78,.3);background:rgba(224,163,78,.05);padding:16px 18px;margin-bottom:26px">
+        <div style="display:flex;align-items:baseline;gap:11px;margin-bottom:14px">
+          <span class="chip chip-a">DELETING</span>
+          <span style="font-family:Spectral,serif;font-size:17px;color:#EFEDE7">Old rope notes</span>
+          <span class="mono" style="font-size:10.5px;color:#8C8880">+ 4 descendants · started 2 min ago · resumed once</span>
+          <div style="flex:1"></div>
+          <span class="chip" style="border-color:rgba(255,255,255,.16)">CANCEL</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:0">
+          <div style="flex:1;display:flex;flex-direction:column;gap:6px"><div style="height:4px;background:#3FCFA8"></div><span class="mono" style="font-size:9px;color:#3FCFA8">✓ tree detached</span></div>
+          <div style="width:14px"></div>
+          <div style="flex:1;display:flex;flex-direction:column;gap:6px"><div style="height:4px;background:#3FCFA8"></div><span class="mono" style="font-size:9px;color:#3FCFA8">✓ links rewritten</span></div>
+          <div style="width:14px"></div>
+          <div style="flex:1;display:flex;flex-direction:column;gap:6px"><div style="height:4px;background:#E8873C;animation:shimmer 1.4s ease-in-out infinite"></div><span class="mono" style="font-size:9px;color:#E8873C">◌ search index</span></div>
+          <div style="width:14px"></div>
+          <div style="flex:1;display:flex;flex-direction:column;gap:6px"><div style="height:4px;background:rgba(255,255,255,.07)"></div><span class="mono" style="font-size:9px;color:#585550">embeddings</span></div>
+          <div style="width:14px"></div>
+          <div style="flex:1;display:flex;flex-direction:column;gap:6px"><div style="height:4px;background:rgba(255,255,255,.07)"></div><span class="mono" style="font-size:9px;color:#585550">blobs released</span></div>
+        </div>
+        <div style="font-size:11.5px;line-height:1.6;color:#9B968D;margin-top:14px">The process died mid-delete at step 3 and <b style="color:#C3BFB7;font-weight:500">resumed there</b>, not from the start. Each step is idempotent, so re-running one costs nothing and skipping one is impossible.</div>
+      </div>
+
+      <div class="lbl" style="margin-bottom:12px">IN TRASH · RESTORABLE UNTIL PURGE</div>
+      <div style="display:flex;flex-direction:column">
+        <div class="row" style="padding:11px 0"><span style="flex:1;font-size:13px;color:#D2CFC8">Sync v1 (superseded)</span><span class="tpc tpc-proto" style="padding:1px 6px"><i></i>PROTOCOL</span><span class="mono" style="font-size:10px;color:#8C8880;width:92px;text-align:right">deleted 3 d ago</span><span class="mono" style="font-size:10px;color:#585550;width:64px;text-align:right">purge 27 d</span><span class="chip chip-t" style="padding:2px 8px">RESTORE</span></div>
+        <div class="row" style="padding:11px 0"><span style="flex:1;font-size:13px;color:#D2CFC8">Q2 planning</span><span class="tpc tpc-ops" style="padding:1px 6px"><i></i>OPERATIONS</span><span class="mono" style="font-size:10px;color:#8C8880;width:92px;text-align:right">deleted 9 d ago</span><span class="mono" style="font-size:10px;color:#585550;width:64px;text-align:right">purge 21 d</span><span class="chip chip-t" style="padding:2px 8px">RESTORE</span></div>
+        <div class="row" style="padding:11px 0"><span style="flex:1;font-size:13px;color:#9B968D">Scratch — embeddings</span><span class="tpc" style="padding:1px 6px;border-color:rgba(255,255,255,.12);color:#585550"><i style="background:#4B4842"></i>NONE</span><span class="mono" style="font-size:10px;color:#8C8880;width:92px;text-align:right">deleted 12 d ago</span><span class="mono" style="font-size:10px;color:#585550;width:64px;text-align:right">purge 18 d</span><span class="chip chip-t" style="padding:2px 8px">RESTORE</span></div>
+        <div class="row" style="padding:11px 0;border-bottom:0"><span style="flex:1;font-size:13px;color:#6E6A63">Old rope notes <span class="mono" style="font-size:10px;color:#E0A34E">· in progress</span></span><span class="tpc tpc-store" style="padding:1px 6px;opacity:.5"><i></i>STORAGE</span><span class="mono" style="font-size:10px;color:#8C8880;width:92px;text-align:right">just now</span><span class="mono" style="font-size:10px;color:#585550;width:64px;text-align:right">—</span><span class="chip" style="padding:2px 8px;color:#4B4842;border-color:rgba(255,255,255,.08)">RESTORE</span></div>
+      </div>
+      <div class="mono" style="font-size:10px;color:#585550;margin-top:12px">20 more · oldest purges in 4 days</div>
+
+      <div style="margin-top:auto;display:grid;grid-template-columns:1fr 1fr;gap:26px;padding-top:22px;border-top:1px solid rgba(255,255,255,.07)">
+        <div>
+          <div class="lbl" style="margin-bottom:10px">WHAT RESTORE ACTUALLY DOES</div>
+          <div style="font-size:11.5px;line-height:1.7;color:#8C8880">Flips <span class="mono" style="color:#9B968D">lifecycle_state</span> back to <span class="mono" style="color:#3FCFA8">active</span> and replays the saga forward — reindex, re-embed, reattach blobs. It does not resurrect an op log, because the op log was never deleted: deleting a page removes it from the tree, never from history.</div>
+        </div>
+        <div>
+          <div class="lbl" style="margin-bottom:10px">WHAT PURGE DOES</div>
+          <div style="font-size:11.5px;line-height:1.7;color:#8C8880">Drops the rows and the blobs, keeps a tombstone with the page id so an inbound link can still say <i>this existed and is gone</i> rather than <i>this never existed</i>. The distinction costs one row and saves an argument.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="insp" style="width:302px">
+      <div class="insp-t"><span class="it it-on">BLAST RADIUS</span><span class="it">PURGED</span></div>
+      <div style="padding:14px;display:flex;flex-direction:column;gap:13px">
+        <div style="font-family:Spectral,serif;font-size:15px;color:#EFEDE7">Old rope notes</div>
+        <div class="mono" style="font-size:10.5px;line-height:1.95;color:#8C8880">descendants&nbsp;&nbsp;&nbsp;&nbsp;4<br>inbound links&nbsp;&nbsp;&nbsp;7<br>transclusions&nbsp;&nbsp;&nbsp;2<br>blobs held&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;3 · 4.2 MB</div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">7 PAGES LINK HERE</span>
+        <div style="font-size:12px;line-height:1.85;color:#9B968D">Sync protocol notes<br>Block model<br>Fragments and splits<br><span style="color:#585550">4 more</span></div>
+        <div style="display:flex;gap:9px;padding:10px 12px;border:1px solid rgba(224,163,78,.3);background:rgba(224,163,78,.06)">
+          <span style="color:#E0A34E;font-size:11px">◌</span>
+          <div style="flex:1;font-size:11.5px;line-height:1.55;color:#9B968D">Those 7 links become <b style="color:#E0A34E;font-weight:500">dangling</b>, not broken. They render dotted amber and offer to create the page — the same state a link typed before its page exists is already in.</div>
+        </div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">FORWARD REACHABLE</span>
+        <div style="font-size:11.5px;line-height:1.6;color:#8C8880">Computed by the same directed BFS the graph screen runs — this panel is a second reader of that result, not a second implementation of it.</div>
+      </div>
+    </div>
+  </div>
+  <div class="status"><span>/trash</span><span>saga · idempotent steps · resumable</span><div style="flex:1"></div><span style="color:#E0A34E">◌ 1 delete resuming from step 3 after a restart</span></div>
+</div>
+
+<div class="tag"><b>23d</b> IMPORT / EXPORT <i>the way out is the whole argument for the way in</i></div>
+<div class="sc">
+  <div class="scan"></div>
+  <div class="bar">
+    <span class="wm">m<span style="color:#E8873C">/</span>arginal</span>
+    <div class="tabs"><span class="tb">Write</span><span class="tb">Read</span><span class="tb">Search</span><span class="tb">Graph</span><span class="tb">History</span><span class="tb">Lab</span></div>
+    <span class="crumb">workspace / <b>import &amp; export</b></span>
+    <div style="flex:1"></div>
+    <div class="rd"><span class="rd-k">WORKSPACE</span><span class="rd-v">1 908 pages</span></div>
+    <div class="rd"><span class="rd-k">ON DISK</span><span class="rd-v">412 MB</span></div>
+    <div class="vr"></div>
+    <div class="clk"><b>14:06</b><span>THU 12 MAR</span></div><span class="kbd">⌘K</span><div class="icb">◎<div class="bdg">6</div></div><div class="icb">⚙</div><div class="av av-you">GN</div>
+  </div>
+  <div class="body">
+    <div style="flex:1;min-width:0;padding:28px 34px;overflow:hidden;display:flex;flex-direction:column">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:34px;margin-bottom:30px">
+        <div>
+          <h1 class="h1" style="font-size:21px;margin-bottom:6px">Export</h1>
+          <p style="font-size:12.5px;color:#8C8880;line-height:1.6;margin:0 0 18px">Everything, in a format that outlives this program. No account to close, no support ticket to file, no rate limit.</p>
+          <div style="display:flex;flex-direction:column;gap:9px">
+            <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid rgba(232,135,60,.35);background:rgba(232,135,60,.05)">
+              <div style="flex:1"><div style="font-size:13px;color:#EFEDE7">Markdown + assets</div><div class="mono" style="font-size:10.5px;color:#8C8880;margin-top:3px">one .md per page · front-matter carries topic &amp; tags</div></div>
+              <span class="chip chip-e" style="padding:3px 9px">412 MB</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid rgba(255,255,255,.09)">
+              <div style="flex:1"><div style="font-size:13px;color:#D2CFC8">Full op log · JSONL</div><div class="mono" style="font-size:10.5px;color:#8C8880;margin-top:3px">every op ever · replays into an empty instance</div></div>
+              <span class="chip" style="padding:3px 9px">1.1 GB</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid rgba(255,255,255,.09)">
+              <div style="flex:1"><div style="font-size:13px;color:#D2CFC8">Postgres dump + object store</div><div class="mono" style="font-size:10.5px;color:#8C8880;margin-top:3px">byte-exact · what the backup job already writes</div></div>
+              <span class="chip" style="padding:3px 9px">1.4 GB</span>
+            </div>
+          </div>
+          <div style="margin-top:14px;font-size:11.5px;line-height:1.65;color:#585550">The op-log export is the interesting one: replaying it into an empty instance reconstructs every page <i>and</i> every revision, because the log was always the source of truth and the tables were always a projection.</div>
+        </div>
+
+        <div>
+          <h1 class="h1" style="font-size:21px;margin-bottom:6px">Import</h1>
+          <p style="font-size:12.5px;color:#8C8880;line-height:1.6;margin:0 0 18px">Runs through the same compiler the paste path uses. Nothing enters the tree that was not first turned into ops.</p>
+          <div style="border:1px dashed rgba(255,255,255,.16);padding:22px;text-align:center;margin-bottom:14px">
+            <div style="font-size:13px;color:#9B968D">Drop a folder, a .zip, or a Notion export</div>
+            <div class="mono" style="font-size:10.5px;color:#585550;margin-top:6px">markdown · html · notion · obsidian vault</div>
+          </div>
+          <div class="lbl" style="margin-bottom:10px">LAST IMPORT · 3 DAYS AGO</div>
+          <div style="display:flex;flex-direction:column;gap:7px;font-size:12px">
+            <div style="display:flex;gap:10px"><span style="color:#3FCFA8">✓</span><span style="flex:1;color:#9B968D">214 pages parsed</span><span class="mono" style="font-size:10px;color:#585550">18 s</span></div>
+            <div style="display:flex;gap:10px"><span style="color:#3FCFA8">✓</span><span style="flex:1;color:#9B968D">1 902 blocks · 0 lost</span><span class="mono" style="font-size:10px;color:#585550">projection verified</span></div>
+            <div style="display:flex;gap:10px"><span style="color:#E0A34E">◌</span><span style="flex:1;color:#9B968D">31 links unresolved</span><span class="mono" style="font-size:10px;color:#E0A34E">left dangling</span></div>
+            <div style="display:flex;gap:10px"><span style="color:#E0A34E">◌</span><span style="flex:1;color:#9B968D">214 pages untopiced</span><span class="mono" style="font-size:10px;color:#E0A34E">suggest available</span></div>
+          </div>
+          <div style="margin-top:14px;font-size:11.5px;line-height:1.65;color:#585550">An importer that guesses a topic for 214 pages would be wrong about maybe thirty of them, silently. Leaving them untopiced is visibly incomplete, which is the recoverable failure.</div>
+        </div>
+      </div>
+
+      <!-- Round-trip proof: the only claim on this screen worth testing, so it
+           is tested rather than asserted. -->
+      <div style="margin-top:auto;padding-top:22px;border-top:1px solid rgba(255,255,255,.07)">
+        <div class="lbl" style="margin-bottom:12px">ROUND-TRIP CHECK · RUN NIGHTLY</div>
+        <div style="display:flex;align-items:center;gap:14px">
+          <div style="flex:1;display:flex;align-items:center;gap:10px">
+            <span class="mono" style="font-size:11px;color:#8C8880">workspace</span>
+            <span style="color:#585550">→</span><span class="mono" style="font-size:11px;color:#8C8880">export</span>
+            <span style="color:#585550">→</span><span class="mono" style="font-size:11px;color:#8C8880">empty instance</span>
+            <span style="color:#585550">→</span><span class="mono" style="font-size:11px;color:#8C8880">re-export</span>
+            <span style="color:#585550">→</span><span class="mono" style="font-size:11px;color:#3FCFA8">byte-identical</span>
+          </div>
+          <span class="chip chip-t">1 908 / 1 908</span>
+          <span class="mono" style="font-size:10px;color:#585550">last run 04:12 · 0 diffs</span>
+        </div>
+        <div style="font-size:11.5px;line-height:1.65;color:#585550;margin-top:11px;max-width:760px">Portability that is never exercised is portability that does not work. This runs on a schedule against the real workspace, and a single differing byte fails the build.</div>
+      </div>
+    </div>
+
+    <div class="insp" style="width:300px">
+      <div class="insp-t"><span class="it it-on">FRONT MATTER</span><span class="it">SCHEDULE</span></div>
+      <div style="padding:14px;display:flex;flex-direction:column;gap:12px">
+        <span class="lbl">ONE EXPORTED PAGE</span>
+        <pre class="mono" style="margin:0;padding:12px;background:#0B0C0D;border:1px solid rgba(255,255,255,.07);font-size:10.5px;line-height:1.75;color:#9B968D;overflow:hidden">---
+<span style="color:#7AA8E8">title</span>: Sync protocol notes
+<span style="color:#7AA8E8">topic</span>: protocol
+<span style="color:#7AA8E8">tags</span>: [crdt, lamport,
+        convergence, block-id]
+<span style="color:#7AA8E8">created</span>: 2026-01-14
+<span style="color:#7AA8E8">rev</span>: 1208
+<span style="color:#7AA8E8">links</span>: [block-model,
+        anchors-vs-offsets]
+---
+
+Every op carries a stable block
+id, so peers merge concurrent…</pre>
+        <div style="font-size:11.5px;line-height:1.6;color:#8C8880">Topic and tags survive the round trip as plain YAML — the one place they are not an id, because an id means nothing outside this instance.</div>
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">WHAT DOES NOT EXPORT</span>
+        <div style="font-size:11.5px;line-height:1.7;color:#8C8880">Presence, cursors, session state, the search index, the HNSW graph. All of it is derived — an export carries facts, never caches, and a cache that survives an export is a cache that can be wrong on arrival.</div>
+      </div>
+    </div>
+  </div>
+  <div class="status"><span>/settings/export</span><span>markdown · jsonl · pg_dump</span><div style="flex:1"></div><span style="color:#3FCFA8">● round-trip verified nightly · 0 diffs</span></div>
+</div>
 <div class="tag"><b>24</b> OFFLINE / RECONNECT <i>the state every route can enter</i></div>
 <div class="sc">
   <div class="scan"></div>
@@ -2289,7 +2879,7 @@ enum Op { InsertText }
     <div class="rd"><span class="rd-k">QUEUED OPS</span><span class="rd-v" style="color:#E0A34E">12</span></div>
     <div class="rd"><span class="rd-k">SOCKET</span><span class="rd-v" style="color:#E0A34E">RETRYING</span></div>
     <div class="vr"></div>
-    <div style="display:flex;gap:5px"><div class="av av-you">GN</div><div class="av" style="background:rgba(255,255,255,.04);border:1px dashed rgba(255,255,255,.2);color:#585550">AD</div></div>
+    <div style="display:flex;gap:5px"><div class="clk"><b>14:06</b><span>THU 12 MAR</span></div><span class="kbd">⌘K</span><div class="icb">◎<div class="bdg">6</div></div><div class="icb">⚙</div><div class="av av-you">GN</div><div class="av" style="background:rgba(255,255,255,.04);border:1px dashed rgba(255,255,255,.2);color:#585550">AD</div></div>
   </div>
   <div style="position:relative;z-index:7;height:34px;flex:none;display:flex;align-items:center;gap:12px;padding:0 16px;background:rgba(224,163,78,.1);border-bottom:1px solid rgba(224,163,78,.35)">
     <div style="width:11px;height:11px;border:1.5px solid rgba(224,163,78,.35);border-top-color:#E0A34E;border-radius:50%;animation:spin .9s linear infinite"></div>
@@ -2356,6 +2946,206 @@ enum Op { InsertText }
     </div>
   </div>
   <div class="status"><span>socket: retrying (4)</span><span>local rev 1 220</span><div style="flex:1"></div><span style="color:#E0A34E">◌ 12 ops queued · nothing lost</span></div>
+</div>
+<div class="tag"><b>24b</b> COMMAND PALETTE <i>⌘K — one input that resolves to a page, an action, an answer or a query</i></div>
+<div class="sc">
+  <div class="scan"></div>
+  <!-- The screen behind stays exactly where it was: the palette is an overlay,
+       not a route. Escape returns you to the caret you left, which is the only
+       reason it is safe to reach for mid-sentence. -->
+  <div class="bar">
+    <span class="wm">m<span style="color:#E8873C">/</span>arginal</span>
+    <div class="tabs"><span class="tb tb-on">Write</span><span class="tb">Read</span><span class="tb">Search</span><span class="tb">Graph</span><span class="tb">History</span><span class="tb">Lab</span></div>
+    <span class="crumb">product / <b>sync-protocol-notes</b></span>
+    <div style="flex:1"></div>
+    <div class="vr"></div>
+    <div class="clk"><b>14:06</b><span>THU 12 MAR</span></div>
+    <span class="kbd" style="border-color:rgba(232,135,60,.5);color:#E8873C">⌘K</span>
+    <div class="icb">◎<div class="bdg">6</div></div>
+    <div class="icb">⚙</div>
+    <div class="av av-you">GN</div>
+  </div>
+  <div class="body" style="filter:blur(1.2px);opacity:.5">
+    <div class="rail">
+      <div class="rail-h">PAGE TREE<div></div><span style="color:#585550">31</span></div>
+      <div style="display:flex;flex-direction:column;gap:1px;padding:0 8px">
+        <div class="tr"><span class="tr-n">01</span>Inbox</div>
+        <div class="tr"><span class="tr-n">02</span>Product</div>
+        <div class="tr tr-on"><i></i><span class="tr-n" style="color:#E8873C">03</span>Sync protocol notes</div>
+        <div class="tr" style="padding-left:24px"><span class="tr-n">04</span>Block model</div>
+      </div>
+    </div>
+    <div style="flex:1;padding:38px 0 0;display:flex;justify-content:center">
+      <div style="width:660px">
+        <h1 class="h1" style="font-size:36px;margin:10px 0 8px">Sync protocol notes</h1>
+        <div style="font-family:Spectral,serif;font-size:17px;line-height:1.68;color:#D2CFC8">
+          <p style="margin:0 0 16px">Every op carries a stable block id, so peers merge concurrent edits without a conflict dialog.</p>
+          <p style="margin:0 0 16px">A rope is the wrong primitive here.</p>
+        </div>
+      </div>
+    </div>
+    <div class="insp"><div class="insp-t"><span class="it it-on">CHECKS</span><span class="it">LINKS</span></div></div>
+  </div>
+
+  <div class="scrim"></div>
+  <div class="pal">
+    <div class="pal-q">
+      <span style="color:#E8873C;font-size:14px">⌘</span>
+      <span class="pal-qt">rope<span class="caret" style="background:#E8873C;margin-left:1px"></span></span>
+      <span class="mono" style="font-size:10px;color:#585550">4 sources · 11 ms</span>
+      <span class="kbd">esc</span>
+    </div>
+
+    <!-- Sources are labelled, and ranked against each other rather than
+         concatenated. A palette that puts every page above every action is
+         a page-switcher wearing a palette's clothes. -->
+    <div class="pal-s">BEST MATCH<div></div><span style="color:#4B4842">exact title</span></div>
+    <div class="pi pi-on"><span class="pi-i">◆</span><span style="flex:1">Rope internals</span><span class="tpc tpc-store" style="padding:1px 6px"><i></i>STORAGE</span><span class="pi-m">page · ↵ open</span></div>
+
+    <div class="pal-s">ACTIONS<div></div><span style="color:#4B4842">verbs first, always</span></div>
+    <div class="pi"><span class="pi-i">✎</span><span style="flex:1">Create page “rope”</span><span class="pi-m">⇧↵</span></div>
+    <div class="pi"><span class="pi-i">◫</span><span style="flex:1">Insert link to <span style="color:#C3BFB7">Rope internals</span></span><span class="pi-m">[ [ rope</span></div>
+    <div class="pi"><span class="pi-i">⌗</span><span style="flex:1">Tag this page <span class="tg" style="margin-left:2px">rope</span></span><span class="pi-m">⌘⇧T</span></div>
+    <div class="pi"><span class="pi-i">◷</span><span style="flex:1">Show revisions mentioning “rope”</span><span class="pi-m">history</span></div>
+
+    <div class="pal-s">PAGES · 4<div></div><span style="color:#4B4842">BM25 + topic boost</span></div>
+    <div class="pi"><span class="pi-i" style="color:#7AA8E8">·</span><span style="flex:1">Sync protocol notes</span><span class="tg">crdt</span><span class="pi-m">0.82</span></div>
+    <div class="pi"><span class="pi-i" style="color:#C48AE0">·</span><span style="flex:1">Block model</span><span class="tg">block-tree</span><span class="pi-m">0.62</span></div>
+    <div class="pi"><span class="pi-i" style="color:#D07C8A">·</span><span style="flex:1">CRDT survey</span><span class="tg">survey</span><span class="pi-m">0.28</span></div>
+
+    <!-- The intelligent part: the query is also parsed as a filter expression
+         and as a question. Both are offered, neither is guessed at — running
+         one is always an explicit second keystroke. -->
+    <div class="pal-s">UNDERSTOOD AS A QUERY<div></div><span style="color:#4B4842">parsed, not guessed</span></div>
+    <div class="pi"><span class="pi-i" style="color:#5AC8B4">⌕</span><span style="flex:1"><span class="mono" style="font-size:11.5px;color:#C3BFB7">topic:storage tag:rope edited:&lt;30d</span></span><span class="pi-m">18 hits · ⌥↵</span></div>
+    <div class="pi"><span class="pi-i" style="color:#7D9EC9">✦</span><span style="flex:1">Ask: <span style="color:#C3BFB7">“why did we drop the rope?”</span></span><span class="pi-m">answers from 3 pages · ⌘↵</span></div>
+
+    <div class="pal-s">RECENT<div></div><span style="color:#4B4842">this session</span></div>
+    <div class="pi" style="opacity:.72"><span class="pi-i">↺</span><span style="flex:1">Anchors vs offsets</span><span class="pi-m">2 min ago</span></div>
+
+    <div style="display:flex;align-items:center;gap:14px;padding:9px 16px;border-top:1px solid rgba(255,255,255,.08);background:#0F1011">
+      <span class="mono" style="font-size:10px;color:#585550"><span class="kbd" style="padding:1px 5px">↑↓</span> move</span>
+      <span class="mono" style="font-size:10px;color:#585550"><span class="kbd" style="padding:1px 5px">↵</span> open</span>
+      <span class="mono" style="font-size:10px;color:#585550"><span class="kbd" style="padding:1px 5px">⌥↵</span> run as query</span>
+      <span class="mono" style="font-size:10px;color:#585550"><span class="kbd" style="padding:1px 5px">⌘↵</span> ask</span>
+      <div style="flex:1"></div>
+      <span class="mono" style="font-size:10px;color:#585550">type <span style="color:#8C8880">&gt;</span> for actions only · <span style="color:#8C8880">#</span> for tags · <span style="color:#8C8880">@</span> for people</span>
+    </div>
+  </div>
+  <div class="status"><span>⌘K · overlay, not a route</span><span>esc restores the caret</span><div style="flex:1"></div><span style="color:#3FCFA8">● one input · four resolvers · zero mode switches</span></div>
+</div>
+
+<div class="tag"><b>24c</b> NOTIFICATIONS PANEL <i>the bell, opened — triage without leaving the page</i></div>
+<div class="sc">
+  <div class="scan"></div>
+  <div class="bar">
+    <span class="wm">m<span style="color:#E8873C">/</span>arginal</span>
+    <div class="tabs"><span class="tb tb-on">Write</span><span class="tb">Read</span><span class="tb">Search</span><span class="tb">Graph</span><span class="tb">History</span><span class="tb">Lab</span></div>
+    <span class="crumb">product / <b>sync-protocol-notes</b></span>
+    <div style="flex:1"></div>
+    <div class="vr"></div>
+    <div class="clk"><b>14:06</b><span>THU 12 MAR</span></div>
+    <span class="kbd">⌘K</span>
+    <div class="icb icb-on">◎<div class="bdg">6</div></div>
+    <div class="icb">⚙</div>
+    <div class="av av-you">GN</div>
+  </div>
+  <div class="body">
+    <div class="rail">
+      <div class="rail-h">PAGE TREE<div></div><span style="color:#585550">31</span></div>
+      <div style="display:flex;flex-direction:column;gap:1px;padding:0 8px">
+        <div class="tr"><span class="tr-n">01</span>Inbox</div>
+        <div class="tr"><span class="tr-n">02</span>Product<span style="margin-left:auto" class="tr-n">12</span></div>
+        <div class="tr tr-on"><i></i><span class="tr-n" style="color:#E8873C">03</span>Sync protocol notes</div>
+        <div class="tr" style="padding-left:24px"><span class="tr-n">04</span>Block model</div>
+        <div class="tr"><span class="tr-n">06</span>Research</div>
+      </div>
+      <div class="wal">
+        <span class="lbl">LOCAL WAL</span>
+        <div style="display:flex;align-items:flex-end;gap:2px;height:22px"><div style="flex:1;height:40%;background:rgba(63,207,168,.3)"></div><div style="flex:1;height:70%;background:rgba(63,207,168,.35)"></div><div style="flex:1;height:55%;background:rgba(63,207,168,.3)"></div><div style="flex:1;height:88%;background:rgba(63,207,168,.4)"></div><div style="flex:1;height:30%;background:rgba(63,207,168,.25)"></div></div>
+        <span class="mono" style="font-size:10px;color:#585550">0 unflushed</span>
+      </div>
+    </div>
+    <div style="flex:1;min-width:0;overflow:hidden;padding:38px 0 0;display:flex;justify-content:center;filter:blur(.8px);opacity:.55">
+      <div style="width:660px">
+        <h1 class="h1" style="font-size:36px;margin:10px 0 8px">Sync protocol notes</h1>
+        <div style="font-family:Spectral,serif;font-size:17px;line-height:1.68;color:#D2CFC8">
+          <p style="margin:0 0 16px">Every op carries a stable block id, so peers merge concurrent edits without a conflict dialog. Ordering resolves by comparing Lamport timestamps, then actor id as a tiebreak.</p>
+          <p style="margin:0 0 16px">A rope is the wrong primitive here. What we want is a tree of addressable nodes, each one a unit of intent.</p>
+          <p style="margin:0;color:#8C8880">Two people editing a tree apply operations to nodes, which converge.</p>
+        </div>
+      </div>
+    </div>
+    <div class="insp"><div class="insp-t"><span class="it it-on">CHECKS</span><span class="it">LINKS</span><span class="it">PRESENCE</span></div></div>
+  </div>
+
+  <!-- Anchored under the bell, not centred: a panel that drops from its own
+       trigger tells you what opened it without a title bar saying so. -->
+  <div style="position:absolute;right:76px;top:52px;width:412px;background:#131415;border:1px solid rgba(255,255,255,.14);box-shadow:0 26px 70px -18px rgba(0,0,0,.95);z-index:21;display:flex;flex-direction:column;max-height:660px">
+    <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.08)">
+      <span class="lbl">INBOX</span>
+      <span class="chip chip-e" style="padding:2px 7px">6 UNREAD</span>
+      <div style="flex:1"></div>
+      <span class="mono" style="font-size:10px;color:#585550">mark all read</span>
+    </div>
+    <div style="display:flex;gap:0;padding:0 14px;border-bottom:1px solid rgba(255,255,255,.08)">
+      <span class="it it-on" style="padding:8px 8px 9px">NEEDS YOU <span style="color:#E8873C">2</span></span>
+      <span class="it" style="padding:8px 8px 9px">MENTIONS <span style="color:#A98CE8">3</span></span>
+      <span class="it" style="padding:8px 8px 9px">CHECKS <span style="color:#E0A34E">1</span></span>
+      <span class="it" style="padding:8px 8px 9px">ALL</span>
+    </div>
+
+    <div style="padding:4px 0">
+      <!-- A decision, not an FYI: it carries the two buttons that resolve it,
+           so the inbox empties by acting rather than by scrolling. -->
+      <div style="display:flex;gap:11px;padding:12px 14px;border-left:2px solid #7D9EC9;background:rgba(125,158,201,.05)">
+        <div class="av av-ai" style="width:22px;height:22px;font-size:9px">✦</div>
+        <div style="flex:1">
+          <div style="font-size:12.5px;line-height:1.5;color:#D2CFC8">Assistant proposes splitting a block on <b style="color:#EFEDE7;font-weight:500">Sync protocol notes</b></div>
+          <div class="mono" style="font-size:10px;color:#585550;margin-top:5px">2 ops · invertible · 4 min ago</div>
+          <div style="display:flex;gap:7px;margin-top:9px"><span class="chip chip-s" style="padding:2px 9px">REVIEW</span><span class="chip" style="padding:2px 9px">DISMISS</span></div>
+        </div>
+      </div>
+      <div style="display:flex;gap:11px;padding:12px 14px;border-left:2px solid #E0A34E;background:rgba(224,163,78,.04)">
+        <span style="color:#E0A34E;font-size:13px;width:22px;text-align:center">◌</span>
+        <div style="flex:1">
+          <div style="font-size:12.5px;line-height:1.5;color:#D2CFC8">A fact you defined changed — <span class="mono" style="color:#E8873C">{{ack-budget}}</span> is now <b style="color:#EFEDE7;font-weight:500">40 ms</b></div>
+          <div class="mono" style="font-size:10px;color:#585550;margin-top:5px">6 pages transclude it · 2 of yours · 18 min ago</div>
+          <div style="display:flex;gap:7px;margin-top:9px"><span class="chip chip-a" style="padding:2px 9px">REVIEW 6</span><span class="chip" style="padding:2px 9px">ACCEPT ALL</span></div>
+        </div>
+      </div>
+      <div style="height:1px;background:rgba(255,255,255,.07);margin:4px 14px"></div>
+      <div style="display:flex;gap:11px;padding:11px 14px">
+        <div class="av av-them" style="width:22px;height:22px;font-size:9px">AD</div>
+        <div style="flex:1">
+          <div style="font-size:12.5px;line-height:1.5;color:#D2CFC8"><b style="color:#EFEDE7;font-weight:500">Ada</b> mentioned you on <span style="color:#C3BFB7">Block model</span></div>
+          <div style="font-size:11.5px;line-height:1.5;color:#8C8880;margin-top:4px;font-family:Spectral,serif">“…worth a diagram — the tree-of-nodes claim is the part people push back on”</div>
+          <div class="mono" style="font-size:10px;color:#585550;margin-top:5px">2h ago · anchored at block c42</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:11px;padding:11px 14px">
+        <div class="av av-them" style="width:22px;height:22px;font-size:9px">AD</div>
+        <div style="flex:1">
+          <div style="font-size:12.5px;line-height:1.5;color:#D2CFC8"><b style="color:#EFEDE7;font-weight:500">Ada</b> resolved your comment on <span style="color:#C3BFB7">Anchors vs offsets</span></div>
+          <div class="mono" style="font-size:10px;color:#585550;margin-top:5px">yesterday</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:11px;padding:11px 14px;opacity:.72">
+        <div class="av" style="width:22px;height:22px;font-size:9px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.16);color:#9B968D">RK</div>
+        <div style="flex:1">
+          <div style="font-size:12.5px;line-height:1.5;color:#9B968D"><b style="color:#C3BFB7;font-weight:500">Rina</b> restored <span style="color:#C3BFB7">Q2 planning</span> from trash</div>
+          <div class="mono" style="font-size:10px;color:#585550;margin-top:5px">yesterday · saga completed in 1.2 s</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:auto;padding:10px 14px;border-top:1px solid rgba(255,255,255,.08);background:#0F1011;display:flex;align-items:center;gap:10px">
+      <span class="mono" style="font-size:10px;color:#585550">every item is a pointer to an anchor</span>
+      <div style="flex:1"></div>
+      <span class="mono" style="font-size:10px;color:#E8873C">open inbox →</span>
+    </div>
+  </div>
+  <div class="status"><span>bell · anchored dropdown</span><span>triage without leaving the page</span><div style="flex:1"></div><span style="color:#E8873C">● 2 need a decision · both carry the buttons that resolve them</span></div>
 </div>
 <div class="tag"><b>25</b> COMPONENTS &amp; MOTION <i>the pieces every screen is built from</i></div>
 <div class="sc">
