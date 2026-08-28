@@ -19,6 +19,7 @@
    is fixed because its artboard is; here it is a max so a narrow window
    still reads, which is the same intent at a different viewport. */
 .canvas {
+  position: relative;
   flex: 1;
   min-width: 0;
   overflow-y: auto;
@@ -26,7 +27,13 @@
   display: flex;
   justify-content: center;
 }
-.canvas > * { width: 660px; max-width: calc(100% - 64px); position: relative; }
+/* :not(.prog) matters: the progress rule is a child of the canvas but is
+   absolutely positioned chrome, not content. Sized as content it became a
+   660px flex item and shoved the column sideways. */
+.canvas > *:not(.prog) { width: 660px; max-width: calc(100% - 64px); position: relative; }
+/* Pinned to the scroll container, so it stays put while the document moves
+   under it. */
+.canvas > .prog { position: sticky; top: 0; margin-top: -38px; }
 
 .dek {
   font: 400 11.5px 'IBM Plex Mono', monospace;

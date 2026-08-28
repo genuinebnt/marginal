@@ -5,7 +5,8 @@ import { getLinkGraph } from "../api/graph";
 import { prefixSearch } from "../trie-core/wasm";
 import type { CollabPage, BlockView } from "../collab/useCollabPage";
 import type { BlockKind } from "../collab/types";
-import { KIND_LABELS, KIND_ORDER, kindFromKey, keyOf, type BlockKindKey } from "../collab/blockKind";
+import { CONTAINER_KEYS, KIND_LABELS, KIND_ORDER, kindFromKey, keyOf, type BlockKindKey } from "../collab/blockKind";
+import { ReadingProgress } from "../shell/ReadingProgress";
 import { addMark, isFullyMarked, removeMark, renderMarkedHTML, shiftMarksForEdit, type Mark, type MarkKind } from "../collab/marks";
 
 // Lists are two blocks (a List container plus its first ListItem child),
@@ -125,13 +126,19 @@ export function RichEditorPane({
   const rowRefs = useRef<Map<string, HTMLElement>>(new Map());
   const createdFirstBlock = useRef(false);
   const [kindMenu, setKindMenu] = useState<
-    { mode: "convert"; blockId: string; textBeforeChoice: string; top: number; left: number }
-    | { mode: "insert"; afterId: string; top: number; left: number }
-    | { mode: "handle"; blockId: string; top: number; left: number }
+    // containersOnly narrows the menu to CONTAINER_KEYS — set by the "::"
+    // trigger, absent for "/" and for the "+" bar.
+    { mode: "convert"; blockId: string; textBeforeChoice: string; containersOnly?: boolean; top: number; left: number }
+    | { mode: "insert"; afterId: string; containersOnly?: boolean; top: number; left: number }
+    | { mode: "handle"; blockId: string; containersOnly?: boolean; top: number; left: number }
     | null
   >(null);
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{ id: string; zone: "before" | "after" } | null>(null);
+  // The scroll container the reading-progress rule measures. The document
+  // scrolls in here while the chrome stays put, so measuring the window
+  // would report nothing.
+  const canvasRef = useRef<HTMLElement | null>(null);
   const [bubble, setBubble] = useState<{ blockId: string; start: number; end: number; top: number; left: number } | null>(null);
   // The `[[` page-link autocomplete (v2.5.0). startIndex is where the
   // in-progress query begins in that block's own live text — right after
@@ -363,6 +370,7 @@ export function RichEditorPane({
             onEnter={() => handleEnter(b.id)}
             onBackspaceEmpty={() => handleBackspaceEmpty(b.id)}
             onSlashTrigger={(el, currentText) => handleSlashTrigger(b.id, el, currentText)}
+            onDirectiveTrigger={(el, currentText) => handleDirectiveTrigger(b.id, el, currentText)}
             onLinkQuery={(el, value) => handleLinkQuery(b.id, el, value)}
             onInsertTrigger={(el) => handleInsertTrigger(b.id, el)}
             onHandleClick={(el) => handleHandleClick(b.id, el)}
@@ -417,6 +425,24 @@ export function RichEditorPane({
   function handleSlashTrigger(blockId: string, el: HTMLElement, currentText: string) {
     const rect = el.getBoundingClientRect();
     setKindMenu({ mode: "convert", blockId, textBeforeChoice: currentText, top: rect.bottom + 6, left: rect.left });
+  }
+
+  /**
+   * "::" opens a CONTAINER picker, where "/" converts to any kind.
+   *
+   * The two triggers are different questions, which is why they are two
+   * triggers rather than one menu with more rows: "/" changes what this
+   * block IS; "::" wraps it in something that holds blocks. genuine-folio
+   * uses ":::" for exactly this — its directive containers (:::timeline,
+   * :::icon-cards) — and the distinction carries over cleanly because
+   * CONTAINER_KEYS already names the set.
+   */
+  function handleDirectiveTrigger(blockId: string, el: HTMLElement, currentText: string) {
+    const rect = el.getBoundingClientRect();
+    setKindMenu({
+      mode: "convert", blockId, textBeforeChoice: currentText,
+      containersOnly: true, top: rect.bottom + 6, left: rect.left,
+    });
   }
 
   // The `[[` page-link autocomplete (v2.5.0, RELEASES.md's own
@@ -520,8 +546,26 @@ export function RichEditorPane({
     if (kindMenu.mode === "convert") {
       const { blockId, textBeforeChoice } = kindMenu;
       setKindMenu(null);
-      if (textBeforeChoice.endsWith("/")) {
+      // Strip whichever trigger opened the menu. "::" is checked first
+      // because a naive one-character strip would leave a stray colon.
+      if (textBeforeChoice.endsWith("::")) {
+        setBlockText(blockId, textBeforeChoice.slice(0, -2));
+      } else if (textBeforeChoice.endsWith("/")) {
         setBlockText(blockId, textBeforeChoice.slice(0, -1));
+      }
+
+      // A container wraps rather than converts: turning a paragraph INTO a
+      // callout would discard its text, since a container holds children and
+      // has no prose of its own. So the block becomes the container and its
+      // text moves into a fresh child paragraph.
+      if (CONTAINER_KEYS.has(kind)) {
+        const text = textBeforeChoice.replace(/(::|\/)$/, "");
+        setBlockKind(blockId, kindFromKey(kind));
+        setBlockText(blockId, "");
+        const childId = insertBlock(null, { tag: "paragraph" }, blockId);
+        if (text) setBlockText(childId, text);
+        pendingFocusId.current = childId;
+        return;
       }
       setBlockKind(blockId, kindFromKey(kind));
     } else if (kindMenu.mode === "insert") {
@@ -575,7 +619,8 @@ export function RichEditorPane({
   }
 
   return (
-    <main className="canvas">
+    <main className="canvas" ref={canvasRef}>
+      <ReadingProgress target={canvasRef} />
       <article className="doc standard">
         <PageTitle title={page.title} onRename={onRename} />
         {/* § 04's dek: what this page is, in counts, not adjectives. */}
@@ -624,7 +669,12 @@ export function RichEditorPane({
           <>
             <div style={{ position: "fixed", inset: 0, zIndex: 29 }} onClick={() => setKindMenu(null)} />
             <div className="slash" style={{ top: kindMenu.top, left: kindMenu.left }}>
-              {KIND_ORDER.map((k) => (
+              <div className="mono" style={{
+                padding: "4px 9px 6px", fontSize: 8.5, letterSpacing: ".14em", color: "#585550",
+              }}>
+                {kindMenu.containersOnly ? "WRAP IN" : "TURN INTO"}
+              </div>
+              {KIND_ORDER.filter((k) => !kindMenu.containersOnly || CONTAINER_KEYS.has(k)).map((k) => (
                 <div key={k} className="palette-item" onClick={() => chooseKind(k)}>
                   <span className="lead mono muted">{k === "heading1" ? "H1" : k === "heading2" ? "H2" : k === "heading3" ? "H3" : k === "code_block" ? "<>" : k === "divider" ? "—" : k === "quote" ? "❝" : "¶"}</span>
                   {KIND_LABELS[k]}
@@ -849,6 +899,7 @@ function BlockRow({
   onEnter,
   onBackspaceEmpty,
   onSlashTrigger,
+  onDirectiveTrigger,
   onLinkQuery,
   onInsertTrigger,
   onHandleClick,
@@ -893,6 +944,8 @@ function BlockRow({
   onEnter: () => void;
   onBackspaceEmpty: () => void;
   onSlashTrigger: (el: HTMLElement, currentText: string) => void;
+  /** "::" — the container picker. See handleDirectiveTrigger. */
+  onDirectiveTrigger: (el: HTMLElement, currentText: string) => void;
   onLinkQuery: (el: HTMLElement, value: string) => void;
   onInsertTrigger: (el: HTMLElement) => void;
   onHandleClick: (el: HTMLElement) => void;
@@ -990,6 +1043,8 @@ function BlockRow({
           onEnter={onEnter}
           onBackspaceEmpty={onBackspaceEmpty}
           onSlashTrigger={onSlashTrigger}
+          onDirectiveTrigger={onDirectiveTrigger}
+        onDirectiveTrigger={onDirectiveTrigger}
           onLinkQuery={onLinkQuery}
         />
         {childrenNodes}
@@ -1013,6 +1068,8 @@ function BlockRow({
           onEnter={onEnter}
           onBackspaceEmpty={onBackspaceEmpty}
           onSlashTrigger={onSlashTrigger}
+          onDirectiveTrigger={onDirectiveTrigger}
+        onDirectiveTrigger={onDirectiveTrigger}
           onLinkQuery={onLinkQuery}
         />
       </div>
@@ -1043,6 +1100,7 @@ function BlockRow({
         onEnter={onEnter}
         onBackspaceEmpty={onBackspaceEmpty}
         onSlashTrigger={onSlashTrigger}
+        onDirectiveTrigger={onDirectiveTrigger}
         onLinkQuery={onLinkQuery}
       />
     );
@@ -1114,6 +1172,8 @@ function EditableTextBlock({
   onEnter: () => void;
   onBackspaceEmpty: () => void;
   onSlashTrigger: (el: HTMLElement, currentText: string) => void;
+  /** "::" — the container picker. See handleDirectiveTrigger. */
+  onDirectiveTrigger: (el: HTMLElement, currentText: string) => void;
   onLinkQuery: (el: HTMLElement, value: string) => void;
 }) {
   const ref = useRef<HTMLElement | null>(null);
@@ -1207,7 +1267,11 @@ function EditableTextBlock({
   function handleInput(e: FormEvent<HTMLElement>) {
     const value = e.currentTarget.textContent ?? "";
     pendingValueRef.current = value;
-    if (value.endsWith("/")) {
+    if (value.endsWith("::")) {
+      // Checked before "/" would be, though they cannot both match: "::" is
+      // its own trigger and must not also read as a stray character.
+      onDirectiveTrigger(e.currentTarget, value);
+    } else if (value.endsWith("/")) {
       onSlashTrigger(e.currentTarget, value);
     }
     // Every keystroke, not just the triggering one — see onLinkQuery's

@@ -144,8 +144,29 @@ function escapeAttr(s: string): string {
  * sorted boundary points), then wraps each segment in whichever marks
  * are active there, outermost-tag-first per TAG_ORDER so nesting is
  * always well-formed regardless of mark insertion order. */
+/**
+ * Wraps [[Page Title]] spans so they read as the links they are.
+ *
+ * A page link is NOT a mark yet — it is plain text that blockproj scans with
+ * a regex to build docs.page_links, and making it a real inline mark kind is
+ * still open (see CLAUDE.md). Until then the affordance is a render-time
+ * decoration over the same text, which keeps this side honest: nothing is
+ * stored, and the text a user selects is exactly the text they typed.
+ *
+ * Applied to ALREADY-ESCAPED output, so there is no markup in the input to
+ * confuse the pattern and no way for this to introduce an injection.
+ *
+ * Known limit: a mark boundary falling inside a [[...]] splits it across two
+ * segments and the pattern will not match. It degrades to plain text, which
+ * is the same thing it looked like before, so the failure is invisible
+ * rather than broken.
+ */
+function linkify(escaped: string): string {
+  return escaped.replace(/\[\[([^\[\]\n]+)\]\]/g, '<span class="pl">[[$1]]</span>');
+}
+
 export function renderMarkedHTML(text: string, marks: Mark[]): string {
-  if (marks.length === 0) return escapeHtml(text);
+  if (marks.length === 0) return linkify(escapeHtml(text));
 
   const boundaries = new Set<number>([0, text.length]);
   for (const m of marks) {
@@ -169,7 +190,7 @@ export function renderMarkedHTML(text: string, marks: Mark[]): string {
         close = def.close + close;
       }
     }
-    html += open + escapeHtml(text.slice(segStart, segEnd)) + close;
+    html += open + linkify(escapeHtml(text.slice(segStart, segEnd))) + close;
   }
   return html;
 }
