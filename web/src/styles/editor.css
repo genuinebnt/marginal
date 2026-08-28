@@ -37,6 +37,10 @@
 /* Prose. Spectral, because a page body is prose and prose is serif here —
    the chrome around it stays sans (DESIGN_GUIDELINES.md §2). */
 .editable {
+  /* A contenteditable <p> carries the browser's own 1em margin, which stacked
+     on top of .block-row's 16px and made every list row an island. Spacing is
+     .block-row's job alone. */
+  margin: 0;
   font-family: 'Spectral', Georgia, serif;
   font-size: 17px;
   line-height: 1.68;
@@ -333,3 +337,160 @@
   cursor: pointer;
 }
 .pill:hover { color: #E4E2DC; border-color: rgba(255,255,255,.24); }
+
+/* ── block kinds ────────────────────────────────────────────────────────────
+   Transcribed from § 04's expanded document, which now draws every kind in
+   RFC-001 §1's grammar. Before this the editor had rules for paragraphs and
+   code only, so lists, toggles, callouts, asides and images inherited the
+   paragraph's 16px separation and rendered as stranded rows. */
+
+/* THE rule the list kinds turn on: a list row is not a paragraph.
+   Paragraphs are separated; rows are a set and sit tight. .block-row's 16px
+   margin is correct at the top level and wrong inside a container, so it is
+   removed for any block that has a parent. */
+.block-row[data-nested="true"] { margin: 0; }
+
+/* A container's children indent by exactly one marker gutter. */
+.block-children { display: flex; flex-direction: column; }
+
+/* List rows. The marker sits in a fixed 22px gutter so text aligns down the
+   column regardless of marker width — "9." and "10." start their text at the
+   same x, which is the entire reason the gutter is fixed rather than flowed. */
+.li-row { display: flex; padding: 2px 0; }
+.li-marker {
+  width: 22px;
+  flex: none;
+  color: #585550;
+  line-height: 1.68;
+}
+.li-marker.num {
+  font: 400 12px 'IBM Plex Mono', monospace;
+  text-align: right;
+  padding-right: 9px;
+  box-sizing: border-box;
+  line-height: 1.95;
+}
+.li-body { flex: 1; min-width: 0; }
+
+/* A checked row is struck and dimmed rather than hidden: done is context. */
+.li-check {
+  display: block;
+  width: 13px;
+  height: 13px;
+  border: 1px solid rgba(255,255,255,.18);
+  font: 600 9px 'Archivo', sans-serif;
+  text-align: center;
+  line-height: 12px;
+  cursor: pointer;
+  color: transparent;
+}
+.li-check.on {
+  border-color: rgba(232,135,60,.55);
+  background: rgba(232,135,60,.16);
+  color: #E8873C;
+}
+.li-row.done > .li-body {
+  color: #6E6A63;
+  text-decoration: line-through;
+  text-decoration-color: rgba(255,255,255,.22);
+}
+
+/* Quote is a container; its children sit inside the rule, not after it. */
+.blk-quote {
+  padding: 2px 0 2px 17px;
+  border-left: 2px solid rgba(232,135,60,.5);
+  color: #9B968D;
+}
+
+/* Toggle: summary always visible, children under a hairline one gutter in. */
+.blk-toggle-summary { display: flex; gap: 9px; align-items: baseline; }
+.blk-toggle-summary > .tw {
+  color: #6E6A63;
+  font-size: 11px;
+  width: 13px;
+  flex: none;
+  cursor: pointer;
+}
+.blk-toggle > .block-children {
+  margin: 6px 0 0 22px;
+  padding-left: 15px;
+  border-left: 1px solid rgba(255,255,255,.07);
+  color: #9B968D;
+  font-size: 16px;
+}
+
+/* Callout. Tone is a model enum (warn|note|info|tip|danger|success); the hue
+   is the design system's decision about it. A 2px left rule and a wash, never
+   a full outline (§4.2). */
+.blk-callout {
+  display: flex;
+  gap: 11px;
+  padding: 11px 13px;
+  border-left: 2px solid #E0A34E;
+  background: rgba(224,163,78,.06);
+}
+.blk-callout > .ic { font-size: 12px; color: #E0A34E; flex: none; }
+.blk-callout > .block-children,
+.blk-callout > .li-body {
+  flex: 1;
+  font-family: 'Archivo', system-ui, sans-serif;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: #9B968D;
+}
+.blk-callout.tone-success { border-left-color: #3FCFA8; background: rgba(63,207,168,.05); }
+.blk-callout.tone-success > .ic { color: #3FCFA8; }
+.blk-callout.tone-info,
+.blk-callout.tone-note { border-left-color: #7D9EC9; background: rgba(125,158,201,.06); }
+.blk-callout.tone-info > .ic,
+.blk-callout.tone-note > .ic { color: #7D9EC9; }
+.blk-callout.tone-tip { border-left-color: #E8873C; background: rgba(232,135,60,.05); }
+.blk-callout.tone-tip > .ic { color: #E8873C; }
+/* Danger is still amber, not red. A notebook has no compile step — §3.3. */
+.blk-callout.tone-danger { border-left-color: #E0A34E; background: rgba(224,163,78,.09); }
+
+/* Aside: sans and small, so it never reads as prose. */
+.blk-aside {
+  padding-left: 15px;
+  border-left: 1px solid rgba(255,255,255,.13);
+  font-family: 'Archivo', system-ui, sans-serif;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #6E6A63;
+}
+
+/* Image: no asset pipeline yet, so the placeholder says so rather than
+   showing a broken frame. */
+.blk-image { border: 1px solid rgba(255,255,255,.09); background: #111214; }
+.blk-image > .ph {
+  height: 96px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #4B4842;
+  font: 400 10px 'IBM Plex Mono', monospace;
+  letter-spacing: .14em;
+  border-bottom: 1px solid rgba(255,255,255,.07);
+}
+.blk-image > .cap {
+  padding: 8px 11px;
+  font-family: 'Archivo', system-ui, sans-serif;
+  font-size: 11.5px;
+  color: #6E6A63;
+}
+
+/* Marks. The page link is a real affordance, so it reads as one. */
+.pl, .editable .pl {
+  color: #A98CE8;
+  text-decoration: underline;
+  text-decoration-color: rgba(169,140,232,.45);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.editable mark, mark {
+  background: rgba(232,135,60,.22);
+  color: #EFEDE7;
+  padding: 0 2px;
+}
+.editable s { text-decoration-color: rgba(255,255,255,.4); }
+.editable b, .editable strong { font-weight: 600; color: #EFEDE7; }

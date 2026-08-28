@@ -89,11 +89,11 @@
   --pill: 999px;
 
   /* ─── chrome heights (§1.1) — fixed, not content-driven ─── */
-  --h-bar:    46px;
-  --h-sub:    32px;
+  --h-bar:    54px;
+  --h-sub:    34px;
   --h-status: 27px;
-  --w-rail:   238px;
-  --w-insp:   296px;
+  --w-rail:   272px;
+  --w-insp:   332px;
 
   /* ─── motion (§7) ───
      Six motions exist. Adding a seventh needs a reason. Nothing here

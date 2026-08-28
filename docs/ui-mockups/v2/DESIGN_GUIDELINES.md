@@ -73,9 +73,9 @@ product meaning.
 
 ```
 ┌─────────────────────────────────────────┐
-│ .bar          46px   fixed              │  always
+│ .bar          54px   fixed              │  always
 ├─────────────────────────────────────────┤
-│ .sub          32px   fixed              │  optional — section strips
+│ .sub          34px   fixed              │  optional — section strips
 ├─────────────────────────────────────────┤
 │ .body         flex:1  min-height:0      │  always
 │   ┌────────┬──────────────┬──────────┐  │
@@ -96,9 +96,21 @@ overflows. This is the single most common layout bug when reimplementing.
 
 | Element | Width | Notes |
 |---|---|---|
-| `.rail` (left) | `238px` | `212–262px` where a screen justifies it |
+| `.rail` (left) | `272px` | `250–290px` where a screen justifies it |
 | main | `flex: 1; min-width: 0` | never a fixed width |
-| `.insp` (right) | `296px` | `290–352px` where a screen justifies it |
+| `.insp` (right) | `332px` | `300–352px` where a screen justifies it |
+
+These were `238` / `296` and were widened once real content arrived. Page
+titles in the mockup were single words (`Inbox`, `Product`); real ones are
+sentences, and at `238px` every descriptive title wrapped to two lines —
+which doubles the height of exactly the rows carrying the most information
+and destroys the scan-down-the-left-edge reading the rail exists for.
+
+**A tree row is one line, always.** `.tr-t` truncates with an ellipsis; the
+title is the only thing that may shrink, while markers and counts keep their
+width. Row actions live in `.tr-a` and appear on hover — shown always, they
+are two glyphs of noise on every row competing with the titles for the same
+space.
 
 Deviations exist and are deliberate — Discover uses `352px` because its HNSW
 layer diagram needs the room. **Do not deviate without a reason you can

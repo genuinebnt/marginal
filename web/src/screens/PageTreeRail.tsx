@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState, type DragEvent } from "react";
 import { Link } from "react-router-dom";
+import { DocumentOutline } from "./DocumentOutline";
 import type { Page } from "../api/pages";
 import { ROOT, usePageTree } from "./usePageTree";
 
@@ -16,7 +17,16 @@ type DropZone = "before" | "into" | "after";
  * Not built: the mockup's "Recently deleted" section — there is no
  * backend endpoint to list soft-deleted pages at all (pages.md § Delete).
  */
-export function PageTreeRail({ actorId, activePageId }: { actorId: string; activePageId?: string }) {
+export function PageTreeRail({
+  actorId, activePageId, blocks, onJumpToBlock,
+}: {
+  actorId: string;
+  activePageId?: string;
+  /** The open page's live blocks, for the outline. Absent on screens that
+   *  show the tree without a document (the dashboard). */
+  blocks?: import("../collab/useCollabPage").BlockView[];
+  onJumpToBlock?: (blockId: string) => void;
+}) {
   const tree = usePageTree(actorId);
   const [filter, setFilter] = useState("");
   const [creatingUnder, setCreatingUnder] = useState<string | null>(null);
@@ -160,6 +170,12 @@ export function PageTreeRail({ actorId, activePageId }: { actorId: string; activ
           </>
         )}
       </div>
+
+      {/* Hierarchy of the CONTENT, below the hierarchy of the workspace.
+          Only on screens that actually have a document open. */}
+      {blocks && (
+        <DocumentOutline blocks={blocks} onJump={(id) => onJumpToBlock?.(id)} />
+      )}
     </aside>
   );
 }
@@ -285,7 +301,7 @@ function PageRow({
         ) : (
           <span className="tr-n" style={{ width: 9 }} />
         )}
-        {page.title || "Untitled"}
+        <span className="tr-t">{page.title || "Untitled"}</span>
         {isDeleting && (
           <span style={{
             marginLeft: "auto",
@@ -295,9 +311,10 @@ function PageRow({
             DELETING
           </span>
         )}
+        <span className="tr-a">
         <span
           className="tr-n"
-          style={{ marginLeft: isDeleting ? undefined : "auto", cursor: "pointer", fontSize: 11 }}
+          style={{ cursor: "pointer", fontSize: 11 }}
           title="New sub-page"
           onClick={(e) => {
             e.preventDefault();
@@ -320,6 +337,7 @@ function PageRow({
           }}
         >
           ×
+        </span>
         </span>
       </Link>
     </div>

@@ -28,7 +28,7 @@
 
 a{color:#E8873C}a:hover{color:#F2A264}
 .sc{position:relative;width:100%;height:100vh;background:#0E0F10;color:#E4E2DC;display:flex;flex-direction:column;overflow:hidden}
-.bar{position:relative;height:46px;flex:none;display:flex;align-items:center;gap:14px;padding:0 16px;background:#111214;border-bottom:1px solid rgba(255,255,255,.07);z-index:7}
+.bar{position:relative;height:54px;flex:none;display:flex;align-items:center;gap:14px;padding:0 16px;background:#111214;border-bottom:1px solid rgba(255,255,255,.07);z-index:7}
 .wm{font:600 12.5px 'IBM Plex Mono',monospace;letter-spacing:-.01em;color:#E4E2DC}
 .tabs{display:flex}
 .tb{padding:6px 11px;font-size:11.5px;border:1px solid rgba(255,255,255,.13);border-right:0;color:#7C7870;white-space:nowrap}
@@ -48,25 +48,55 @@ a{color:#E8873C}a:hover{color:#F2A264}
 .btn{position:relative;padding:6px 14px;border:1px solid rgba(255,255,255,.18);font:600 10px 'IBM Plex Mono',monospace;letter-spacing:.13em;color:#E4E2DC}
 .brk-tl{position:absolute;top:-1px;left:-1px;width:5px;height:5px;border-top:1px solid #E8873C;border-left:1px solid #E8873C}
 .brk-br{position:absolute;bottom:-1px;right:-1px;width:5px;height:5px;border-bottom:1px solid #E8873C;border-right:1px solid #E8873C}
-.sub{position:relative;height:32px;flex:none;display:flex;align-items:center;gap:0;padding:0 16px;background:#0F1012;border-bottom:1px solid rgba(255,255,255,.07);z-index:7}
-.sb{padding:0 12px;height:32px;display:flex;align-items:center;font:400 10.5px 'IBM Plex Mono',monospace;letter-spacing:.06em;color:#6E6A63}
+.prog{position:absolute;left:0;right:0;top:0;height:2px;background:rgba(255,255,255,.05);z-index:8}
+.prog i{display:block;height:100%;background:#E8873C;font-style:normal}
+.sub{position:relative;height:34px;flex:none;display:flex;align-items:center;gap:0;padding:0 16px;background:#0F1012;border-bottom:1px solid rgba(255,255,255,.07);z-index:7}
+.sb{padding:0 12px;height:34px;display:flex;align-items:center;font:400 10.5px 'IBM Plex Mono',monospace;letter-spacing:.06em;color:#6E6A63}
 .sb-on{color:#E4E2DC;box-shadow:inset 0 -2px 0 #E8873C}
 .body{position:relative;flex:1;display:flex;min-height:0}
-.rail{width:238px;flex:none;box-sizing:border-box;background:#0F1012;border-right:1px solid rgba(255,255,255,.07);display:flex;flex-direction:column}
+.rail{width:272px;flex:none;box-sizing:border-box;background:#0F1012;border-right:1px solid rgba(255,255,255,.07);display:flex;flex-direction:column}
 .rail-h{padding:14px 14px 9px;display:flex;align-items:center;gap:8px;font:600 9px 'IBM Plex Mono',monospace;letter-spacing:.19em;color:#585550}
 .rail-h div{flex:1;height:1px;background:rgba(255,255,255,.07)}
 .filt{margin:0 12px 12px;padding:6px 9px;background:#141617;border:1px solid rgba(255,255,255,.07);font:400 11px 'IBM Plex Mono',monospace;color:#585550}
-.tr{display:flex;align-items:center;gap:9px;padding:6px 9px;color:#9B968D;font-size:12.5px}
+.tr{display:flex;align-items:center;gap:9px;padding:5px 9px;color:#9B968D;font-size:12.5px;white-space:nowrap;overflow:hidden;position:relative}
+/* A tree row is one line, always. Wrapping makes rows uneven, doubles the
+   height of exactly the pages with the most descriptive titles, and destroys
+   the scan-down-the-left-edge reading the rail exists for. The title is the
+   only thing that may shrink; markers and counts keep their width. */
+.tr-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Row actions are hover-only. Shown always they are two glyphs of noise on
+   every row, competing with the titles for the same 238px. */
+.tr-a{display:flex;gap:2px;opacity:0;flex:none}
+.tr:hover .tr-a{opacity:1}
 .tr-n{font:400 9px 'IBM Plex Mono',monospace;color:#4B4842}
 .tr-on{position:relative;padding-left:24px;background:#181A1B;color:#E4E2DC;font-weight:500}
 .tr-on i{position:absolute;left:0;top:4px;bottom:4px;width:2px;background:#E8873C}
 .wal{margin-top:auto;padding:12px 14px;border-top:1px solid rgba(255,255,255,.07);display:flex;flex-direction:column;gap:6px}
-.insp{width:296px;flex:none;box-sizing:border-box;background:#0F1012;border-left:1px solid rgba(255,255,255,.07);display:flex;flex-direction:column}
+.insp{width:332px;flex:none;box-sizing:border-box;background:#0F1012;border-left:1px solid rgba(255,255,255,.07);display:flex;flex-direction:column}
 .insp-t{display:flex;gap:2px;padding:11px 12px 0;border-bottom:1px solid rgba(255,255,255,.07)}
 .it{padding:6px 8px 8px;font:600 9.5px 'IBM Plex Mono',monospace;letter-spacing:.1em;color:#6E6A63;white-space:nowrap}
 .it-on{color:#E4E2DC;border-bottom:2px solid #E8873C;margin-bottom:-1px}
 .status{position:relative;height:27px;flex:none;display:flex;align-items:center;gap:16px;padding:0 16px;background:#111214;border-top:1px solid rgba(255,255,255,.07);font:400 10px 'IBM Plex Mono',monospace;color:#585550;z-index:7}
 .lbl{font:600 8.5px 'IBM Plex Mono',monospace;letter-spacing:.19em;color:#585550}
+/* ── document outline (editor rail) ──────────────────────────────────────
+   The page tree answers "where am I in the workspace". This answers "where
+   am I in the page", which is a different question and deserves its own
+   section rather than a tab you have to go find. */
+.oi{display:flex;align-items:baseline;gap:8px;padding:3px 9px;white-space:nowrap;overflow:hidden;cursor:pointer}
+.oi:hover{background:#181A1B}
+.oi-m{font:600 8px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#4B4842;width:16px;flex:none}
+.oi-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:12px;color:#9B968D}
+.oi-h1 .oi-t{color:#E4E2DC;font-weight:500}
+.oi-h2{padding-left:20px}
+.oi-h3{padding-left:32px}
+.oi-on{background:#181A1B;box-shadow:inset 2px 0 0 #E8873C}
+.oi-on .oi-t{color:#E4E2DC}
+/* Non-heading blocks worth navigating to — a callout or a code fence is a
+   landmark even though it has no title. Marked by kind, not by number. */
+.oi-k{font:400 8px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#585550;width:16px;flex:none}
+.oi-code .oi-k{color:#7AA8E8}
+.oi-callout .oi-k{color:#E0A34E}
+.oi-aside .oi-k{color:#6E6A63}
 .h1{font-family:Spectral,serif;font-weight:500;letter-spacing:-.015em;color:#EFEDE7;margin:0}
 .mono{font-family:'IBM Plex Mono',monospace}
 .row{display:flex;align-items:center;gap:14px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.07)}

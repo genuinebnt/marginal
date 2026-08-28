@@ -152,10 +152,40 @@ func territory(this js.Value, args []js.Value) any {
 	return result(data, err)
 }
 
+// hullsRequest carries settled positions already tagged with the group each
+// belongs to. The grouping is the caller's (a page's topic comes from
+// /pages, not from the graph), so this bridge does geometry only.
+type hullsRequest struct {
+	Points []graphalgo.HullPoint `json:"points"`
+	Pad    float64               `json:"pad"`
+}
+
+type hullsResponse struct {
+	Hulls []graphalgo.Hull `json:"hulls"`
+}
+
+// graphHulls returns one convex hull per group — § 07 GRAPH's background
+// territory polygons. Deliberately separate from graphTerritory: Voronoi
+// partitions the whole plane between sites, which answers "which page is
+// nearest to this pixel"; a hull covers only where a topic's pages actually
+// are, and topics are allowed to overlap. Two different questions.
+func hulls(this js.Value, args []js.Value) any {
+	if err := requireArgs("graphHulls", args, 1); err != nil {
+		return result(nil, err)
+	}
+	var req hullsRequest
+	if err := json.Unmarshal(jsonArg(args, 0), &req); err != nil {
+		return result(nil, err)
+	}
+	data, err := json.Marshal(hullsResponse{Hulls: graphalgo.Territories(req.Points, req.Pad)})
+	return result(data, err)
+}
+
 func main() {
 	js.Global().Set("graphSeedPositions", js.FuncOf(seedPositions))
 	js.Global().Set("graphLayoutTick", js.FuncOf(layoutTick))
 	js.Global().Set("graphTerritory", js.FuncOf(territory))
+	js.Global().Set("graphHulls", js.FuncOf(hulls))
 
 	select {}
 }

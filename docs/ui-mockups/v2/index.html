@@ -16,7 +16,7 @@ a{color:#E8873C}a:hover{color:#F2A264}
 .tag{max-width:1440px;margin:44px auto 12px;display:flex;align-items:baseline;gap:12px;font:600 10px 'IBM Plex Mono',monospace;letter-spacing:.18em;color:#6E6A63}
 .tag b{color:#E8873C;font-weight:600}
 .tag i{font-style:normal;color:#4B4842;letter-spacing:.06em}
-.bar{position:relative;height:46px;flex:none;display:flex;align-items:center;gap:14px;padding:0 16px;background:#111214;border-bottom:1px solid rgba(255,255,255,.07);z-index:7}
+.bar{position:relative;height:54px;flex:none;display:flex;align-items:center;gap:14px;padding:0 16px;background:#111214;border-bottom:1px solid rgba(255,255,255,.07);z-index:7}
 .wm{font:600 12.5px 'IBM Plex Mono',monospace;letter-spacing:-.01em;color:#E4E2DC}
 .tabs{display:flex}
 .tb{padding:6px 11px;font-size:11.5px;border:1px solid rgba(255,255,255,.13);border-right:0;color:#7C7870;white-space:nowrap}
@@ -36,25 +36,55 @@ a{color:#E8873C}a:hover{color:#F2A264}
 .btn{position:relative;padding:6px 14px;border:1px solid rgba(255,255,255,.18);font:600 10px 'IBM Plex Mono',monospace;letter-spacing:.13em;color:#E4E2DC}
 .brk-tl{position:absolute;top:-1px;left:-1px;width:5px;height:5px;border-top:1px solid #E8873C;border-left:1px solid #E8873C}
 .brk-br{position:absolute;bottom:-1px;right:-1px;width:5px;height:5px;border-bottom:1px solid #E8873C;border-right:1px solid #E8873C}
-.sub{position:relative;height:32px;flex:none;display:flex;align-items:center;gap:0;padding:0 16px;background:#0F1012;border-bottom:1px solid rgba(255,255,255,.07);z-index:7}
-.sb{padding:0 12px;height:32px;display:flex;align-items:center;font:400 10.5px 'IBM Plex Mono',monospace;letter-spacing:.06em;color:#6E6A63}
+.prog{position:absolute;left:0;right:0;top:0;height:2px;background:rgba(255,255,255,.05);z-index:8}
+.prog i{display:block;height:100%;background:#E8873C;font-style:normal}
+.sub{position:relative;height:34px;flex:none;display:flex;align-items:center;gap:0;padding:0 16px;background:#0F1012;border-bottom:1px solid rgba(255,255,255,.07);z-index:7}
+.sb{padding:0 12px;height:34px;display:flex;align-items:center;font:400 10.5px 'IBM Plex Mono',monospace;letter-spacing:.06em;color:#6E6A63}
 .sb-on{color:#E4E2DC;box-shadow:inset 0 -2px 0 #E8873C}
 .body{position:relative;flex:1;display:flex;min-height:0}
-.rail{width:238px;flex:none;box-sizing:border-box;background:#0F1012;border-right:1px solid rgba(255,255,255,.07);display:flex;flex-direction:column}
+.rail{width:272px;flex:none;box-sizing:border-box;background:#0F1012;border-right:1px solid rgba(255,255,255,.07);display:flex;flex-direction:column}
 .rail-h{padding:14px 14px 9px;display:flex;align-items:center;gap:8px;font:600 9px 'IBM Plex Mono',monospace;letter-spacing:.19em;color:#585550}
 .rail-h div{flex:1;height:1px;background:rgba(255,255,255,.07)}
 .filt{margin:0 12px 12px;padding:6px 9px;background:#141617;border:1px solid rgba(255,255,255,.07);font:400 11px 'IBM Plex Mono',monospace;color:#585550}
-.tr{display:flex;align-items:center;gap:9px;padding:6px 9px;color:#9B968D;font-size:12.5px}
+.tr{display:flex;align-items:center;gap:9px;padding:5px 9px;color:#9B968D;font-size:12.5px;white-space:nowrap;overflow:hidden;position:relative}
+/* A tree row is one line, always. Wrapping makes rows uneven, doubles the
+   height of exactly the pages with the most descriptive titles, and destroys
+   the scan-down-the-left-edge reading the rail exists for. The title is the
+   only thing that may shrink; markers and counts keep their width. */
+.tr-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Row actions are hover-only. Shown always they are two glyphs of noise on
+   every row, competing with the titles for the same 238px. */
+.tr-a{display:flex;gap:2px;opacity:0;flex:none}
+.tr:hover .tr-a{opacity:1}
 .tr-n{font:400 9px 'IBM Plex Mono',monospace;color:#4B4842}
 .tr-on{position:relative;padding-left:24px;background:#181A1B;color:#E4E2DC;font-weight:500}
 .tr-on i{position:absolute;left:0;top:4px;bottom:4px;width:2px;background:#E8873C}
 .wal{margin-top:auto;padding:12px 14px;border-top:1px solid rgba(255,255,255,.07);display:flex;flex-direction:column;gap:6px}
-.insp{width:296px;flex:none;box-sizing:border-box;background:#0F1012;border-left:1px solid rgba(255,255,255,.07);display:flex;flex-direction:column}
+.insp{width:332px;flex:none;box-sizing:border-box;background:#0F1012;border-left:1px solid rgba(255,255,255,.07);display:flex;flex-direction:column}
 .insp-t{display:flex;gap:2px;padding:11px 12px 0;border-bottom:1px solid rgba(255,255,255,.07)}
 .it{padding:6px 8px 8px;font:600 9.5px 'IBM Plex Mono',monospace;letter-spacing:.1em;color:#6E6A63;white-space:nowrap}
 .it-on{color:#E4E2DC;border-bottom:2px solid #E8873C;margin-bottom:-1px}
 .status{position:relative;height:27px;flex:none;display:flex;align-items:center;gap:16px;padding:0 16px;background:#111214;border-top:1px solid rgba(255,255,255,.07);font:400 10px 'IBM Plex Mono',monospace;color:#585550;z-index:7}
 .lbl{font:600 8.5px 'IBM Plex Mono',monospace;letter-spacing:.19em;color:#585550}
+/* ── document outline (editor rail) ──────────────────────────────────────
+   The page tree answers "where am I in the workspace". This answers "where
+   am I in the page", which is a different question and deserves its own
+   section rather than a tab you have to go find. */
+.oi{display:flex;align-items:baseline;gap:8px;padding:3px 9px;white-space:nowrap;overflow:hidden;cursor:pointer}
+.oi:hover{background:#181A1B}
+.oi-m{font:600 8px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#4B4842;width:16px;flex:none}
+.oi-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:12px;color:#9B968D}
+.oi-h1 .oi-t{color:#E4E2DC;font-weight:500}
+.oi-h2{padding-left:20px}
+.oi-h3{padding-left:32px}
+.oi-on{background:#181A1B;box-shadow:inset 2px 0 0 #E8873C}
+.oi-on .oi-t{color:#E4E2DC}
+/* Non-heading blocks worth navigating to — a callout or a code fence is a
+   landmark even though it has no title. Marked by kind, not by number. */
+.oi-k{font:400 8px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#585550;width:16px;flex:none}
+.oi-code .oi-k{color:#7AA8E8}
+.oi-callout .oi-k{color:#E0A34E}
+.oi-aside .oi-k{color:#6E6A63}
 .h1{font-family:Spectral,serif;font-weight:500;letter-spacing:-.015em;color:#EFEDE7;margin:0}
 .mono{font-family:'IBM Plex Mono',monospace}
 .row{display:flex;align-items:center;gap:14px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.07)}
@@ -724,6 +754,21 @@ a{color:#E8873C}a:hover{color:#F2A264}
         <div class="tr"><span class="tr-n">06</span>Research</div>
         <div class="tr"><span class="tr-n">07</span>Archive<span style="margin-left:auto" class="tr-n">88</span></div>
       </div>
+      <!-- Hierarchy of the CONTENT, not of the workspace. Kept in the rail
+           rather than behind an inspector tab because it is navigation, and
+           navigation belongs on the side you navigate from. -->
+      <div style="margin:14px 0 0;padding:12px 0 0;border-top:1px solid rgba(255,255,255,.07)">
+        <div class="rail-h" style="padding-top:0">IN THIS PAGE<div></div><span style="color:#585550">9</span></div>
+        <div style="display:flex;flex-direction:column;gap:1px;padding:0 6px">
+          <div class="oi oi-h1"><span class="oi-m">H1</span><span class="oi-t">Sync protocol notes</span></div>
+          <div class="oi oi-h2 oi-on"><span class="oi-m">H2</span><span class="oi-t">Ordering</span></div>
+          <div class="oi oi-h3"><span class="oi-m">H3</span><span class="oi-t">Lamport, then actor id</span></div>
+          <div class="oi oi-code" style="padding-left:20px"><span class="oi-k">&lt;/&gt;</span><span class="oi-t">op.rs · rust</span></div>
+          <div class="oi oi-callout" style="padding-left:20px"><span class="oi-k">◌</span><span class="oi-t">A parser that cannot advance…</span></div>
+          <div class="oi oi-h2"><span class="oi-m">H2</span><span class="oi-t">Why the IR exists</span></div>
+          <div class="oi oi-aside" style="padding-left:20px"><span class="oi-k">▎</span><span class="oi-t">Bytes read is the only figure…</span></div>
+        </div>
+      </div>
       <div class="wal">
         <span class="lbl">LOCAL WAL</span>
         <div style="display:flex;align-items:flex-end;gap:2px;height:22px"><div style="flex:1;height:40%;background:rgba(63,207,168,.3)"></div><div style="flex:1;height:70%;background:rgba(63,207,168,.35)"></div><div style="flex:1;height:55%;background:rgba(63,207,168,.3)"></div><div style="flex:1;height:90%;background:rgba(63,207,168,.5)"></div><div style="flex:1;height:35%;background:rgba(63,207,168,.3)"></div><div style="flex:1;height:62%;background:rgba(63,207,168,.35)"></div><div style="flex:1;height:100%;background:#3FCFA8"></div></div>
@@ -743,12 +788,55 @@ a{color:#E8873C}a:hover{color:#F2A264}
           <span class="tg">crdt</span><span class="tg">convergence</span><span class="tg">lamport</span><span class="tg">block-id</span>
           <span class="tg" style="border-style:dashed;color:#585550">＋</span>
         </div>
+        <!-- Every block kind in RFC-001 §1's grammar, drawn once. This is the
+             reference the editor is checked against: if a kind is not here, it
+             has no agreed appearance and the implementation is guessing.
+
+             The rule the list kinds exist to state: a list ROW is not a
+             paragraph. Paragraphs are separated (16px); rows are a set and sit
+             tight (5px), with the marker in a fixed gutter so text aligns
+             regardless of marker width. Getting this wrong strands every row
+             on its own island. -->
         <div style="font-family:Spectral,serif;font-size:17px;line-height:1.68;color:#D2CFC8">
-          <p style="margin:0 0 16px">Every op carries a stable block id, so peers merge concurrent edits without a conflict dialog. Ordering resolves by comparing Lamport timestamps, then actor id as a tiebreak — see <span style="color:#A98CE8;text-decoration:underline;text-decoration-color:rgba(169,140,232,.45);text-underline-offset:3px">[[Block model]]</span>.</p>
+          <p style="margin:0 0 16px">Every op carries a stable block id, so peers merge concurrent edits without a conflict dialog — see <span class="pl">[[Block model]]</span>. Marks travel with the text: <b style="font-weight:600;color:#EFEDE7">bold</b>, <i>italic</i>, <s style="text-decoration-color:rgba(255,255,255,.4)">struck</s>, <code style="font:400 .86em 'IBM Plex Mono',monospace;background:rgba(255,255,255,.05);padding:1px 5px;color:#C3BFB7">inline code</code>, an <a href="#" style="color:#A98CE8;text-decoration:underline;text-decoration-color:rgba(169,140,232,.45);text-underline-offset:3px">external link</a>, and <mark style="background:rgba(232,135,60,.22);color:#EFEDE7;padding:0 2px">a highlight</mark>.</p>
+
           <div style="position:relative">
             <div style="position:absolute;left:-30px;top:2px;color:#E0A34E;font-size:12px">◌</div>
             <p style="margin:0 0 16px">A rope is the wrong primitive here. What we want is a tree of addressable nodes, each one a <span style="text-decoration:underline;text-decoration-style:dotted;text-decoration-thickness:1.5px;text-decoration-color:#E0A34E;text-underline-offset:3px">[[Rope internals]]</span> unit of intent<span class="caret" style="background:#A98CE8;margin:0 1px"></span><span style="font:600 8.5px Archivo,sans-serif;color:#0E0F10;background:#A98CE8;padding:1px 4px;vertical-align:.5em;margin-left:2px">ADA</span></p>
           </div>
+
+          <h2 style="font-family:Spectral,serif;font-weight:500;font-size:22px;letter-spacing:-.015em;color:#EFEDE7;margin:26px 0 12px">Heading two</h2>
+
+          <!-- Bulleted. Marker in a 22px gutter, rows 5px apart. -->
+          <div style="margin:0 0 16px">
+            <div style="display:flex;gap:0;padding:2px 0"><span style="width:22px;flex:none;color:#585550;font-size:15px;line-height:1.68">•</span><div style="flex:1">Concatenation and split become logarithmic</div></div>
+            <div style="display:flex;gap:0;padding:2px 0"><span style="width:22px;flex:none;color:#585550;font-size:15px;line-height:1.68">•</span><div style="flex:1">Index becomes worse, which is the trade</div></div>
+            <div style="display:flex;gap:0;padding:2px 0"><span style="width:22px;flex:none;color:#585550;font-size:15px;line-height:1.68">•</span><div style="flex:1">Nesting indents by one gutter, never by a tab<div style="display:flex;gap:0;padding:2px 0;margin-top:2px"><span style="width:22px;flex:none;color:#4B4842;font-size:15px">◦</span><div style="flex:1;color:#9B968D">a child row, one level in</div></div></div></div>
+          </div>
+
+          <!-- Numbered. Mono numerals, right-aligned so 9 and 10 line up. -->
+          <div style="margin:0 0 16px">
+            <div style="display:flex;padding:2px 0"><span class="mono" style="width:22px;flex:none;text-align:right;padding-right:9px;box-sizing:border-box;font-size:12px;color:#585550;line-height:1.95">1</span><div style="flex:1">Lexing — bytes to tokens</div></div>
+            <div style="display:flex;padding:2px 0"><span class="mono" style="width:22px;flex:none;text-align:right;padding-right:9px;box-sizing:border-box;font-size:12px;color:#585550;line-height:1.95">2</span><div style="flex:1">Parsing — tokens to a tree</div></div>
+            <div style="display:flex;padding:2px 0"><span class="mono" style="width:22px;flex:none;text-align:right;padding-right:9px;box-sizing:border-box;font-size:12px;color:#585550;line-height:1.95">3</span><div style="flex:1">Lowering — tree to IR</div></div>
+          </div>
+
+          <!-- Todo. A checked row is struck and dimmed: done is context, not
+               noise, so it stays legible rather than disappearing. -->
+          <div style="margin:0 0 16px">
+            <div style="display:flex;padding:2px 0"><span style="width:22px;flex:none;padding-top:5px"><span style="display:block;width:13px;height:13px;border:1px solid rgba(232,135,60,.55);background:rgba(232,135,60,.16);color:#E8873C;font:600 9px Archivo,sans-serif;text-align:center;line-height:12px">✓</span></span><div style="flex:1;color:#6E6A63;text-decoration:line-through;text-decoration-color:rgba(255,255,255,.22)">Handle unterminated strings</div></div>
+            <div style="display:flex;padding:2px 0"><span style="width:22px;flex:none;padding-top:5px"><span style="display:block;width:13px;height:13px;border:1px solid rgba(255,255,255,.18)"></span></span><div style="flex:1">Intern symbols instead of allocating</div></div>
+          </div>
+
+          <!-- Quote: a container. Its children sit INSIDE the rule. -->
+          <blockquote style="margin:0 0 16px;padding:2px 0 2px 17px;border-left:2px solid rgba(232,135,60,.5);color:#9B968D">The AST is not the parse tree. Conflating them is the fastest way to make a front end untestable.</blockquote>
+
+          <!-- Toggle: summary always visible, children indented under a hairline. -->
+          <div style="margin:0 0 16px">
+            <div style="display:flex;gap:9px;align-items:baseline"><span style="color:#6E6A63;font-size:11px;width:13px;flex:none">▾</span><div style="flex:1;color:#E4E2DC">What we do not do here</div></div>
+            <div style="margin:6px 0 0 22px;padding-left:15px;border-left:1px solid rgba(255,255,255,.07);color:#9B968D;font-size:16px">No SSA, no register allocation. Those belong to a back end.</div>
+          </div>
+
           <div style="border:1px solid rgba(255,255,255,.08);background:#111214;margin:0 0 16px">
             <div style="display:flex;align-items:center;gap:8px;padding:7px 11px;border-bottom:1px solid rgba(255,255,255,.07)"><span class="mono" style="font-size:9px;font-weight:500;letter-spacing:.14em;color:#6E6A63">RUST</span><span class="mono" style="font-size:9px;color:#4B4842">op.rs · 14–18</span></div>
             <pre style="margin:0;padding:12px 13px;font:400 12px/1.65 'IBM Plex Mono',monospace;color:#B3AFA7">enum Op {
@@ -756,15 +844,46 @@ a{color:#E8873C}a:hover{color:#F2A264}
   MoveBlock  { from: Path, to: Path },
 }</pre>
           </div>
-          <div style="display:flex;gap:11px;padding:11px 13px;border:1px solid rgba(125,158,201,.3);background:rgba(125,158,201,.07);margin:0 0 16px">
-            <span style="color:#7D9EC9;font-size:13px">✦</span>
-            <div style="flex:1;font-family:Archivo,sans-serif;font-size:12.5px;line-height:1.5;color:#9B968D">Assistant proposes splitting this block at “What we want” — <span style="color:#C3BFB7">2 ops, invertible</span>.</div>
-            <div style="display:flex;gap:6px;align-self:center"><span class="chip chip-s">APPLY</span><span class="mono" style="font-size:9px;font-weight:600;color:#585550;align-self:center">DISMISS</span></div>
+
+          <!-- Callout, all six tones. Tone is an enum in the model
+               (warn|note|info|tip|danger|success), NOT a colour name — the
+               hue is this file's decision, the tone is the document's. -->
+          <div style="display:flex;gap:11px;padding:11px 13px;border-left:2px solid #E0A34E;background:rgba(224,163,78,.06);margin:0 0 9px"><span style="color:#E0A34E;font-size:12px">◌</span><div style="flex:1;font-family:Archivo,sans-serif;font-size:12.5px;line-height:1.55;color:#9B968D">A parser that cannot advance past a malformed token will hang.</div></div>
+          <div style="display:flex;gap:11px;padding:11px 13px;border-left:2px solid #3FCFA8;background:rgba(63,207,168,.05);margin:0 0 9px"><span style="color:#3FCFA8;font-size:12px">✓</span><div style="flex:1;font-family:Archivo,sans-serif;font-size:12.5px;line-height:1.55;color:#9B968D">A lifetime annotation is never a runtime cost.</div></div>
+          <div style="display:flex;gap:11px;padding:11px 13px;border-left:2px solid #7D9EC9;background:rgba(125,158,201,.06);margin:0 0 16px"><span style="color:#7D9EC9;font-size:12px">✦</span><div style="flex:1;font-family:Archivo,sans-serif;font-size:12.5px;line-height:1.55;color:#9B968D">Assistant proposes splitting this block — <span style="color:#C3BFB7">2 ops, invertible</span>.</div><div style="display:flex;gap:6px;align-self:center"><span class="chip chip-s">APPLY</span><span class="mono" style="font-size:9px;font-weight:600;color:#585550;align-self:center">DISMISS</span></div></div>
+
+          <!-- Aside: a margin note. Sans and small, so it never reads as prose. -->
+          <div style="margin:0 0 16px;padding-left:15px;border-left:1px solid rgba(255,255,255,.13);font-family:Archivo,sans-serif;font-size:12px;line-height:1.6;color:#6E6A63">Bytes read is the only figure here that does not grow with the document.</div>
+
+          <!-- Image: no asset pipeline yet, so the placeholder states that
+               rather than showing a broken frame. -->
+          <div style="margin:0 0 16px;border:1px solid rgba(255,255,255,.09);background:#111214">
+            <div style="height:96px;display:flex;align-items:center;justify-content:center;color:#4B4842;font:400 10px 'IBM Plex Mono',monospace;letter-spacing:.14em;border-bottom:1px solid rgba(255,255,255,.07)">NO ASSET STORE YET</div>
+            <div style="padding:8px 11px;font-family:Archivo,sans-serif;font-size:11.5px;color:#6E6A63">The block tree, as drawn in RFC-001 §1</div>
           </div>
+
+          <hr style="border:0;border-top:1px solid rgba(255,255,255,.09);margin:22px 0">
+
           <p style="margin:0;color:#8C8880">Two people editing a tree apply operations to nodes, which converge.</p>
         </div>
-        <div style="position:absolute;left:-92px;top:272px;display:flex;align-items:center;gap:8px;padding:5px 9px;background:#181A1B;border:1px solid rgba(255,255,255,.12)">
-          <span style="font:600 10px Archivo,sans-serif">B</span><span style="font:400 10px Spectral,serif;font-style:italic">I</span><span class="mono" style="font-size:10px">&lt;&gt;</span><span style="width:1px;height:12px;background:rgba(255,255,255,.14)"></span><span class="mono" style="font-size:9px;font-weight:600;color:#E8873C">[[ ]]</span>
+
+        <!-- The marks strip, raised by a selection. Every mark the grammar
+             has, plus highlight swatches. Suppressed inside code blocks —
+             Code has no Spans, so offering bold there must be unreachable
+             rather than merely ignored. -->
+        <div style="position:absolute;left:-104px;top:300px;display:flex;align-items:center;gap:7px;padding:5px 9px;background:#181A1B;border:1px solid rgba(255,255,255,.12);box-shadow:0 24px 64px -16px rgba(0,0,0,.78)">
+          <span style="font:700 11px Archivo,sans-serif;color:#E4E2DC">B</span>
+          <span style="font:400 12px Spectral,serif;font-style:italic;color:#E4E2DC">I</span>
+          <span style="font:400 11px Archivo,sans-serif;color:#E4E2DC;text-decoration:line-through">S</span>
+          <span class="mono" style="font-size:10px;color:#E4E2DC">&lt;&gt;</span>
+          <span style="width:1px;height:13px;background:rgba(255,255,255,.14)"></span>
+          <span style="width:11px;height:11px;background:rgba(232,135,60,.4);border:1px solid rgba(232,135,60,.7)"></span>
+          <span style="width:11px;height:11px;background:rgba(63,207,168,.32)"></span>
+          <span style="width:11px;height:11px;background:rgba(169,140,232,.32)"></span>
+          <span style="width:11px;height:11px;background:rgba(125,158,201,.32)"></span>
+          <span style="width:1px;height:13px;background:rgba(255,255,255,.14)"></span>
+          <span class="mono" style="font-size:9.5px;color:#A98CE8">⌗</span>
+          <span class="mono" style="font-size:9px;font-weight:600;color:#E8873C">[[ ]]</span>
         </div>
       </div>
     </div>

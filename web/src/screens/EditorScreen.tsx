@@ -133,7 +133,16 @@ export function EditorScreen() {
       />
 
       <Body>
-        <PageTreeRail actorId={actorId} activePageId={id} />
+        <PageTreeRail
+          actorId={actorId}
+          activePageId={id}
+          blocks={collab.blocks}
+          onJumpToBlock={(blockId) => {
+            document
+              .querySelector(`[data-block-id="${blockId}"]`)
+              ?.scrollIntoView({ behavior: "smooth", block: "center" });
+          }}
+        />
 
         {activePage ? (
           <>

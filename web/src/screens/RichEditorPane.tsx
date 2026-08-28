@@ -307,6 +307,77 @@ export function RichEditorPane({
 
   const visibleBlocks = blocks.filter((b) => b.kind.tag !== "list" && !isHiddenByCollapsedToggle(b.id));
 
+  /** Direct children of id, in the flat array's own depth-first order. */
+  function childrenOf(id: string | null): BlockView[] {
+    return blocks.filter((b) => b.parent === id);
+  }
+
+  /** Container tags render their children INSIDE themselves. Everything else
+   *  is a leaf as far as layout is concerned, even if the grammar would let
+   *  it contain something. */
+  const CONTAINS = new Set(["quote", "callout", "aside", "toggle", "list", "list_item"]);
+
+  /**
+   * Renders one level of the block TREE, recursing into containers.
+   *
+   * This used to be a flat map over every block, which is why a callout
+   * rendered an empty editable with its own text as a sibling row beneath
+   * it: the parent/child relationship existed in the data and nowhere in
+   * the markup. The model is a tree; the render has to be one too.
+   */
+  function renderBlocks(parent: string | null): React.ReactNode {
+    return blocks
+      // Lists are kept here, unlike the old flat render which dropped them:
+      // a container that is filtered out cannot render the children that
+      // only it knows how to lay out.
+      .filter((b) => b.parent === parent && !isHiddenByCollapsedToggle(b.id))
+      .map((b) => {
+        const kids = CONTAINS.has(b.kind.tag) ? renderBlocks(b.id) : null;
+        return (
+          <BlockRow
+            childrenNodes={kids}
+            key={b.id}
+            block={b}
+            depth={depthOf(b.id)}
+            listContext={listContextOf(b)}
+            diagnostics={diagnosticsByBlock.get(b.id) ?? EMPTY_DIAGNOSTICS}
+            collapsed={collapsedToggles.has(b.id)}
+            onToggleCollapse={() =>
+              setCollapsedToggles((prev) => {
+                const next = new Set(prev);
+                if (next.has(b.id)) next.delete(b.id);
+                else next.add(b.id);
+                return next;
+              })
+            }
+            onToggleChecked={() => {
+              if (b.kind.tag === "list_item") setBlockKind(b.id, { tag: "list_item", checked: !b.kind.checked });
+            }}
+            onSetLanguage={(language) => setBlockKind(b.id, { tag: "code_block", language })}
+            disabled={state !== "open"}
+            registerRef={(el) => {
+              if (el) rowRefs.current.set(b.id, el);
+              else rowRefs.current.delete(b.id);
+            }}
+            onChangeText={(text) => handleChangeText(b, text)}
+            onEnter={() => handleEnter(b.id)}
+            onBackspaceEmpty={() => handleBackspaceEmpty(b.id)}
+            onSlashTrigger={(el, currentText) => handleSlashTrigger(b.id, el, currentText)}
+            onLinkQuery={(el, value) => handleLinkQuery(b.id, el, value)}
+            onInsertTrigger={(el) => handleInsertTrigger(b.id, el)}
+            onHandleClick={(el) => handleHandleClick(b.id, el)}
+            onCursorChange={(start, end) => (start === -1 ? setCursor(null, 0, 0) : setCursor(b.id, start, end))}
+            dragging={dragId === b.id}
+            dropZone={dropTarget?.id === b.id ? dropTarget.zone : null}
+            onDragStart={() => setDragId(b.id)}
+            onDragOver={(e) => handleDragOver(e, b.id)}
+            onDrop={() => handleDrop(b.id)}
+            onDragEnd={() => { setDragId(null); setDropTarget(null); }}
+          />
+        );
+      });
+  }
+
   function handleEnter(afterId: string) {
     // Enter continues a ListItem as a sibling under the same List, and
     // stays under whatever non-list container (Toggle/Callout/Aside/
@@ -547,47 +618,7 @@ export function RichEditorPane({
           {(page.tags ?? []).map((t) => <span key={t} className="tg">{t}</span>)}
         </div>
 
-        {visibleBlocks.map((b) => (
-          <BlockRow
-            key={b.id}
-            block={b}
-            depth={depthOf(b.id)}
-            listContext={listContextOf(b)}
-            diagnostics={diagnosticsByBlock.get(b.id) ?? EMPTY_DIAGNOSTICS}
-            collapsed={collapsedToggles.has(b.id)}
-            onToggleCollapse={() =>
-              setCollapsedToggles((prev) => {
-                const next = new Set(prev);
-                if (next.has(b.id)) next.delete(b.id);
-                else next.add(b.id);
-                return next;
-              })
-            }
-            onToggleChecked={() => {
-              if (b.kind.tag === "list_item") setBlockKind(b.id, { tag: "list_item", checked: !b.kind.checked });
-            }}
-            onSetLanguage={(language) => setBlockKind(b.id, { tag: "code_block", language })}
-            disabled={state !== "open"}
-            registerRef={(el) => {
-              if (el) rowRefs.current.set(b.id, el);
-              else rowRefs.current.delete(b.id);
-            }}
-            onChangeText={(text) => handleChangeText(b, text)}
-            onEnter={() => handleEnter(b.id)}
-            onBackspaceEmpty={() => handleBackspaceEmpty(b.id)}
-            onSlashTrigger={(el, currentText) => handleSlashTrigger(b.id, el, currentText)}
-            onLinkQuery={(el, value) => handleLinkQuery(b.id, el, value)}
-            onInsertTrigger={(el) => handleInsertTrigger(b.id, el)}
-            onHandleClick={(el) => handleHandleClick(b.id, el)}
-            onCursorChange={(start, end) => (start === -1 ? setCursor(null, 0, 0) : setCursor(b.id, start, end))}
-            dragging={dragId === b.id}
-            dropZone={dropTarget?.id === b.id ? dropTarget.zone : null}
-            onDragStart={() => setDragId(b.id)}
-            onDragOver={(e) => handleDragOver(e, b.id)}
-            onDrop={() => handleDrop(b.id)}
-            onDragEnd={() => { setDragId(null); setDropTarget(null); }}
-          />
-        ))}
+        {renderBlocks(null)}
 
         {kindMenu && (
           <>
@@ -806,6 +837,7 @@ function BlockRow({
   block,
   depth,
   listContext,
+  childrenNodes,
   diagnostics,
   collapsed,
   onToggleCollapse,
@@ -837,6 +869,10 @@ function BlockRow({
    * lists). null for every other kind, including List itself (which
    * never gets a row of its own). */
   listContext: { kind: "bulleted" | "numbered" | "todo"; index: number } | null;
+  /** Rendered children, for container kinds. They go INSIDE this block's own
+   *  box — a callout whose text sits beside it rather than within it is not
+   *  a callout, it is two blocks that happen to be adjacent. */
+  childrenNodes?: React.ReactNode;
   /** This block's own diagnostics (v2.3.0) — never empty-vs-absent
    * ambiguity, RichEditorPane always passes EMPTY_DIAGNOSTICS rather than
    * undefined. */
@@ -909,22 +945,40 @@ function BlockRow({
     // No upload/asset pipeline exists yet (RFC-001 §1, §10) — a labeled
     // placeholder standing in for what would otherwise be a broken <img>.
     body = (
-      <div style={{ border: "1px dashed var(--border, #999)", borderRadius: 6, padding: "24px 16px", textAlign: "center", color: "var(--muted, #888)" }}>
-        🖼 Image {block.kind.tag === "image" && block.kind.file_id ? `(${block.kind.file_id})` : "(no file yet — upload not implemented)"}
+      <div className="blk-image">
+        <div className="ph">NO ASSET STORE YET</div>
+        {block.text && <div className="cap">{block.text}</div>}
       </div>
     );
+  } else if (tag === "list") {
+    body = <div className="block-children">{childrenNodes}</div>;
+  } else if (tag === "quote") {
+    body = <blockquote className="blk-quote"><div className="block-children">{childrenNodes}</div></blockquote>;
   } else if (tag === "list_item") {
+    const checked = block.kind.tag === "list_item" && !!block.kind.checked;
     const prefix =
       listContext?.kind === "numbered" ? (
-        <span className="mono muted" style={{ minWidth: 20, textAlign: "right" }}>{listContext.index}.</span>
+        <span className="li-marker num">{listContext.index}</span>
       ) : listContext?.kind === "todo" ? (
-        <input type="checkbox" checked={block.kind.tag === "list_item" && !!block.kind.checked} onChange={onToggleChecked} disabled={disabled} />
+        <span className="li-marker">
+          <span
+            className={`li-check${checked ? " on" : ""}`}
+            role="checkbox"
+            aria-checked={checked}
+            onClick={disabled ? undefined : onToggleChecked}
+          >
+            ✓
+          </span>
+        </span>
       ) : (
-        <span className="muted">•</span>
+        // Depth decides the glyph, so a nested row reads as nested even when
+        // the indent alone is ambiguous.
+        <span className="li-marker">{depth > 1 ? "◦" : "•"}</span>
       );
     body = (
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+      <div className={`li-row${listContext?.kind === "todo" && checked ? " done" : ""}`}>
         {prefix}
+        <div className="li-body">
         <EditableTextBlock
           blockId={block.id}
           tag="p"
@@ -938,6 +992,8 @@ function BlockRow({
           onSlashTrigger={onSlashTrigger}
           onLinkQuery={onLinkQuery}
         />
+        {childrenNodes}
+        </div>
       </div>
     );
   } else if (tag === "toggle") {
@@ -963,43 +1019,17 @@ function BlockRow({
     );
   } else if (tag === "callout") {
     const tone = block.kind.tag === "callout" ? (block.kind.tone ?? "warn") : "warn";
+    const ICON: Record<string, string> = {
+      warn: "◌", danger: "◌", success: "✓", info: "✦", note: "✦", tip: "◆",
+    };
     body = (
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 8, borderLeft: `3px solid ${CALLOUT_TONE_COLOR[tone]}`, background: "rgba(128,128,128,0.06)", borderRadius: 4, padding: "8px 12px" }}>
-        <span style={{ marginTop: 2 }}>{(block.kind.tag === "callout" && block.kind.icon) || "💡"}</span>
-        <EditableTextBlock
-          blockId={block.id}
-          tag="p"
-          text={block.text}
-          marks={block.marks}
-          disabled={disabled}
-          registerRef={registerRef}
-          onChangeText={onChangeText}
-          onEnter={onEnter}
-          onBackspaceEmpty={onBackspaceEmpty}
-          onSlashTrigger={onSlashTrigger}
-          onLinkQuery={onLinkQuery}
-        />
+      <div className={`blk-callout tone-${tone}`}>
+        <span className="ic">{(block.kind.tag === "callout" && block.kind.icon) || ICON[tone] || "◌"}</span>
+        <div className="block-children" style={{ flex: 1 }}>{childrenNodes}</div>
       </div>
     );
   } else if (tag === "aside") {
-    body = (
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 8, background: "rgba(128,128,128,0.06)", borderRadius: 4, padding: "8px 12px" }}>
-        <span style={{ marginTop: 2 }}>{block.kind.tag === "aside" ? block.kind.emoji : "💬"}</span>
-        <EditableTextBlock
-          blockId={block.id}
-          tag="p"
-          text={block.text}
-          marks={block.marks}
-          disabled={disabled}
-          registerRef={registerRef}
-          onChangeText={onChangeText}
-          onEnter={onEnter}
-          onBackspaceEmpty={onBackspaceEmpty}
-          onSlashTrigger={onSlashTrigger}
-          onLinkQuery={onLinkQuery}
-        />
-      </div>
-    );
+    body = <div className="blk-aside"><div className="block-children">{childrenNodes}</div></div>;
   } else {
     body = (
       <EditableTextBlock
@@ -1021,11 +1051,11 @@ function BlockRow({
   return (
     <div
       className="block-row"
+      data-nested={depth > 0 ? "true" : undefined}
       onDragOver={onDragOver}
       onDrop={(e) => { e.preventDefault(); onDrop(); }}
       style={{
         opacity: dragging ? 0.4 : 1,
-        marginLeft: depth * 24,
         borderTop: dropZone === "before" ? "2px solid var(--violet)" : "2px solid transparent",
         borderBottom: dropZone === "after" ? "2px solid var(--violet)" : "2px solid transparent",
       }}
