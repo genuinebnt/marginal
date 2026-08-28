@@ -136,8 +136,10 @@ services/                       backend, kept separate from web/; each has its o
 ├── document-service/
 │   ├── go.mod, cmd/main.go
 │   ├── cmd/wasm/                GOOS=js GOARCH=wasm entrypoint — the editor core's browser build; imports marginal/documentcore
+│   ├── cmd/diffwasm/, cmd/triewasm/  every wasm entrypoint lives here by convention (graphwasm too) — textdiff/trie themselves have nothing to do with pages
 │   ├── genproto/documentv1/     generated from proto/document.proto — NOT under internal/, so api-gateway (a separate module) can import the client stub across module boundaries
-│   └── internal/blockproj/      materialises docs.blocks by consuming collab.ops_flushed (NATS) — document-service's read model, never a second writer
+│   ├── internal/blockproj/      materialises docs.blocks by consuming collab.ops_flushed (NATS) — document-service's read model, never a second writer
+│   ├── internal/search/, internal/bktree/, internal/trie/  v2.5.0's SearchService — full-text search (Postgres FTS), fuzzy title matching (a real BK-tree), and `[[` autocomplete (a real prefix trie, wasm-compiled); bktree/trie stay module-local (single consumer, unlike graphalgo/textdiff)
 ├── auth-service/                genproto/authv1/ at the same non-internal path, same reason; internal/outbox publishes auth.user_registered
 ├── collaboration-service/       session.Session now holds a documentcore.Page per page (block ops) alongside the flat doctext.Text (character ops within a block's own content) — see docs/architecture/DATA_MODEL.md § collab.ops → docs.blocks; internal/palimpsest (v2.4.0) is a second, parallel replay over the same confirmed ops, scoped to one block, for a real tombstoned character history GET .../palimpsest exposes
 ├── notification-service/        internal/notify — NATS consumer + Postgres + GET /notifications; see the Services table above
@@ -149,10 +151,11 @@ web/                            frontend — React 19 + TS SPA (Vite); real scre
 ├── src/document-core/           types.ts (wire types) + wasm.ts (the JSON bridge) + history.ts (thin undo/redo bookkeeping)
 ├── src/graph-core/               useForceLayout.ts + wasm.ts — cmd/graphwasm's browser build (v2.2.0's seeded layout + Voronoi/Delaunay), the same JSON-bridge pattern as document-core/
 ├── src/diff-core/                wasm.ts — cmd/diffwasm's browser build (v2.4.0's real LCS diff), the same JSON-bridge pattern; tokenizeWords/tokenizeChars are the only non-Go code here (splitting text into tokens, not diffing them)
-├── src/api/                     REST clients — auth.ts, pages.ts, graph.ts, diagnostics.ts, notifications.ts, one shared http.ts (pages.md/auth.md §2's error shape); history.ts (v2.4.0) calls collaboration-service directly (never through api-gateway, same convention its WebSocket already uses) via its own collabFetch, not http.ts's apiFetch — collaboration-service's plain-HTTP debug endpoints return a plain-text error body, not the {error, message} JSON shape apiFetch expects
+├── src/trie-core/                wasm.ts — cmd/triewasm's browser build (v2.5.0's `[[` autocomplete), the same JSON-bridge pattern; used directly by RichEditorPane, not its own screen
+├── src/api/                     REST clients — auth.ts, pages.ts, graph.ts, diagnostics.ts, search.ts, notifications.ts, one shared http.ts (pages.md/auth.md §2's error shape); history.ts (v2.4.0) calls collaboration-service directly (never through api-gateway, same convention its WebSocket already uses) via its own collabFetch, not http.ts's apiFetch — collaboration-service's plain-HTTP debug endpoints return a plain-text error body, not the {error, message} JSON shape apiFetch expects
 ├── src/auth/AuthContext.tsx     token storage (localStorage) + the current actor id every other client derives from the JWT `sub` claim
 ├── src/collab/                  useCollabPage.ts — the block-aware WebSocket client for docs/api/collaboration.md (internal/pageop's wire shape), plus the browser's query-param actor-auth workaround; blockKind.ts (BlockKind ⇄ <select> key mapping)
-├── src/screens/                 AuthPage, DashboardScreen (page grid + create), EditorScreen (rail + RichEditorPane + InspectorRail), GraphScreen + GraphAlgorithmsScreen (v2.2.0), FactsScreen (v2.3.0), HistoryScreen + TraceScreen + DiffScreen (v2.4.0)
+├── src/screens/                 AuthPage, DashboardScreen (page grid + create), EditorScreen (rail + RichEditorPane + InspectorRail), GraphScreen + GraphAlgorithmsScreen (v2.2.0), FactsScreen (v2.3.0), HistoryScreen + TraceScreen + DiffScreen (v2.4.0), SearchScreen (v2.5.0)
 └── src/design-system.css        copied from docs/ui-mockups/mockup.css — "if a mockup and a doc disagree, the doc wins," so this stays a copy, not a reinterpretation
 
 testdata/document-core/*.json   golden test vectors for services/documentcore — Go today, Rust later
@@ -222,6 +225,7 @@ open indefinitely (no idle-eviction), matching this repo's demo scale.
 | `docs/api/pages.md` | Pages contract — gRPC `PageService` §1 + the gateway's REST mapping §2 |
 | `docs/api/graph.md` | Graph Explorer contract — gRPC `GraphService` §1 + the gateway's REST mapping §2 (`v2.2.0`) |
 | `docs/api/diagnostics.md` | Diagnostics/facts contract — gRPC `DiagnosticsService` §1 + the gateway's REST mapping §2 (`v2.3.0`) |
+| `docs/api/search.md` | Search contract — gRPC `SearchService` §1 + the gateway's REST mapping §2 (`v2.5.0`) |
 | `docs/api/auth.md` | Auth contract — gRPC `AuthService` §1 + the gateway's REST mapping §2 |
 | `docs/api/collaboration.md` | Collaboration contract — the WebSocket wire format (one contract, no REST projection) |
 | `docs/architecture/ARCHITECTURE.md` | Service map, event bus, request flows |

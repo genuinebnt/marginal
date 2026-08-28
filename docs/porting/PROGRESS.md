@@ -3486,3 +3486,90 @@ detection) are all real, backed by `Session.RestoreTo`,
 `internal/palimpsest`, and `marginal/textdiff`, never a second
 implementation in TypeScript. Per `RELEASES.md`'s order, `v2.5.0`
 (Search & Backlinks) is next.
+
+## 2026-08-28 — v2.5.0: Search & Backlinks, complete
+
+Branch `v2.5.0`, cut from `master` after tagging `v2.4.0-release`.
+Backlinks already existed (`blockproj`'s `docs.page_links`, `v1.0.0`) —
+this phase adds the search surface `search.html` needed: real full-text
+search, real fuzzy title matching, and real `[[` autocomplete.
+
+**Migration `00004_search_vectors.sql`** — `GENERATED ALWAYS ... STORED`
+`tsvector` columns on `docs.pages` (title) and `docs.blocks` (block
+text), each GIN-indexed. Postgres FTS standing in for Tantivy at this
+repo's scope (`RELEASES.md`'s own "an in-process, embeddable-index
+choice, not a new service") — transactionally consistent with the row
+it indexes, unlike the BK-tree title index below.
+
+**`SearchService`** (new gRPC surface on `document-service`'s existing
+deployable, same precedent `GraphService` already set — a query surface
+over tables `document-service` already owns, not a new store with its
+own scaling profile). `internal/search.PostgresRepo.SearchFullText` runs
+two `websearch_to_tsquery` queries (title, block text — `ts_headline`
+builds the `<b>...</b>` snippet directly) and merges by `ts_rank`.
+`internal/bktree` is a real Burkhard-Keller tree over Levenshtein
+distance (ROADMAP.md's own "prunes by the triangle inequality in a
+metric space"), carried forward from the original Rust-track roadmap's
+Phase 7 — its Levenshtein-automaton-over-a-trie sibling was NOT (that
+solves the same problem for a large shared-prefix vocabulary, which FTS
+already covers here). A `rapid` property test (100 random vocabularies)
+pins the actual correctness law a metric-tree's pruning must satisfy:
+querying the tree must return exactly what a brute-force linear scan
+would. `SuggestTitles` reads an in-memory `TitleIndex` rebuilt on its
+own 30s cadence — `search.html`'s own admitted "the index has its own
+rebuild cadence and may lag the write path," stated plainly. 5 real-
+Postgres integration tests, 3 end-to-end `Server` tests. `searchrest`
+(api-gateway) + `docs/api/search.md`. Commit `8404cd1`.
+
+Live-verified against the real running stack: `GET /search?q=performance`
+found the real seeded "Performance budget" page; `GET /search?q=architecture`
+found both a title match and a real block match with its real
+`<b>Architecture</b>` snippet inside a `[[link]]`; `GET /search/suggest`
+correctly returned nothing for a substring typo (`bktree` matches whole
+titles, not words — the query has to be close to the *whole* title,
+same as typing a typo of the actual title) and correctly found
+"Performance budget" for a real whole-title typo at distance 2.
+
+**`SearchScreen.tsx`** (`search.html`): debounced live search, a real
+"did you mean" fallback when a query comes back empty, and a real kind
+filter (title match vs. block mention, computed from each hit's own
+`block_id`) — no scope filter, since this repo has one flat workspace
+and there's nothing yet for it to filter by. Snippets render via a small
+`<b>`-tag splitter into real React text nodes, not
+`dangerouslySetInnerHTML` — `ts_headline` does not escape the
+non-matched side of a snippet, so treating the whole string as trusted
+HTML would be a real (self-)XSS surface for anyone who ever typed a "<"
+into their own notes. Commit `5301708`.
+
+**`internal/trie` + `cmd/triewasm`** — RELEASES.md's own "`[[link]]`/
+command autocomplete via a trie while typing": a plain prefix tree over
+page titles, compiled to wasm (interactive, per-keystroke response,
+same reasoning `cmd/graphwasm`/`cmd/diffwasm` already established).
+Stateless per call like every other wasm bridge — the full title list
+and the prefix are passed on every keystroke, matching this repo's
+demo-scale tradeoff of "rebuild is cheap, staleness after a rename is
+not a risk worth a second invalidation channel." A real bug (title
+insertion walked the ORIGINAL-case runes while only the query was
+lowercased, so a capitalized title was unreachable by a lowercase query)
+was caught by the package's own unit tests before it ever reached wasm.
+7 trie tests, 3 wasm-bridge integration tests. Commit `3b63d6a`.
+
+Wired into `RichEditorPane`: typing `[[` opens a floating dropdown (the
+same `.slash` popup "/" already uses), filtered on every keystroke by a
+real trie query over `GetLinkGraph`'s own title list (already-existing
+data — no new endpoint just for this). `handleLinkQuery`, not the child
+`EditableTextBlock`, owns the open/update/close decision, since staying
+open needs re-validating the `[[query` shape (the opening bracket pair
+still intact, no closing `]]`/newline typed) on every subsequent
+keystroke, not just the triggering moment. Commit `5311f99`.
+
+Full backend suite (unit + real-Postgres integration, both
+`document-service` and `api-gateway`) green; frontend `tsc --noEmit`/
+`oxlint`/Vitest all clean; every new frontend module confirmed served by
+the live Vite dev server with no transform errors.
+
+**`v2.5.0` (Search & Backlinks) is complete and shipped** — real
+full-text search, real BK-tree fuzzy title matching, and a real `[[`
+autocomplete are all backed by `internal/search`/`internal/bktree`/
+`internal/trie`, never a second implementation in TypeScript. Per
+`RELEASES.md`'s order, `v2.6.0` (Page-Delete Saga) is next.
