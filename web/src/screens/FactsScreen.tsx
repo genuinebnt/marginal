@@ -1,270 +1,346 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
-import { useAuth } from "../auth/AuthContext";
-import { getFacts, getStaleReferences, type FactsGraph, type FactReference } from "../api/diagnostics";
-import { getPage, type Page } from "../api/pages";
-
 /**
- * docs/ui-mockups/v2/index.html § 10 FACTS, made real (v2.3.0): the dependency DAG, the
- * cycle check, and the duplicate-name detection are diagnostics-service's
- * own `internal/facts` (graphalgo.DetectCycle/ForwardReachable, unchanged
- * — the same algorithms graph-algorithms.html already runs, applied to
- * fact names instead of pages), read via GET /facts. This file draws what
- * Go already computed and fetches GET /facts/{name}/stale on demand — it
- * never re-derives the DAG or the propagation itself (ADR-012).
+ * docs/ui-mockups/v2/index.html § 10 FACTS, ported.
  *
- * The mockup lets you type `{{name}}` inline and see the graph react
- * instantly, its "Introduce a cycle"/"Duplicate a definition" buttons
- * mutating a hard-coded JS object — its whole page is a client-side
- * simulation. Here there's a real page tree behind every definition and
- * reference, so those specific buttons have no honest equivalent (there's
- * no way to "introduce a cycle" without actually writing ops to a real
- * page) and are dropped rather than faked; editing happens in the real
- * editor (open the page, add or change a `{{define name = value}}` block
- * or a `{{name}}` reference) — this screen is the read side: what the
- * fact graph looks like right now, and which references go stale if a
- * given definition changes.
+ * A second graph, and a different one from the link graph: its nodes are
+ * DEFINITIONS, not pages. Everything shown is computed by
+ * diagnostics-service's internal/facts — the dependency DAG, cycle rejection
+ * by three-colour DFS (the same graphalgo.DetectCycle the Graph Explorer
+ * uses, reused rather than reimplemented), duplicate detection by hash
+ * collision, and forward reachability for "what goes stale when this
+ * changes".
+ *
+ * The screen's argument, kept from the mockup: the interesting number is
+ * nodes VISITED against nodes that exist. That ratio is the entire case for
+ * incremental invalidation over full recompute — if editing one definition
+ * walked all of them, there would be no reason to build a DAG at all.
  */
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../auth/AuthContext";
+import {
+  getFacts, getStaleReferences, type FactReference, type FactsGraph,
+} from "../api/diagnostics";
+import {
+  Body, Inspector, Label, Readout, Rule, Screen, StatusBar, SubBar, SubItem, TopBar, num,
+} from "../shell/Chrome";
+
 export function FactsScreen() {
-  const { session, logout } = useAuth();
-  if (!session) throw new Error("FactsScreen requires an authenticated session");
-  const { actorId } = session;
+  const { session } = useAuth();
+  const actorId = session?.actorId ?? null;
+  const navigate = useNavigate();
 
   const [facts, setFacts] = useState<FactsGraph | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [pagesById, setPagesById] = useState<Map<string, Page>>(new Map());
   const [selected, setSelected] = useState<string | null>(null);
   const [stale, setStale] = useState<FactReference[] | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0);
+  const [filter, setFilter] = useState("");
+  const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
-    setFacts(null);
-    setError(null);
-    getFacts(actorId)
-      .then((f) => {
-        if (!cancelled) setFacts(f);
-      })
-      .catch(() => {
-        if (!cancelled) setError("Couldn't load the fact graph.");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [actorId, refreshKey]);
+    if (!actorId) return;
+    getFacts(actorId).then(setFacts).catch((e) => setErr(String(e)));
+  }, [actorId]);
 
-  // Resolve every page id this graph mentions to a real title, one
-  // GetPage call each — the set is small at this repo's demo scale, and
-  // this is the read path every other screen already uses (pages.ts).
-  useEffect(() => {
-    if (!facts) return;
-    const ids = new Set<string>();
-    for (const d of facts.definitions) ids.add(d.page_id);
-    for (const r of facts.references) ids.add(r.page_id);
-    const missing = [...ids].filter((id) => !pagesById.has(id));
-    if (missing.length === 0) return;
-    let cancelled = false;
-    Promise.all(missing.map((id) => getPage(actorId, id).catch(() => null))).then((pages) => {
-      if (cancelled) return;
-      setPagesById((prev) => {
-        const next = new Map(prev);
-        for (const p of pages) if (p) next.set(p.id, p);
-        return next;
-      });
-    });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [facts, actorId]);
+  const defs = facts?.definitions ?? [];
+  // The effective selection falls back to the first definition, so the
+  // screen shows something on load. The stale query must key off THAT, not
+  // off `selected` — keying off the raw state meant the default selection
+  // never ran its query and the panel read 0 for a term with two referrers.
+  const sel = selected ?? defs[0]?.name ?? null;
 
   useEffect(() => {
-    if (!selected) {
-      setStale(null);
-      return;
-    }
-    let cancelled = false;
-    getStaleReferences(actorId, selected).then((refs) => {
-      if (!cancelled) setStale(refs);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [actorId, selected]);
+    if (!actorId || !sel) { setStale(null); return; }
+    getStaleReferences(actorId, sel).then(setStale).catch(() => setStale(null));
+  }, [actorId, sel]);
+  const selDef = defs.find((d) => d.name === sel) ?? null;
 
-  const duplicateNames = useMemo(() => new Set(facts?.duplicates.map((d) => d.name) ?? []), [facts]);
-  const cycleNames = useMemo(() => new Set(facts?.cycle ?? []), [facts]);
-  const staleKeys = useMemo(() => new Set(stale?.map((r) => `${r.page_id}:${r.block_id}`) ?? []), [stale]);
+  const shown = useMemo(
+    () => defs.filter((d) => d.name.toLowerCase().includes(filter.toLowerCase())),
+    [defs, filter],
+  );
 
-  const referencesByName = useMemo(() => {
-    const m = new Map<string, FactReference[]>();
-    for (const r of facts?.references ?? []) {
-      const list = m.get(r.name) ?? [];
-      list.push(r);
-      m.set(r.name, list);
-    }
-    return m;
-  }, [facts]);
+  /** Which definitions are referenced at all — an unused one is a real find. */
+  const referenced = useMemo(
+    () => new Set((facts?.references ?? []).map((r) => r.name)),
+    [facts],
+  );
 
-  const titleOf = (pageId: string) => pagesById.get(pageId)?.title || "Untitled";
+  const dupeNames = useMemo(
+    () => new Set((facts?.duplicates ?? []).map((d) => d.name)),
+    [facts],
+  );
+
+  const visited = stale?.length ?? 0;
+  const exist = defs.length;
+  const neverWalked = exist > 0 ? Math.round(((exist - visited) / exist) * 100) : 0;
 
   return (
-    <div className="app">
-      <header className="topbar">
-        <Link to="/pages" className="brand" style={{ textDecoration: "none" }}>
-          <span className="mark"></span>Marginal
-        </Link>
-        <nav className="nav">
-          <Link to="/graph">Graph</Link>
-          <Link to="/graph/algorithms">Algorithms</Link>
-          <Link to="/facts" aria-current="page">Facts</Link>
-        </nav>
-        <div className="crumb">Workspace · <b>Facts</b></div>
-        <div className="spacer"></div>
-        <span className={`pill ${cycleNames.size ? "amber" : "teal"}`}>
-          {cycleNames.size ? `${cycleNames.size} in a cycle` : "no cycles"}
-        </span>
-        <button className="btn" onClick={logout}>Sign out</button>
-      </header>
+    <Screen>
+      <TopBar
+        crumb={<>lab / <b>facts</b></>}
+        readouts={
+          <>
+            <Readout
+              k="VISITED"
+              v={`${num(visited)} / ${num(exist)}`}
+              tone={visited > 0 ? "#E0A34E" : undefined}
+            />
+            <Readout
+              k="CYCLES"
+              v={num(facts?.cycle.length ?? 0)}
+              tone={(facts?.cycle.length ?? 0) === 0 ? "#3FCFA8" : "#E0A34E"}
+            />
+          </>
+        }
+      />
 
-      <div className="fbar">
-        <span className="label">Try it</span>
-        <span className="muted" style={{ fontSize: 12 }}>
-          Open a page and write <code>{"{{define name = value}}"}</code> as a block's whole text to
-          define a fact, then <code>{"{{name}}"}</code> anywhere else to reference it — every
-          definition change here is a real edit through the real editor, not a client-side toy.
-        </span>
-        <span className="spacer"></span>
-        <button className="btn" onClick={() => setRefreshKey((k) => k + 1)}>↻ Refresh</button>
-      </div>
+      <SubBar>
+        <SubItem on>DEFINITIONS</SubItem>
+        <SubItem>DEPENDENCY DAG</SubItem>
+        <SubItem>DIRTY PROPAGATION</SubItem>
+        <div style={{ flex: 1 }} />
+        <SubItem tone="#585550">edit a definition and only what is downstream is marked</SubItem>
+      </SubBar>
 
-      <div className="fsplit">
-        <main className="pane">
-          {error && <div className="note" style={{ maxWidth: "none" }}>{error}</div>}
-          {!facts && !error && <div className="muted">Loading the fact graph…</div>}
-
-          {facts && (
-            <>
-              <div className="label" style={{ marginBottom: 9 }}>Definitions · {facts.definitions.length}</div>
-              {facts.definitions.length === 0 && (
-                <div className="note" style={{ maxWidth: "38rem" }}>
-                  No facts defined yet. Write <code>{"{{define name = value}}"}</code> as a
-                  block's entire text on any page to define one, then reference it elsewhere
-                  with <code>{"{{name}}"}</code>.
-                </div>
-              )}
-              {facts.definitions.map((d) => {
-                const uses = referencesByName.get(d.name)?.length ?? 0;
-                const isDup = duplicateNames.has(d.name);
-                const inCycle = cycleNames.has(d.name);
-                return (
-                  <div key={`${d.name}-${d.block_id}`} className={`fact-card ${isDup || inCycle ? "warn" : ""}`.trim()}>
-                    <div className="fname">
-                      {"{{" + d.name + "}}"}
-                      {isDup && <span className="pill amber" style={{ marginLeft: 6 }}>defined twice</span>}
-                      {inCycle && <span className="pill amber" style={{ marginLeft: 6 }}>in a cycle</span>}
-                    </div>
-                    <div className="fval">{d.value}</div>
-                    <div className="fmeta">
-                      <Link to={`/pages/${d.page_id}`}>{titleOf(d.page_id)}</Link>
-                      <span>{uses} reference{uses === 1 ? "" : "s"} downstream</span>
-                      <button className="btn" style={{ marginLeft: "auto" }} onClick={() => setSelected(d.name)}>
-                        {selected === d.name ? "Checking…" : "Check downstream"}
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-
-              {facts.duplicates.length > 0 && (
-                <div className="panel-section" style={{ marginTop: 20 }}>
-                  <div className="label" style={{ marginBottom: 9 }}>Duplicate names · {facts.duplicates.length}</div>
-                  <div className="note" style={{ maxWidth: "38rem" }}>
-                    A hash-lookup collision, not a satisfiability problem — each of these
-                    names has more than one definition, so none of them resolve.
-                  </div>
-                  {facts.duplicates.map((group) => (
-                    <div key={group.name} className="note" style={{ maxWidth: "38rem" }}>
-                      <b>{"{{" + group.name + "}}"}</b> is defined {group.definitions.length} times:{" "}
-                      {group.definitions.map((d, i) => (
-                        <span key={`${d.page_id}-${d.block_id}`}>
-                          {i > 0 && ", "}
-                          <Link to={`/pages/${d.page_id}`}>{titleOf(d.page_id)}</Link> = {d.value}
-                        </span>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <div className="label" style={{ margin: "24px 0 9px" }}>Pages that reference them · {facts.references.length}</div>
-              {facts.references.length === 0 && (
-                <div className="muted" style={{ padding: "8px 0", fontSize: 12.5 }}>
-                  No page references a fact yet.
-                </div>
-              )}
-              {facts.references.map((r, i) => {
-                const isStale = staleKeys.has(`${r.page_id}:${r.block_id}`);
-                return (
-                  <div key={`${r.name}-${r.page_id}-${i}`} className={`doc-card ${isStale ? "stale" : ""}`.trim()}>
-                    <Link to={`/pages/${r.page_id}`} className="dtitle">{titleOf(r.page_id)}</Link>
-                    <div className="dbody">
-                      references <span className="ref">{"{{" + r.name + "}}"}</span>
-                    </div>
-                    <div className="dfoot">
-                      {isStale ? (
-                        <span className="pill amber">stale — reviewed change upstream</span>
-                      ) : (
-                        <span className="pill teal">up to date</span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-
-              <div className="note" style={{ maxWidth: "38rem" }}>
-                <b>Really real.</b> The dependency DAG, the topological dirty propagation, the cycle
-                check, and the duplicate detection all run in Go (<code>internal/facts</code>). Note
-                what is <i>not</i> happening: nothing tries to read a number out of prose — the edge
-                exists because someone wrote <code>{"{{p99-latency}}"}</code>, which is why this is
-                exact instead of approximately right.
-              </div>
-            </>
-          )}
-        </main>
-
-        <aside className="rail right" style={{ width: "auto" }}>
-          <div className="rail-head"><span className="label">Invalidation</span></div>
-          <div className="panel-body">
-            <div className="metric2"><span>Definitions</span><span className="v">{facts?.definitions.length ?? "—"}</span></div>
-            <div className="metric2"><span>References</span><span className="v">{facts?.references.length ?? "—"}</span></div>
-            <div className="metric2"><span>Duplicate names</span><span className={`v ${duplicateNames.size ? "warn" : ""}`.trim()}>{facts?.duplicates.length ?? "—"}</span></div>
-            <div className="metric2"><span>Cycle</span><span className={`v ${cycleNames.size ? "warn" : ""}`.trim()}>{facts?.cycle.length ? facts.cycle.join(" → ") : "none"}</span></div>
-
-            {selected && (
-              <div className="panel-section" style={{ marginTop: 20 }}>
-                <div className="panel-h">Downstream of {"{{" + selected + "}}"}</div>
-                <div className="note" style={{ margin: 0, maxWidth: "none" }}>
-                  {stale === null
-                    ? "Walking the dependency DAG…"
-                    : stale.length === 0
-                      ? "Nothing downstream — safe to change without a stale reference anywhere."
-                      : `${stale.length} reference${stale.length === 1 ? "" : "s"} would go stale, highlighted amber on the left.`}
-                </div>
+      <Body>
+        <div className="rail" style={{ width: 262 }}>
+          <div className="rail-h">
+            DEFINED TERMS<div /><span style={{ color: "#585550" }}>{exist}</span>
+          </div>
+          <input
+            className="filt"
+            placeholder="filter…"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            style={{ outline: "none", width: "calc(100% - 24px)" }}
+          />
+          <div style={{ display: "flex", flexDirection: "column", gap: 1, padding: "0 8px", overflowY: "auto", flex: 1 }}>
+            {shown.length === 0 && (
+              <div style={{ padding: 8, fontSize: 11.5, color: "#585550" }}>
+                {exist === 0
+                  ? "No definitions yet. A fact is a {{name}} defined once and transcluded elsewhere."
+                  : "Nothing matches."}
               </div>
             )}
+            {shown.map((d) => {
+              const unused = !referenced.has(d.name);
+              const dupe = dupeNames.has(d.name);
+              return (
+                <div
+                  key={d.name}
+                  className={`tr${d.name === sel ? " tr-on" : ""}`}
+                  style={{ cursor: "pointer", ...(unused ? { color: "#585550" } : {}), ...(dupe ? { color: "#E0A34E" } : {}) }}
+                  onClick={() => setSelected(d.name)}
+                >
+                  {d.name === sel && <i />}
+                  {d.name}
+                  {dupe && (
+                    <span style={{ marginLeft: "auto", font: "400 8.5px 'IBM Plex Mono',monospace" }}>
+                      DUPLICATE
+                    </span>
+                  )}
+                  {!dupe && unused && (
+                    <span style={{
+                      marginLeft: "auto",
+                      font: "400 8.5px 'IBM Plex Mono',monospace",
+                      color: "#4B4842",
+                    }}>
+                      UNUSED
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <div className="wal">
+            <Label>LAST EDIT COST</Label>
+            <div className="mono" style={{ fontSize: 10.5, lineHeight: 1.8, color: "#8C8880" }}>
+              visited&nbsp;&nbsp;{num(visited)}<br />
+              exist&nbsp;&nbsp;&nbsp;&nbsp;{num(exist)}<br />
+              <span style={{ color: neverWalked > 50 ? "#3FCFA8" : "#E0A34E" }}>
+                {neverWalked}% never walked
+              </span>
+            </div>
+          </div>
+        </div>
 
-            <div className="panel-section" style={{ marginTop: 20 }}>
-              <div className="panel-h">Why not 2-SAT</div>
-              <div className="note" style={{ margin: 0, maxWidth: "none" }}>
-                With explicit <code>{"{{name}}"}</code> facts, a contradiction is two
-                definitions of one key — a hash lookup, not a satisfiability problem
-                (<code>ROADMAP.md</code> § Fact dependency graph).
+        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          <div style={{ padding: "26px 34px", borderBottom: "1px solid rgba(255,255,255,.07)" }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 12 }}>
+              <span className="mono" style={{
+                fontSize: 9, fontWeight: 600, letterSpacing: ".2em", color: "#E8873C",
+              }}>
+                DEFINITION
+              </span>
+              <h1 className="h1" style={{ fontSize: 23 }}>
+                {sel ? `{{${sel}}}` : "no definitions"}
+              </h1>
+              <div style={{ flex: 1 }} />
+              {selDef && (
+                <span
+                  className="chip"
+                  style={{ cursor: "pointer" }}
+                  onClick={() => navigate(`/pages/${selDef.page_id}`)}
+                >
+                  OPEN SOURCE PAGE
+                </span>
+              )}
+            </div>
+            {selDef ? (
+              <div style={{
+                fontFamily: "Spectral,serif", fontSize: 17, lineHeight: 1.68, color: "#D2CFC8",
+                borderLeft: "2px solid #E8873C", background: "rgba(232,135,60,.05)",
+                padding: "13px 17px",
+              }}>
+                {selDef.value}
+              </div>
+            ) : (
+              <div style={{ fontSize: 12.5, color: "#585550", lineHeight: 1.7, maxWidth: 620 }}>
+                A fact is a named definition written once and transcluded wherever it is
+                needed. Nothing defines one yet, so the DAG has no nodes — which is a real
+                empty state, not a failure to load.
+              </div>
+            )}
+          </div>
+
+          <div style={{ padding: "22px 34px", flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: 18 }}>
+            <div>
+              <Label style={{ display: "block", marginBottom: 11 }}>
+                WHAT GOES STALE IF THIS CHANGES · {num(visited)}
+              </Label>
+              {visited === 0 && (
+                <div style={{ fontSize: 11.5, color: "#585550", lineHeight: 1.6 }}>
+                  Nothing transcludes this yet. Editing it walks no edges at all — which is the
+                  cheapest possible edit, and the reason the cost is measured rather than assumed.
+                </div>
+              )}
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                {(stale ?? []).map((r, i) => (
+                  <div
+                    key={`${r.page_id}-${r.block_id}-${i}`}
+                    className="row"
+                    style={{ padding: "9px 0", cursor: "pointer" }}
+                    onClick={() => navigate(`/pages/${r.page_id}`)}
+                  >
+                    <span style={{ color: "#E0A34E", fontSize: 10 }}>◌</span>
+                    <span style={{ flex: 1, fontSize: 12.5, color: "#D2CFC8" }}>
+                      transcludes {`{{${r.name}}}`}
+                    </span>
+                    <span className="mono" style={{ fontSize: 10, color: "#585550" }}>
+                      block {r.block_id.slice(0, 4)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ marginTop: "auto", paddingTop: 22, borderTop: "1px solid rgba(255,255,255,.07)",
+                          display: "grid", gridTemplateColumns: "1fr 1fr 1.1fr", gap: 26 }}>
+              <div>
+                <Label style={{ display: "block", marginBottom: 11 }}>CYCLES</Label>
+                {(facts?.cycle.length ?? 0) === 0 ? (
+                  <div style={{ fontSize: 11.5, color: "#8C8880", lineHeight: 1.6 }}>
+                    <span style={{ color: "#3FCFA8" }}>✓</span> None. Three-colour DFS —
+                    a visited set alone answers "seen before", not "on the current path".
+                  </div>
+                ) : (
+                  <div className="mono" style={{ fontSize: 10.5, color: "#E0A34E", lineHeight: 1.8 }}>
+                    {facts!.cycle.join(" → ")}
+                  </div>
+                )}
+              </div>
+              <div>
+                <Label style={{ display: "block", marginBottom: 11 }}>DUPLICATES</Label>
+                {(facts?.duplicates.length ?? 0) === 0 ? (
+                  <div style={{ fontSize: 11.5, color: "#8C8880", lineHeight: 1.6 }}>
+                    <span style={{ color: "#3FCFA8" }}>✓</span> Every name defined once.
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {facts!.duplicates.map((d) => (
+                      <div key={d.name} style={{ fontSize: 11.5, color: "#E0A34E" }}>
+                        {`{{${d.name}}}`}
+                        <span className="mono" style={{ color: "#585550", marginLeft: 6, fontSize: 10 }}>
+                          ×{d.definitions.length}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div>
+                <Label style={{ display: "block", marginBottom: 10 }}>WHY A DAG AT ALL</Label>
+                <div style={{ fontSize: 11.5, lineHeight: 1.7, color: "#8C8880" }}>
+                  The counter is nodes <i>visited</i> against nodes that exist. If editing one
+                  definition walked all of them, the graph would be costing more than it saves —
+                  the ratio is the whole argument for incremental invalidation, so it is measured
+                  rather than asserted.
+                </div>
               </div>
             </div>
           </div>
-        </aside>
-      </div>
-    </div>
+        </div>
+
+        <Inspector
+          tabs={[{ id: "refs", label: "REFERENCES" }, { id: "cost", label: "COST" }]}
+          active="refs"
+        >
+          <Label>DEFINED IN</Label>
+          {selDef ? (
+            <div
+              style={{ fontSize: 12, color: "#D2CFC8", cursor: "pointer" }}
+              onClick={() => navigate(`/pages/${selDef.page_id}`)}
+            >
+              block {selDef.block_id.slice(0, 8)}
+            </div>
+          ) : (
+            <span style={{ fontSize: 11.5, color: "#585550" }}>—</span>
+          )}
+
+          <Rule />
+          <Label>ALL REFERENCES · {num(facts?.references.length ?? 0)}</Label>
+          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+            {(facts?.references ?? []).slice(0, 12).map((r, i) => (
+              <div
+                key={i}
+                style={{ display: "flex", gap: 8, fontSize: 11.5, cursor: "pointer" }}
+                onClick={() => navigate(`/pages/${r.page_id}`)}
+              >
+                <span style={{ flex: 1, color: r.name === sel ? "#E4E2DC" : "#8C8880" }}>
+                  {`{{${r.name}}}`}
+                </span>
+                <span className="mono" style={{ fontSize: 9.5, color: "#585550" }}>
+                  {r.block_id.slice(0, 4)}
+                </span>
+              </div>
+            ))}
+            {(facts?.references.length ?? 0) === 0 && (
+              <span style={{ fontSize: 11.5, color: "#585550", lineHeight: 1.6 }}>
+                No transclusions anywhere yet.
+              </span>
+            )}
+          </div>
+
+          <Rule />
+          <Label>UNUSED · {num(defs.filter((d) => !referenced.has(d.name)).length)}</Label>
+          <div style={{ fontSize: 11, lineHeight: 1.6, color: "#585550" }}>
+            A definition nothing transcludes still costs nothing to keep — it is a note, not
+            dead code. Reported so it can be found, not so it can be swept up.
+          </div>
+        </Inspector>
+      </Body>
+
+      <StatusBar
+        route="/facts"
+        mechanism="dependency DAG · topological dirty propagation"
+        state={
+          err
+            ? "facts unavailable"
+            : `${num(exist)} defined · ${neverWalked}% never walked`
+        }
+        healthy={!err && (facts?.cycle.length ?? 0) === 0}
+      />
+    </Screen>
   );
 }
+
+export default FactsScreen;
