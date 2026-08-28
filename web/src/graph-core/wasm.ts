@@ -20,6 +20,7 @@ interface GraphWasmExports {
   graphSeedPositions(reqJson: string): WasmResult;
   graphLayoutTick(reqJson: string): WasmResult;
   graphTerritory(reqJson: string): WasmResult;
+  graphHulls(reqJson: string): WasmResult;
 }
 
 interface GoRuntime {
@@ -138,4 +139,34 @@ export async function layoutTick(
 export async function territory(sites: Site[], bounds: Rect): Promise<TerritoryResult> {
   const api = await loadGraphCore();
   return unwrap<TerritoryResult>(api.graphTerritory(JSON.stringify({ sites, bounds })));
+}
+
+/** One settled node position, tagged with the group it belongs to. */
+export interface HullPoint {
+  group: string;
+  x: number;
+  y: number;
+}
+
+export interface Hull {
+  group: string;
+  points: Array<{ x: number; y: number }>;
+}
+
+/**
+ * Convex hull per group — § 07's background territory polygons.
+ *
+ * Deliberately not `territory()` above, which is Voronoi: Voronoi partitions
+ * the WHOLE plane between sites, so it answers "which page is nearest to this
+ * pixel" and would hand empty space to whichever page happens to border it.
+ * A hull covers only where a topic's pages actually are, and topics may
+ * overlap — which is itself the finding, since two overlapping hulls are two
+ * topics whose pages are interleaved.
+ *
+ * The geometry is graphalgo.Territories in Go; this is only the bridge.
+ */
+export async function hulls(points: HullPoint[], pad = 26): Promise<Hull[]> {
+  const api = await loadGraphCore();
+  const out = unwrap<{ hulls: Hull[] }>(api.graphHulls(JSON.stringify({ points, pad })));
+  return out.hulls;
 }

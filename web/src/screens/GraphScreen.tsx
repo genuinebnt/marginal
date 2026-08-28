@@ -22,6 +22,7 @@ import { getTopics, type Topic } from "../api/topics";
 import { listPages } from "../api/pages";
 import { useAuth } from "../auth/AuthContext";
 import { useForceLayout } from "../graph-core/useForceLayout";
+import { hulls as computeHulls, type Hull } from "../graph-core/wasm";
 import {
   Body, Inspector, Label, Readout, Rule, Screen, StatusBar, SubBar, SubItem,
   TopBar, TopicChip, TOPIC_HEX, num,
@@ -44,6 +45,11 @@ export function GraphScreen() {
   const [selected, setSelected] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
+  // Territory polygons — one convex hull per topic over the settled
+  // positions, computed in Go (graphalgo.Territories) via wasm. Recomputed
+  // when the layout changes, not per frame: a hull over a still-moving
+  // simulation is a shape nobody can read.
+  const [territories, setTerritories] = useState<Hull[]>([]);
 
   useEffect(() => {
     if (!actorId) return;
@@ -106,11 +112,23 @@ export function GraphScreen() {
     const minX = Math.min(...xs), maxX = Math.max(...xs);
     const minY = Math.min(...ys), maxY = Math.max(...ys);
     // Padding leaves room for labels, which extend right of every node.
-    const padX = 150, padY = 60;
+    const padX = 150, padY = 74;
     const s = Math.min((W - padX * 2) / Math.max(maxX - minX, 1),
                        (H - padY * 2) / Math.max(maxY - minY, 1));
     return { s, dx: padX - minX * s, dy: padY - minY * s };
   }, [nodes]);
+
+  useEffect(() => {
+    if (nodes.length === 0 || topicOf.size === 0) { setTerritories([]); return; }
+    const pts = nodes.map((n) => ({
+      group: topicOf.get(n.id) ?? "",
+      x: n.x * fit.s + fit.dx,
+      y: n.y * fit.s + fit.dy,
+    }));
+    let cancelled = false;
+    computeHulls(pts).then((h) => { if (!cancelled) setTerritories(h); }).catch(() => setTerritories([]));
+    return () => { cancelled = true; };
+  }, [nodes, topicOf, fit]);
 
   const pos = (id: string) => {
     const n = nodes.find((v) => v.id === id);
@@ -156,6 +174,18 @@ export function GraphScreen() {
             onMouseUp={endDrag}
             onMouseLeave={endDrag}
           >
+            {/* Territories behind everything. Colour is the topic's own, at
+                the wash alpha the design system uses for coloured regions —
+                a fill any stronger competes with the nodes it contains. */}
+            <g>
+              {territories.map((h) => {
+                if (h.points.length < 3) return null;
+                const hex = TOPIC_HEX[h.group] ?? "#6E6A63";
+                const d = h.points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x} ${p.y}`).join(" ") + " Z";
+                return <path key={h.group} d={d} fill={`${hex}0A`} stroke={`${hex}2E`} strokeWidth="1" />;
+              })}
+            </g>
+
             {/* Edges under nodes, at the mockup's own alpha. */}
             <g stroke="rgba(255,255,255,.09)" strokeWidth="1">
               {edges.map((e, i) => {
