@@ -3686,3 +3686,124 @@ teeth.
 
 **Next:** `v2.6.0` (Page-Delete Saga), unchanged. Reconciling
 `design-system.css` against V2's palette is the other known-open item.
+
+---
+
+## 2026-08-28 — `v2.6.0` saga + `v2.7.0` classification (backend)
+
+Scope set by the user mid-session: *"build enough backend to have at least
+a few screens feel full, then completely start UI from scratch."* So this
+is deliberately not the whole of either release — it is the backend that
+gives the new UI something true to draw.
+
+### The correction the saga work turned on
+
+`docs/api/pages.md` had said since `v1.0.0` that a saga "can't
+meaningfully coordinate with participants that don't exist, so it isn't
+attempted here." The premise was right — `search-service` and
+`history-service` are out of scope, and `diagnostics-service` is
+stateless with nothing to invalidate. The conclusion was wrong: it
+overlooked `collaboration-service`, which holds a live rope and an op log
+over the page being deleted. Purging rows out from under it is exactly
+the failure a saga prevents. `ARCHITECTURE.md` §5 now carries the
+reduced-but-real flow beside the eleven-service diagram (`0713948`).
+
+### Saga (`5bee770`, `e4d080e`)
+
+`docs.page_deletions` holds progress, which `docs.pages` structurally
+cannot: `lifecycle_state` says what a page *is*, not how far a delete
+got. Progress belongs to the operation — own retry count, and once the
+page is purged the row is history rather than state. Keeping it off
+`docs.pages` also stops the table the editor blocks on from widening for
+state almost every row has no use for.
+
+`steps_done TEXT[]`, appended one name at a time; the sweeper resumes at
+the first name **not** present. Six steps. Two design calls worth
+re-reading before changing anything:
+
+- **`embeddings_purged` and `blobs_released` are real steps**, not TODOs.
+  No vector store until `v4.4.0`, no object store until `v4.2.0`, so they
+  complete immediately and report `not_applicable`. Omitting them means
+  the step list silently changes shape when `v4` lands; faking work means
+  the trash screen reports progress that never happened.
+- **`search_index` is a real step that currently does nothing**, and is
+  deliberately **not** marked not-applicable. `search_vector` is
+  `GENERATED ALWAYS … STORED`, so it goes with the row — but the index
+  exists, so calling it n/a would be a lie. It keeps its slot for the day
+  FTS stops being a generated column.
+
+Appending a step **reopens completed sagas**, on purpose: a page deleted
+before `v4.4.0` genuinely does have embeddings to purge once embeddings
+exist. Pinned by a test so a later release can't quietly "fix" it.
+
+The sweeper is a poller rather than an in-process retry after a failed
+step — a retry loop only survives the process that started it, and the
+case this exists for is the one where that process died. Claim and work
+share one transaction so `FOR UPDATE SKIP LOCKED` actually holds.
+
+Waiting on the ack is **not** a retry: `ErrAwaitingAck` leaves the saga in
+flight without bumping `attempts`, so that counter reads as instability
+rather than latency. The ack times out into *proceeding*, never failing —
+forward-only means a silent `collaboration-service` delays a purge, not
+blocks one.
+
+`docs.outbox` is `document-service`'s first (it had only ever consumed
+`collab.ops_flushed`). Column-for-column identical to `collab.outbox` on
+purpose: `marginal/outboxpoll` plugs in per-service *queries*, not
+per-service *shapes*, so an extra column would fork that contract.
+
+### Classification (`95efa96`, `04bb58e`, `27b38a9`)
+
+Two tables, and the split is a modelling claim rather than a styling one.
+A **topic** is singular, owned, indexed — it clusters the graph, colours a
+node, scopes similarity search. A **tag** is free-form and many — it
+facets search, never boosts rank, never picks a hue. Collapsing them
+gives you folders: a page genuinely about two things has to lie about
+one, and every consumer has to guess which label was load-bearing.
+
+`color_key` stores a key, never a hex value — the palette belongs to
+`DESIGN_GUIDELINES.md` §3.4. The `CHECK` fixes the set at five, which is
+also why the five topics are seeded in the migration: a table starting
+empty would let the first write pick a name the design system has no hue
+for. `docs.page_tags` has no id and no `tags` table — a tag has no
+properties beyond its own text, so a lookup table buys renaming a string
+at the cost of a join on every read.
+
+`topic_id` is nullable because **untopiced is a real state** the UI
+reports and offers to fix, not a gap to backfill with a guess.
+
+`GetPage` carries topic and tags: a topic chip is drawn wherever a page
+title is, so a caller holding the page but not its topic holds an
+incomplete page. `normalizeTag` lowercases and trims (` CRDT ` → `crdt`)
+but **rejects internal whitespace**, which is almost always two tags typed
+as one.
+
+Verified with real gRPC calls against the running stack, not unit tests —
+including the bad writes (unknown colour key, mixed-case tag, `"two
+words"`), each confirmed rejected by actually attempting it.
+
+Seeded through the API, never SQL (`scripts/seed-classification.sh`): 25
+pages across all five topics, **3 left untopiced on purpose**, and `crdt`
+spanning two topics so § 10b's "a tag that lives in three topics is doing
+real work" has something true to draw.
+
+### Known-open, stated rather than implied
+
+- **The saga's NATS half is not wired.** `Runner.released` is an injected
+  callback with no producer, so `StepSessionsReleased` times out into
+  proceeding after 2 min rather than genuinely coordinating. The
+  `docs.page_deleted` publish, the `collaboration-service` consumer, and
+  the `collab.page_released` ack are all still to build.
+- **`PreviewDelete`/`ListTrash`/`RestorePage` are declared in the proto
+  and unimplemented.** Their queries exist (`ListTrash`, `CountTrash`,
+  `RestorePageAndSubtree`, `ClearPageDeletion`); only the handlers are
+  missing. Deferred deliberately until the trash screen exists and its
+  needs are known.
+- **No REST mapping yet** for any `v2.6.0`/`v2.7.0` RPC — `api-gateway` is
+  untouched, so none of this is browser-reachable.
+
+**Next:** the UI, rebuilt from scratch against `docs/ui-mockups/v2/` and
+its `DESIGN_GUIDELINES.md`. The existing frontend is V1 throughout —
+ground `#FAFAF8` vs `#0E0F10`, no ember token against 257 uses, three
+different type families, `6px` radius vs `0` — so a re-skin would fight
+every one of those.
