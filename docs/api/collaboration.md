@@ -437,3 +437,58 @@ never by re-running `apply()` itself: the algorithm lives in Go
 A malformed or corrupt log entry (one that fails to even replay) is a
 `500` — this endpoint has no partial-result contract; either the whole
 log replays cleanly and every step is reported, or none are.
+
+---
+
+## 6. `GET /collab/pages/{id}/blocks/{blockId}/palimpsest` — one block's whole character history
+
+Plain HTTP, read-only, same "give me the whole replay once" shape as §5
+— never touches a live `Session`. Backs `docs/ui-mockups/history.html`'s
+own central claim, made real: "the palimpsest paragraph is a real
+persistent sequence. Its whole edit history is a list of ops applied to
+a tombstoned char array: a delete sets a version stamp, it never
+removes. Reading version v is the filter `ins <= v < del`, so every
+version is addressable from ONE structure."
+
+```
+GET /collab/pages/{id}/blocks/{blockId}/palimpsest
+```
+
+```json
+{
+  "chars": [
+    { "rune": 104, "insert_step": 0, "insert_actor": "...", "delete_step": 1, "delete_actor": "..." },
+    { "rune": 105, "insert_step": 0, "insert_actor": "..." }
+  ],
+  "current_step": 1
+}
+```
+
+One entry per character this block's live text has *ever* held, oldest-
+inserted first, kept forever — never shrinks back down when something is
+deleted. `insert_step`/`delete_step` index into the same confirmed op
+log §5's `steps` array is indexed by, so a client drives one scrubber
+against both endpoints; `delete_step`/`delete_actor` are absent for a
+character still live right now. A client reads "this block's text as of
+step v" by filtering to `insert_step <= v && (no delete_step || v <
+delete_step)` — `internal/palimpsest.AtVersion`'s own job, real Go, not
+re-derived in the browser (`ADR-012`). Palimpsest mode (revealing the
+tombstones) renders every character regardless of `delete_step`, tinting
+a dead one by `delete_actor` and fading it by how long ago `delete_step`
+was relative to `current_step`.
+
+Neither `doctext.Text` nor its own `anchor.Log` already gives this for
+free — both exist to answer "what does this block look like right now,"
+and `anchor.Log`'s tombstoning keeps only enough to resolve an `Anchor`
+(identity and liveness), never the character's own value or who deleted
+it. `internal/palimpsest.Build` is a second, parallel replay over the
+same confirmed ops, scoped to one block — RFC-002's op log is still the
+only source of truth; this is a projection of it, the same "a projection,
+never a second writer" precedent `document-service`'s `blockproj` already
+sets, just read fresh per request instead of materialized.
+
+`chars` is `[]`, never `null`, for a block with no character-tier ops
+yet (matching `docs/api/diagnostics.md`'s own empty-array convention);
+`current_step` is `-1` in that case. An invalid page or block id is a
+`400`; a malformed confirmed log (fails to even replay) is a `500`, same
+partial-result contract as §5.

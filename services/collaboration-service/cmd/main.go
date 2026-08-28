@@ -108,6 +108,7 @@ func run() error {
 	})
 	mux.HandleFunc("/collab/pages/{id}", wsapi.NewHandler(manager, wsAcceptOptions()).ServeHTTP)
 	mux.HandleFunc("/collab/pages/{id}/trace", wsapi.NewTraceHandler(repo, serverActor))
+	mux.HandleFunc("/collab/pages/{id}/blocks/{blockId}/palimpsest", wsapi.NewPalimpsestHandler(repo, serverActor))
 
 	httpServer := &http.Server{Addr: httpAddr, Handler: mux}
 

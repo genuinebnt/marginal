@@ -93,6 +93,7 @@ func newTestServerWithRepo(t *testing.T, opts *websocket.AcceptOptions) (*httpte
 	mux := http.NewServeMux()
 	mux.HandleFunc("/collab/pages/{id}", NewHandler(mgr, opts).ServeHTTP)
 	mux.HandleFunc("/collab/pages/{id}/trace", NewTraceHandler(repo, "server-actor"))
+	mux.HandleFunc("/collab/pages/{id}/blocks/{blockId}/palimpsest", NewPalimpsestHandler(repo, "server-actor"))
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	return srv, mgr, repo
@@ -815,4 +816,60 @@ func TestRestoreOutOfRangeSendsAnErrorFrameNotAnInternalOne(t *testing.T) {
 	require.NoError(t, wsjson.Read(ctx, conn, &errFrame))
 	assert.Equal(t, "error", errFrame.Type)
 	assert.Contains(t, errFrame.Message, "out of range")
+}
+
+// TestPalimpsestEndpointKeepsDeletedCharactersOverTheRealWire is
+// docs/ui-mockups/history.html's "persistent sequence" claim, exercised
+// through the real wire: type "hi", delete it all, and GET
+// .../palimpsest must still report both characters, tombstoned — not
+// the empty block a plain live-text read (or GET .../trace's own final
+// snapshot) would show.
+func TestPalimpsestEndpointKeepsDeletedCharactersOverTheRealWire(t *testing.T) {
+	srv, _, repo := newTestServerWithRepo(t, nil)
+	pageID := uuid.Must(uuid.NewV7())
+	conn, closeConn := dial(t, srv, pageID, uuid.Must(uuid.NewV7()))
+	defer closeConn()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	var snap serverMessage
+	require.NoError(t, wsjson.Read(ctx, conn, &snap))
+
+	blockID := insertBlock(t, ctx, conn)
+	require.NoError(t, wsjson.Write(ctx, conn, clientMessage{Type: "op", Op: insertTextOp(blockID, "hi")}))
+	var ack serverMessage
+	require.NoError(t, wsjson.Read(ctx, conn, &ack))
+	require.NotNil(t, ack.Boundaries, "an InsertText into a non-empty block must report its new boundaries")
+
+	// Delete the whole current live text via Boundaries — the same
+	// "build a delete-the-whole-document op without knowing every
+	// individual ItemID" pattern doctext.Text.Boundaries' own doc
+	// comment describes, here deleting a whole block's text instead.
+	deleteAll, err := pageop.Marshal(pageop.Text{BlockID: blockID, Op: ops.DeleteText{Range: *ack.Boundaries}})
+	require.NoError(t, err)
+	require.NoError(t, wsjson.Write(ctx, conn, clientMessage{Type: "op", Op: deleteAll}))
+	require.NoError(t, wsjson.Read(ctx, conn, &ack))
+
+	require.Eventually(t, func() bool {
+		got, _ := repo.ListForPage(context.Background(), pageID)
+		return len(got) == 3
+	}, time.Second, time.Millisecond, "all three ops must flush before the palimpsest endpoint reads them")
+
+	resp, err := http.Get(srv.URL + "/collab/pages/" + pageID.String() + "/blocks/" + uuid.UUID(blockID).String() + "/palimpsest")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var body struct {
+		Chars []struct {
+			Rune       rune `json:"rune"`
+			DeleteStep *int `json:"delete_step"`
+		} `json:"chars"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	require.Len(t, body.Chars, 2, "both characters must survive the delete, tombstoned rather than removed")
+	assert.Equal(t, 'h', body.Chars[0].Rune)
+	assert.NotNil(t, body.Chars[0].DeleteStep, "'h' must be marked deleted")
+	assert.Equal(t, 'i', body.Chars[1].Rune)
+	assert.NotNil(t, body.Chars[1].DeleteStep, "'i' must be marked deleted too")
 }
