@@ -25,6 +25,29 @@ type pageJSON struct {
 	CreatedAt      string  `json:"created_at"`
 	UpdatedAt      string  `json:"updated_at"`
 	DeletedAt      *string `json:"deleted_at,omitempty"`
+	// v2.7.0. Topic is absent when the page is untopiced — a real state the
+	// UI reports, so `null` here is meaningful rather than missing data.
+	// Tags is always present, empty rather than null, so the client never
+	// has to special-case absence before iterating.
+	Topic *topicJSON `json:"topic"`
+	Tags  []string   `json:"tags"`
+}
+
+type topicJSON struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// A key into the design system's categorical ramp
+	// (DESIGN_GUIDELINES.md §3.4), never a hex value — the palette is the
+	// frontend's to own, and shipping colours over the wire would fork it.
+	ColorKey  string `json:"color_key"`
+	PageCount int32  `json:"page_count,omitempty"`
+}
+
+func toTopicJSON(t *documentv1.Topic) *topicJSON {
+	if t == nil {
+		return nil
+	}
+	return &topicJSON{ID: t.GetId(), Name: t.GetName(), ColorKey: t.GetColorKey(), PageCount: t.GetPageCount()}
 }
 
 func toPageJSON(p *documentv1.Page) pageJSON {
@@ -44,6 +67,11 @@ func toPageJSON(p *documentv1.Page) pageJSON {
 	if p.DeletedAt != nil {
 		s := formatTimestamp(p.DeletedAt)
 		out.DeletedAt = &s
+	}
+	out.Topic = toTopicJSON(p.GetTopic())
+	out.Tags = p.GetTags()
+	if out.Tags == nil {
+		out.Tags = []string{}
 	}
 	return out
 }

@@ -34,6 +34,15 @@ func (h *Handler) Mount(r chi.Router) {
 	r.Patch("/pages/{id}/parent", h.reparent)
 	r.Delete("/pages/{id}", h.delete)
 	r.Get("/pages/{id}/backlinks", h.backlinks)
+
+	// v2.7.0 classification. /topics and /tags are top-level because they
+	// are cross-page reads — nesting them under /pages would imply a page
+	// scope neither has.
+	r.Get("/topics", h.listTopics)
+	r.Get("/tags", h.tagFacets)
+	r.Put("/pages/{id}/topic", h.setTopic)
+	r.Post("/pages/{id}/tags", h.addTag)
+	r.Delete("/pages/{id}/tags/{tag}", h.removeTag)
 }
 
 type createPageRequest struct {
@@ -161,4 +170,97 @@ func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// --- v2.7.0 classification (docs/api/pages.md §2) -------------------------
+
+type setTopicRequest struct {
+	// Pointer so `{"topic_id": null}` — clearing the assignment back to
+	// untopiced — is distinguishable from an absent field. Untopiced is a
+	// real state, so clearing has to be expressible.
+	TopicID *string `json:"topic_id"`
+}
+
+type tagRequest struct {
+	Tag string `json:"tag"`
+}
+
+func (h *Handler) listTopics(w http.ResponseWriter, r *http.Request) {
+	resp, err := h.client.ListTopics(actorctx.FromRequest(r), &documentv1.ListTopicsRequest{})
+	if err != nil {
+		apierror.WriteGRPCStatus(w, err)
+		return
+	}
+	topics := make([]*topicJSON, 0, len(resp.GetTopics()))
+	for _, t := range resp.GetTopics() {
+		topics = append(topics, toTopicJSON(t))
+	}
+	apierror.WriteJSON(w, http.StatusOK, map[string]any{
+		"topics":          topics,
+		"untopiced_pages": resp.GetUntopicedPages(),
+	})
+}
+
+func (h *Handler) setTopic(w http.ResponseWriter, r *http.Request) {
+	var body setTopicRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		apierror.WriteBadRequest(w, "invalid JSON body")
+		return
+	}
+	page, err := h.client.SetPageTopic(actorctx.FromRequest(r), &documentv1.SetPageTopicRequest{
+		PageId: chi.URLParam(r, "id"), TopicId: body.TopicID,
+	})
+	if err != nil {
+		apierror.WriteGRPCStatus(w, err)
+		return
+	}
+	apierror.WriteJSON(w, http.StatusOK, toPageJSON(page))
+}
+
+func (h *Handler) addTag(w http.ResponseWriter, r *http.Request) {
+	var body tagRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		apierror.WriteBadRequest(w, "invalid JSON body")
+		return
+	}
+	page, err := h.client.AddPageTag(actorctx.FromRequest(r), &documentv1.AddPageTagRequest{
+		PageId: chi.URLParam(r, "id"), Tag: body.Tag,
+	})
+	if err != nil {
+		apierror.WriteGRPCStatus(w, err)
+		return
+	}
+	apierror.WriteJSON(w, http.StatusOK, toPageJSON(page))
+}
+
+// The tag travels in the path rather than a body: DELETE with a body is
+// poorly supported by intermediaries and some fetch stacks, and a tag is
+// already constrained to lowercase with no whitespace, so it is path-safe.
+func (h *Handler) removeTag(w http.ResponseWriter, r *http.Request) {
+	page, err := h.client.RemovePageTag(actorctx.FromRequest(r), &documentv1.RemovePageTagRequest{
+		PageId: chi.URLParam(r, "id"), Tag: chi.URLParam(r, "tag"),
+	})
+	if err != nil {
+		apierror.WriteGRPCStatus(w, err)
+		return
+	}
+	apierror.WriteJSON(w, http.StatusOK, toPageJSON(page))
+}
+
+func (h *Handler) tagFacets(w http.ResponseWriter, r *http.Request) {
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	resp, err := h.client.ListTagFacets(actorctx.FromRequest(r), &documentv1.ListTagFacetsRequest{
+		Limit: int32(limit),
+	})
+	if err != nil {
+		apierror.WriteGRPCStatus(w, err)
+		return
+	}
+	facets := make([]map[string]any, 0, len(resp.GetFacets()))
+	for _, f := range resp.GetFacets() {
+		facets = append(facets, map[string]any{
+			"tag": f.GetTag(), "page_count": f.GetPageCount(), "topics_spanned": f.GetTopicsSpanned(),
+		})
+	}
+	apierror.WriteJSON(w, http.StatusOK, map[string]any{"facets": facets})
 }
