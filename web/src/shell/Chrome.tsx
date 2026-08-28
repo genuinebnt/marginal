@@ -85,12 +85,18 @@ export function TopBar({
   now = new Date(),
   unread = 0,
   bare = false,
+  right,
 }: {
   crumb?: ReactNode;
   readouts?: ReactNode;
   now?: Date;
   unread?: number;
   bare?: boolean;
+  /** Trailing content for screens whose bar ends in something other than
+   *  the utility cluster — the pre-auth screens' register/log-in switch.
+   *  A prop rather than an overlay: .bar carries z-index 7, so anything
+   *  positioned over it from outside loses. */
+  right?: ReactNode;
 }) {
   const { pathname } = useLocation();
   return (
@@ -115,6 +121,7 @@ export function TopBar({
       {crumb && <span className="crumb">{crumb}</span>}
       <div style={{ flex: 1 }} />
       {readouts}
+      {right}
       {!bare && (
         <>
           <VRule />
