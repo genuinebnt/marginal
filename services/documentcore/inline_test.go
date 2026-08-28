@@ -123,3 +123,24 @@ func TestContentMarkVectors(t *testing.T) {
 		})
 	}
 }
+
+func TestHighlightMarkRoundTripsOnTheWire(t *testing.T) {
+	// Highlight has no payload, so its JSON is the tag alone — the case that
+	// would break if markKindJSON ever gained a required field.
+	k := NewHighlight()
+	data, err := json.Marshal(k)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"tag":"highlight"}`, string(data))
+
+	var back MarkKind
+	require.NoError(t, json.Unmarshal(data, &back))
+	require.Equal(t, k, back)
+}
+
+func TestHighlightIsItsOwnKind(t *testing.T) {
+	// It must not coalesce with, or be mistaken for, any other mark — a
+	// highlight over bold text is two marks, not one.
+	require.NotEqual(t, NewHighlight(), NewBold())
+	require.NotEqual(t, NewHighlight(), NewCode())
+	require.Equal(t, "highlight", NewHighlight().Tag.String())
+}

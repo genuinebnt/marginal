@@ -719,6 +719,17 @@ export function RichEditorPane({
             <button title="Italic" onMouseDown={(e) => e.preventDefault()} onClick={() => toggleMark({ tag: "italic" })}><i>I</i></button>
             <button title="Strikethrough" onMouseDown={(e) => e.preventDefault()} onClick={() => toggleMark({ tag: "strike" })}><s>S</s></button>
             <button title="Inline code" style={{ fontFamily: "var(--mono)", fontSize: 12 }} onMouseDown={(e) => e.preventDefault()} onClick={() => toggleMark({ tag: "code" })}>&lt;&gt;</button>
+            <span className="sep" />
+            <button
+              title="Highlight"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => toggleMark({ tag: "highlight" })}
+              style={{
+                width: 13, height: 13, padding: 0,
+                background: "rgba(232,135,60,.4)",
+                border: "1px solid rgba(232,135,60,.7)",
+              }}
+            />
             <span className="sep"></span>
             <button
               title="Link"

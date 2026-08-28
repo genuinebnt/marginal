@@ -12,7 +12,7 @@ import (
 )
 
 // MarkTag is a Mark's variant discriminant. RFC-001 §1: bold | italic |
-// strike | code | link(Url) | pagelink(PageId).
+// strike | code | link(Url) | pagelink(PageId) | highlight.
 type MarkTag uint8
 
 const (
@@ -22,6 +22,9 @@ const (
 	Code
 	Link
 	PageLink
+	// Highlight carries no colour on purpose (RFC-001 §1): a second colour
+	// would have to mean something, and nothing in the product says what.
+	Highlight
 )
 
 // MarkKind is the full identity of a mark, including its payload where one
@@ -55,12 +58,17 @@ func (t MarkTag) String() string {
 		return "code"
 	case Link:
 		return "link"
+	case Highlight:
+		return "highlight"
 	case PageLink:
 		return "pagelink"
 	default:
 		return fmt.Sprintf("MarkTag(%d)", uint8(t))
 	}
 }
+
+// NewHighlight marks a range as highlighted. No payload — see RFC-001 §1.
+func NewHighlight() MarkKind { return MarkKind{Tag: Highlight} }
 
 // markKindJSON is the wire shape: {"tag":"bold"}, {"tag":"link","url":"..."},
 // or {"tag":"pagelink","page":"<uuid>"} — unused fields omitted. Matches
@@ -95,6 +103,8 @@ func (k *MarkKind) UnmarshalJSON(data []byte) error {
 		*k = NewCode()
 	case "link":
 		*k = NewLink(raw.URL)
+	case "highlight":
+		*k = MarkKind{Tag: Highlight}
 	case "pagelink":
 		id, err := uuid.Parse(raw.Page)
 		if err != nil {

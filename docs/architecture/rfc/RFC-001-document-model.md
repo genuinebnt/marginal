@@ -87,6 +87,7 @@ Mark      ::= bold
             | code
             | link(Url)
             | pagelink(PageId)
+            | highlight
 
 BlockId   ::= UUID
 PageId    ::= UUID
@@ -94,6 +95,16 @@ FileId    ::= UUID
 Offset    ::= Integer
 Url       ::= String
 ```
+
+**`highlight` carries no colour, deliberately.** A second highlight colour
+would have to *mean* something, and nothing in the product says what — so a
+palette here would be four ways to say the same thing while looking like four
+different things. It is also the one place a mark could collide with the
+design system's semantic hues (`DESIGN_GUIDELINES.md` §3.3), where amber
+already means "diagnostic" and teal means "you". One highlight, one meaning:
+*I marked this*.
+
+
 
 Rules that fall out of writing it down:
 

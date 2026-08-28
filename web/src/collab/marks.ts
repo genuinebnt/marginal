@@ -17,7 +17,11 @@ export type MarkKind =
   | { tag: "italic" }
   | { tag: "strike" }
   | { tag: "code" }
-  | { tag: "link"; url: string };
+  | { tag: "link"; url: string }
+  // No colour: a second highlight colour would have to mean something, and
+  // nothing in the product says what (RFC-001 §1). It is also where a mark
+  // could collide with the design system's semantic hues.
+  | { tag: "highlight" };
 
 export interface Mark {
   kind: MarkKind;
@@ -128,6 +132,9 @@ const TAG_ORDER: Array<{ tag: MarkKind["tag"]; open: (k: MarkKind) => string; cl
   { tag: "strike", open: () => "<s>", close: "</s>" },
   { tag: "code", open: () => "<code>", close: "</code>" },
   { tag: "link", open: (k) => `<a href="${escapeAttr(k.tag === "link" ? k.url : "")}" target="_blank" rel="noopener noreferrer">`, close: "</a>" },
+  // Outermost of the styling marks so a highlight can span bold and code
+  // without either having to nest inside it.
+  { tag: "highlight", open: () => "<mark>", close: "</mark>" },
 ];
 
 function escapeHtml(s: string): string {
