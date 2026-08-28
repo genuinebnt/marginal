@@ -150,30 +150,43 @@ a{color:#E8873C}a:hover{color:#F2A264}
           <span class="lbl" style="width:150px">ROUTE</span><span class="lbl" style="width:190px">COMPONENT</span><span class="lbl" style="flex:1">OWNED STATE / SOURCE</span>
         </div>
         <div style="display:flex;flex-direction:column;font-size:11.5px">
-          <div class="row" style="padding:5px 0;gap:14px"><span class="mono" style="width:150px;color:#E8873C">/</span><span class="mono" style="width:190px;color:#D2CFC8">MarketingHome</span><span style="flex:1;color:#8C8880">static content, no session</span></div>
-          <div class="row" style="padding:5px 0;gap:14px"><span class="mono" style="width:150px;color:#E8873C">/register</span><span class="mono" style="width:190px;color:#D2CFC8">Register</span><span style="flex:1;color:#8C8880">form state, OAuth handoff</span></div>
-          <div class="row" style="padding:5px 0;gap:14px"><span class="mono" style="width:150px;color:#E8873C">/login</span><span class="mono" style="width:190px;color:#D2CFC8">Login</span><span style="flex:1;color:#8C8880">session cookie, resume list</span></div>
-          <div class="row" style="padding:5px 0;gap:14px"><span class="mono" style="width:150px;color:#E8873C">/p/:pageId</span><span class="mono" style="width:190px;color:#D2CFC8">EditorShell</span><span style="flex:1;color:#8C8880">op log, presence WS, selection</span></div>
-          <div class="row" style="padding:5px 0;gap:14px"><span class="mono" style="width:150px;color:#E8873C">/p/:pageId/read</span><span class="mono" style="width:190px;color:#D2CFC8">ReaderShell</span><span style="flex:1;color:#8C8880">view prefs (user scope, server)</span></div>
-          <div class="row" style="padding:5px 0;gap:14px"><span class="mono" style="width:150px;color:#E8873C">/search</span><span class="mono" style="width:190px;color:#D2CFC8">SearchResults</span><span style="flex:1;color:#8C8880">index query, facets, may lag</span></div>
-          <div class="row" style="padding:5px 0;gap:14px"><span class="mono" style="width:150px;color:#E8873C">/graph</span><span class="mono" style="width:190px;color:#D2CFC8">LinkGraphCanvas</span><span style="flex:1;color:#8C8880">force sim in worker, cools to stop</span></div>
-          <div class="row" style="padding:5px 0;gap:14px"><span class="mono" style="width:150px;color:#E8873C">/graph/algorithms</span><span class="mono" style="width:190px;color:#D2CFC8">GraphAlgorithms</span><span style="flex:1;color:#8C8880">BFS / flood fill / 3-colour DFS</span></div>
-          <div class="row" style="padding:5px 0;gap:14px"><span class="mono" style="width:150px;color:#E8873C">/discover</span><span class="mono" style="width:190px;color:#D2CFC8">DiscoverHNSW</span><span style="flex:1;color:#8C8880">HNSW layers, recall@5</span></div>
-          <div class="row" style="padding:5px 0;gap:14px"><span class="mono" style="width:150px;color:#E8873C">/facts</span><span class="mono" style="width:190px;color:#D2CFC8">FactsDAG</span><span style="flex:1;color:#8C8880">dependency DAG, topo dirty walk</span></div>
-          <div class="row" style="padding:5px 0;gap:14px"><span class="mono" style="width:150px;color:#E8873C">/lab/compiler</span><span class="mono" style="width:190px;color:#D2CFC8">CompilerPipeline</span><span style="flex:1;color:#8C8880">lexer → AST → ops, projection check</span></div>
-          <div class="row" style="padding:5px 0;gap:14px"><span class="mono" style="width:150px;color:#E8873C">/lab/trace</span><span class="mono" style="width:190px;color:#D2CFC8">OpTrace</span><span style="flex:1;color:#8C8880">apply / invert, law re-checked</span></div>
-          <div class="row" style="padding:5px 0;gap:14px"><span class="mono" style="width:150px;color:#E8873C">/lab/netcode</span><span class="mono" style="width:190px;color:#D2CFC8">NetcodeLenses</span><span style="flex:1;color:#8C8880">OT, rollback, Merkle, DAG, LSM</span></div>
-          <div class="row" style="padding:5px 0;gap:14px"><span class="mono" style="width:150px;color:#E8873C">/lab/diff</span><span class="mono" style="width:190px;color:#D2CFC8">RevisionDiff</span><span style="flex:1;color:#8C8880">LCS table + traceback</span></div>
-          <div class="row" style="padding:5px 0;gap:14px"><span class="mono" style="width:150px;color:#E8873C">/lab/perf</span><span class="mono" style="width:190px;color:#D2CFC8">PerfDashboard</span><span style="flex:1;color:#8C8880">live benchmark, treemap, flame</span></div>
-          <div class="row" style="padding:5px 0;gap:14px"><span class="mono" style="width:150px;color:#E8873C">/analytics</span><span class="mono" style="width:190px;color:#D2CFC8">AnalyticsSketches</span><span style="flex:1;color:#8C8880">HLL, Count-Min, t-digest</span></div>
-          <div class="row" style="padding:5px 0;gap:14px"><span class="mono" style="width:150px;color:#E8873C">/p/:pageId/history</span><span class="mono" style="width:190px;color:#D2CFC8">HistoryScrubber</span><span style="flex:1;color:#8C8880">persistent sequence, tombstones</span></div>
-          <div class="row" style="padding:5px 0;gap:14px"><span class="mono" style="width:150px;color:#E8873C">/admin</span><span class="mono" style="width:190px;color:#D2CFC8">AdminHealth</span><span style="flex:1;color:#8C8880">outbox depth, op-log lag</span></div>
-          <div class="row" style="padding:5px 0;gap:14px"><span class="mono" style="width:150px;color:#E8873C">/settings</span><span class="mono" style="width:190px;color:#D2CFC8">SettingsScopes</span><span style="flex:1;color:#8C8880">workspace / user / page scopes</span></div>
-          <div class="row" style="padding:5px 0;gap:14px"><span class="mono" style="width:150px;color:#E8873C">/notifications</span><span class="mono" style="width:190px;color:#D2CFC8">NotificationInbox</span><span style="flex:1;color:#8C8880">mentions, proposals, checks</span></div>
-          <div class="row" style="padding:5px 0;gap:14px"><span class="mono" style="width:150px;color:#E8873C">/media</span><span class="mono" style="width:190px;color:#D2CFC8">MediaLibrary</span><span style="flex:1;color:#8C8880">object store, width_ratio</span></div>
-          <div class="row" style="padding:5px 0;gap:14px"><span class="mono" style="width:150px;color:#E8873C">/plugins</span><span class="mono" style="width:190px;color:#D2CFC8">PluginDirectory</span><span style="flex:1;color:#8C8880">capability grants per plugin</span></div>
-          <div class="row" style="padding:5px 0;gap:14px"><span class="mono" style="width:150px;color:#E8873C">/spaces</span><span class="mono" style="width:190px;color:#D2CFC8">SpacesAndRoles</span><span style="flex:1;color:#8C8880">membership, role matrix</span></div>
-          <div class="row" style="padding:5px 0;gap:14px;border-bottom:0"><span class="mono" style="width:150px;color:#E8873C">— any route</span><span class="mono" style="width:190px;color:#D2CFC8">OfflineBanner</span><span style="flex:1;color:#8C8880">socket state, queued ops</span></div>
+          <div class="row" style="padding:2.5px 0;gap:14px;border-bottom:0"><span class="mono" style="width:150px;color:#E8873C">/</span><span class="mono" style="width:190px;color:#D2CFC8">MarketingHome</span><span style="flex:1;color:#8C8880">static content, no session · signed out only</span></div>
+          <div class="row" style="padding:2.5px 0;gap:14px;border-bottom:0"><span class="mono" style="width:150px;color:#E8873C">/</span><span class="mono" style="width:190px;color:#D2CFC8">Dashboard</span><span style="flex:1;color:#8C8880">resume (caret is view state), changed-since, needs-you</span></div>
+          <div class="row" style="padding:2.5px 0;gap:14px;border-bottom:0"><span class="mono" style="width:150px;color:#E8873C">/register</span><span class="mono" style="width:190px;color:#D2CFC8">Register</span><span style="flex:1;color:#8C8880">form state, OAuth handoff</span></div>
+          <div class="row" style="padding:2.5px 0;gap:14px;border-bottom:0"><span class="mono" style="width:150px;color:#E8873C">/login</span><span class="mono" style="width:190px;color:#D2CFC8">Login</span><span style="flex:1;color:#8C8880">session cookie, resume list</span></div>
+          <div class="row" style="padding:2.5px 0;gap:14px;border-bottom:0"><span class="mono" style="width:150px;color:#E8873C">/p/:pageId</span><span class="mono" style="width:190px;color:#D2CFC8">EditorShell</span><span style="flex:1;color:#8C8880">op log, presence WS, selection</span></div>
+          <div class="row" style="padding:2.5px 0;gap:14px;border-bottom:0"><span class="mono" style="width:150px;color:#E8873C">/p/:pageId/read</span><span class="mono" style="width:190px;color:#D2CFC8">ReaderShell</span><span style="flex:1;color:#8C8880">view prefs (user scope, server)</span></div>
+          <div class="row" style="padding:2.5px 0;gap:14px;border-bottom:0"><span class="mono" style="width:150px;color:#E8873C">/search</span><span class="mono" style="width:190px;color:#D2CFC8">SearchResults</span><span style="flex:1;color:#8C8880">index query, facets, may lag</span></div>
+          <div class="row" style="padding:2.5px 0;gap:14px;border-bottom:0"><span class="mono" style="width:150px;color:#E8873C">/graph</span><span class="mono" style="width:190px;color:#D2CFC8">LinkGraphCanvas</span><span style="flex:1;color:#8C8880">force sim in worker, cools to stop</span></div>
+          <div class="row" style="padding:2.5px 0;gap:14px;border-bottom:0"><span class="mono" style="width:150px;color:#E8873C">/graph/algorithms</span><span class="mono" style="width:190px;color:#D2CFC8">GraphAlgorithms</span><span style="flex:1;color:#8C8880">BFS / flood fill / 3-colour DFS</span></div>
+          <div class="row" style="padding:2.5px 0;gap:14px;border-bottom:0"><span class="mono" style="width:150px;color:#E8873C">/discover</span><span class="mono" style="width:190px;color:#D2CFC8">DiscoverHNSW</span><span style="flex:1;color:#8C8880">HNSW layers, recall@5</span></div>
+          <div class="row" style="padding:2.5px 0;gap:14px;border-bottom:0"><span class="mono" style="width:150px;color:#E8873C">/facts</span><span class="mono" style="width:190px;color:#D2CFC8">FactsDAG</span><span style="flex:1;color:#8C8880">dependency DAG, topo dirty walk</span></div>
+          <div class="row" style="padding:2.5px 0;gap:14px;border-bottom:0"><span class="mono" style="width:150px;color:#E8873C">/lab/compiler</span><span class="mono" style="width:190px;color:#D2CFC8">CompilerPipeline</span><span style="flex:1;color:#8C8880">lexer → AST → ops, projection check</span></div>
+          <div class="row" style="padding:2.5px 0;gap:14px;border-bottom:0"><span class="mono" style="width:150px;color:#E8873C">/lab/trace</span><span class="mono" style="width:190px;color:#D2CFC8">OpTrace</span><span style="flex:1;color:#8C8880">apply / invert, law re-checked</span></div>
+          <div class="row" style="padding:2.5px 0;gap:14px;border-bottom:0"><span class="mono" style="width:150px;color:#E8873C">/lab/netcode</span><span class="mono" style="width:190px;color:#D2CFC8">NetcodeLenses</span><span style="flex:1;color:#8C8880">OT, rollback, Merkle, DAG, LSM</span></div>
+          <div class="row" style="padding:2.5px 0;gap:14px;border-bottom:0"><span class="mono" style="width:150px;color:#E8873C">/lab/diff</span><span class="mono" style="width:190px;color:#D2CFC8">RevisionDiff</span><span style="flex:1;color:#8C8880">LCS table + traceback</span></div>
+          <div class="row" style="padding:2.5px 0;gap:14px;border-bottom:0"><span class="mono" style="width:150px;color:#E8873C">/lab/perf</span><span class="mono" style="width:190px;color:#D2CFC8">PerfDashboard</span><span style="flex:1;color:#8C8880">live benchmark, treemap, flame</span></div>
+          <div class="row" style="padding:2.5px 0;gap:14px;border-bottom:0"><span class="mono" style="width:150px;color:#E8873C">/analytics</span><span class="mono" style="width:190px;color:#D2CFC8">AnalyticsSketches</span><span style="flex:1;color:#8C8880">HLL, Count-Min, t-digest</span></div>
+          <div class="row" style="padding:2.5px 0;gap:14px;border-bottom:0"><span class="mono" style="width:150px;color:#E8873C">/p/:pageId/history</span><span class="mono" style="width:190px;color:#D2CFC8">HistoryScrubber</span><span style="flex:1;color:#8C8880">persistent sequence, tombstones</span></div>
+          <div class="row" style="padding:2.5px 0;gap:14px;border-bottom:0"><span class="mono" style="width:150px;color:#E8873C">/admin</span><span class="mono" style="width:190px;color:#D2CFC8">AdminHealth</span><span style="flex:1;color:#8C8880">outbox depth, op-log lag</span></div>
+          <div class="row" style="padding:2.5px 0;gap:14px;border-bottom:0"><span class="mono" style="width:150px;color:#E8873C">/settings</span><span class="mono" style="width:190px;color:#D2CFC8">SettingsScopes</span><span style="flex:1;color:#8C8880">workspace / user / page scopes</span></div>
+          <div class="row" style="padding:2.5px 0;gap:14px;border-bottom:0"><span class="mono" style="width:150px;color:#E8873C">/notifications</span><span class="mono" style="width:190px;color:#D2CFC8">NotificationInbox</span><span style="flex:1;color:#8C8880">mentions, proposals, checks</span></div>
+          <div class="row" style="padding:2.5px 0;gap:14px;border-bottom:0"><span class="mono" style="width:150px;color:#E8873C">/media</span><span class="mono" style="width:190px;color:#D2CFC8">MediaLibrary</span><span style="flex:1;color:#8C8880">object store, width_ratio</span></div>
+          <div class="row" style="padding:2.5px 0;gap:14px;border-bottom:0"><span class="mono" style="width:150px;color:#E8873C">/plugins</span><span class="mono" style="width:190px;color:#D2CFC8">PluginDirectory</span><span style="flex:1;color:#8C8880">capability grants per plugin</span></div>
+          <div class="row" style="padding:2.5px 0;gap:14px;border-bottom:0"><span class="mono" style="width:150px;color:#E8873C">/spaces</span><span class="mono" style="width:190px;color:#D2CFC8">SpacesAndRoles</span><span style="flex:1;color:#8C8880">membership, role matrix</span></div>
+                    <div class="row" style="padding:2.5px 0;gap:14px;border-bottom:0"><span class="mono" style="width:150px;color:#E8873C">/topics/:topic</span><span class="mono" style="width:190px;color:#D2CFC8">TopicBrowser</span><span style="flex:1;color:#8C8880">topic detail, tag cloud, hygiene</span></div>
+          <div class="row" style="padding:2.5px 0;gap:14px;border-bottom:0"><span class="mono" style="width:150px;color:#E8873C">/pub/:slug</span><span class="mono" style="width:190px;color:#D2CFC8">PublishedPage</span><span style="flex:1;color:#8C8880">static pre-render, no session, no socket</span></div>
+          <div class="row" style="padding:2.5px 0;gap:14px;border-bottom:0"><span class="mono" style="width:150px;color:#E8873C">/u/:handle</span><span class="mono" style="width:190px;color:#D2CFC8">Profile</span><span style="flex:1;color:#8C8880">GROUP BY actor over the op log</span></div>
+          <div class="row" style="padding:2.5px 0;gap:14px;border-bottom:0"><span class="mono" style="width:150px;color:#E8873C">/trash</span><span class="mono" style="width:190px;color:#D2CFC8">TrashAndRestore</span><span style="flex:1;color:#8C8880">saga cursor, idempotent steps</span></div>
+          <div class="row" style="padding:2.5px 0;gap:14px;border-bottom:0"><span class="mono" style="width:150px;color:#E8873C">/settings/export</span><span class="mono" style="width:190px;color:#D2CFC8">ImportExport</span><span style="flex:1;color:#8C8880">round-trip check, front matter</span></div>
+          <div class="row" style="padding:2.5px 0;gap:14px;border-bottom:0"><span class="mono" style="width:150px;color:#E8873C">/admin/audit</span><span class="mono" style="width:190px;color:#D2CFC8">AuditLog</span><span style="flex:1;color:#8C8880">prev-hash chain, derived from ops</span></div>
+          <div class="row" style="padding:2.5px 0;gap:14px;border-bottom:0"><span class="mono" style="width:150px;color:#E8873C">/admin/api-keys</span><span class="mono" style="width:190px;color:#D2CFC8">ApiKeys</span><span style="flex:1;color:#8C8880">scopes, rate limits, rotation</span></div>
+          <div class="row" style="padding:2.5px 0;gap:14px;border-bottom:0"><span class="mono" style="width:150px;color:#E8873C">/lab</span><span class="mono" style="width:190px;color:#D2CFC8">LabIndex</span><span style="flex:1;color:#8C8880">six screens, every figure computed</span></div>
+          <div class="row" style="padding:2.5px 0;gap:14px;border-bottom:0"><span class="mono" style="width:150px;color:#E8873C">/404</span><span class="mono" style="width:190px;color:#D2CFC8">NotFound</span><span style="flex:1;color:#8C8880">BK-tree suggestions, create-instead</span></div>
+          <div class="row" style="padding:2.5px 0;gap:14px;border-bottom:0"><span class="mono" style="width:150px;color:#E8873C">— overlay</span><span class="mono" style="width:190px;color:#D2CFC8">CommandPalette</span><span style="flex:1;color:#8C8880">⌘K · four resolvers, no mode switch</span></div>
+          <div class="row" style="padding:2.5px 0;gap:14px;border-bottom:0"><span class="mono" style="width:150px;color:#E8873C">— overlay</span><span class="mono" style="width:190px;color:#D2CFC8">AssistantPanel</span><span style="flex:1;color:#8C8880">⌘J · retrieval filtered during descent</span></div>
+          <div class="row" style="padding:2.5px 0;gap:14px;border-bottom:0"><span class="mono" style="width:150px;color:#E8873C">— overlay</span><span class="mono" style="width:190px;color:#D2CFC8">NotificationPanel</span><span style="flex:1;color:#8C8880">bell · decisions carry their buttons</span></div>
+<div class="row" style="padding:5px 0;gap:14px;border-bottom:0"><span class="mono" style="width:150px;color:#E8873C">— any route</span><span class="mono" style="width:190px;color:#D2CFC8">OfflineBanner</span><span style="flex:1;color:#8C8880">socket state, queued ops</span></div>
         </div>
       </div>
       <div style="width:346px;flex:none;display:flex;flex-direction:column;gap:20px">
@@ -200,9 +213,9 @@ a{color:#E8873C}a:hover{color:#F2A264}
       </div>
     </div>
   </div>
-  <div class="status"><span>25 routes</span><span>27 screens</span><span>1 shell · 11 components</span><div style="flex:1"></div><span style="color:#3FCFA8">● every mockup page accounted for, plus the five that were undrawn</span></div>
+  <div class="status"><span>37 routes</span><span>40 screens</span><span>1 shell · 11 components</span><div style="flex:1"></div><span style="color:#3FCFA8">● every drawn screen has a route · 26 settings/admin sub-routes named but not drawn, marked → in their rails</span></div>
 </div>
-<div class="tag"><b>01</b> PAGE GRAPH <i>how the thirty-four routes connect — and which named routes are not drawn</i></div>
+<div class="tag"><b>01</b> PAGE GRAPH <i>how the thirty-eight routes connect — and which named routes are not drawn</i></div>
 <div class="sc">
   <div class="scan"></div>
   <div class="bar">
@@ -210,7 +223,7 @@ a{color:#E8873C}a:hover{color:#F2A264}
     <div class="vr"></div>
     <span class="crumb">build / <b>page graph</b></span>
     <div style="flex:1"></div>
-    <span class="chip chip-e">34 NODES</span><span class="chip">62 EDGES</span><span class="chip chip-t">0 ORPHANS</span><span class="chip chip-s">≤ 3 HOPS</span>
+    <span class="chip chip-e">38 NODES</span><span class="chip">70 EDGES</span><span class="chip chip-t">0 ORPHANS</span><span class="chip chip-s">≤ 3 HOPS</span>
   </div>
   <div class="body">
     <div style="flex:1;position:relative">
@@ -240,6 +253,10 @@ a{color:#E8873C}a:hover{color:#F2A264}
           <line x1="240" y1="380" x2="452" y2="590"></line>
           <line x1="240" y1="380" x2="452" y2="652"></line>
           <line x1="240" y1="380" x2="452" y2="714"></line>
+          <line x1="256" y1="120" x2="240" y2="380"></line>
+          <line x1="256" y1="120" x2="112" y2="304"></line>
+          <line x1="392" y1="120" x2="620" y2="374"></line>
+          <line x1="392" y1="286" x2="620" y2="374"></line>
           <line x1="452" y1="404" x2="700" y2="470"></line>
           <line x1="452" y1="466" x2="700" y2="470"></line>
           <line x1="452" y1="528" x2="700" y2="470"></line>
@@ -264,7 +281,8 @@ a{color:#E8873C}a:hover{color:#F2A264}
         </g>
         <!-- primary flow -->
         <g stroke="rgba(232,135,60,.5)" stroke-width="1.6">
-          <line x1="112" y1="206" x2="392" y2="120"></line>
+          <line x1="112" y1="206" x2="256" y2="120"></line>
+          <line x1="256" y1="120" x2="392" y2="120"></line>
           <line x1="392" y1="120" x2="392" y2="212"></line>
           <line x1="392" y1="212" x2="392" y2="286"></line>
         </g>
@@ -303,19 +321,22 @@ a{color:#E8873C}a:hover{color:#F2A264}
           <circle cx="112" cy="696" r="5" fill="#E8873C"></circle><text x="126" y="694" font-family="Archivo" font-size="11.5" fill="#E4E2DC">Import / export</text><text x="126" y="707" font-family="IBM Plex Mono" font-size="8.5" fill="#6E6A63">/settings/export</text>
 
           <!-- CORE LOOP -->
+          <circle cx="256" cy="120" r="7" fill="#E8873C"></circle><text x="248" y="104" font-family="Archivo" font-size="12" fill="#E4E2DC" text-anchor="end">Dashboard</text><text x="248" y="117" font-family="IBM Plex Mono" font-size="8.5" fill="#6E6A63" text-anchor="end">/ · signed in</text>
           <circle cx="392" cy="120" r="13" fill="#E8873C" opacity=".2"></circle><circle cx="392" cy="120" r="7" fill="#E8873C"></circle><text x="412" y="117" font-family="Spectral" font-size="14" fill="#EFEDE7">Editor</text><text x="412" y="132" font-family="IBM Plex Mono" font-size="8.5" fill="#8C8880">/p/:slug</text>
           <circle cx="392" cy="212" r="6" fill="#585550"></circle><text x="408" y="210" font-family="Archivo" font-size="12" fill="#D2CFC8">Reader</text><text x="408" y="223" font-family="IBM Plex Mono" font-size="8.5" fill="#4B4842">/p/:slug/read</text>
           <circle cx="392" cy="286" r="6" fill="#E8873C"></circle><text x="408" y="284" font-family="Archivo" font-size="12" fill="#E4E2DC">Published page</text><text x="408" y="297" font-family="IBM Plex Mono" font-size="8.5" fill="#6E6A63">/pub/:slug · no session</text>
 
           <!-- overlays -->
           <circle cx="266" cy="196" r="5" fill="#0E0F10" stroke="#7D9EC9" stroke-dasharray="2 2"></circle><text x="278" y="194" font-family="Archivo" font-size="11" fill="#7D9EC9">⌘K palette</text><text x="278" y="206" font-family="IBM Plex Mono" font-size="8" fill="#4B4842">overlay · every route</text>
-          <circle cx="352" cy="60" r="5" fill="#0E0F10" stroke="#E0A34E" stroke-dasharray="2 2"></circle><text x="364" y="58" font-family="Archivo" font-size="11" fill="#E0A34E">Offline / reconnect</text><text x="364" y="70" font-family="IBM Plex Mono" font-size="8" fill="#4B4842">state · every route</text>
+          <circle cx="352" cy="60" r="5" fill="#0E0F10" stroke="#E0A34E" stroke-dasharray="2 2"></circle><text x="364" y="58" font-family="Archivo" font-size="11" fill="#E0A34E">Offline / reconnect</text>
+          <circle cx="176" cy="60" r="5" fill="#0E0F10" stroke="#E0A34E" stroke-dasharray="2 2"></circle><text x="188" y="58" font-family="Archivo" font-size="11" fill="#E0A34E">Empty · not found</text><text x="188" y="70" font-family="IBM Plex Mono" font-size="8" fill="#4B4842">state · any route</text><text x="364" y="70" font-family="IBM Plex Mono" font-size="8" fill="#4B4842">state · every route</text>
 
           <!-- FIND -->
           <circle cx="620" cy="86" r="6" fill="#585550"></circle><text x="636" y="84" font-family="Archivo" font-size="12" fill="#D2CFC8">Search</text><text x="636" y="97" font-family="IBM Plex Mono" font-size="8.5" fill="#4B4842">/search</text>
           <circle cx="620" cy="158" r="6" fill="#585550"></circle><text x="636" y="156" font-family="Archivo" font-size="12" fill="#D2CFC8">Graph</text><text x="636" y="169" font-family="IBM Plex Mono" font-size="8.5" fill="#4B4842">/graph</text>
           <circle cx="620" cy="230" r="6" fill="#E8873C"></circle><text x="636" y="228" font-family="Archivo" font-size="12" fill="#E4E2DC">Topics &amp; tags</text><text x="636" y="241" font-family="IBM Plex Mono" font-size="8.5" fill="#6E6A63">/topics/:topic</text>
           <circle cx="620" cy="302" r="6" fill="#585550"></circle><text x="636" y="300" font-family="Archivo" font-size="12" fill="#D2CFC8">History</text><text x="636" y="313" font-family="IBM Plex Mono" font-size="8.5" fill="#4B4842">/p/:slug/history</text>
+          <circle cx="620" cy="374" r="5" fill="#0E0F10" stroke="#7D9EC9" stroke-dasharray="2 2"></circle><text x="636" y="372" font-family="Archivo" font-size="11" fill="#7D9EC9">Assistant</text><text x="636" y="384" font-family="IBM Plex Mono" font-size="8" fill="#4B4842">⌘J · overlay</text>
 
           <!-- UNDERSTAND -->
           <circle cx="852" cy="112" r="5" fill="#4B4842"></circle><text x="866" y="110" font-family="Archivo" font-size="11.5" fill="#9B968D">Graph algorithms</text><text x="866" y="123" font-family="IBM Plex Mono" font-size="8.5" fill="#4B4842">/graph/algorithms</text>
@@ -324,7 +345,7 @@ a{color:#E8873C}a:hover{color:#F2A264}
           <circle cx="852" cy="300" r="5" fill="#4B4842"></circle><text x="866" y="298" font-family="Archivo" font-size="11.5" fill="#9B968D">Diff</text><text x="866" y="311" font-family="IBM Plex Mono" font-size="8.5" fill="#4B4842">/p/:slug/diff</text>
 
           <!-- LAB -->
-          <circle cx="240" cy="380" r="6" fill="#585550"></circle><text x="256" y="378" font-family="Archivo" font-size="12" fill="#D2CFC8">Lab index</text><text x="256" y="391" font-family="IBM Plex Mono" font-size="8.5" fill="#4B4842">/lab</text>
+          <circle cx="240" cy="380" r="6" fill="#E8873C"></circle><text x="256" y="378" font-family="Archivo" font-size="12" fill="#E4E2DC">Lab index</text><text x="256" y="391" font-family="IBM Plex Mono" font-size="8.5" fill="#4B4842">/lab</text>
           <circle cx="452" cy="404" r="5" fill="#4B4842"></circle><text x="466" y="402" font-family="Archivo" font-size="11.5" fill="#9B968D">Compiler</text><text x="466" y="415" font-family="IBM Plex Mono" font-size="8.5" fill="#4B4842">/lab/compiler</text>
           <circle cx="452" cy="466" r="5" fill="#4B4842"></circle><text x="466" y="464" font-family="Archivo" font-size="11.5" fill="#9B968D">Trace</text><text x="466" y="477" font-family="IBM Plex Mono" font-size="8.5" fill="#4B4842">/lab/trace</text>
           <circle cx="452" cy="528" r="5" fill="#4B4842"></circle><text x="466" y="526" font-family="Archivo" font-size="11.5" fill="#9B968D">Netcode</text><text x="466" y="539" font-family="IBM Plex Mono" font-size="8.5" fill="#4B4842">/lab/netcode</text>
@@ -368,12 +389,14 @@ a{color:#E8873C}a:hover{color:#F2A264}
         <!-- The completion pass. Each line says which hole it filled, because
              "we added seven screens" is not an argument and "the app could not
              do X" is. -->
-        <div class="lbl">COMPLETED THIS PASS · 9</div>
+        <div class="lbl">COMPLETED THIS PASS · 13</div>
         <div class="mono" style="font-size:11px;line-height:1.95;color:#9B968D">
           <div><span style="color:#E8873C">+</span> topics &amp; tags · published page</div>
           <div><span style="color:#E8873C">+</span> profile · trash · import/export</div>
           <div><span style="color:#E8873C">+</span> ⌘K palette · notifications panel</div>
           <div><span style="color:#E8873C">+</span> audit log · api keys</div>
+          <div><span style="color:#E8873C">+</span> dashboard · lab index</div>
+          <div><span style="color:#E8873C">+</span> assistant · empty &amp; 404</div>
         </div>
         <div style="font-size:11px;line-height:1.6;color:#585550">Each filled a hole something else already pointed at: avatars led nowhere, the bell had no open state, the page tree struck a page through with no destination.</div>
         <div style="height:1px;background:rgba(255,255,255,.07)"></div>
@@ -388,7 +411,7 @@ a{color:#E8873C}a:hover{color:#F2A264}
       </div>
     </div>
   </div>
-  <div class="status"><span>reachability BFS from /</span><span>34 nodes · 62 edges</span><div style="flex:1"></div><span style="color:#3FCFA8">● 0 orphans · 0 dead links · 26 named-but-undrawn routes, all marked as such</span></div>
+  <div class="status"><span>reachability BFS from /</span><span>38 nodes · 70 edges</span><div style="flex:1"></div><span style="color:#3FCFA8">● 0 orphans · 0 dead links · 26 named-but-undrawn routes, all marked as such</span></div>
 </div>
 <div class="tag"><b>02</b> HOME <i>the pitch, self-hosting, pricing</i></div>
 <div class="sc">
@@ -557,6 +580,122 @@ a{color:#E8873C}a:hover{color:#F2A264}
   </div>
   <div class="status"><span>/login</span><span>session cookie · rotating refresh</span><div style="flex:1"></div><span style="color:#3FCFA8">● 2 pages ready to resume</span></div>
 </div>
+<div class="tag"><b>03c</b> DASHBOARD <i>where you land after signing in — resume, not a blank page</i></div>
+<div class="sc">
+  <div class="scan"></div>
+  <div class="bar">
+    <span class="wm">m<span style="color:#E8873C">/</span>arginal</span>
+    <div class="tabs"><span class="tb tb-on">Write</span><span class="tb">Read</span><span class="tb">Search</span><span class="tb">Graph</span><span class="tb">History</span><span class="tb">Lab</span></div>
+    <span class="crumb">workspace / <b>genuine-folio</b></span>
+    <div style="flex:1"></div>
+    <div class="rd"><span class="rd-k">PAGES</span><span class="rd-v">1 908</span></div>
+    <div class="rd"><span class="rd-k">LIVE NOW</span><span class="rd-v" style="color:#3FCFA8">2</span></div>
+    <div class="vr"></div>
+    <div class="clk"><b>14:06</b><span>THU 12 MAR</span></div><span class="kbd">⌘K</span><div class="icb">◎<div class="bdg">6</div></div><div class="icb">⚙</div><div class="av av-you">GN</div>
+  </div>
+  <div class="body">
+    <div class="rail">
+      <div class="rail-h">PAGE TREE<div></div><span style="color:#585550">31</span></div>
+      <div class="filt">filter…</div>
+      <div style="display:flex;flex-direction:column;gap:1px;padding:0 8px">
+        <div class="tr"><span class="tr-n">01</span>Inbox<span style="margin-left:auto" class="tr-n">4</span></div>
+        <div class="tr"><span class="tr-n">02</span>Product<span style="margin-left:auto" class="tr-n">12</span></div>
+        <div class="tr"><span class="tr-n">06</span>Research<span style="margin-left:auto" class="tr-n">9</span></div>
+        <div class="tr"><span class="tr-n">07</span>Archive<span style="margin-left:auto" class="tr-n">88</span></div>
+      </div>
+      <div class="wal">
+        <span class="lbl">NEW</span>
+        <div style="font-size:11px;line-height:1.55;color:#8C8880">A page is created empty and untitled. Naming it later is normal — the id was never the name.</div>
+      </div>
+    </div>
+
+    <div style="flex:1;min-width:0;padding:34px 40px;overflow:hidden;display:flex;flex-direction:column">
+      <div style="margin-bottom:26px">
+        <div class="mono" style="font-size:9px;font-weight:600;letter-spacing:.2em;color:#E8873C;margin-bottom:9px">THURSDAY AFTERNOON</div>
+        <h1 class="h1" style="font-size:29px;margin-bottom:7px">Two pages are still open where you left them.</h1>
+        <div style="font-size:13px;color:#8C8880;line-height:1.6;max-width:600px">Resume is a real thing here, not a recent-files list: the caret position and the selection were view state, stored per user on the server, so they survive the device you left them on.</div>
+      </div>
+
+      <!-- Resume, not "recent". The distinction is the caret. -->
+      <div class="lbl" style="margin-bottom:12px">RESUME</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:11px;margin-bottom:28px">
+        <div style="border:1px solid rgba(232,135,60,.35);background:rgba(232,135,60,.04);padding:14px 16px">
+          <div style="display:flex;align-items:baseline;gap:9px;margin-bottom:7px">
+            <span style="font-family:Spectral,serif;font-size:16px;color:#EFEDE7">Sync protocol notes</span>
+            <div style="flex:1"></div>
+            <div class="av av-them" style="width:18px;height:18px;font-size:7px">AD</div>
+          </div>
+          <div class="tgrow" style="margin-bottom:9px"><span class="tpc tpc-proto" style="padding:1px 6px"><i></i>PROTOCOL</span><span class="tg">crdt</span></div>
+          <div class="mono" style="font-size:10.5px;color:#585550">caret at block 7f3a · 4 min ago · Ada is here now</div>
+        </div>
+        <div style="border:1px solid rgba(255,255,255,.09);padding:14px 16px">
+          <div style="display:flex;align-items:baseline;gap:9px;margin-bottom:7px">
+            <span style="font-family:Spectral,serif;font-size:16px;color:#EFEDE7">Block model</span>
+            <div style="flex:1"></div>
+          </div>
+          <div class="tgrow" style="margin-bottom:9px"><span class="tpc tpc-store" style="padding:1px 6px"><i></i>STORAGE</span><span class="tg">block-tree</span></div>
+          <div class="mono" style="font-size:10.5px;color:#585550">caret at block c42 · yesterday 18:12</div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1.35fr 1fr;gap:32px;flex:1;min-height:0">
+        <div style="display:flex;flex-direction:column;min-height:0">
+          <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:12px">
+            <span class="lbl">CHANGED SINCE YOU LAST LOOKED</span>
+            <span class="mono" style="font-size:10px;color:#585550">by op, not by mtime</span>
+          </div>
+          <div style="display:flex;flex-direction:column">
+            <div class="row" style="padding:10px 0"><div class="av av-them" style="width:18px;height:18px;font-size:7px">AD</div><span style="flex:1;font-size:12.5px;color:#D2CFC8">Anchors vs offsets</span><span class="mono" style="font-size:10px;color:#585550">+2 blocks · −1</span><span class="mono" style="font-size:10px;color:#585550;width:58px;text-align:right">2 h ago</span></div>
+            <div class="row" style="padding:10px 0"><div class="av av-ai" style="width:18px;height:18px;font-size:7px">✦</div><span style="flex:1;font-size:12.5px;color:#D2CFC8">Block model</span><span class="mono" style="font-size:10px;color:#7D9EC9">2 ops proposed</span><span class="mono" style="font-size:10px;color:#585550;width:58px;text-align:right">4 h ago</span></div>
+            <div class="row" style="padding:10px 0"><div class="av" style="width:18px;height:18px;font-size:7px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.16);color:#9B968D">RK</div><span style="flex:1;font-size:12.5px;color:#D2CFC8">CRDT survey</span><span class="mono" style="font-size:10px;color:#585550">retitled</span><span class="mono" style="font-size:10px;color:#585550;width:58px;text-align:right">yesterday</span></div>
+            <div class="row" style="padding:10px 0;border-bottom:0"><div class="av" style="width:18px;height:18px;font-size:7px;background:rgba(255,255,255,.06);border:1px solid rgba(224,163,78,.4);color:#E0A34E">✕</div><span style="flex:1;font-size:12.5px;color:#9B968D">Old rope notes</span><span class="mono" style="font-size:10px;color:#E0A34E">deleting</span><span class="mono" style="font-size:10px;color:#585550;width:58px;text-align:right">just now</span></div>
+          </div>
+          <div class="mono" style="font-size:10px;color:#585550;margin-top:11px">read from collab.ops since your last session ended — a page edited and reverted shows nothing, because nothing changed</div>
+
+          <div style="margin-top:22px">
+            <div class="lbl" style="margin-bottom:11px">START</div>
+            <div style="display:flex;gap:9px">
+              <div class="btn" style="border-color:rgba(232,135,60,.45);color:#E8873C">NEW PAGE<div class="brk-tl"></div><div class="brk-br"></div></div>
+              <div class="btn">IMPORT<div class="brk-tl"></div><div class="brk-br"></div></div>
+              <div class="btn">FROM A TEMPLATE<div class="brk-tl"></div><div class="brk-br"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:20px;min-height:0">
+          <div>
+            <div class="lbl" style="margin-bottom:11px">NEEDS YOU · 2</div>
+            <div style="display:flex;flex-direction:column;gap:9px">
+              <div style="display:flex;gap:10px;padding:10px 12px;border-left:2px solid #7D9EC9;background:rgba(125,158,201,.05)">
+                <span style="color:#7D9EC9;font-size:11px">✦</span>
+                <div style="flex:1;font-size:11.5px;line-height:1.5;color:#9B968D">Assistant proposes 2 ops on <span style="color:#C3BFB7">Sync protocol notes</span></div>
+              </div>
+              <div style="display:flex;gap:10px;padding:10px 12px;border-left:2px solid #E0A34E;background:rgba(224,163,78,.05)">
+                <span style="color:#E0A34E;font-size:11px">◌</span>
+                <div style="flex:1;font-size:11.5px;line-height:1.5;color:#9B968D"><span class="mono" style="color:#E8873C">{{ack-budget}}</span> changed — 6 pages transclude it</div>
+              </div>
+            </div>
+          </div>
+          <div>
+            <div class="lbl" style="margin-bottom:11px">WORKSPACE</div>
+            <div style="display:flex;flex-direction:column;gap:7px">
+              <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">Pages</span><span class="mono" style="font-size:11px;color:#E4E2DC">1 908</span></div>
+              <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">Untopiced</span><span class="mono" style="font-size:11px;color:#E0A34E">62</span></div>
+              <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">Dangling links</span><span class="mono" style="font-size:11px;color:#E0A34E">14</span></div>
+              <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">In trash</span><span class="mono" style="font-size:11px;color:#8C8880">24</span></div>
+            </div>
+          </div>
+          <div style="margin-top:auto">
+            <div class="lbl" style="margin-bottom:10px">WHY NO FEED</div>
+            <div style="font-size:11.5px;line-height:1.7;color:#585550">A feed of everything makes the workspace something to keep up with. This lists what changed <i>and</i> what wants a decision — both finite, both clearable. When there is nothing, this screen is nearly empty, and that is the correct state rather than a failure to fill it.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="status"><span>/</span><span>resume · caret is view state, stored server-side per user</span><div style="flex:1"></div><span style="color:#3FCFA8">● 2 sessions resumable · 0 lost</span></div>
+</div>
+
 <div class="tag"><b>04</b> EDITOR <i>page tree · diagnostics gutter · inspector · bubble menu · presence</i></div>
 <div class="sc">
   <div class="scan"></div>
@@ -1670,6 +1809,82 @@ a{color:#E8873C}a:hover{color:#F2A264}
   </div>
   <div class="status"><span>/topics/protocol</span><span>topic by id · rename is free</span><div style="flex:1"></div><span style="color:#E0A34E">◌ 62 untopiced · suggestion available, assignment is yours</span></div>
 </div>
+<div class="tag"><b>10c</b> LAB INDEX <i>the hub for six screens where the algorithm actually runs</i></div>
+<div class="sc">
+  <div class="scan"></div>
+  <div class="bar">
+    <span class="wm">m<span style="color:#E8873C">/</span>arginal</span>
+    <div class="tabs"><span class="tb">Write</span><span class="tb">Read</span><span class="tb">Search</span><span class="tb">Graph</span><span class="tb">History</span><span class="tb tb-on">Lab</span></div>
+    <span class="crumb">lab / <b>index</b></span>
+    <div style="flex:1"></div>
+    <div class="rd"><span class="rd-k">SCREENS</span><span class="rd-v">6</span></div>
+    <div class="rd"><span class="rd-k">FIGURES AUTHORED</span><span class="rd-v" style="color:#3FCFA8">0</span></div>
+    <div class="vr"></div>
+    <div class="clk"><b>14:06</b><span>THU 12 MAR</span></div><span class="kbd">⌘K</span><div class="icb">◎<div class="bdg">6</div></div><div class="icb">⚙</div><div class="av av-you">GN</div>
+  </div>
+  <div class="body">
+    <div style="flex:1;min-width:0;padding:32px 40px;overflow:hidden;display:flex;flex-direction:column">
+      <div style="margin-bottom:24px;max-width:660px">
+        <h1 class="h1" style="font-size:27px;margin-bottom:8px">The lab</h1>
+        <div style="font-size:13.5px;line-height:1.7;color:#8C8880">Six screens where the thing being described is running rather than illustrated. Every number on them is computed in the page from real input — if an implementation is correct the figure appears, and if it is wrong the figure is wrong in a way you can see.</div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:26px">
+        <div style="border:1px solid rgba(255,255,255,.09);border-left:2px solid #7AA8E8;padding:15px 16px;display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;align-items:baseline;gap:8px"><span style="font-family:Spectral,serif;font-size:16px;color:#EFEDE7">Compiler</span><span class="mono" style="font-size:9.5px;color:#585550;margin-left:auto">/lab/compiler</span></div>
+          <div style="font-size:12px;line-height:1.55;color:#8C8880">Paste as a pipeline — buffer → tokens → AST → tree → ops. Replaying the emitted ops must equal the tree it built directly.</div>
+          <div style="margin-top:auto;display:flex;gap:7px"><span class="chip chip-t" style="padding:2px 7px">12 000 INPUTS</span><span class="chip" style="padding:2px 7px">0 MISMATCH</span></div>
+        </div>
+        <div style="border:1px solid rgba(255,255,255,.09);border-left:2px solid #E8873C;padding:15px 16px;display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;align-items:baseline;gap:8px"><span style="font-family:Spectral,serif;font-size:16px;color:#EFEDE7">Trace</span><span class="mono" style="font-size:9.5px;color:#585550;margin-left:auto">/lab/trace</span></div>
+          <div style="font-size:12px;line-height:1.55;color:#8C8880">Step and invert a real op log. The invertibility law is re-checked every step by replaying, never asserted.</div>
+          <div style="margin-top:auto;display:flex;gap:7px"><span class="chip chip-t" style="padding:2px 7px">LAW HOLDS</span><span class="chip" style="padding:2px 7px">7 OP KINDS</span></div>
+        </div>
+        <div style="border:1px solid rgba(255,255,255,.09);border-left:2px solid #A98CE8;padding:15px 16px;display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;align-items:baseline;gap:8px"><span style="font-family:Spectral,serif;font-size:16px;color:#EFEDE7">Netcode</span><span class="mono" style="font-size:9.5px;color:#585550;margin-left:auto">/lab/netcode</span></div>
+          <div style="font-size:12px;line-height:1.55;color:#8C8880">One editor, four lenses — prediction, rollback, transform, log. Replay from empty must match the incremental view.</div>
+          <div style="margin-top:auto;display:flex;gap:7px"><span class="chip chip-t" style="padding:2px 7px">REPLAY MATCHES</span></div>
+        </div>
+        <div style="border:1px solid rgba(255,255,255,.09);border-left:2px solid #5AC8B4;padding:15px 16px;display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;align-items:baseline;gap:8px"><span style="font-family:Spectral,serif;font-size:16px;color:#EFEDE7">Diff</span><span class="mono" style="font-size:9.5px;color:#585550;margin-left:auto">/p/:slug/diff</span></div>
+          <div style="font-size:12px;line-height:1.55;color:#8C8880">LCS by the full DP table, with the traceback outlined. Also the argument against it: O(n·m) is fine for a block and absurd for a document.</div>
+          <div style="margin-top:auto;display:flex;gap:7px"><span class="chip chip-a" style="padding:2px 7px">O(n·m)</span><span class="chip" style="padding:2px 7px">MYERS IS O(nd)</span></div>
+        </div>
+        <div style="border:1px solid rgba(255,255,255,.09);border-left:2px solid #D6A660;padding:15px 16px;display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;align-items:baseline;gap:8px"><span style="font-family:Spectral,serif;font-size:16px;color:#EFEDE7">Perf</span><span class="mono" style="font-size:9.5px;color:#585550;margin-left:auto">/lab/perf</span></div>
+          <div style="font-size:12px;line-height:1.55;color:#8C8880">Percentiles, queue depth, bundle treemap, flame graph — measured on this machine, now, not quoted from a README.</div>
+          <div style="margin-top:auto;display:flex;gap:7px"><span class="chip" style="padding:2px 7px">10 000 SAMPLES</span><span class="chip chip-a" style="padding:2px 7px">p99.9 62 ms</span></div>
+        </div>
+        <div style="border:1px solid rgba(255,255,255,.09);border-left:2px solid #D07C8A;padding:15px 16px;display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;align-items:baseline;gap:8px"><span style="font-family:Spectral,serif;font-size:16px;color:#EFEDE7">Analytics</span><span class="mono" style="font-size:9.5px;color:#585550;margin-left:auto">/analytics</span></div>
+          <div style="font-size:12px;line-height:1.55;color:#8C8880">HyperLogLog, Count-Min and t-digest over one live stream, each shown beside its exact answer and its error.</div>
+          <div style="margin-top:auto;display:flex;gap:7px"><span class="chip chip-t" style="padding:2px 7px">3.1 KB</span><span class="chip" style="padding:2px 7px">0 ROWS STORED</span></div>
+        </div>
+      </div>
+
+      <div style="margin-top:auto;display:grid;grid-template-columns:1fr 1fr 1.1fr;gap:30px;padding-top:22px;border-top:1px solid rgba(255,255,255,.07)">
+        <div>
+          <div class="lbl" style="margin-bottom:10px">THE RULE FOR THIS SECTION</div>
+          <div style="font-size:11.5px;line-height:1.7;color:#8C8880">If a screen states a number, the page computed it. Nothing here is a screenshot of a result, and nothing is a hard-coded figure dressed as one — which is why every one of them can be wrong in public.</div>
+        </div>
+        <div>
+          <div class="lbl" style="margin-bottom:10px">WHY IT IS SHIPPED, NOT HIDDEN</div>
+          <div style="font-size:11.5px;line-height:1.7;color:#8C8880">These are the parts of the product that are hard to believe from a description. A claim about convergence is cheap; a page where you can break it is not.</div>
+        </div>
+        <div>
+          <div class="lbl" style="margin-bottom:10px">WHAT IT COSTS</div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">Added to the main bundle</span><span class="mono" style="font-size:11px;color:#3FCFA8">0 KB</span></div>
+            <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">Lazily loaded per screen</span><span class="mono" style="font-size:11px;color:#E4E2DC">18–64 KB</span></div>
+            <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:#9B968D"><span style="flex:1">Reachable without a session</span><span class="mono" style="font-size:11px;color:#8C8880">no</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="status"><span>/lab</span><span>six screens · every figure computed</span><div style="flex:1"></div><span style="color:#3FCFA8">● 0 authored numbers</span></div>
+</div>
+
 <div class="tag"><b>11</b> COMPILER <i>paste and import as a pipeline — buffer → tokens → AST → tree → ops</i></div>
 <div class="sc">
   <div class="scan"></div>
@@ -2146,7 +2361,7 @@ enum Op { InsertText }
       </div>
     </div>
   </div>
-  <div class="status"><span>/lab/diff</span><span>LCS DP + traceback, recomputed on granularity switch</span><div style="flex:1"></div><span style="color:#E0A34E">◌ O(n·m) — argued against on the page</span></div>
+  <div class="status"><span>/p/sync-protocol-notes/diff</span><span>LCS DP + traceback, recomputed on granularity switch</span><div style="flex:1"></div><span style="color:#E0A34E">◌ O(n·m) — argued against on the page</span></div>
 </div>
 <div class="tag"><b>16</b> PERF <i>latency percentiles · queue depth · bundle treemap · flame graph</i></div>
 <div class="sc">
@@ -3868,6 +4083,203 @@ id, so peers merge concurrent…</pre>
     </div>
   </div>
   <div class="status"><span>bell · anchored dropdown</span><span>triage without leaving the page</span><div style="flex:1"></div><span style="color:#E8873C">● 2 need a decision · both carry the buttons that resolve them</span></div>
+</div>
+<div class="tag"><b>24d</b> ASSISTANT <i>answers with citations, edits by emitting ops — never raw text</i></div>
+<div class="sc">
+  <div class="scan"></div>
+  <div class="bar">
+    <span class="wm">m<span style="color:#E8873C">/</span>arginal</span>
+    <div class="tabs"><span class="tb tb-on">Write</span><span class="tb">Read</span><span class="tb">Search</span><span class="tb">Graph</span><span class="tb">History</span><span class="tb">Lab</span></div>
+    <span class="crumb">product / <b>sync-protocol-notes</b></span>
+    <div style="flex:1"></div>
+    <div class="rd"><span class="rd-k">RETRIEVED</span><span class="rd-v">3 pages</span></div>
+    <div class="rd"><span class="rd-k">MODEL</span><span class="rd-v">local · 8B</span></div>
+    <div class="vr"></div>
+    <div class="clk"><b>14:06</b><span>THU 12 MAR</span></div><span class="kbd">⌘K</span><div class="icb">◎<div class="bdg">6</div></div><div class="icb">⚙</div><div class="av av-you">GN</div>
+  </div>
+  <div class="body">
+    <div class="rail">
+      <div class="rail-h">CONVERSATIONS<div></div></div>
+      <div style="display:flex;flex-direction:column;gap:1px;padding:0 8px">
+        <div class="tr tr-on"><i></i>Why we dropped the rope</div>
+        <div class="tr">Summarise the delete saga</div>
+        <div class="tr">What changed this week</div>
+        <div class="tr" style="color:#585550">Untitled</div>
+      </div>
+      <div class="wal">
+        <span class="lbl">SCOPE</span>
+        <div class="tgrow" style="margin-bottom:6px"><span class="tpc tpc-proto" style="padding:1px 6px"><i></i>PROTOCOL</span><span class="tg tg-on">crdt</span></div>
+        <div style="font-size:11px;line-height:1.55;color:#8C8880">Retrieval is filtered to what you can already read. A question can never surface a page your role does not grant.</div>
+      </div>
+    </div>
+
+    <div style="flex:1;min-width:0;padding:28px 34px;overflow:hidden;display:flex;flex-direction:column">
+      <div style="display:flex;gap:12px;margin-bottom:22px">
+        <div class="av av-you" style="width:24px;height:24px;font-size:9px">GN</div>
+        <div style="flex:1;font-family:Spectral,serif;font-size:17px;line-height:1.6;color:#EFEDE7;padding-top:2px">Why did we drop the rope?</div>
+      </div>
+
+      <div style="display:flex;gap:12px;margin-bottom:20px">
+        <div class="av av-ai" style="width:24px;height:24px;font-size:9px">✦</div>
+        <div style="flex:1">
+          <div style="font-family:Spectral,serif;font-size:15.5px;line-height:1.78;color:#D2CFC8">
+            <p style="margin:0 0 14px">Because a rope splits and rebalances on write, and every split renumbers the offsets beneath it<sup style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#E8873C;vertical-align:super">1</sup>. A second actor holding an offset from a millisecond ago is then holding a stale number, with no way to detect that it went stale.</p>
+            <p style="margin:0 0 14px">The replacement is a tree of addressable nodes where every op names a stable block id<sup style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#E8873C;vertical-align:super">2</sup>, so concurrent edits merge by comparing Lamport timestamps rather than by reconciling positions<sup style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#E8873C;vertical-align:super">3</sup>.</p>
+          </div>
+          <div style="display:flex;gap:7px;margin-top:14px">
+            <span class="chip chip-s" style="padding:3px 9px">INSERT AS A BLOCK</span>
+            <span class="chip" style="padding:3px 9px">COPY</span>
+            <span class="chip" style="padding:3px 9px">ASK A FOLLOW-UP</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Citations are the load-bearing part: an answer with no source is a
+           claim, and a claim in a notebook is indistinguishable from a note. -->
+      <div style="border-top:1px solid rgba(255,255,255,.07);padding-top:18px;margin-bottom:20px">
+        <div class="lbl" style="margin-bottom:12px">RETRIEVED · 3 PAGES · EVERY SENTENCE ABOVE MAPS TO ONE</div>
+        <div style="display:flex;flex-direction:column;gap:9px">
+          <div style="display:flex;gap:11px;padding:11px 13px;background:#131415;border:1px solid rgba(255,255,255,.07)">
+            <span class="mono" style="font-size:10px;color:#E8873C;padding-top:1px">1</span>
+            <div style="flex:1">
+              <div style="display:flex;align-items:baseline;gap:9px"><span style="font-size:13px;color:#E4E2DC">Rope internals</span><span class="tpc tpc-store" style="padding:1px 6px"><i></i>STORAGE</span><span class="mono" style="font-size:9.5px;color:#585550;margin-left:auto">block 9c1 · cos 0.88</span></div>
+              <div style="font-family:Spectral,serif;font-size:12.5px;line-height:1.55;color:#8C8880;margin-top:5px">“…balanced so that concatenation and split are logarithmic rather than linear, at the cost of invalidating offsets below the split point…”</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:11px;padding:11px 13px;background:#131415;border:1px solid rgba(255,255,255,.07)">
+            <span class="mono" style="font-size:10px;color:#E8873C;padding-top:1px">2</span>
+            <div style="flex:1">
+              <div style="display:flex;align-items:baseline;gap:9px"><span style="font-size:13px;color:#E4E2DC">Sync protocol notes</span><span class="tpc tpc-proto" style="padding:1px 6px"><i></i>PROTOCOL</span><span class="mono" style="font-size:9.5px;color:#585550;margin-left:auto">block 7f3a · cos 0.91</span></div>
+              <div style="font-family:Spectral,serif;font-size:12.5px;line-height:1.55;color:#8C8880;margin-top:5px">“…a tree of addressable nodes, each one a unit of intent…”</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:11px;padding:11px 13px;background:#131415;border:1px solid rgba(255,255,255,.07)">
+            <span class="mono" style="font-size:10px;color:#E8873C;padding-top:1px">3</span>
+            <div style="flex:1">
+              <div style="display:flex;align-items:baseline;gap:9px"><span style="font-size:13px;color:#E4E2DC">Operation model</span><span class="tpc tpc-proto" style="padding:1px 6px"><i></i>PROTOCOL</span><span class="mono" style="font-size:9.5px;color:#585550;margin-left:auto">block c42 · cos 0.84</span></div>
+              <div style="font-family:Spectral,serif;font-size:12.5px;line-height:1.55;color:#8C8880;margin-top:5px">“…ordering resolves by comparing Lamport timestamps, then actor id as a tiebreak…”</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:auto;display:flex;align-items:center;gap:11px;padding:12px 15px;background:#141617;border:1px solid rgba(232,135,60,.3)">
+        <span style="color:#E8873C;font-size:13px">✦</span>
+        <span class="mono" style="flex:1;font-size:13px;color:#6E6A63">Ask a follow-up…<span class="caret" style="background:#E8873C;margin-left:1px"></span></span>
+        <span class="kbd">⌘↵</span>
+      </div>
+    </div>
+
+    <div class="insp" style="width:308px">
+      <div class="insp-t"><span class="it it-on">HOW IT ANSWERED</span><span class="it">PROPOSALS</span></div>
+      <div style="padding:14px;display:flex;flex-direction:column;gap:13px">
+        <span class="lbl">RETRIEVAL</span>
+        <div class="mono" style="font-size:10.5px;line-height:1.95;color:#8C8880">candidates&nbsp;&nbsp;612 <span style="color:#585550">after filter</span><br>visited&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;148<br>returned&nbsp;&nbsp;&nbsp;&nbsp;3<br>lowest cos&nbsp;&nbsp;0.84</div>
+        <div style="font-size:11px;line-height:1.6;color:#585550">The permission filter rides the HNSW descent, not the result list. A post-filtered retrieval leaks nothing directly and still leaks the shape of what it dropped.</div>
+
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">WHAT IT MAY NOT DO</span>
+        <div style="display:flex;flex-direction:column;gap:8px;font-size:11.5px;color:#8C8880">
+          <div style="display:flex;gap:9px"><span style="color:#3FCFA8">✓</span><span style="flex:1">Answer with citations</span></div>
+          <div style="display:flex;gap:9px"><span style="color:#3FCFA8">✓</span><span style="flex:1">Propose ops for you to accept</span></div>
+          <div style="display:flex;gap:9px"><span style="color:#E0A34E">✕</span><span style="flex:1">Write to the tree unaccepted</span></div>
+          <div style="display:flex;gap:9px"><span style="color:#E0A34E">✕</span><span style="flex:1">Read a space you cannot</span></div>
+          <div style="display:flex;gap:9px"><span style="color:#E0A34E">✕</span><span style="flex:1">Answer without a source</span></div>
+        </div>
+        <div style="font-size:11px;line-height:1.6;color:#585550">An accepted proposal commits as ops by the <span class="mono" style="color:#7D9EC9">assistant</span> actor — it appears in history, undoes per actor, and is attributable forever. There is no path where a model edits a page invisibly.</div>
+
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">WHEN IT CANNOT ANSWER</span>
+        <div style="font-size:11.5px;line-height:1.65;color:#8C8880">It says so and shows what it retrieved anyway. An answer assembled from nothing relevant is the failure mode worth designing against — a confident paragraph with three weak citations is harder to catch than a blank one.</div>
+
+        <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+        <span class="lbl">LOCAL BY DEFAULT</span>
+        <div style="font-size:11.5px;line-height:1.65;color:#8C8880">An 8B model on the instance, no key required. A hosted model is opt-in per workspace and states plainly that page text leaves the machine.</div>
+      </div>
+    </div>
+  </div>
+  <div class="status"><span>⌘J · assistant</span><span>retrieval filtered during descent</span><div style="flex:1"></div><span style="color:#3FCFA8">● 3 citations · 0 unsourced sentences</span></div>
+</div>
+
+<div class="tag"><b>24e</b> EMPTY &amp; NOT FOUND <i>the two states a new workspace and a wrong URL land in</i></div>
+<div class="sc">
+  <div class="scan"></div>
+  <div class="bar">
+    <span class="wm">m<span style="color:#E8873C">/</span>arginal</span>
+    <div class="tabs"><span class="tb tb-on">Write</span><span class="tb">Read</span><span class="tb">Search</span><span class="tb">Graph</span><span class="tb">History</span><span class="tb">Lab</span></div>
+    <span class="crumb">workspace / <b>new</b></span>
+    <div style="flex:1"></div>
+    <div class="vr"></div>
+    <div class="clk"><b>14:06</b><span>THU 12 MAR</span></div><span class="kbd">⌘K</span><div class="icb">◎</div><div class="icb">⚙</div><div class="av av-you">GN</div>
+  </div>
+  <div class="body">
+    <!-- Left half: a brand-new workspace. Right half: a page id that does not
+         resolve. Both are drawn together because they are the same design
+         problem — a screen with nothing on it still has to say what to do. -->
+    <div style="flex:1;min-width:0;border-right:1px solid rgba(255,255,255,.07);display:flex;flex-direction:column">
+      <div style="padding:12px 20px;border-bottom:1px solid rgba(255,255,255,.07);background:#0F1012">
+        <span class="lbl">FIRST RUN · 0 PAGES</span>
+      </div>
+      <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:40px">
+        <div style="width:400px">
+          <div class="mono" style="font-size:9px;font-weight:600;letter-spacing:.2em;color:#E8873C;margin-bottom:12px">NOTHING HERE YET</div>
+          <h1 class="h1" style="font-size:26px;line-height:1.2;margin-bottom:12px">An empty workspace is a working one.</h1>
+          <div style="font-size:13px;line-height:1.7;color:#8C8880;margin-bottom:24px">No sample content, no tour, no “getting started” page you will delete in a minute. The op log is empty and every screen already works against it — the graph is empty, search returns nothing, and both say so correctly.</div>
+          <div style="display:flex;flex-direction:column;gap:9px">
+            <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid rgba(232,135,60,.35);background:rgba(232,135,60,.05)">
+              <span style="color:#E8873C;font-size:13px">✎</span>
+              <div style="flex:1"><div style="font-size:13px;color:#EFEDE7">Write the first page</div><div class="mono" style="font-size:10.5px;color:#585550;margin-top:2px">untitled · you can name it later</div></div>
+              <span class="kbd">N</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid rgba(255,255,255,.09)">
+              <span style="color:#8C8880;font-size:13px">↓</span>
+              <div style="flex:1"><div style="font-size:13px;color:#D2CFC8">Import what you already have</div><div class="mono" style="font-size:10.5px;color:#585550;margin-top:2px">markdown · notion · obsidian</div></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid rgba(255,255,255,.09)">
+              <span style="color:#8C8880;font-size:13px">✦</span>
+              <div style="flex:1"><div style="font-size:13px;color:#D2CFC8">Invite someone</div><div class="mono" style="font-size:10.5px;color:#585550;margin-top:2px">multiplayer works from page one</div></div>
+            </div>
+          </div>
+          <div style="margin-top:22px;font-size:11.5px;line-height:1.65;color:#585550">The first three things anyone actually does, in the order they do them. Nothing else — an empty state that offers nine options is a menu, and a menu is what you build when you have not decided.</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+      <div style="padding:12px 20px;border-bottom:1px solid rgba(255,255,255,.07);background:#0F1012">
+        <span class="lbl">NOT FOUND · <span style="color:#E0A34E">/p/anchors-vs-offests</span></span>
+      </div>
+      <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:40px">
+        <div style="width:400px">
+          <div class="mono" style="font-size:9px;font-weight:600;letter-spacing:.2em;color:#E0A34E;margin-bottom:12px">◌ NO PAGE WITH THIS NAME</div>
+          <h1 class="h1" style="font-size:26px;line-height:1.2;margin-bottom:12px">Nothing is broken. This page does not exist yet.</h1>
+          <div style="font-size:13px;line-height:1.7;color:#8C8880;margin-bottom:22px">A missing page here is the same state a <span class="mono" style="color:#8C8880">[[link]]</span> typed before its page exists is already in — dangling, not an error. The fix is to create it or to go to the one you meant.</div>
+
+          <div class="lbl" style="margin-bottom:11px">DID YOU MEAN · BK-TREE, 3 NODES VISITED</div>
+          <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:20px">
+            <div style="display:flex;align-items:center;gap:11px;padding:11px 13px;border:1px solid rgba(232,135,60,.3);background:rgba(232,135,60,.04)">
+              <span style="flex:1;font-size:13px;color:#EFEDE7">Anchors vs offsets</span>
+              <span class="tpc tpc-proto" style="padding:1px 6px"><i></i>PROTOCOL</span>
+              <span class="mono" style="font-size:9.5px;color:#585550">d=2</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:11px;padding:11px 13px;border:1px solid rgba(255,255,255,.08)">
+              <span style="flex:1;font-size:13px;color:#D2CFC8">Anchors</span>
+              <span class="tpc tpc-proto" style="padding:1px 6px"><i></i>PROTOCOL</span>
+              <span class="mono" style="font-size:9.5px;color:#585550">d=8</span>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:9px;margin-bottom:20px">
+            <div class="btn" style="border-color:rgba(232,135,60,.45);color:#E8873C">CREATE THIS PAGE<div class="brk-tl"></div><div class="brk-br"></div></div>
+            <div class="btn">SEARCH INSTEAD<div class="brk-tl"></div><div class="brk-br"></div></div>
+          </div>
+
+          <div style="padding-top:16px;border-top:1px solid rgba(255,255,255,.07);font-size:11.5px;line-height:1.65;color:#585550">If it existed and was deleted, this says so instead — purge keeps a tombstone with the page id precisely so “this is gone” and “this never was” stay different answers.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="status"><span>empty state · 404</span><span>a missing page is dangling, never an error</span><div style="flex:1"></div><span style="color:#3FCFA8">● both states offer the action, not an apology</span></div>
 </div>
 <div class="tag"><b>25</b> COMPONENTS &amp; MOTION <i>the pieces every screen is built from</i></div>
 <div class="sc">
