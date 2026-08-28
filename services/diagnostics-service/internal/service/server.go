@@ -10,8 +10,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	"github.com/google/uuid"
@@ -30,12 +32,29 @@ import (
 // document-service's own two gRPC clients.
 type Server struct {
 	diagnosticsv1.UnimplementedDiagnosticsServiceServer
-	pages documentv1.PageServiceClient
-	graph documentv1.GraphServiceClient
+	pages       documentv1.PageServiceClient
+	graph       documentv1.GraphServiceClient
+	systemActor string
 }
 
-func NewServer(pages documentv1.PageServiceClient, graph documentv1.GraphServiceClient) *Server {
-	return &Server{pages: pages, graph: graph}
+// NewServer. systemActor is the actor-id document-service's own
+// temporary auth stand-in (pages.md's "Actor identity") requires on
+// every call — this service acts as itself, not on behalf of one
+// specific browser user (every analysis here reads across the whole
+// workspace, and this repo's pages carry no per-actor access scoping
+// anyway — DATA_MODEL.md's "shared workspace, not multi-tenant"), so a
+// fixed synthetic id is the right identity, the same way
+// collaboration-service's own serverActor is a synthetic identity
+// distinct from a real editing user.
+func NewServer(pages documentv1.PageServiceClient, graph documentv1.GraphServiceClient, systemActor string) *Server {
+	return &Server{pages: pages, graph: graph, systemActor: systemActor}
+}
+
+// withActor attaches this service's own synthetic actor-id to ctx as
+// outgoing gRPC metadata — document-service's PageService/GraphService
+// both reject a call missing it with UNAUTHENTICATED.
+func (s *Server) withActor(ctx context.Context) context.Context {
+	return metadata.AppendToOutgoingContext(ctx, "actor-id", s.systemActor)
 }
 
 // buildLinkContext calls GraphService.GetLinkGraph once and shapes it
@@ -43,7 +62,7 @@ func NewServer(pages documentv1.PageServiceClient, graph documentv1.GraphService
 // cross-page analyzer (DanglingPageLink, AmbiguousPageLink, DuplicateTitle,
 // OrphanPage, LinkCycle) needs, and nothing per-page-block-specific does.
 func (s *Server) buildLinkContext(ctx context.Context) (analyzers.Context, error) {
-	linkGraph, err := s.graph.GetLinkGraph(ctx, &documentv1.GetLinkGraphRequest{})
+	linkGraph, err := s.graph.GetLinkGraph(s.withActor(ctx), &documentv1.GetLinkGraphRequest{})
 	if err != nil {
 		return analyzers.Context{}, fmt.Errorf("diagnostics: loading link graph: %w", err)
 	}
@@ -67,11 +86,11 @@ func (s *Server) buildLinkContext(ctx context.Context) (analyzers.Context, error
 // the whole reason ListBlocks ships them as documentcore's native JSON
 // shape rather than a re-modelled proto message.
 func (s *Server) loadPage(ctx context.Context, pageID string) (analyzers.Page, error) {
-	page, err := s.pages.GetPage(ctx, &documentv1.GetPageRequest{Id: pageID})
+	page, err := s.pages.GetPage(s.withActor(ctx), &documentv1.GetPageRequest{Id: pageID})
 	if err != nil {
 		return analyzers.Page{}, fmt.Errorf("diagnostics: loading page: %w", err)
 	}
-	blocksResp, err := s.pages.ListBlocks(ctx, &documentv1.ListBlocksRequest{PageId: pageID})
+	blocksResp, err := s.pages.ListBlocks(s.withActor(ctx), &documentv1.ListBlocksRequest{PageId: pageID})
 	if err != nil {
 		return analyzers.Page{}, fmt.Errorf("diagnostics: loading blocks: %w", err)
 	}
@@ -117,10 +136,12 @@ func unmarshalBlock(b *documentv1.Block) (analyzers.Block, error) {
 func (s *Server) AnalyzePage(ctx context.Context, req *diagnosticsv1.AnalyzePageRequest) (*diagnosticsv1.AnalyzePageResponse, error) {
 	linkCtx, err := s.buildLinkContext(ctx)
 	if err != nil {
+		slog.Error("diagnostics: AnalyzePage: building link context", "err", err)
 		return nil, status.Error(codes.Internal, "diagnostics: analyze page failed")
 	}
 	page, err := s.loadPage(ctx, req.GetPageId())
 	if err != nil {
+		slog.Error("diagnostics: AnalyzePage: loading page", "page_id", req.GetPageId(), "err", err)
 		return nil, status.Error(codes.Internal, "diagnostics: analyze page failed")
 	}
 
@@ -146,14 +167,14 @@ func (s *Server) AnalyzePage(ctx context.Context, req *diagnosticsv1.AnalyzePage
 // shared by AnalyzeFacts and StaleReferences so both compute over the
 // exact same scan of the workspace, not two slightly different ones.
 func (s *Server) buildFactsGraph(ctx context.Context) (facts.Graph, error) {
-	pagesResp, err := s.pages.ListPages(ctx, &documentv1.ListPagesRequest{})
+	pagesResp, err := s.pages.ListPages(s.withActor(ctx), &documentv1.ListPagesRequest{})
 	if err != nil {
 		return facts.Graph{}, fmt.Errorf("diagnostics: listing pages: %w", err)
 	}
 
 	pageBlocks := make([]facts.PageBlocks, 0, len(pagesResp.GetPages()))
 	for _, p := range pagesResp.GetPages() {
-		blocksResp, err := s.pages.ListBlocks(ctx, &documentv1.ListBlocksRequest{PageId: p.GetId()})
+		blocksResp, err := s.pages.ListBlocks(s.withActor(ctx), &documentv1.ListBlocksRequest{PageId: p.GetId()})
 		if err != nil {
 			return facts.Graph{}, fmt.Errorf("diagnostics: listing blocks for page %s: %w", p.GetId(), err)
 		}
@@ -181,6 +202,7 @@ func (s *Server) buildFactsGraph(ctx context.Context) (facts.Graph, error) {
 func (s *Server) AnalyzeFacts(ctx context.Context, _ *diagnosticsv1.AnalyzeFactsRequest) (*diagnosticsv1.AnalyzeFactsResponse, error) {
 	g, err := s.buildFactsGraph(ctx)
 	if err != nil {
+		slog.Error("diagnostics: AnalyzeFacts: building facts graph", "err", err)
 		return nil, status.Error(codes.Internal, "diagnostics: analyze facts failed")
 	}
 
@@ -212,6 +234,7 @@ func (s *Server) AnalyzeFacts(ctx context.Context, _ *diagnosticsv1.AnalyzeFacts
 func (s *Server) StaleReferences(ctx context.Context, req *diagnosticsv1.StaleReferencesRequest) (*diagnosticsv1.StaleReferencesResponse, error) {
 	g, err := s.buildFactsGraph(ctx)
 	if err != nil {
+		slog.Error("diagnostics: StaleReferences: building facts graph", "err", err)
 		return nil, status.Error(codes.Internal, "diagnostics: stale references failed")
 	}
 	refs := g.StaleReferences(req.GetFactName())

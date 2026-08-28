@@ -109,6 +109,18 @@ services:
       nats:
         condition: service_healthy
 
+  diagnostics-service:
+    build:
+      context: . # repo root — see services/diagnostics-service/Dockerfile's own comment on why
+      dockerfile: services/diagnostics-service/Dockerfile
+    environment:
+      DOCUMENT_SERVICE_GRPC_ADDR: document-service:9001
+    ports:
+      - "8008:8008" # health
+      - "9008:9008" # gRPC DiagnosticsService — api-gateway's target; exposed to host too, for grpcurl debugging
+    depends_on:
+      - document-service # stateless — no database, no NATS; just a gRPC client to document-service
+
   auth-service:
     build:
       context: . # repo root — see services/auth-service/Dockerfile's own comment on why
@@ -168,11 +180,13 @@ services:
     environment:
       DOCUMENT_SERVICE_GRPC_ADDR: document-service:9001
       AUTH_SERVICE_GRPC_ADDR: auth-service:9006
+      DIAGNOSTICS_SERVICE_GRPC_ADDR: diagnostics-service:9008
     ports:
       - "8000:8000" # the browser's entry point for REST
     depends_on:
       - document-service
       - auth-service
+      - diagnostics-service
 
   web:
     image: node:22-alpine

@@ -66,7 +66,7 @@ func newTestServer(t *testing.T, fake *fakeDocumentService) diagnosticsv1.Diagno
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = conn.Close() })
 
-	diagSrv := service.NewServer(documentv1.NewPageServiceClient(conn), documentv1.NewGraphServiceClient(conn))
+	diagSrv := service.NewServer(documentv1.NewPageServiceClient(conn), documentv1.NewGraphServiceClient(conn), uuid.Must(uuid.NewV7()).String())
 
 	diagLis := bufconn.Listen(1024 * 1024)
 	diagGrpc := grpc.NewServer()

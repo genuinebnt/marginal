@@ -18,6 +18,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/google/uuid"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/reflection"
@@ -49,9 +50,16 @@ func run() error {
 	}
 	defer func() { _ = documentConn.Close() }()
 
+	// This process's own identity for document-service's actor-id stand-in
+	// (service.Server.withActor's own doc comment) — fresh per process
+	// start is fine: every call this service makes reads across the whole
+	// workspace, never one actor's own scoped data.
+	systemActor := uuid.Must(uuid.NewV7()).String()
+
 	srv := service.NewServer(
 		documentv1.NewPageServiceClient(documentConn),
 		documentv1.NewGraphServiceClient(documentConn),
+		systemActor,
 	)
 
 	grpcAddr := envconfig.EnvOr("DIAGNOSTICS_SERVICE_GRPC_ADDR", ":9008")
