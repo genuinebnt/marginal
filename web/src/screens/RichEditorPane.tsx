@@ -28,6 +28,12 @@ const CALLOUT_TONE_COLOR: Record<string, string> = {
 
 const EMPTY_DIAGNOSTICS: Diagnostic[] = [];
 const REPLACE_DEBOUNCE_MS = 400;
+
+// documentcore.BlockKind.Language (block.go) — "which grammar to
+// highlight against," block.go's own field comment. "" is a real value
+// (RFC-001 §1's Code ::= Language? RawText — Language is optional), not
+// a placeholder; NewCodeBlock's own default.
+const CODE_LANGUAGES = ["", "go", "typescript", "javascript", "rust", "python", "sql", "bash", "json", "yaml", "markdown"];
 const BLOCK_ID_ATTR = "data-block-id";
 
 /** A short, human-distinguishable 2-character tag for an actor id — never
@@ -529,6 +535,7 @@ export function RichEditorPane({
             onToggleChecked={() => {
               if (b.kind.tag === "list_item") setBlockKind(b.id, { tag: "list_item", checked: !b.kind.checked });
             }}
+            onSetLanguage={(language) => setBlockKind(b.id, { tag: "code_block", language })}
             disabled={state !== "open"}
             registerRef={(el) => {
               if (el) rowRefs.current.set(b.id, el);
@@ -773,6 +780,7 @@ function BlockRow({
   collapsed,
   onToggleCollapse,
   onToggleChecked,
+  onSetLanguage,
   disabled,
   registerRef,
   onChangeText,
@@ -810,6 +818,9 @@ function BlockRow({
   /** ListItem-only — flips Checked via SetBlockKind (Checked lives on
    * BlockKind, not Content — block.go's own field-per-tag pattern). */
   onToggleChecked: () => void;
+  /** CodeBlock-only — sets Language via SetBlockKind, the same
+   * one-field-per-tag pattern onToggleChecked already uses. */
+  onSetLanguage: (language: string) => void;
   disabled: boolean;
   registerRef: (el: HTMLElement | null) => void;
   onChangeText: (text: string) => void;
@@ -834,15 +845,35 @@ function BlockRow({
   if (tag === "divider") {
     body = <hr className="block-divider" />;
   } else if (tag === "code_block") {
+    const language = block.kind.tag === "code_block" ? block.kind.language : "";
     body = (
-      <CodeBlockField
-        text={block.text}
-        disabled={disabled}
-        registerRef={registerRef}
-        onChangeText={onChangeText}
-        onBackspaceEmpty={onBackspaceEmpty}
-        onCursorChange={onCursorChange}
-      />
+      <div>
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 4 }}>
+          <select
+            value={language}
+            disabled={disabled}
+            onChange={(e) => onSetLanguage(e.target.value)}
+            title="Code block language — documentcore.BlockKind's own Language field"
+            style={{
+              fontFamily: "var(--mono)", fontSize: 11, color: "var(--ink-faint)",
+              background: "transparent", border: "1px solid var(--rule)", borderRadius: "var(--radius)",
+              padding: "2px 6px", cursor: "pointer",
+            }}
+          >
+            {CODE_LANGUAGES.map((l) => (
+              <option key={l} value={l}>{l || "plain text"}</option>
+            ))}
+          </select>
+        </div>
+        <CodeBlockField
+          text={block.text}
+          disabled={disabled}
+          registerRef={registerRef}
+          onChangeText={onChangeText}
+          onBackspaceEmpty={onBackspaceEmpty}
+          onCursorChange={onCursorChange}
+        />
+      </div>
     );
   } else if (tag === "image") {
     // No upload/asset pipeline exists yet (RFC-001 §1, §10) — a labeled
