@@ -306,6 +306,68 @@ Choreographed, no central coordinator. Four services, no shared database.
 
 **Compensation is forward-only.** Search segments cannot be un-deleted, so a partial failure is resolved by retrying to completion rather than rolling back. `deleting` is a persisted state, so a crash mid-saga resumes rather than restarts.
 
+### What this actually is at this repo's scope (`v2.6.0`)
+
+The diagram above is the full eleven-service design. Three of its four
+participants do not exist here: `search-service` and `history-service` are
+out of scope (`ADR-011`), and `diagnostics-service` is stateless with no
+database and no cache — it computes fresh per request, so it has nothing
+to invalidate and is **not a participant**.
+
+What survives is smaller but is still a genuine saga — it crosses a
+service boundary and a database boundary, and every property that makes
+sagas hard still applies:
+
+```
+   DELETE /pages/:id
+        │
+        ▼
+   document-service   mark 'deleting' + cascade to descendants   ─┐
+                      (one transaction, LTREE path <@)            │  steps_done
+        │                                                         │  appended
+        ├─ in-process:  rewrite docs.page_links referrers         ─┤  one name
+        ├─ in-process:  drop rows from the FTS index              ─┤  at a time
+        │                                                         │
+        └─▶ docs.page_deleted ──▶ collaboration-service          ─┘
+                                  close sessions, drop the rope,
+                                  seal collab.ops (retain, never delete)
+                                       │
+                                       ▼
+                                  collab.page_released
+                                       │
+        ┌──────────────────────────────┘
+        ▼
+   document-service   mark 'deleted', start the purge window
+        │
+        ▼  purge window elapses, or the sweeper times the ack out
+   hard-delete rows
+```
+
+**Search is in-process here, and that is the interesting difference.**
+`internal/search` is a Postgres FTS index in `document-service`'s own
+database, so what was a cross-service step in the full design is a
+statement in the same transaction. It is still a *named saga step* rather
+than an inline write, because the resumability argument does not depend on
+where the step runs — a crash between "tree detached" and "index dropped"
+must still resume at the index, and a step that is invisible to
+`steps_done` cannot be resumed at.
+
+**Collaboration is the only remote participant**, which makes the ack loop
+worth having rather than theatre: a live rope over a page whose rows were
+just purged is the actual failure this prevents.
+
+**Every step is idempotent, and that is what makes resume free.** Re-running
+"rewrite referrers" or "drop from index" costs nothing and changes nothing.
+The sweeper therefore never needs to know whether a step *partially*
+completed — it re-runs from the first step not named in `steps_done`, and
+a step that ran but crashed before recording itself simply runs twice.
+
+**The sweeper is the resume mechanism**, not a retry queue: it claims
+in-flight sagas with `FOR UPDATE SKIP LOCKED` (the same pattern
+`marginal/outboxpoll` already uses for outbox rows), bumps `attempts`, and
+continues. A `collaboration-service` that never acks delays a purge; it
+does not block one, and it never rolls one back.
+
 ---
 
 ## 6. Service Internals

@@ -8,14 +8,26 @@ projection of `collab.ops_flushed`, not page metadata: `ListBacklinks`
 `ListBlocks` (`docs.blocks` — v2.3.0's diagnostics-service, the one caller;
 no REST mapping exists for it, since it's an east-west call, never a browser
 one, per ADR-007). Both live on this service only because those tables live
-in this service's own database. DeletePage is a simple soft delete, and — unlike the earlier note
-here — **that's the terminal state for this repo, not a deferred step**:
-`ARCHITECTURE.md` §5's full saga coordinates with `search-service`,
-`diagnostics-service`, and `history-service`, none of which exist in this
-repo's scope (`ADR-011`; only `document-service`, `auth-service`,
-`collaboration-service` do). A saga can't meaningfully coordinate with
-participants that don't exist, so it isn't attempted here. See
-`docs/porting/PROGRESS.md` for the reasoning.
+in this service's own database.
+
+**`DeletePage` starts a saga (`v2.6.0`); it is not a soft delete.** This
+reverses what this file said through `v2.5.0` — that a saga couldn't
+coordinate with participants that don't exist, so none was attempted. The
+first half is still true: `ARCHITECTURE.md` §5's full version names
+`search-service`, `diagnostics-service`, and `history-service`, and the
+first two are out of scope while the third is stateless with nothing to
+invalidate. The conclusion was wrong, though, because it overlooked the
+participant that *does* exist: `collaboration-service` holds a live rope
+and an op log over the page being deleted, and purging rows out from under
+it is the exact failure a saga prevents. See `ARCHITECTURE.md` §5 § *What
+this actually is at this repo's scope* for the reduced-but-real flow.
+
+The observable consequence for a caller: `DeletePage` returns as soon as
+the page is marked `deleting`, **not** when the delete is finished. A page
+is `deleting` while the saga runs, then `deleted` and restorable until its
+purge window elapses. `GetPage` keeps answering for both states —
+`lifecycle_state` is how a caller tells them apart, which is the whole
+reason the field is on the wire rather than inferred from `deleted_at`.
 **Owners:** `document-service` (gRPC `PageService`) · `api-gateway` (REST translation)
 **Related:** ADR-007 (gRPC east-west) · `docs/architecture/lld/document-service.md` · `DATA_MODEL.md` §4
 
@@ -48,8 +60,54 @@ service PageService {
   rpc DeletePage   (DeletePageRequest)   returns (google.protobuf.Empty);
   rpc ListBacklinks(ListBacklinksRequest) returns (ListBacklinksResponse);
   rpc ListBlocks(ListBlocksRequest) returns (ListBlocksResponse);
+
+  // v2.6.0 — the delete saga, made observable and reversible.
+  rpc PreviewDelete(PreviewDeleteRequest) returns (PreviewDeleteResponse);
+  rpc ListTrash    (ListTrashRequest)     returns (ListTrashResponse);
+  rpc RestorePage  (RestorePageRequest)   returns (Page);
 }
 ```
+
+```protobuf
+// What a delete would actually take with it. Reads the same forward
+// reachability GraphService.BlastRadius already computes (v2.2.0) rather
+// than a second traversal — a delete's blast radius and a link graph's
+// are the same question asked by two screens.
+message PreviewDeleteRequest  { string id = 1; }
+message PreviewDeleteResponse {
+  repeated Page descendants  = 1;  // cascade targets, the LTREE subtree
+  repeated Page referrers    = 2;  // pages whose [[links]] would dangle
+  int32         block_count  = 3;
+}
+
+message ListTrashRequest  { int32 limit = 1; int32 offset = 2; }
+message ListTrashResponse {
+  repeated TrashEntry entries = 1;
+  int32               total   = 2;
+}
+message TrashEntry {
+  Page                      page       = 1;
+  google.protobuf.Timestamp purge_at   = 2;  // derived: deleted_at + window
+  // Present only while lifecycle_state == 'deleting'. Absent once the
+  // saga completes, because a finished saga has no progress to report.
+  optional SagaProgress     progress   = 3;
+}
+message SagaProgress {
+  repeated string steps_done = 1;  // in completion order
+  repeated string steps_left = 2;  // the code's step list minus the above
+  int32           attempts   = 3;  // > 1 means it resumed after a crash
+  optional string last_error = 4;
+}
+
+message RestorePageRequest { string id = 1; }
+```
+
+**`RestorePage` refuses a page still in `deleting`.** Restoring mid-saga
+would race the sweeper: a step that has already run (sessions closed, index
+rows dropped) would have to be undone, which is exactly the rollback
+forward-only compensation exists to avoid. The saga is short; the caller
+waits for `deleted` and then restores. `FAILED_PRECONDITION`, not
+`INVALID_ARGUMENT` — the request is well-formed, the state is wrong.
 
 Rename and reparent are separate RPCs, not one `UpdatePage` with a field mask. They have
 different authorization and, from Phase 3, compile to different ops — `SetTitle` versus
@@ -261,6 +319,20 @@ span, correlated by trace id.
 | `PATCH` | `/pages/{id}/parent` | `ReparentPage` |
 | `DELETE` | `/pages/{id}` | `DeletePage` |
 | `GET` | `/pages/{id}/backlinks` | `ListBacklinks` |
+| `GET` | `/pages/{id}/delete-preview` | `PreviewDelete` |
+| `GET` | `/trash` | `ListTrash` |
+| `POST` | `/pages/{id}/restore` | `RestorePage` |
+
+`/trash` is top-level rather than `/pages/trash`: it lists pages that are
+no longer in the tree, and nesting it under the collection they left would
+make `GET /pages/{id}` and `GET /pages/trash` compete for the same route
+shape with `trash` as a reserved id.
+
+`POST /pages/{id}/restore` rather than `PATCH /pages/{id}` with a
+lifecycle field — restore is an operation with its own precondition
+(§1: it fails on a page still `deleting`), not a field assignment, and a
+`PATCH` that silently no-ops on the wrong state is the shape that hides
+that.
 
 ```json
 {

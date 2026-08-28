@@ -316,6 +316,54 @@ it (`docs/api/search.md` §1). Not shown above alongside the original
 columns since it postdates them by three migrations; see that file for
 the exact `ALTER TABLE`.
 
+### Page deletions — the saga's own state
+
+`lifecycle_state` above says *what* a page is; it cannot say *how far a
+delete got*. Resumability needs per-step progress, and progress belongs
+to the **operation**, not the page: it has its own lifetime, its own
+retry count, and it outlives nothing — once the page is purged the row
+is history, not state. So it is its own table (`v2.6.0`, migration
+`00005_page_deletions.sql`):
+
+```sql
+CREATE TABLE docs.page_deletions (
+    page_id      UUID PRIMARY KEY REFERENCES docs.pages(id) ON DELETE CASCADE,
+    requested_by UUID NOT NULL,          -- auth.users(id), no FK: cross-schema
+    -- Steps completed so far, in order. A step appends its own name here
+    -- exactly once; the sweeper resumes at the first name NOT present.
+    -- An array rather than a column per step: adding a step (embeddings,
+    -- blobs — v4) must not be a migration on a hot table, and the set of
+    -- steps is a property of the code's version, not the schema's.
+    steps_done   TEXT[] NOT NULL DEFAULT '{}',
+    -- Bumped on every resume, so "resumed once" is a fact rather than an
+    -- inference from timestamps (ui-mockups § 23c TRASH & RESTORE).
+    attempts     INT NOT NULL DEFAULT 1,
+    -- Set when the last step lands. Until then the page is 'deleting' and
+    -- the sweeper owns it; after, it is 'deleted' and restorable.
+    completed_at TIMESTAMPTZ,
+    -- Forward-only compensation (ARCHITECTURE §5): a step that keeps
+    -- failing is retried, never rolled back. This records the last reason
+    -- so a stuck saga is diagnosable rather than merely slow.
+    last_error   TEXT,
+    started_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+-- The sweeper's claim query — every in-flight saga, oldest first.
+CREATE INDEX ON docs.page_deletions (started_at) WHERE completed_at IS NULL;
+```
+
+**Why not columns on `docs.pages`.** A page is read on every tree
+render; a saga row is read by one background sweeper. Putting five
+step-flags on the hot table widens every one of those reads to carry
+state almost every row has no use for, and makes adding a sixth step a
+migration on the table the editor blocks on.
+
+**The purge window is derived, not stored.** "Restorable until purge" is
+`deleted_at + interval`, computed at read time. A stored `purge_at`
+would be a second copy of a value that only ever changes when policy
+does — and changing policy should move every pending purge, which a
+derived value does for free and a stored one needs a backfill for.
+
 ### Blocks
 
 `document-service`'s actual `docs.blocks` (`internal/migrate/migrations/00002_docs_blocks_and_links.sql`) is a fully-rebuilt-on-every-event projection (§ The Central Rule) — it uses `pgx/v5` + `sqlc`, not `sqlx` (the Go/TS pivot, `ADR-011`, superseded the earlier Rust-track tooling this doc originally assumed), a plain `INTEGER position` rather than a fractional `sort_key` (a projection has no concurrent-independent-writer reordering problem a fractional key exists to solve — `internal/blockproj`'s own doc comment), and no `deleted_at`/`content_version` (a block's whole row is replaced, not soft-deleted, on the next replay). `parent_id` and `path` below are new — RFC-001 §1's containment design (`Quote`/`Toggle`/`List`/`ListItem` nesting), materialised the same way `docs.pages` already materialises pages-within-pages:
@@ -650,7 +698,8 @@ is that redelivery and dead-lettering are scoped to the thing that actually fail
 |---|---|---|---|
 | `docs.page_created` | `document-service` | `page_id` | search · diagnostics · history |
 | `docs.page_renamed` | `document-service` | `page_id` | search · **diagnostics** · publishing |
-| `docs.page_deleted` | `document-service` | `page_id` | search · diagnostics · history · notification |
+| `docs.page_deleted` | `document-service` | `page_id` | **collaboration-service** · search · diagnostics · history · notification |
+| `collab.page_released` | `collaboration-service` | `page_id` | **document-service** |
 | `docs.block_updated` | `document-service` | `page_id` | search · diagnostics |
 | `docs.block_deleted` | `document-service` | `page_id` | search · diagnostics |
 | `docs.page_shared` | `document-service` | `page_id` | notification |
@@ -665,6 +714,13 @@ is that redelivery and dead-lettering are scoped to the thing that actually fail
 > **`docs.page_renamed` is the expensive one.** It invalidates diagnostics on every page that
 > links to the renamed page (RFC-003 §4), so it is the topic most likely to need its own
 > backpressure story before any other.
+
+> **`collab.page_released` is the only ack in the set** (`v2.6.0`). Every other topic here is
+> a notification its publisher does not wait on; this one closes a loop, because
+> `document-service` must not purge a page's rows while `collaboration-service` still holds a
+> live rope over them. It is still choreographed, not orchestrated — the ack is an event like
+> any other, and the sweeper's timeout means a `collaboration-service` that never answers
+> delays a purge rather than blocking it forever (ARCHITECTURE §5, forward-only).
 
 > **`collab.ops_flushed` is the load-bearing one.** `document-service` materialises `blocks` by
 > replaying it (ADR-003). A gap here is not a stale index, it is a wrong page — so
