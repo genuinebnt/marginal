@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { getBacklinks, type Backlink, type Page } from "../api/pages";
-import { getPageDiagnostics, type Diagnostic } from "../api/diagnostics";
+import type { Diagnostic } from "../api/diagnostics";
 import type { CollabPage } from "../collab/useCollabPage";
 import { keyOf } from "../collab/blockKind";
 
@@ -29,7 +29,25 @@ const TABS: { id: Tab; label: string }[] = [
  * feature, `history-service`) — those two tabs say so plainly rather
  * than showing invented data.
  */
-export function InspectorRail({ page, actorId, collab }: { page: Page; actorId: string; collab: CollabPage }) {
+export function InspectorRail({
+  page,
+  actorId,
+  collab,
+  diagnostics,
+  diagnosticsError,
+  onRefreshDiagnostics,
+}: {
+  page: Page;
+  actorId: string;
+  collab: CollabPage;
+  /** Lifted to EditorScreen (v2.3.0) — the same diagnostics run also
+   * drives RichEditorPane's left-gutter markers, so it's fetched once,
+   * not once per consumer (the same reasoning EditorScreen's own doc
+   * comment already gives for lifting useCollabPage itself). */
+  diagnostics: Diagnostic[] | null;
+  diagnosticsError: string | null;
+  onRefreshDiagnostics: () => void;
+}) {
   const [tab, setTab] = useState<Tab>("outline");
 
   return (
@@ -50,7 +68,9 @@ export function InspectorRail({ page, actorId, collab }: { page: Page; actorId: 
       <div className="panel-body">
         {tab === "outline" && <OutlinePanel page={page} collab={collab} />}
         {tab === "people" && <PeoplePanel collab={collab} />}
-        {tab === "checks" && <ChecksPanel page={page} actorId={actorId} />}
+        {tab === "checks" && (
+          <ChecksPanel diagnostics={diagnostics} error={diagnosticsError} onRefresh={onRefreshDiagnostics} />
+        )}
         {tab === "links" && <BacklinksPanel page={page} actorId={actorId} />}
         {tab === "comments" && <NotBuiltPanel what="Comments" service="a comments feature (Track 2)" />}
         {tab === "history" && <NotBuiltPanel what="Version history" service="history-service" />}
@@ -131,29 +151,19 @@ const ANALYZERS: { id: string; label: string }[] = [
  * drives presentation (RFC-003 §2): "warning" gets the solid stripe,
  * "hint"/"info" the faint one — never red, nothing here is a compile
  * error. The Passed section lists analyzers this run reported nothing
- * for, so a clean page still shows real work having happened.
+ * for, so a clean page still shows real work having happened. The fetch
+ * itself lives in EditorScreen (see InspectorRail's own prop doc) since
+ * RichEditorPane's gutter markers need the same result.
  */
-function ChecksPanel({ page, actorId }: { page: Page; actorId: string }) {
-  const [diagnostics, setDiagnostics] = useState<Diagnostic[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0);
-
-  useEffect(() => {
-    let cancelled = false;
-    setDiagnostics(null);
-    setError(null);
-    getPageDiagnostics(actorId, page.id)
-      .then((r) => {
-        if (!cancelled) setDiagnostics(r.diagnostics);
-      })
-      .catch(() => {
-        if (!cancelled) setError("Couldn't run diagnostics.");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [page.id, actorId, refreshKey]);
-
+function ChecksPanel({
+  diagnostics,
+  error,
+  onRefresh,
+}: {
+  diagnostics: Diagnostic[] | null;
+  error: string | null;
+  onRefresh: () => void;
+}) {
   const found = new Set(diagnostics?.map((d) => d.analyzer));
   const passed = ANALYZERS.filter((a) => diagnostics && !found.has(a.id));
 
@@ -161,7 +171,7 @@ function ChecksPanel({ page, actorId }: { page: Page; actorId: string }) {
     <section className="tabpanel">
       <div className="panel-h" style={{ display: "flex", alignItems: "center" }}>
         Checks{diagnostics ? ` · ${diagnostics.length}` : ""}
-        <button className="icon-btn" style={{ marginLeft: "auto" }} title="Re-run" onClick={() => setRefreshKey((k) => k + 1)}>
+        <button className="icon-btn" style={{ marginLeft: "auto" }} title="Re-run" onClick={onRefresh}>
           ↻
         </button>
       </div>
