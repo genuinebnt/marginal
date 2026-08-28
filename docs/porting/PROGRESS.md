@@ -3373,3 +3373,116 @@ dev server served every touched module without a transform error.
 `diagnostics-service`'s own analyzers/facts packages, never a second
 implementation in TypeScript. Per `RELEASES.md`'s order, `v2.4.0`
 (History, Trace & Diff) is next.
+
+## 2026-08-28 — v2.4.0: History, Trace & Diff, complete
+
+Branch `v2.4.0`, cut from `master` after tagging `v2.3.0-release`.
+`trace.html`'s **backend** (`internal/session.Trace`,
+`GET /collab/pages/{id}/trace`) already landed during `v2.1.0`'s own
+branch as reusable op-log infrastructure — this phase is everything else
+`history.html`/`trace.html`/`diff.html` needed, plus all three UIs.
+
+**`Session.RestoreTo`** — `history.html`'s "restore to a point," made
+real: repeated undo, not a snapshot swap. Walks `Trace`'s own
+already-computed per-step inverses backward from the current tip to a
+target step, applying each through the normal `commitOpLocked` pipeline
+(WAL, broadcast, flush-enqueue) — indistinguishable, from every other
+connection's point of view, from the requesting actor submitting that
+many ordinary ops. Becomes one new undo group, mirroring Undo/Redo's own
+symmetry. New WS message: `{"type": "restore", "to_step": N}`
+(`docs/api/collaboration.md` §2.2).
+
+**Real bug this pass's own tests caught mid-write**, not live this time:
+undoing a restore must reapply the reverted steps in their *original*
+ascending order (each step's own precondition — e.g. `SetBlockContent`'s
+`Prev` — was only ever valid against the state right before it), which
+turned out to be the *opposite* storage/consumption direction from
+Undo's own "produced" reversal (that one targets `s.redo`, consumed
+ascending by `Redo`; `RestoreTo`'s targets `s.undo`, consumed descending
+by `Undo`) — copying Undo's reversal verbatim would have been wrong. A
+dedicated multi-step test (insert A, insert B, edit A, restore to right
+after inserting A, then undo the restore) pinned the correct ordering
+before this ever reached a live smoke test. Commit `4c80d9a`.
+
+**`internal/palimpsest`** — `history.html`'s own central claim, made
+real: "the palimpsest paragraph is a real persistent sequence... a
+delete sets a version stamp, it never removes." Neither `doctext.Text`
+nor its own `anchor.Log` gives this for free (both only ever answer
+"what does this block look like right now"; `anchor.Log`'s tombstoning
+keeps identity/liveness, never a deleted character's rune or who deleted
+it) — `Build` is a second, parallel replay over the same confirmed ops,
+scoped to one block (the same "a projection, never a second writer"
+precedent `blockproj` already set for pages). `GET /collab/pages/{id}/
+blocks/{blockId}/palimpsest`, `docs/api/collaboration.md` §6.
+
+**Real bug caught by the wsapi-level test, not the package-level ones**:
+`Build`'s own internal `doctext.Text` must be tagged with the *exact*
+same actor string the live session's own per-block `Text` used
+(`session.go`'s `applyBlockOp` calls `doctext.New(serverActor)`) —
+`anchor.ItemID` identity is `{actor tag, counter}`, so a mismatched tag
+(this package's first draft used a hardcoded `"palimpsest"`) meant every
+`DeleteText` after the first `InsertText` failed to resolve, since this
+replay's own freshly-generated ids didn't match what later ops actually
+named. The package's own unit tests (which construct their `LoggedOp`s
+and `ItemID`s by hand, consistently) couldn't have caught this — only a
+test going through a real session's real id assignment could, and did.
+Fixed by threading `serverActor` through `Build`/`NewPalimpsestHandler`,
+matching `NewTraceHandler`'s own signature. Commit `8f60ee9`.
+
+**`marginal/textdiff`** (new top-level module, `go.work`) — `diff.html`'s
+own algorithm, real: `LCSTable` (the O(n·m) DP table) plus `Traceback`
+(the edit script). Extracted to top-level for the same reason
+`graphalgo` was: no service dependency of its own, and a client-side
+wasm consumer needs it (`document-service/cmd/diffwasm`, since every
+wasm entrypoint in this repo lives there by established convention,
+graphalgo included) for `diff.html`'s own "token granularity switching
+(word ↔ character), recomputed live." `Traceback`'s tie-break direction
+(toward Insert during the backward walk) is deliberate, documented
+inline — it's what produces the conventional Delete-before-Insert
+reading order once the walk's output is reversed into forward order; a
+first draft got this backwards, caught by the very unit tests meant to
+pin it (the property test — 200 random token sequences checking the
+actual reconstruction law — passed regardless, since both orderings are
+valid edit scripts; the two illustrative example tests didn't). Commit
+`a594646`.
+
+**Frontend.** `TraceScreen.tsx` (`trace.html`): ◀ Invert/Apply ▶/Play
+scrub through real law-checked steps from `GET .../trace`, a law badge
+reflecting whether the invertibility law actually held for every step
+walked so far. `HistoryScreen.tsx` (`history.html`): a scrubber over the
+same endpoint, an actor filter over the op stream, "Restore this
+version" wired to `useCollabPage`'s new `restoreTo`, and a palimpsest
+panel reading `GET .../palimpsest` — reveal mode tints a dead character
+by its real `delete_actor` and fades it by real elapsed steps.
+`DiffScreen.tsx` (`diff.html`): from/to revision pickers and a block
+selector over `GET .../diff`, a real LCS diff (the DP table and its
+traceback run in Go, compiled to wasm, recomputed live on the word/
+character granularity toggle), a real DP-matrix visualization, and block
+moves read straight from `diff`'s own `moves` array (a `MoveBlock`
+filter over the confirmed log, never a heuristic — "a moved block must
+read as MOVED, not as delete + insert"). `InspectorRail`'s "History" tab
+is a launcher into all three now, matching Graph/Facts' own "give it its
+own screen" precedent. Commit `f69c644`.
+
+Verified end to end against the real running stack: rebuilt
+`collaboration-service`, then seeded a real page over a real WebSocket
+connection typing "We hold sync acknowledgement under a tight budget."
+character-by-character, deleting it, and retyping the corrected
+sentence — the same real-pipeline seeding convention every prior
+phase's demo data used. `GET .../palimpsest` correctly reported 101
+total characters (50 tombstoned, 51 live, live text matching the
+corrected sentence exactly); `GET .../trace` showed all 6 steps with
+`law_holds: true`; `GET .../diff?from=0&to=5` correctly showed the empty
+initial block against the final corrected sentence. Full backend test
+suite green under `-race` with `goleak` clean (`session`, `wsapi`,
+`palimpsest`, `textdiff` packages); frontend `tsc --noEmit`/`oxlint`/
+Vitest all clean; every new frontend module confirmed served by the live
+Vite dev server with no transform errors.
+
+**`v2.4.0` (History, Trace & Diff) is complete and shipped** —
+`history.html`'s scrubber/restore/palimpsest, `trace.html`'s op-log
+debugger, and `diff.html`'s revision diff (real LCS, real move
+detection) are all real, backed by `Session.RestoreTo`,
+`internal/palimpsest`, and `marginal/textdiff`, never a second
+implementation in TypeScript. Per `RELEASES.md`'s order, `v2.5.0`
+(Search & Backlinks) is next.

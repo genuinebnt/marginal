@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { getBacklinks, type Backlink, type Page } from "../api/pages";
 import type { Diagnostic } from "../api/diagnostics";
 import type { CollabPage } from "../collab/useCollabPage";
@@ -24,10 +25,12 @@ const TABS: { id: Tab; label: string }[] = [
  * (internal/blockproj's projection) via GET /pages/{id}/backlinks.
  * Checks is real too (v2.3.0) — every RFC-003 §2 analyzer, run fresh by
  * diagnostics-service and read via GET /pages/{id}/diagnostics; nothing
- * here re-derives a diagnostic in TypeScript (ADR-012). Comments/History
- * still need services this repo doesn't have in scope (a comments
- * feature, `history-service`) — those two tabs say so plainly rather
- * than showing invented data.
+ * here re-derives a diagnostic in TypeScript (ADR-012). History is real
+ * too (v2.4.0) — this tab is a launcher into HistoryScreen/TraceScreen/
+ * DiffScreen (each its own full screen, matching Graph/Facts' own
+ * precedent), not a second, cramped copy of them. Comments still needs
+ * a service this repo doesn't have in scope (Track 2) — that tab says
+ * so plainly rather than showing invented data.
  */
 export function InspectorRail({
   page,
@@ -73,7 +76,7 @@ export function InspectorRail({
         )}
         {tab === "links" && <BacklinksPanel page={page} actorId={actorId} />}
         {tab === "comments" && <NotBuiltPanel what="Comments" service="a comments feature (Track 2)" />}
-        {tab === "history" && <NotBuiltPanel what="Version history" service="history-service" />}
+        {tab === "history" && <HistoryPanel page={page} />}
       </div>
     </aside>
   );
@@ -249,6 +252,34 @@ function BacklinksPanel({ page, actorId }: { page: Page; actorId: string }) {
           {b.from_page_deleted && <span className="pill" style={{ marginLeft: "auto" }}>deleted</span>}
         </div>
       ))}
+    </section>
+  );
+}
+
+/**
+ * Real history (v2.4.0) — a launcher, not a cramped re-implementation:
+ * the scrubber/restore/palimpsest, the op-log debugger, and the revision
+ * diff each need enough screen real estate that they're their own
+ * screens (HistoryScreen/TraceScreen/DiffScreen), same reasoning
+ * Graph/Facts already followed rather than trying to fit a force layout
+ * or a fact DAG into this rail.
+ */
+function HistoryPanel({ page }: { page: Page }) {
+  return (
+    <section className="tabpanel">
+      <div className="panel-h">History</div>
+      <Link className="row" to={`/pages/${page.id}/history`}>
+        <span className="lead">⏱</span>
+        Scrubber &amp; restore
+      </Link>
+      <Link className="row" to={`/pages/${page.id}/trace`}>
+        <span className="lead">◉</span>
+        Op-log debugger
+      </Link>
+      <Link className="row" to={`/pages/${page.id}/diff`}>
+        <span className="lead">±</span>
+        Revision diff
+      </Link>
     </section>
   );
 }

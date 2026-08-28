@@ -68,6 +68,10 @@ var ErrDenied = errors.New("session: op denied by can_apply")
 // another actor since) or a genuinely malformed op.
 var ErrUnknownBlock = errors.New("session: text op names an unknown block")
 
+// ErrOutOfRange is RestoreTo's own target-step validation failure — see
+// its doc comment for the valid range.
+var ErrOutOfRange = errors.New("session: restore target step out of range")
+
 // CanApplyFunc is RFC-002 §5's one auditable authorization chokepoint.
 // Every op passes through it before touching the page or any block's rope.
 type CanApplyFunc func(op pageop.Op, actorID uuid.UUID, actorKind oplog.ActorKind) bool
@@ -186,12 +190,19 @@ type Session struct {
 	mu          sync.Mutex
 	pageID      uuid.UUID
 	serverActor string
-	page        documentcore.Page
-	blocks      map[documentcore.BlockID]*doctext.Text
-	clock       oplog.VectorClock
-	wal         *wal.Writer
-	flush       *flush.Loop
-	canApply    CanApplyFunc
+	// repo backs RestoreTo's own call to Trace — the same confirmed-log
+	// replay a standalone GET /collab/pages/{id}/trace request uses,
+	// invoked here instead against the live session's own actor/lock so
+	// the inverses it computes can be applied straight through
+	// commitOpLocked. Not used for anything else Session already does
+	// (open() reads confirmed ops directly via its own repo parameter).
+	repo     opstore.Repo
+	page     documentcore.Page
+	blocks   map[documentcore.BlockID]*doctext.Text
+	clock    oplog.VectorClock
+	wal      *wal.Writer
+	flush    *flush.Loop
+	canApply CanApplyFunc
 
 	// undo is reconstructed from collab.ops on every session open (RFC-002
 	// §3: "putting it in the log rather than a client-side stack") — it
@@ -319,6 +330,7 @@ func open(ctx context.Context, pageID uuid.UUID, repo opstore.Repo, walDir strin
 	s := &Session{
 		pageID:      pageID,
 		serverActor: serverActor,
+		repo:        repo,
 		page:        page,
 		blocks:      blocks,
 		clock:       clock,
@@ -666,6 +678,90 @@ func (s *Session) Redo(ctx context.Context, actorID uuid.UUID, actorKind oplog.A
 	}
 
 	s.redo[actorID] = remaining
+	return results, nil
+}
+
+// RestoreTo brings the live document back to its state as of right after
+// step toStep of this page's confirmed op log (0-indexed, the same
+// indexing GET /collab/pages/{id}/trace's own "steps" array uses) —
+// docs/ui-mockups/history.html's "restore to a point," made real.
+//
+// This is repeated undo, not a restore-from-backup: RFC-002 §3's whole
+// argument for why undo applies an inverse against current state rather
+// than swapping in a stored snapshot applies here identically, just
+// walking further back in one call than Undo's own single-gesture scope.
+// Trace already computes, for every confirmed op, the inverse that
+// exactly reverses it against the state that existed right after it
+// applied — so restoring is: replay to find those inverses (Trace's own
+// job, unchanged), then apply the inverses for every step after toStep,
+// most recent first, through the normal commitOpLocked pipeline (WAL,
+// broadcast, flush-enqueue) — from every other connection's point of
+// view indistinguishable from actorID submitting that many ordinary ops,
+// because it is that.
+//
+// Shares Trace's own documented visibility boundary: it replays
+// confirmed rows from repo, so a WAL tail not yet flushed at the moment
+// RestoreTo runs is invisible to it — the same gap Trace already states
+// plainly rather than hides, and one a deliberate, manual "restore"
+// click is very unlikely to race in practice (flush is sub-second).
+// Holding s.mu for the whole call (same as Undo/Redo) is what actually
+// matters for correctness here: no other op can commit against this
+// session while the restore is being computed and applied, so the
+// confirmed-log snapshot Trace reads at the start of the call cannot go
+// stale mid-restore.
+//
+// The whole restore becomes one new undo group for actorID — undoing it
+// re-applies the original ops it just reverted, the same symmetry Undo
+// and Redo already give each other.
+func (s *Session) RestoreTo(ctx context.Context, actorID uuid.UUID, actorKind oplog.ActorKind, toStep int, senderSubID uint64) ([]CommitResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	steps, err := Trace(ctx, s.pageID, s.repo, s.serverActor)
+	if err != nil {
+		return nil, fmt.Errorf("session: restore: %w", err)
+	}
+	if toStep < 0 || toStep >= len(steps) {
+		return nil, ErrOutOfRange
+	}
+	if toStep == len(steps)-1 {
+		return nil, nil // already there — Undo/Redo's own "empty stack" no-op contract
+	}
+
+	groupID, err := uuid.NewV7()
+	if err != nil {
+		return nil, fmt.Errorf("session: restore: %w", err)
+	}
+
+	var results []CommitResult
+	// produced collects each reverted step's own original op (commitOpLocked's
+	// "redoOp", here really "the op that undoes this restore"), built
+	// newest-step-first as steps are undone in that same order below.
+	// Unlike Undo's own "produced" (which targets s.redo, consumed
+	// ascending by Redo and so needs reversing first), this one is pushed
+	// onto s.undo as-is: Undo consumes descending, and undoing this
+	// restore must itself reapply steps[toStep+1..] in ascending original
+	// order (each one's own precondition — e.g. SetBlockContent's prev —
+	// was captured against the step right before it, not against
+	// whatever state a wrong order would present it with) — which is
+	// exactly what a descending-stored, descending-consumed group gives.
+	var produced []pageop.Op
+	for i := len(steps) - 1; i > toStep; i-- {
+		op := steps[i].Inverse
+		if !s.canApply(op, actorID, actorKind) {
+			return results, ErrDenied
+		}
+		result, redoOp, err := s.commitOpLocked(ctx, actorID, actorKind, op, &groupID, senderSubID)
+		if err != nil {
+			return results, fmt.Errorf("session: restore: %w", err)
+		}
+		results = append(results, result)
+		produced = append(produced, redoOp)
+	}
+
+	for _, op := range produced {
+		appendUndoGroup(s.undo, actorID, &groupID, op)
+	}
 	return results, nil
 }
 

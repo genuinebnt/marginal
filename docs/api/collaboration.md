@@ -167,6 +167,53 @@ in-memory only per session, cleared (like every editor's redo stack) the
 moment a new op commits for that actor, matching `documentcore.History`'s
 existing "a new op invalidates redo" rule.
 
+### 2.2. Restore to a point
+
+```json
+{ "type": "restore", "to_step": 3 }
+```
+
+`docs/ui-mockups/history.html`'s "restore to a point," made real
+(`v2.4.0`) — brings the live document back to its state as of right
+after step `to_step` of this page's own confirmed op log, 0-indexed, the
+same indexing `GET /collab/pages/{id}/trace`'s own `steps` array uses
+(§5). A client builds its scrubber against that endpoint, then sends
+`to_step` from whichever step the scrubber is parked on.
+
+This is **repeated undo, not a restore-from-backup** — the same
+`internal/session.Trace` replay §5 already exposes read-only computes,
+each step's own already-known inverse, applied backward from the current
+tip through the exact same `commitOpLocked` pipeline `"undo"`/`"redo"`
+use (WAL, broadcast, flush-enqueue), most-recent-step first. From every
+other connection's point of view this is indistinguishable from the
+requesting actor submitting that many ordinary `"op"` messages, because
+it is that: each reverted step gets its own `"ack"`/`"broadcast"` frame,
+same as `"undo"`'s own multi-op contract above.
+
+The whole restore becomes **one new undo group** for the requesting
+actor — a single `"undo"` afterward reapplies every step it just
+reverted, in their *original* order (not the restore's own reverse
+order: each step's own precondition, e.g. `SetBlockContent`'s `Prev`,
+was only ever valid against the state that existed right before it, so
+reapplying them out of order fails).
+
+`to_step` must satisfy `0 <= to_step < (the current confirmed step
+count)` — one past the end (i.e. "restore to now") is a **no-op**, not
+an `error` frame, matching `"undo"`/`"redo"`'s own empty-stack contract;
+anything else out of range is an `"error"` frame naming the problem, not
+an `"internal error"` (`session.ErrOutOfRange`). Same not-atomic-across-
+a-multi-step contract as a grouped `"undo"`: if step *k* of the range
+fails to revert (its target was touched by someone else since), the
+steps already reverted stay reverted and the failure surfaces as an
+`"error"` frame — a second `"restore"` (or plain `"undo"`) can be
+retried from there.
+
+Shares `Trace`'s own documented visibility boundary (§5): it replays
+*confirmed* rows, so an op still sitting in this session's own
+not-yet-flushed WAL tail at the moment `"restore"` runs is invisible to
+it — the same accepted gap `Trace` already states plainly, unlikely to
+matter in practice for a manual, deliberate click (flush is sub-second).
+
 `op` is `internal/pageop.Op`, JSON-encoded exactly as `pageop.Marshal`
 produces it — one of two scopes, each nesting its own tier's op:
 
@@ -390,3 +437,108 @@ never by re-running `apply()` itself: the algorithm lives in Go
 A malformed or corrupt log entry (one that fails to even replay) is a
 `500` — this endpoint has no partial-result contract; either the whole
 log replays cleanly and every step is reported, or none are.
+
+---
+
+## 6. `GET /collab/pages/{id}/blocks/{blockId}/palimpsest` — one block's whole character history
+
+Plain HTTP, read-only, same "give me the whole replay once" shape as §5
+— never touches a live `Session`. Backs `docs/ui-mockups/history.html`'s
+own central claim, made real: "the palimpsest paragraph is a real
+persistent sequence. Its whole edit history is a list of ops applied to
+a tombstoned char array: a delete sets a version stamp, it never
+removes. Reading version v is the filter `ins <= v < del`, so every
+version is addressable from ONE structure."
+
+```
+GET /collab/pages/{id}/blocks/{blockId}/palimpsest
+```
+
+```json
+{
+  "chars": [
+    { "rune": 104, "insert_step": 0, "insert_actor": "...", "delete_step": 1, "delete_actor": "..." },
+    { "rune": 105, "insert_step": 0, "insert_actor": "..." }
+  ],
+  "current_step": 1
+}
+```
+
+One entry per character this block's live text has *ever* held, oldest-
+inserted first, kept forever — never shrinks back down when something is
+deleted. `insert_step`/`delete_step` index into the same confirmed op
+log §5's `steps` array is indexed by, so a client drives one scrubber
+against both endpoints; `delete_step`/`delete_actor` are absent for a
+character still live right now. A client reads "this block's text as of
+step v" by filtering to `insert_step <= v && (no delete_step || v <
+delete_step)` — `internal/palimpsest.AtVersion`'s own job, real Go, not
+re-derived in the browser (`ADR-012`). Palimpsest mode (revealing the
+tombstones) renders every character regardless of `delete_step`, tinting
+a dead one by `delete_actor` and fading it by how long ago `delete_step`
+was relative to `current_step`.
+
+Neither `doctext.Text` nor its own `anchor.Log` already gives this for
+free — both exist to answer "what does this block look like right now,"
+and `anchor.Log`'s tombstoning keeps only enough to resolve an `Anchor`
+(identity and liveness), never the character's own value or who deleted
+it. `internal/palimpsest.Build` is a second, parallel replay over the
+same confirmed ops, scoped to one block — RFC-002's op log is still the
+only source of truth; this is a projection of it, the same "a projection,
+never a second writer" precedent `document-service`'s `blockproj` already
+sets, just read fresh per request instead of materialized.
+
+`chars` is `[]`, never `null`, for a block with no character-tier ops
+yet (matching `docs/api/diagnostics.md`'s own empty-array convention);
+`current_step` is `-1` in that case. An invalid page or block id is a
+`400`; a malformed confirmed log (fails to even replay) is a `500`, same
+partial-result contract as §5.
+
+---
+
+## 7. `GET /collab/pages/{id}/diff?from={n}&to={m}` — two revisions, plus every block move between them
+
+Plain HTTP, read-only, same shape as §5/§6. Backs `docs/ui-mockups/
+diff.html`: "block-level MOVE detection, which a flat text diff cannot
+express... a moved block must read as MOVED, not as delete + insert."
+
+```
+GET /collab/pages/{id}/diff?from=3&to=9
+```
+
+```json
+{
+  "before": { /* session.Snapshot — steps[from].After, unchanged */ },
+  "after":  { /* session.Snapshot — steps[to].After, unchanged */ },
+  "moves": [
+    { "block_id": "...", "from_parent": null, "from": null, "to_parent": null, "to": "...", "step": 6 }
+  ]
+}
+```
+
+`from`/`to` index into the same confirmed step array §5's `steps` is
+indexed by — `from == to` is a valid, zero-length diff; `from > to` is a
+`400`. `before`/`after` are exactly two already-computed `Trace` entries,
+picked rather than recomputed — the same "the client draws what Go
+already computed" principle §5 states, extended to picking two entries
+instead of one.
+
+`moves` is every `MoveBlock` op strictly after `from` and at or before
+`to` — a filter over the confirmed log, not a second algorithm:
+`documentcore.MoveBlock` already carries `from`/`to` (RFC-002 §3), so
+detecting a move between two revisions needs no geometry or heuristic,
+only reading what the op log already recorded. `moves` is `[]`, never
+`null`, when nothing moved.
+
+**This endpoint does not compute the LCS text diff itself.** That runs
+client-side, compiled to wasm (`services/textdiff` via `document-service/
+cmd/diffwasm`) — `diff.html`'s own "token granularity switching (word ↔
+character), recomputed live" needs interactive response to a toggle, the
+same reasoning `graph.html`'s force layout/Voronoi views already have
+for running in the browser (`ADR-012`). A client picks one block's text
+out of `before`/`after`, tokenizes it (word or character — its own
+choice), and calls the wasm bridge directly; this endpoint's only job is
+handing over the two document states to pick from.
+
+`from`/`to` out of `[0, len(steps))`, or malformed, is a `400`; a
+malformed confirmed log (fails to even replay) is a `500`, same
+partial-result contract as §5.
