@@ -3573,3 +3573,116 @@ full-text search, real BK-tree fuzzy title matching, and a real `[[`
 autocomplete are all backed by `internal/search`/`internal/bktree`/
 `internal/trie`, never a second implementation in TypeScript. Per
 `RELEASES.md`'s order, `v2.6.0` (Page-Delete Saga) is next.
+
+---
+
+## 2026-08-27/28 — the V2 mockup becomes the single visual spec
+
+Not a feature branch; this is `v2.6.0`'s branch doing spec work before
+the delete saga starts. Recorded because it changes what "matching the
+mockup" means for every minor after this one.
+
+**The user supplied a new mockup** (`docs/Marginal-UI-V2-standalone.html`,
+unpacked to `docs/ui-mockups/v2/index.html`) and said it supersedes the
+V1 set from now on, but was incomplete. Completing it took several
+passes, each one a separate correction from the user rather than
+anything anticipated:
+
+- **Topics and tags** as two distinct things, not two styles. A TOPIC is
+  singular, owned, and a real column — it clusters the graph and scopes
+  Discover's search. A TAG is free-form, many, and hueless — it facets
+  search and never boosts rank. Collapsing them into one field gives you
+  folders, and a page that is genuinely two things then has to lie. New
+  screen `10b`, and `.tpc`/`.tg` components threaded through every screen
+  that shows a page.
+- **Empty bottom halves filled.** Measured rather than eyeballed: headless
+  Chrome, one script reporting the gap between a column's last rendered
+  element and its own bottom edge. Then the inverse — content overflowing
+  its frame, cut mid-sentence — which the filling pass introduced in 14
+  panels. Every inspector now lands within ~50px of its bottom edge.
+- **The missing app**, in three rounds of user correction: site settings,
+  analytics widgets, a ⌘K palette that opens Raycast-style over a blurred
+  scrim, a notification panel anchored under its own bell, a clock, an
+  admin route. Then the global top-bar utility cluster — clock, ⌘K, bell,
+  admin, you — in a fixed order across all 25 in-app bars, because a
+  control that relocates between routes is one you have to re-find.
+
+**"Are the sidebar items all clickable and backed by a page?"** — asked by
+the user, and the honest answer was no. Fixed two ways rather than one:
+drew the two substantive missing destinations, and marked the rest
+explicitly — `→` and full contrast for a route that exists, dimmed for
+one that does not, plus an accounting panel on `01 PAGE GRAPH`. A nav
+that quietly omits what is unfinished is how a design starts lying about
+its own coverage.
+
+**Four genuinely missing screens**, found by walking the route table
+rather than re-reading the mockup: `03c DASHBOARD` (the worst gap — `/`
+went to the marketing home, so a signed-in user landed nowhere), `10c LAB
+INDEX`, `24d ASSISTANT`, `24e EMPTY & NOT FOUND`. Also reconciled a
+`/lab/diff` vs `/p/:slug/diff` contradiction the map had against itself.
+Commit `83a9dc0`. 37 routes, 40 screens.
+
+### `v2/DESIGN_GUIDELINES.md` (`ee4f86a`)
+
+The user's own framing: *"often it just looks at the screen and comes up
+with something completely different."* That is the actual failure — a
+model forms a general impression ("dark, technical, monospace") and
+builds something sharing the impression but none of the decisions,
+plausible alone and wrong beside the reference.
+
+So it is written as prescriptive rules with measured values, not prose to
+reinterpret. Opens with a table of that exact failure mode (radius 0 not
+8px, ember not purple, 9–12.5px chrome and 15.5–18.5px prose with nothing
+between, text glyphs not an icon library), and names the habit that
+prevents it: find the screen that already contains the component and copy
+its markup rather than re-derive it. Values come from parsing
+`index.html` for frequency, not from estimating.
+
+Carries the semantic colour rule that gets broken most often — amber =
+diagnostic (never red, never a category), teal = you, violet = peer,
+slate = assistant, and a categorical topic ramp *deliberately disjoint*
+from those four, because a hue that means both "diagnostic" and "topic:
+operations" means neither.
+
+### The V1 set deleted (`68c34d0`)
+
+Nineteen files plus `mockup.css`. Every screen survived into
+`v2/index.html`; keeping both would mean two sources of truth for the
+same decisions with different colour values.
+
+61 path-form citations repointed to `v2/index.html § NN NAME` — this
+incidentally fixed four markdown links under `docs/rust/learning/` that
+had been resolving one level too shallow already. The ~100 *bare*
+filename references in this file, `ROADMAP.md`, and `docs/rust/`'s frozen
+archive were deliberately left alone: they were true when written, and
+rewriting a chronological log to match a later reorganisation makes it a
+worse record. `docs/ui-mockups/README.md` carries the V1→V2 mapping table
+that resolves them, plus the git command to recover an original — worth
+keeping, since the V1 algorithm pages ran their algorithms live in JS and
+V2 does not.
+
+**Two provenance lines needed correcting, not repointing.**
+`web/src/design-system.css` and `CLAUDE.md` both said the stylesheet was
+copied from the file being deleted. Mechanically pointing them at V2
+would have asserted something false: it still carries V1's palette. Both
+now say it has no upstream, and that reconciling it against V2 is
+outstanding work. **This is the one real gap this pass leaves open** —
+`design-system.css` and the seven screens built on it render V1's
+lighter palette, not V2's `#0E0F10` ground.
+
+### Also landed
+
+**`RichEditorPane` code-block language selector** (`a2c12f5`).
+`documentcore.BlockKind` has carried `Language` since `block.go` was
+written (RFC-001 §1's `Code ::= Language? RawText`) and nothing in the UI
+could set it. Writes through `SetBlockKind`, the same one-field-per-tag
+path `ListItem.Checked` already uses. `pageop.Block` wraps
+`documentcore.Op` directly and `blockproj` marshals the whole `BlockKind`
+into `docs.blocks.kind`, so the wire and the reload both carried it for
+free — confirmed rather than assumed, and both were untested. `Language`
+is the one `BlockKind` attribute tagged `omitempty`, so the round trip is
+now covered in both directions; clearing back to `""` is the case with
+teeth.
+
+**Next:** `v2.6.0` (Page-Delete Saga), unchanged. Reconciling
+`design-system.css` against V2's palette is the other known-open item.
