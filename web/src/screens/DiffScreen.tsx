@@ -268,11 +268,11 @@ export function DiffScreen() {
         <aside className="rail right">
           <div className="rail-head"><span className="label">This diff</span></div>
           <div className="panel-body">
-            <div className="metric"><span>Tokens compared</span><span className="v">{aTokens.length + bTokens.length}</span></div>
-            <div className="metric"><span>Common subsequence</span><span className="v">{lcsLength}</span></div>
-            <div className="metric"><span>Insertions</span><span className="v" style={{ color: "var(--teal)" }}>{insertions}</span></div>
-            <div className="metric"><span>Deletions</span><span className="v" style={{ color: "var(--amber)" }}>{deletions}</span></div>
-            <div className="metric"><span>DP cells filled</span><span className="v">{(aTokens.length + 1) * (bTokens.length + 1)}</span></div>
+            <div className="metric"><span className="k">Tokens compared</span><span className="v">{aTokens.length + bTokens.length}</span></div>
+            <div className="metric"><span className="k">Common subsequence</span><span className="v">{lcsLength}</span></div>
+            <div className="metric"><span className="k">Insertions</span><span className="v" style={{ color: "var(--teal)" }}>{insertions}</span></div>
+            <div className="metric"><span className="k">Deletions</span><span className="v" style={{ color: "var(--amber)" }}>{deletions}</span></div>
+            <div className="metric"><span className="k">DP cells filled</span><span className="v">{(aTokens.length + 1) * (bTokens.length + 1)}</span></div>
 
             <div className="panel-section">
               <div className="panel-h">Block moves</div>

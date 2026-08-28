@@ -14,12 +14,16 @@ import { getPage, type Page } from "../api/pages";
  * never re-derives the DAG or the propagation itself (ADR-012).
  *
  * The mockup lets you type `{{name}}` inline and see the graph react
- * instantly, because its whole page is a client-side simulation. Here
- * there's a real page tree behind every definition and reference, so
- * editing happens in the real editor (open the page, add or change a
- * `{{define name = value}}` block or a `{{name}}` reference) — this
- * screen is the read side: what the fact graph looks like right now, and
- * which references go stale if a given definition changes.
+ * instantly, its "Introduce a cycle"/"Duplicate a definition" buttons
+ * mutating a hard-coded JS object — its whole page is a client-side
+ * simulation. Here there's a real page tree behind every definition and
+ * reference, so those specific buttons have no honest equivalent (there's
+ * no way to "introduce a cycle" without actually writing ops to a real
+ * page) and are dropped rather than faked; editing happens in the real
+ * editor (open the page, add or change a `{{define name = value}}` block
+ * or a `{{name}}` reference) — this screen is the read side: what the
+ * fact graph looks like right now, and which references go stale if a
+ * given definition changes.
  */
 export function FactsScreen() {
   const { session, logout } = useAuth();
@@ -120,13 +124,23 @@ export function FactsScreen() {
         <span className={`pill ${cycleNames.size ? "amber" : "teal"}`}>
           {cycleNames.size ? `${cycleNames.size} in a cycle` : "no cycles"}
         </span>
-        <button className="btn" onClick={() => setRefreshKey((k) => k + 1)}>Re-run</button>
         <button className="btn" onClick={logout}>Sign out</button>
       </header>
 
-      <div className="fsplit" style={{ flex: 1, display: "grid", gridTemplateColumns: "1fr 340px", minHeight: 0 }}>
-        <main className="pane" style={{ overflowY: "auto", padding: "26px" }}>
-          {error && <div className="note">{error}</div>}
+      <div className="fbar">
+        <span className="label">Try it</span>
+        <span className="muted" style={{ fontSize: 12 }}>
+          Open a page and write <code>{"{{define name = value}}"}</code> as a block's whole text to
+          define a fact, then <code>{"{{name}}"}</code> anywhere else to reference it — every
+          definition change here is a real edit through the real editor, not a client-side toy.
+        </span>
+        <span className="spacer"></span>
+        <button className="btn" onClick={() => setRefreshKey((k) => k + 1)}>↻ Refresh</button>
+      </div>
+
+      <div className="fsplit">
+        <main className="pane">
+          {error && <div className="note" style={{ maxWidth: "none" }}>{error}</div>}
           {!facts && !error && <div className="muted">Loading the fact graph…</div>}
 
           {facts && (
@@ -144,25 +158,14 @@ export function FactsScreen() {
                 const isDup = duplicateNames.has(d.name);
                 const inCycle = cycleNames.has(d.name);
                 return (
-                  <div
-                    key={`${d.name}-${d.block_id}`}
-                    className="fact-card"
-                    style={{
-                      border: "1px solid var(--rule)",
-                      borderLeft: `2px solid ${isDup || inCycle ? "var(--amber)" : "var(--teal)"}`,
-                      borderRadius: "var(--radius-lg)",
-                      background: "var(--bg-raised)",
-                      padding: "13px 15px",
-                      marginBottom: 12,
-                    }}
-                  >
-                    <div style={{ fontFamily: "var(--mono)", fontSize: 11.5, color: isDup || inCycle ? "var(--amber)" : "var(--teal)" }}>
+                  <div key={`${d.name}-${d.block_id}`} className={`fact-card ${isDup || inCycle ? "warn" : ""}`.trim()}>
+                    <div className="fname">
                       {"{{" + d.name + "}}"}
                       {isDup && <span className="pill amber" style={{ marginLeft: 6 }}>defined twice</span>}
                       {inCycle && <span className="pill amber" style={{ marginLeft: 6 }}>in a cycle</span>}
                     </div>
-                    <div style={{ marginTop: 7, fontFamily: "var(--display)", fontSize: 19, fontWeight: 560 }}>{d.value}</div>
-                    <div className="fmeta" style={{ marginTop: 7, fontSize: 11.5, color: "var(--ink-faint)", display: "flex", alignItems: "center", gap: 10 }}>
+                    <div className="fval">{d.value}</div>
+                    <div className="fmeta">
                       <Link to={`/pages/${d.page_id}`}>{titleOf(d.page_id)}</Link>
                       <span>{uses} reference{uses === 1 ? "" : "s"} downstream</span>
                       <button className="btn" style={{ marginLeft: "auto" }} onClick={() => setSelected(d.name)}>
@@ -194,7 +197,7 @@ export function FactsScreen() {
                 </div>
               )}
 
-              <div className="label" style={{ margin: "24px 0 9px" }}>References · {facts.references.length}</div>
+              <div className="label" style={{ margin: "24px 0 9px" }}>Pages that reference them · {facts.references.length}</div>
               {facts.references.length === 0 && (
                 <div className="muted" style={{ padding: "8px 0", fontSize: 12.5 }}>
                   No page references a fact yet.
@@ -203,28 +206,29 @@ export function FactsScreen() {
               {facts.references.map((r, i) => {
                 const isStale = staleKeys.has(`${r.page_id}:${r.block_id}`);
                 return (
-                  <div
-                    key={`${r.name}-${r.page_id}-${i}`}
-                    className={`doc-card ${isStale ? "stale" : ""}`}
-                    style={{
-                      border: "1px solid var(--rule)",
-                      borderLeft: `2px solid ${isStale ? "var(--amber)" : "var(--rule-strong)"}`,
-                      borderRadius: "var(--radius-lg)",
-                      background: isStale ? "var(--amber-soft)" : "var(--bg-raised)",
-                      padding: "13px 15px",
-                      marginBottom: 10,
-                    }}
-                  >
-                    <Link to={`/pages/${r.page_id}`} style={{ fontFamily: "var(--display)", fontSize: 15, fontWeight: 560 }}>
-                      {titleOf(r.page_id)}
-                    </Link>
-                    <div style={{ marginTop: 6, fontSize: 13, color: "var(--ink-soft)" }}>
-                      references <span className="ref" style={{ fontFamily: "var(--mono)" }}>{"{{" + r.name + "}}"}</span>
+                  <div key={`${r.name}-${r.page_id}-${i}`} className={`doc-card ${isStale ? "stale" : ""}`.trim()}>
+                    <Link to={`/pages/${r.page_id}`} className="dtitle">{titleOf(r.page_id)}</Link>
+                    <div className="dbody">
+                      references <span className="ref">{"{{" + r.name + "}}"}</span>
                     </div>
-                    {isStale && <span className="pill amber" style={{ marginTop: 9, display: "inline-block" }}>stale — reviewed change upstream</span>}
+                    <div className="dfoot">
+                      {isStale ? (
+                        <span className="pill amber">stale — reviewed change upstream</span>
+                      ) : (
+                        <span className="pill teal">up to date</span>
+                      )}
+                    </div>
                   </div>
                 );
               })}
+
+              <div className="note" style={{ maxWidth: "38rem" }}>
+                <b>Really real.</b> The dependency DAG, the topological dirty propagation, the cycle
+                check, and the duplicate detection all run in Go (<code>internal/facts</code>). Note
+                what is <i>not</i> happening: nothing tries to read a number out of prose — the edge
+                exists because someone wrote <code>{"{{p99-latency}}"}</code>, which is why this is
+                exact instead of approximately right.
+              </div>
             </>
           )}
         </main>
@@ -232,18 +236,10 @@ export function FactsScreen() {
         <aside className="rail right" style={{ width: "auto" }}>
           <div className="rail-head"><span className="label">Invalidation</span></div>
           <div className="panel-body">
-            <div className="metric2" style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "6px 0", borderBottom: "1px solid var(--rule)", fontSize: 12.5 }}>
-              <span>Definitions</span><span className="v" style={{ marginLeft: "auto", fontFamily: "var(--mono)" }}>{facts?.definitions.length ?? "—"}</span>
-            </div>
-            <div className="metric2" style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "6px 0", borderBottom: "1px solid var(--rule)", fontSize: 12.5 }}>
-              <span>References</span><span className="v" style={{ marginLeft: "auto", fontFamily: "var(--mono)" }}>{facts?.references.length ?? "—"}</span>
-            </div>
-            <div className="metric2" style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "6px 0", borderBottom: "1px solid var(--rule)", fontSize: 12.5 }}>
-              <span>Duplicate names</span><span className="v" style={{ marginLeft: "auto", fontFamily: "var(--mono)", color: duplicateNames.size ? "var(--amber)" : undefined }}>{facts?.duplicates.length ?? "—"}</span>
-            </div>
-            <div className="metric2" style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "6px 0", fontSize: 12.5 }}>
-              <span>Cycle</span><span className="v" style={{ marginLeft: "auto", fontFamily: "var(--mono)", color: cycleNames.size ? "var(--amber)" : undefined }}>{facts?.cycle.length ? facts.cycle.join(" → ") : "none"}</span>
-            </div>
+            <div className="metric2"><span>Definitions</span><span className="v">{facts?.definitions.length ?? "—"}</span></div>
+            <div className="metric2"><span>References</span><span className="v">{facts?.references.length ?? "—"}</span></div>
+            <div className="metric2"><span>Duplicate names</span><span className={`v ${duplicateNames.size ? "warn" : ""}`.trim()}>{facts?.duplicates.length ?? "—"}</span></div>
+            <div className="metric2"><span>Cycle</span><span className={`v ${cycleNames.size ? "warn" : ""}`.trim()}>{facts?.cycle.length ? facts.cycle.join(" → ") : "none"}</span></div>
 
             {selected && (
               <div className="panel-section" style={{ marginTop: 20 }}>

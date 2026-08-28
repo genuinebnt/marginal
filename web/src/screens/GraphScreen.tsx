@@ -26,6 +26,8 @@ export function GraphScreen() {
   const [view, setView] = useState<"nodes" | "territory">("nodes");
   const [territoryData, setTerritoryData] = useState<TerritoryResult | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
 
   const stageRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -149,27 +151,35 @@ export function GraphScreen() {
       }
     }
 
+    const q = query.trim().toLowerCase();
+    const violetLine = css.getPropertyValue("--violet").trim();
     for (const p of positions) {
       const r = 4.5 + Math.min(degreeById.get(p.id) ?? 0, 8) * 1.15;
+      const matches = !q || (titleById.get(p.id) ?? "").toLowerCase().includes(q);
       ctx.beginPath();
       ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
       ctx.fillStyle = isRootById.get(p.id) ? teal : violet;
-      ctx.globalAlpha = p.id === hovered ? 1 : 0.85;
+      ctx.globalAlpha = matches ? (p.id === hovered ? 1 : 0.85) : 0.15;
       ctx.fill();
       if (isRootById.get(p.id)) {
         ctx.lineWidth = 2;
         ctx.strokeStyle = ink;
         ctx.stroke();
       }
+      if (p.id === selected) {
+        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = violetLine;
+        ctx.stroke();
+      }
       ctx.globalAlpha = 1;
 
-      if (p.id === hovered) {
+      if (p.id === hovered && matches) {
         ctx.fillStyle = ink;
         ctx.font = "12px sans-serif";
         ctx.fillText(titleById.get(p.id) ?? "", p.x + r + 6, p.y + 4);
       }
     }
-  }, [positions, view, territoryData, graph, hovered, size, degreeById, isRootById, titleById]);
+  }, [positions, view, territoryData, graph, hovered, selected, query, size, degreeById, isRootById, titleById]);
 
   function nodeAt(x: number, y: number): string | null {
     for (let i = positions.length - 1; i >= 0; i--) {
@@ -187,6 +197,39 @@ export function GraphScreen() {
     return { x: e.clientX - rect.left, y: e.clientY - rect.top };
   }
 
+  function neighborsOf(id: string): string[] {
+    const out = new Set<string>();
+    for (const e of graph?.edges ?? []) {
+      if (e.from_page === id) out.add(e.to_page);
+      if (e.to_page === id) out.add(e.from_page);
+    }
+    return [...out];
+  }
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        setQuery("");
+        setSelected(null);
+      }
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  const selectedNode = selected ? { id: selected, title: titleById.get(selected) ?? "", isRoot: isRootById.get(selected) ?? false } : null;
+
+  const cellArea = (poly: { x: number; y: number }[]) => {
+    let s = 0;
+    for (let i = 0; i < poly.length; i++) {
+      const p = poly[i];
+      const q = poly[(i + 1) % poly.length];
+      s += p.x * q.y - q.x * p.y;
+    }
+    return Math.abs(s) / 2;
+  };
+  const largestCellPage = territoryData?.cells.reduce((best, c) => (cellArea(c.poly) > cellArea(best.poly) ? c : best), territoryData.cells[0]);
+
   return (
     <div className="app">
       <header className="topbar">
@@ -200,18 +243,11 @@ export function GraphScreen() {
           <Link to="/search">Search</Link>
         </nav>
         <div className="spacer"></div>
-        <button
-          className="btn"
-          onClick={() => setView(view === "nodes" ? "territory" : "nodes")}
-          title="Toggle between the force layout and the exact Voronoi territory view"
-        >
-          {view === "nodes" ? "Territory" : "Nodes"}
-        </button>
         <button className="btn" onClick={logout}>Sign out</button>
       </header>
 
       <div className="body-row">
-        <main className="canvas" style={{ flex: 1, position: "relative" }} ref={stageRef}>
+        <main className="stage" ref={stageRef}>
           <canvas
             ref={canvasRef}
             style={{ display: "block", cursor: hovered ? "pointer" : "default" }}
@@ -240,18 +276,66 @@ export function GraphScreen() {
               if (draggingRef.current) return;
               const { x, y } = toLocal(e);
               const id = nodeAt(x, y);
-              if (id) navigate(`/pages/${id}`);
+              setSelected(id);
             }}
           />
-          <div
-            className="note"
-            style={{ position: "absolute", top: 12, left: 12, margin: 0, maxWidth: "20rem" }}
-          >
-            <b>{graph?.nodes.length ?? 0}</b> pages · <b>{graph?.edges.length ?? 0}</b> links.{" "}
-            {view === "territory"
-              ? "Cell area measures the layout, never orphan status — that's the Algorithms view."
-              : "Teal rings are root pages. Drag a node; click to open its page."}
+
+          <div className="float search-panel">
+            <div className="row2">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2}><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter pages…" aria-label="Filter pages" />
+              <span className="kbd">esc</span>
+            </div>
           </div>
+
+          <div className="float legend-panel">
+            <div className="label" style={{ marginBottom: 9 }}>Legend</div>
+            <div className="legend-item"><span className="sw" style={{ background: "var(--teal)" }}></span>Root page</div>
+            <div className="legend-item"><span className="sw" style={{ background: "var(--violet)" }}></span>Other page</div>
+          </div>
+
+          <div className="float stats-panel">
+            <span><b>{graph?.nodes.length ?? 0}</b> pages</span>
+            <span><b>{graph?.edges.length ?? 0}</b> links</span>
+          </div>
+
+          {selectedNode && (
+            <div className="float detail-panel show">
+              <span className="detail-tag pill" style={{ background: selectedNode.isRoot ? "var(--teal-soft)" : "var(--violet-soft)", color: selectedNode.isRoot ? "var(--teal)" : "var(--violet)" }}>
+                {selectedNode.isRoot ? "Root" : "Nested"}
+              </span>
+              <div className="detail-title">{selectedNode.title || "Untitled"}</div>
+              <div className="detail-meta">{degreeById.get(selectedNode.id) ?? 0} links</div>
+              <div className="detail-links">
+                <div className="label" style={{ marginBottom: 7 }}>Linked pages</div>
+                {neighborsOf(selectedNode.id).map((id) => (
+                  <a key={id} onClick={() => setSelected(id)}>{titleById.get(id) || "Untitled"}</a>
+                ))}
+                {neighborsOf(selectedNode.id).length === 0 && <span className="muted" style={{ fontSize: 12.5 }}>No links.</span>}
+              </div>
+              <button className="btn primary" style={{ width: "100%", justifyContent: "center", marginTop: 13 }} onClick={() => navigate(`/pages/${selectedNode.id}`)}>
+                Open page
+              </button>
+            </div>
+          )}
+
+          <div className="float view-panel" role="group" aria-label="View">
+            <button className="mode" aria-pressed={view === "nodes"} onClick={() => setView("nodes")}>Nodes</button>
+            <button className="mode" aria-pressed={view === "territory"} onClick={() => setView("territory")}>Territory</button>
+          </div>
+
+          {view === "territory" && territoryData && (
+            <div className="float terr-panel">
+              <div className="label" style={{ marginBottom: 8 }}>Territory</div>
+              <div className="m"><span>Cells</span><span className="v">{territoryData.cells.length}</span></div>
+              <div className="m"><span>Voronoi neighbours</span><span className="v">{territoryData.delaunay.length}</span></div>
+              <div className="m"><span>Largest cell</span><span className="v">{largestCellPage ? titleById.get(largestCellPage.site.id) || "Untitled" : "—"}</span></div>
+              <div className="note" style={{ margin: "9px 0 0", maxWidth: "none" }}>
+                Cell area measures the layout (how much screen room a node's own force-directed
+                position claims), never orphan status — that's the Algorithms view.
+              </div>
+            </div>
+          )}
         </main>
       </div>
     </div>
