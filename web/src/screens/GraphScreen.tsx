@@ -24,7 +24,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { analyzeGraph, getLinkGraph, type GraphAnalysis, type LinkGraph } from "../api/graph";
 import { getTopics, type Topic } from "../api/topics";
-import { listPages } from "../api/pages";
 import { useAuth } from "../auth/AuthContext";
 import { useForceLayout } from "../graph-core/useForceLayout";
 import {
@@ -94,15 +93,20 @@ export function GraphScreen() {
 
   useEffect(() => {
     if (!actorId) return;
-    getLinkGraph(actorId).then(setGraph).catch((e) => setErr(String(e)));
+    // Classification comes from the GRAPH's own nodes, not from ListPages.
+    // ListPages returns the direct children of one parent, so joining it
+    // against this node set coloured only the root pages — with a nested
+    // corpus that silently drew half the graph as untopiced and made the tag
+    // filter match nothing on those pages.
+    getLinkGraph(actorId)
+      .then((g) => {
+        setGraph(g);
+        setTopicOf(new Map(g.nodes.map((n) => [n.id, n.topic_color_key])));
+        setTagsOf(new Map(g.nodes.map((n) => [n.id, n.tags])));
+      })
+      .catch((e) => setErr(String(e)));
     analyzeGraph(actorId).then(setAnalysis).catch(() => setAnalysis(null));
     getTopics(actorId).then((r) => setTopics(r.topics)).catch(() => {});
-    listPages(actorId)
-      .then((r) => {
-        setTopicOf(new Map(r.pages.map((p) => [p.id, p.topic?.color_key ?? ""])));
-        setTagsOf(new Map(r.pages.map((p) => [p.id, p.tags ?? []])));
-      })
-      .catch(() => {});
   }, [actorId]);
 
   const nodeIds = useMemo(() => graph?.nodes.map((n) => n.id) ?? [], [graph]);

@@ -13,9 +13,19 @@
  * their own main column; they never restyle what is here.
  */
 import { Link, useLocation } from "react-router-dom";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { CommandPalette } from "./CommandPalette";
 import { useInbox } from "../notifications/NotificationsContext";
 import { NotificationsPanel } from "../notifications/NotificationsPanel";
+
+/**
+ * The chip and the shortcut open the same palette, and the palette lives on
+ * `Screen` (so it can sit over the whole viewport, after the body, like
+ * § 24b draws it). An event rather than a context: one boolean shared by two
+ * components does not need a provider, and a provider around every screen is
+ * a provider every screen has to be wrapped in.
+ */
+const PALETTE_EVENT = "marginal:palette";
 
 /** The six primary destinations, in the mockup's own order. */
 const TABS: Array<{ label: string; to: string; also?: string[] }> = [
@@ -118,7 +128,7 @@ function Utility({ now, peers }: { now: Date; peers?: ReactNode }) {
         <b>{time}</b>
         <span>{date}</span>
       </div>
-      <span className="kbd">⌘K</span>
+      <span className="kbd" style={{ cursor: "pointer" }} title="Command palette" onClick={() => window.dispatchEvent(new Event(PALETTE_EVENT))}>⌘K</span>
       <span
         className={`icb${inbox.panelOpen ? " icb-on" : ""}`}
         style={{ cursor: "pointer" }}
@@ -238,9 +248,29 @@ export function StatusBar({
 /** The screen frame. `.sc` is the viewport here, not the mockup's artboard. */
 export function Screen({ children }: { children: ReactNode }) {
   const inbox = useInbox();
+  // ⌘K, from anywhere. The chip has been drawn in every top bar since the
+  // first screen; this is the thing it was drawing.
+  const [palette, setPalette] = useState(false);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPalette((p) => !p);
+      }
+    };
+    const onChip = () => setPalette((p) => !p);
+    window.addEventListener("keydown", onKey);
+    window.addEventListener(PALETTE_EVENT, onChip);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener(PALETTE_EVENT, onChip);
+    };
+  }, []);
+
   return (
     <div className="sc">
       {children}
+      {palette && <CommandPalette onClose={() => setPalette(false)} />}
       {/* § 24c anchors to the screen and sits after the body. Rendered here
           rather than by the bell so that stays true on every route. */}
       {inbox.panelOpen && <NotificationsPanel onClose={inbox.closePanel} />}

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { DocumentOutline } from "./DocumentOutline";
 import type { Page } from "../api/pages";
 import { listSeries } from "../api/series";
+import { Label } from "../shell/Chrome";
 import { ROOT, usePageTree } from "./usePageTree";
 import { getResume } from "../api/resume";
 
@@ -285,6 +286,19 @@ export function PageTreeRail({
       {/* § 04 pins this to the rail's bottom. The bars are the local WAL's
           own depth over the last few seconds — teal because a WAL that is
           draining is healthy state, not a warning. */}
+      {/* With no document open the rail still ends in a wal panel — the
+          bottom of a rail that just stops is a rail that looks unfinished,
+          and there is something true to say there. */}
+      {!blocks && (
+        <div className="wal">
+          <Label>NEW</Label>
+          <div style={{ fontSize: 11, lineHeight: 1.55, color: "#8C8880" }}>
+            A page is created empty and untitled. Naming it later is normal — the id was
+            never the name.
+          </div>
+        </div>
+      )}
+
       {blocks && (
         <div className="wal">
           <span className="lbl">LOCAL WAL</span>

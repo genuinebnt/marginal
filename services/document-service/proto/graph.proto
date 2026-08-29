@@ -46,6 +46,20 @@ message GraphNode {
   // with no parent, reachable without already knowing another page's
   // title exists.
   bool is_root = 3;
+  // v2.9.0 — the page's declared topic, "" when untopiced.
+  //
+  // Carried HERE rather than joined by the client from ListPages, which is
+  // the bug this field exists to fix: ListPages returns direct children of
+  // one parent, so a client joining it against this node set coloured only
+  // the ROOT pages and silently drew every nested page as untopiced. The
+  // graph endpoint already reads docs.pages.topic_id — it is the partition
+  // modularity is scored against — so the data was already loaded and only
+  // the wire shape was missing.
+  string topic_name = 4;
+  string topic_color_key = 5;
+  // The page's free-form tags, for the same reason: the tag filter joined
+  // ListPages too, and was therefore filtering over the root pages only.
+  repeated string tags = 6;
 }
 
 message GraphEdge {

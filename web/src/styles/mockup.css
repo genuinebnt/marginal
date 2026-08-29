@@ -91,10 +91,12 @@ a{color:#E8873C}a:hover{color:#F2A264}
    The page tree answers "where am I in the workspace". This answers "where
    am I in the page", which is a different question and deserves its own
    section rather than a tab you have to go find. */
-.oi{display:flex;align-items:baseline;gap:8px;padding:3px 9px;white-space:nowrap;overflow:hidden;cursor:pointer}
+.oi{display:flex;align-items:baseline;gap:8px;padding:4px 9px;white-space:nowrap;overflow:hidden;cursor:pointer}
 .oi:hover{background:#181A1B}
 .oi-m{font:600 8px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#4B4842;width:16px;flex:none}
-.oi-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:12px;color:#9B968D}
+/* 12.5px, not 12: the rail is the surface you scan most, and a half
+   pixel of x-height is the difference between reading it and squinting. */
+.oi-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:12.5px;color:#9B968D}
 .oi-h1 .oi-t{color:#E4E2DC;font-weight:500}
 .oi-h2{padding-left:20px}
 .oi-h3{padding-left:32px}
@@ -252,3 +254,8 @@ a{color:#E8873C}a:hover{color:#F2A264}
 @media (prefers-reduced-motion: reduce) {
   .fx, .card, .srow, .path-body, .tr, .sbanner-rule i { animation: none !important; transition: none !important; }
 }
+
+/* A "what changed" row on the dashboard. Same left-edge pair as the rail, so
+   the two surfaces answer "what is this about" the same way. */
+.changed-row{display:flex;align-items:center;gap:10px;padding:9px 6px;cursor:pointer;transition:background .14s ease}
+.changed-row:hover{background:#161819}

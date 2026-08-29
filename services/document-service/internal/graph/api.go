@@ -31,7 +31,10 @@ func (s *Server) GetLinkGraph(ctx context.Context, _ *documentv1.GetLinkGraphReq
 	nodes := make([]*documentv1.GraphNode, 0, len(g.Graph.Nodes))
 	for _, id := range g.Graph.Nodes {
 		n := g.Nodes[id]
-		nodes = append(nodes, &documentv1.GraphNode{Id: string(id), Title: n.Title, IsRoot: n.IsRoot})
+		nodes = append(nodes, &documentv1.GraphNode{
+			Id: string(id), Title: n.Title, IsRoot: n.IsRoot,
+			TopicName: n.TopicName, TopicColorKey: n.TopicColorKey, Tags: n.Tags,
+		})
 	}
 	edges := make([]*documentv1.GraphEdge, 0, len(g.Graph.Edges))
 	for _, e := range g.Graph.Edges {

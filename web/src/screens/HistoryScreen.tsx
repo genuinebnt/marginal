@@ -12,7 +12,7 @@
  * snapshot swap, which is what makes it a normal edit that itself undoes.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import {
   describeOp, getPalimpsest, getTrace, type PalimpsestChar, type TraceStep,
@@ -20,8 +20,10 @@ import {
 import { useCollabPage } from "../collab/useCollabPage";
 import { listPages, type Page } from "../api/pages";
 import {
-  Body, Inspector, Label, Readout, Rule, Screen, StatusBar, TopBar, num,
+  Body, Inspector, Label, Main, Readout, Rule, Screen, StatusBar, TopBar, num,
 } from "../shell/Chrome";
+import { PageCard } from "../ui";
+import { PageTreeRail } from "./PageTreeRail";
 
 /** Actor colours: you are teal, a peer violet, the assistant slate (§3.3). */
 function actorHue(actorId: string, you: string | null): string {
@@ -55,7 +57,6 @@ export function HistoryScreen() {
   const { id } = useParams();
   const { session } = useAuth();
   const actorId = session?.actorId ?? null;
-  const navigate = useNavigate();
 
   const [pages, setPages] = useState<Page[]>([]);
   const [steps, setSteps] = useState<TraceStep[]>([]);
@@ -154,25 +155,46 @@ export function HistoryScreen() {
   if (!id) {
     return (
       <Screen>
-        <TopBar crumb={<>history</>} />
+        <TopBar
+          crumb={<>history</>}
+          readouts={<Readout k="PAGES" v={num(pages.length)} />}
+        />
         <Body>
-          <div className="rail">
-            <div className="rail-h">PICK A PAGE<div /></div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 1, padding: "0 8px", overflowY: "auto" }}>
-              {pages.map((p) => (
-                <div key={p.id} className="tr" style={{ cursor: "pointer" }}
-                     onClick={() => navigate(`/pages/${p.id}/history`)}>
-                  <span className="tr-t">{p.title}</span>
-                </div>
-              ))}
+          <PageTreeRail actorId={actorId ?? ""} />
+          <Main style={{ padding: "28px 34px", overflow: "hidden" }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 8 }}>
+              <h1 className="h1" style={{ fontSize: 22 }}>History is per page</h1>
+              <span className="mono" style={{ fontSize: 11, color: "#585550" }}>
+                because an op log is
+              </span>
             </div>
-          </div>
-          <div style={{ flex: 1, display: "grid", placeItems: "center", padding: 40 }}>
-            <div style={{ maxWidth: 520, fontSize: 12.5, lineHeight: 1.7, color: "#585550" }}>
-              History is per page, because an op log is. Every revision is a filter over one
-              stored array rather than a snapshot, so scrubbing costs nothing to keep.
+            <div style={{ fontSize: 12.5, lineHeight: 1.7, color: "#8C8880", maxWidth: 620, marginBottom: 22 }}>
+              Every revision is a filter over one stored array rather than a snapshot, so
+              scrubbing costs nothing to keep. Pick a page and the scrubber replays its real op
+              log — no copies are made, which is why COPIES reads 0 on every one of them.
             </div>
-          </div>
+            <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+                {pages.map((p, i) => (
+                  <PageCard
+                    key={p.id}
+                    to={`/pages/${p.id}/history`}
+                    title={p.title}
+                    topicName={p.topic?.name}
+                    colorKey={p.topic?.color_key}
+                    delay={Math.min(i, 12) * 0.03}
+                    excerpt={(p.tags ?? []).slice(0, 4).join(" · ")}
+                    meta={
+                      <>
+                        <span>{num(p.block_count)} blocks</span>
+                        <span>{num(p.word_count)} words</span>
+                      </>
+                    }
+                  />
+                ))}
+              </div>
+            </div>
+          </Main>
         </Body>
         <StatusBar route="/history" mechanism="op-log replay" state="no page selected" healthy />
       </Screen>

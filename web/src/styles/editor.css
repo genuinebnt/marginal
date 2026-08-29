@@ -673,3 +673,8 @@
    is a filter you cannot trust you have finished typing. */
 .tr-filter-note { padding: 2px 12px 8px; font: 400 9.5px 'IBM Plex Mono', monospace; color: #585550; }
 .tr-hit { background: rgba(232,135,60,.22); color: #EFEDE7; }
+
+/* The line count beside a code block's language. Small, and on the right,
+   because "how long is this" is the second question about a fence and never
+   the first. */
+.blk-code-n { margin-left: auto; font-size: 9px; color: #4B4842; }

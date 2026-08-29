@@ -82,6 +82,12 @@ const UTILITY = new Set(['mono', 'lbl', 'tgrow', 'row', 'dot']);
  * forty times.
  */
 const IGNORED_MISSING = new Set(['div.scan', 'div.tag']);
+
+/** Text properties, which an element with no text inherits and never uses. */
+const INHERITED_TEXT_PROPS = new Set([
+  'color', 'fontFamily', 'fontSize', 'fontWeight', 'letterSpacing', 'lineHeight',
+  'textDecorationLine', 'textTransform', 'borderTopColor',
+]);
 const IGNORED_PROPS = {
   'div.sc': new Set(['marginBottom']),
   // .wal is pinned by margin-top:auto, so its computed margin is the slack
@@ -148,6 +154,12 @@ const SEED = {
   '17': async (p) => {                       // HISTORY — a block with characters
     await p.waitForTimeout(1500);
   },
+  '24b': async (p) => {                      // COMMAND PALETTE — ⌘K, with a query typed
+    await p.keyboard.press('Meta+k');
+    await p.waitForTimeout(400);
+    await p.keyboard.type('rope');
+    await p.waitForTimeout(1400);
+  },
   '24c': async (p) => {                      // NOTIFICATIONS PANEL — the bell, opened
     const bell = p.locator('.icb').first();
     if (await bell.count()) await bell.click();
@@ -172,6 +184,10 @@ const EXTRACT = (props, chromeSel) => `(root) => {
       w: Math.round(rect.width),
       h: Math.round(rect.height),
       text: n.matches('${chromeSel}') ? (n.textContent || '').trim().slice(0, 40) : null,
+      // Whether this element renders any text at all. An empty span — a rule,
+      // a bar, a tick — inherits colour and font from wherever it happens to
+      // sit, and comparing those compares its ANCESTRY rather than its design.
+      empty: (n.textContent || '').trim() === '',
     });
     let i = 0;
     for (const c of n.children) walk(c, key + '[' + i++ + ']');
@@ -329,8 +345,15 @@ async function main() {
     for (let i = 0; i < n; i++) {
       const me = els[i], ae = hit[i];
       const skip = IGNORED_PROPS[norm(sig)] || IGNORED_PROPS[sig];
+      // An element with no text of its own: its inherited text properties are
+      // a fact about its ancestors, not about it. Reported, they were the
+      // single largest source of noise on the list screens — 45 diffs on one
+      // screen, every one of them a 2px bar inheriting a font size it never
+      // uses.
+      const inherited = me.empty && ae.empty ? INHERITED_TEXT_PROPS : null;
       for (const p of PROPS) {
         if (skip && skip.has(p)) continue;
+        if (inherited && inherited.has(p)) continue;
         if (me.style[p] !== ae.style[p]) {
           propDiffs.push(`${sig}[${i}]  ${p}: ${me.style[p]}  ->  ${ae.style[p]}`);
         }

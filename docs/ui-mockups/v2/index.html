@@ -82,6 +82,9 @@ a{color:#E8873C}a:hover{color:#F2A264}
 .tr-parts-series{color:#E8873C;border-color:rgba(232,135,60,.35)}
 .tr-count{margin-left:auto;padding-left:8px;color:#4B4842}
 .tr-hit{background:rgba(232,135,60,.22);color:#EFEDE7}
+/* A "what changed" row on § 03c. Same left-edge pair as the rail, so the two
+   surfaces answer "what is this about" the same way. */
+.changed-row{display:flex;align-items:center;gap:10px;padding:9px 6px}
 .tr-on i{position:absolute;left:0;top:4px;bottom:4px;width:2px;background:#E8873C}
 .wal{margin-top:auto;padding:12px 14px;border-top:1px solid rgba(255,255,255,.07);display:flex;flex-direction:column;gap:6px}
 .insp{width:332px;flex:none;box-sizing:border-box;background:#0F1012;border-left:1px solid rgba(255,255,255,.07);display:flex;flex-direction:column}
@@ -98,10 +101,12 @@ a{color:#E8873C}a:hover{color:#F2A264}
    The page tree answers "where am I in the workspace". This answers "where
    am I in the page", which is a different question and deserves its own
    section rather than a tab you have to go find. */
-.oi{display:flex;align-items:baseline;gap:8px;padding:3px 9px;white-space:nowrap;overflow:hidden;cursor:pointer}
+.oi{display:flex;align-items:baseline;gap:8px;padding:4px 9px;white-space:nowrap;overflow:hidden;cursor:pointer}
 .oi:hover{background:#181A1B}
 .oi-m{font:600 8px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#4B4842;width:16px;flex:none}
-.oi-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:12px;color:#9B968D}
+/* 12.5px, not 12: the rail is the surface you scan most, and a half
+   pixel of x-height is the difference between reading it and squinting. */
+.oi-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:12.5px;color:#9B968D}
 .oi-h1 .oi-t{color:#E4E2DC;font-weight:500}
 .oi-h2{padding-left:20px}
 .oi-h3{padding-left:32px}
@@ -127,7 +132,9 @@ a{color:#E8873C}a:hover{color:#F2A264}
    path list. The IDEAS are reused; none of its CSS is, because that belongs
    to another design system and importing it would fork this palette. */
 .card{position:relative;color:#E4E2DC;display:flex;flex-direction:column;gap:6px;padding:12px 13px;box-sizing:border-box;background:#131415;border:1px solid rgba(255,255,255,.08)}
+.card-on{border-color:rgba(232,135,60,.5);background:rgba(232,135,60,.07)}
 .card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--acc,#4B4842);opacity:.55}
+.card-on::before{opacity:1}
 .card-top{display:flex;align-items:center;gap:7px}
 .card-dot{width:5px;height:5px;flex:none}
 .card-topic{font-size:8.5px;letter-spacing:.16em}
@@ -683,7 +690,7 @@ a{color:#E8873C}a:hover{color:#F2A264}
     <span class="crumb">workspace / <b>genuine-folio</b></span>
     <div style="flex:1"></div>
     <div class="rd"><span class="rd-k">PAGES</span><span class="rd-v">1 908</span></div>
-    <div class="rd"><span class="rd-k">LIVE NOW</span><span class="rd-v" style="color:#3FCFA8">2</span></div>
+    <div class="rd"><span class="rd-k">WORDS</span><span class="rd-v">104 220</span></div>
     <div class="vr"></div>
     <div class="clk"><b>14:06</b><span>THU 12 MAR</span></div><span class="kbd">⌘K</span><div class="icb">◎<div class="bdg">6</div></div><div class="icb">⚙</div><div class="av av-you">GN</div>
   </div>
@@ -692,10 +699,10 @@ a{color:#E8873C}a:hover{color:#F2A264}
       <div class="rail-h">PAGE TREE<div></div><span style="color:#585550">31</span></div>
       <div class="filt">filter…</div>
       <div style="display:flex;flex-direction:column;gap:1px;padding:0 8px">
-        <div class="tr"><span class="tr-n">01</span>Inbox<span style="margin-left:auto" class="tr-n">4</span></div>
-        <div class="tr"><span class="tr-n">02</span>Product<span style="margin-left:auto" class="tr-n">12</span></div>
-        <div class="tr"><span class="tr-n">06</span>Research<span style="margin-left:auto" class="tr-n">9</span></div>
-        <div class="tr"><span class="tr-n">07</span>Archive<span style="margin-left:auto" class="tr-n">88</span></div>
+        <div class="tr"><span class="tr-bars"><span class="tr-tick"></span><span class="tr-bar"></span></span><span class="tr-n">01</span><span class="tr-t">Inbox</span><span class="tr-parts tr-parts-series">4 PARTS</span><span class="tr-n tr-count">1m</span></div>
+        <div class="tr"><span class="tr-bars"><span class="tr-tick tr-tick-live"></span><span class="tr-bar" style="background:#7AA8E8"></span></span><span class="tr-n">02</span><span class="tr-t">Product</span><span class="tr-parts tr-parts-series">12 PARTS</span><span class="tr-n tr-count">9m</span></div>
+        <div class="tr"><span class="tr-bars"><span class="tr-tick"></span><span class="tr-bar" style="background:#D07C8A"></span></span><span class="tr-n">06</span><span class="tr-t">Research</span><span class="tr-parts tr-parts-series">9 PARTS</span><span class="tr-n tr-count">3m</span></div>
+        <div class="tr"><span class="tr-bars"><span class="tr-tick"></span><span class="tr-bar"></span></span><span class="tr-n">07</span><span class="tr-t">Archive</span><span class="tr-parts tr-parts-series">88 PARTS</span><span class="tr-n tr-count">2m</span></div>
       </div>
       <div class="wal">
         <span class="lbl">NEW</span>
@@ -713,38 +720,22 @@ a{color:#E8873C}a:hover{color:#F2A264}
       <!-- Resume, not "recent". The distinction is the caret. -->
       <div class="lbl" style="margin-bottom:12px">RESUME</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:11px;margin-bottom:28px">
-        <div style="border:1px solid rgba(232,135,60,.35);background:rgba(232,135,60,.04);padding:14px 16px">
-          <div style="display:flex;align-items:baseline;gap:9px;margin-bottom:7px">
-            <span style="font-family:Spectral,serif;font-size:16px;color:#EFEDE7">Sync protocol notes</span>
-            <div style="flex:1"></div>
-            <div class="av av-them" style="width:18px;height:18px;font-size:7px">AD</div>
-          </div>
-          <div class="tgrow" style="margin-bottom:9px"><span class="tpc tpc-proto" style="padding:1px 6px"><i></i>PROTOCOL</span><span class="tg">crdt</span></div>
-          <div class="mono" style="font-size:10.5px;color:#585550">caret at block 7f3a · 4 min ago · Ada is here now</div>
-        </div>
-        <div style="border:1px solid rgba(255,255,255,.09);padding:14px 16px">
-          <div style="display:flex;align-items:baseline;gap:9px;margin-bottom:7px">
-            <span style="font-family:Spectral,serif;font-size:16px;color:#EFEDE7">Block model</span>
-            <div style="flex:1"></div>
-          </div>
-          <div class="tgrow" style="margin-bottom:9px"><span class="tpc tpc-store" style="padding:1px 6px"><i></i>STORAGE</span><span class="tg">block-tree</span></div>
-          <div class="mono" style="font-size:10.5px;color:#585550">caret at block c42 · yesterday 18:12</div>
-        </div>
+        <div class="card card-on" style="--acc:#7AA8E8"><div class="brk-tl"></div><div class="brk-br"></div><div class="card-top"><span class="card-dot" style="background:#7AA8E8"></span><span class="mono card-topic" style="color:#7AA8E8">PROTOCOL</span></div><div class="card-title">Sync protocol notes</div><div class="card-ex">caret at block 7f3a</div><div class="card-meta mono"><span>MOST RECENT</span><span>12 Mar 14:02</span></div></div>
+        <div class="card" style="--acc:#C48AE0"><div class="card-top"><span class="card-dot" style="background:#C48AE0"></span><span class="mono card-topic" style="color:#C48AE0">STORAGE</span></div><div class="card-title">Block model</div><div class="card-ex">caret at block c42</div><div class="card-meta mono"><span>RESUME</span><span>11 Mar 18:12</span></div></div>
       </div>
 
       <div style="display:grid;grid-template-columns:1.35fr 1fr;gap:32px;flex:1;min-height:0">
         <div style="display:flex;flex-direction:column;min-height:0">
           <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:12px">
             <span class="lbl">CHANGED SINCE YOU LAST LOOKED</span>
-            <span class="mono" style="font-size:10px;color:#585550">by op, not by mtime</span>
+            <span class="mono" style="font-size:10px;color:#585550">by updated_at — see the note below</span>
           </div>
           <div style="display:flex;flex-direction:column">
-            <div class="row" style="padding:10px 0"><div class="av av-them" style="width:18px;height:18px;font-size:7px">AD</div><span style="flex:1;font-size:12.5px;color:#D2CFC8">Anchors vs offsets</span><span class="mono" style="font-size:10px;color:#585550">+2 blocks · −1</span><span class="mono" style="font-size:10px;color:#585550;width:58px;text-align:right">2 h ago</span></div>
-            <div class="row" style="padding:10px 0"><div class="av av-ai" style="width:18px;height:18px;font-size:7px">✦</div><span style="flex:1;font-size:12.5px;color:#D2CFC8">Block model</span><span class="mono" style="font-size:10px;color:#7D9EC9">2 ops proposed</span><span class="mono" style="font-size:10px;color:#585550;width:58px;text-align:right">4 h ago</span></div>
-            <div class="row" style="padding:10px 0"><div class="av" style="width:18px;height:18px;font-size:7px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.16);color:#9B968D">RK</div><span style="flex:1;font-size:12.5px;color:#D2CFC8">CRDT survey</span><span class="mono" style="font-size:10px;color:#585550">retitled</span><span class="mono" style="font-size:10px;color:#585550;width:58px;text-align:right">yesterday</span></div>
-            <div class="row" style="padding:10px 0;border-bottom:0"><div class="av" style="width:18px;height:18px;font-size:7px;background:rgba(255,255,255,.06);border:1px solid rgba(224,163,78,.4);color:#E0A34E">✕</div><span style="flex:1;font-size:12.5px;color:#9B968D">Old rope notes</span><span class="mono" style="font-size:10px;color:#E0A34E">deleting</span><span class="mono" style="font-size:10px;color:#585550;width:58px;text-align:right">just now</span></div>
+            <div class="changed-row"><span class="tr-bars"><span class="tr-tick tr-tick-live"></span><span class="tr-bar" style="background:#7AA8E8"></span></span><span style="flex:1;font-size:12.5px;color:#D2CFC8">Anchors vs offsets</span><span class="mono" style="font-size:10px;color:#585550">31 blocks</span><span class="mono" style="font-size:10px;color:#585550;width:76px;text-align:right">2 h ago</span></div>
+            <div class="changed-row"><span class="tr-bars"><span class="tr-tick"></span><span class="tr-bar" style="background:#C48AE0"></span></span><span style="flex:1;font-size:12.5px;color:#D2CFC8">Block model</span><span class="mono" style="font-size:10px;color:#585550">18 blocks</span><span class="mono" style="font-size:10px;color:#585550;width:76px;text-align:right">4 h ago</span></div>
+            <div class="changed-row"><span class="tr-bars"><span class="tr-tick"></span><span class="tr-bar" style="background:#D07C8A"></span></span><span style="flex:1;font-size:12.5px;color:#D2CFC8">CRDT survey</span><span class="mono" style="font-size:10px;color:#585550">12 blocks</span><span class="mono" style="font-size:10px;color:#585550;width:76px;text-align:right">yesterday</span></div>
           </div>
-          <div class="mono" style="font-size:10px;color:#585550;margin-top:11px">read from collab.ops since your last session ended — a page edited and reverted shows nothing, because nothing changed</div>
+          <div class="mono" style="font-size:10px;line-height:1.6;color:#585550;margin-top:11px">by <span style="color:#8C8880">updated_at</span>, not by op — so a page edited and reverted still appears here. Reading collab.ops since your last session would fix that, and is the honest difference between this list and the one the design asks for.</div>
 
           <div style="margin-top:22px">
             <div class="lbl" style="margin-bottom:11px">START</div>

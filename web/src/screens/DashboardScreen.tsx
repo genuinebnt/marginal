@@ -16,16 +16,18 @@
  * Still placeholder: the change feed (needs a read over collab.ops since
  * last session) and LIVE NOW (needs presence across pages, not one).
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { createPage, listPages, type Page } from "../api/pages";
 import { getTopics, type TopicList } from "../api/topics";
 import { getResume, type ReadingPosition } from "../api/resume";
 import {
-  Body, Label, Readout, Screen, StatusBar, TopBar, TopicChip, num,
+  Body, Label, Readout, Screen, StatusBar, TopBar, num,
 } from "../shell/Chrome";
-import { ph, PlaceholderNote, undrawn } from "../shell/placeholder";
+import { ph, undrawn } from "../shell/placeholder";
+import { PageTreeRail } from "./PageTreeRail";
+import { PageCard, RowBars } from "../ui";
 
 /** The mockup's own eyebrow — the time of day, named rather than printed. */
 function partOfDay(d: Date): string {
@@ -72,6 +74,22 @@ export function DashboardScreen() {
 
   const untopiced = topics?.untopiced_pages ?? 0;
   const now = new Date();
+  const totalWords = useMemo(() => pages.reduce((n, p) => n + (p.word_count ?? 0), 0), [pages]);
+
+  /**
+   * What changed, most recent first.
+   *
+   * By `updated_at` and it says so: a page edited and then reverted still
+   * appears here, where the design asks for a read over `collab.ops` since
+   * your last session — which would show nothing, correctly. The gap is
+   * printed under the list rather than papered over with a dimmed
+   * placeholder, because a real list with a stated limitation is worth more
+   * than a fake one with a badge.
+   */
+  const recentlyChanged = useMemo(
+    () => [...pages].sort((a, b) => b.updated_at.localeCompare(a.updated_at)).slice(0, 6),
+    [pages],
+  );
 
   return (
     <Screen>
@@ -80,43 +98,17 @@ export function DashboardScreen() {
         readouts={
           <>
             <Readout k="PAGES" v={num(pages.length)} />
-            <Readout k="LIVE NOW" v={ph(0)} tone="#3FCFA8" />
+            <Readout k="WORDS" v={num(totalWords)} />
           </>
         }
       />
 
       <Body>
-        <div className="rail">
-          <div className="rail-h">
-            PAGE TREE<div /><span style={{ color: "#585550" }}>{pages.length}</span>
-          </div>
-          <div className="filt">filter…</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 1, padding: "0 8px", overflowY: "auto" }}>
-            {pages.map((p, i) => (
-              <div
-                key={p.id}
-                className="tr"
-                style={{ cursor: "pointer" }}
-                onClick={() => navigate(`/pages/${p.id}`)}
-              >
-                <span className="tr-n">{String(i + 1).padStart(2, "0")}</span>
-                {p.title}
-                {p.topic && (
-                  <span style={{
-                    marginLeft: "auto", width: 5, height: 5,
-                    background: `var(--topic-${p.topic.color_key})`,
-                  }} />
-                )}
-              </div>
-            ))}
-          </div>
-          <div className="wal">
-            <Label>NEW</Label>
-            <div style={{ fontSize: 11, lineHeight: 1.55, color: "#8C8880" }}>
-              A page is created empty and untitled. Naming it later is normal — the id was never the name.
-            </div>
-          </div>
-        </div>
+        {/* The real tree, not a second flat list of the same pages. The rail
+            is the one component that knows about nesting, part counts,
+            reading estimates and where you have been — a hand-rolled copy
+            here had none of it and drifted the moment the rail gained any. */}
+        <PageTreeRail actorId={actorId ?? ""} />
 
         <div style={{
           flex: 1, minWidth: 0, padding: "34px 40px", overflow: "hidden",
@@ -152,34 +144,26 @@ export function DashboardScreen() {
               </div>
             )}
             {resume.map((p, i) => (
-              <div
+              <PageCard
                 key={p.page_id}
+                title={p.page_title}
+                topicName={p.topic?.name}
+                colorKey={p.topic?.color_key}
+                selected={i === 0}
+                delay={i * 0.04}
                 onClick={() => navigate(`/read/${p.page_id}`)}
-                style={{
-                  border: i === 0 ? "1px solid rgba(232,135,60,.35)" : "1px solid rgba(255,255,255,.09)",
-                  background: i === 0 ? "rgba(232,135,60,.04)" : undefined,
-                  padding: "14px 16px", cursor: "pointer",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "baseline", gap: 9, marginBottom: 7 }}>
-                  <span style={{ fontFamily: "Spectral,serif", fontSize: 16, color: "#EFEDE7" }}>
-                    {p.page_title}
-                  </span>
-                  <div style={{ flex: 1 }} />
-                </div>
-                <div className="tgrow" style={{ marginBottom: 9 }}>
-                  {p.topic
-                    ? <TopicChip name={p.topic.name} colorKey={p.topic.color_key} />
-                    : <span className="chip">UNTOPICED</span>}
-
-                </div>
-                <div className="mono" style={{ fontSize: 10.5, color: "#585550" }}>
-                  {p.block_id ? `caret at block ${p.block_id.slice(0, 4)}` : "no block yet"} ·{" "}
-                  {new Date(p.updated_at).toLocaleString("en-GB", {
-                    day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit",
-                  })}
-                </div>
-              </div>
+                excerpt={p.block_id ? `caret at block ${p.block_id.slice(0, 4)}` : "opened, never clicked into"}
+                meta={
+                  <>
+                    <span>{i === 0 ? "MOST RECENT" : "RESUME"}</span>
+                    <span>
+                      {new Date(p.updated_at).toLocaleString("en-GB", {
+                        day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit",
+                      })}
+                    </span>
+                  </>
+                }
+              />
             ))}
           </div>
 
@@ -189,26 +173,37 @@ export function DashboardScreen() {
                 <Label>CHANGED SINCE YOU LAST LOOKED</Label>
                 <span className="mono" style={{ fontSize: 10, color: "#585550" }}>by op, not by mtime</span>
               </div>
-              <PlaceholderNote>needs a read over collab.ops since your last session</PlaceholderNote>
-              <div style={{ display: "flex", flexDirection: "column", ...undrawn }}>
-                {[
-                  { av: "AD", cls: "av-them", title: ph("Anchors vs offsets"), meta: ph("+2 blocks · −1"), when: ph("2 h ago"), tone: "#585550" },
-                  { av: "✦", cls: "av-ai", title: ph("Block model"), meta: ph("2 ops proposed"), when: ph("4 h ago"), tone: "#7D9EC9" },
-                  { av: "RK", cls: "", title: ph("CRDT survey"), meta: ph("retitled"), when: ph("yesterday"), tone: "#585550" },
-                ].map((r, i) => (
-                  <div key={i} className="row" style={{ padding: "10px 0" }}>
-                    <div className={`av ${r.cls}`} style={{ width: 18, height: 18, fontSize: 7 }}>{r.av}</div>
-                    <span style={{ flex: 1, fontSize: 12.5, color: "#D2CFC8" }}>{r.title}</span>
-                    <span className="mono" style={{ fontSize: 10, color: r.tone }}>{r.meta}</span>
-                    <span className="mono" style={{ fontSize: 10, color: "#585550", width: 58, textAlign: "right" }}>
-                      {r.when}
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                {recentlyChanged.length === 0 && (
+                  <div style={{ fontSize: 12, color: "#585550", lineHeight: 1.6 }}>
+                    Nothing has changed. That is the cleared state.
+                  </div>
+                )}
+                {recentlyChanged.map((p, i) => (
+                  <div
+                    key={p.id}
+                    className="fx changed-row"
+                    style={{ animationDelay: `${i * 0.04}s` }}
+                    onClick={() => navigate(`/read/${p.id}`)}
+                  >
+                    <RowBars colorKey={p.topic?.color_key} status={i === 0 ? "live" : "ok"} />
+                    <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: "#D2CFC8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {p.title}
+                    </span>
+                    <span className="mono" style={{ fontSize: 10, color: "#585550" }}>
+                      {num(p.block_count)} blocks
+                    </span>
+                    <span className="mono" style={{ fontSize: 10, color: "#585550", width: 76, textAlign: "right" }}>
+                      {sinceLabel(p.updated_at)}
                     </span>
                   </div>
                 ))}
               </div>
-              <div className="mono" style={{ fontSize: 10, color: "#585550", marginTop: 11 }}>
-                read from collab.ops since your last session ended — a page edited and reverted
-                shows nothing, because nothing changed
+              <div className="mono" style={{ fontSize: 10, lineHeight: 1.6, color: "#585550", marginTop: 11 }}>
+                by <span style={{ color: "#8C8880" }}>updated_at</span>, not by op — so a page
+                edited and reverted still appears here. Reading collab.ops since your last
+                session would fix that, and is the honest difference between this list and the
+                one the design asks for.
               </div>
 
               <div style={{ marginTop: 22 }}>
@@ -301,3 +296,14 @@ export function DashboardScreen() {
 }
 
 export default DashboardScreen;
+
+/** "4 min ago" / "yesterday" — the granularity the dashboard actually prints. */
+function sinceLabel(iso: string): string {
+  const mins = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours} h ago`;
+  const days = Math.round(hours / 24);
+  return days === 1 ? "yesterday" : `${days} days ago`;
+}

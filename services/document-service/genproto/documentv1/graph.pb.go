@@ -126,7 +126,21 @@ type GraphNode struct {
 	// is_root mirrors graphalgo.Orphans' own root set: a page
 	// with no parent, reachable without already knowing another page's
 	// title exists.
-	IsRoot        bool `protobuf:"varint,3,opt,name=is_root,json=isRoot,proto3" json:"is_root,omitempty"`
+	IsRoot bool `protobuf:"varint,3,opt,name=is_root,json=isRoot,proto3" json:"is_root,omitempty"`
+	// v2.9.0 — the page's declared topic, "" when untopiced.
+	//
+	// Carried HERE rather than joined by the client from ListPages, which is
+	// the bug this field exists to fix: ListPages returns direct children of
+	// one parent, so a client joining it against this node set coloured only
+	// the ROOT pages and silently drew every nested page as untopiced. The
+	// graph endpoint already reads docs.pages.topic_id — it is the partition
+	// modularity is scored against — so the data was already loaded and only
+	// the wire shape was missing.
+	TopicName     string `protobuf:"bytes,4,opt,name=topic_name,json=topicName,proto3" json:"topic_name,omitempty"`
+	TopicColorKey string `protobuf:"bytes,5,opt,name=topic_color_key,json=topicColorKey,proto3" json:"topic_color_key,omitempty"`
+	// The page's free-form tags, for the same reason: the tag filter joined
+	// ListPages too, and was therefore filtering over the root pages only.
+	Tags          []string `protobuf:"bytes,6,rep,name=tags,proto3" json:"tags,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -180,6 +194,27 @@ func (x *GraphNode) GetIsRoot() bool {
 		return x.IsRoot
 	}
 	return false
+}
+
+func (x *GraphNode) GetTopicName() string {
+	if x != nil {
+		return x.TopicName
+	}
+	return ""
+}
+
+func (x *GraphNode) GetTopicColorKey() string {
+	if x != nil {
+		return x.TopicColorKey
+	}
+	return ""
+}
+
+func (x *GraphNode) GetTags() []string {
+	if x != nil {
+		return x.Tags
+	}
+	return nil
 }
 
 type GraphEdge struct {
@@ -885,11 +920,15 @@ const file_graph_proto_rawDesc = "" +
 	"\x13GetLinkGraphRequest\"y\n" +
 	"\tLinkGraph\x125\n" +
 	"\x05nodes\x18\x01 \x03(\v2\x1f.marginal.document.v1.GraphNodeR\x05nodes\x125\n" +
-	"\x05edges\x18\x02 \x03(\v2\x1f.marginal.document.v1.GraphEdgeR\x05edges\"J\n" +
+	"\x05edges\x18\x02 \x03(\v2\x1f.marginal.document.v1.GraphEdgeR\x05edges\"\xa5\x01\n" +
 	"\tGraphNode\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x14\n" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x12\x17\n" +
-	"\ais_root\x18\x03 \x01(\bR\x06isRoot\"A\n" +
+	"\ais_root\x18\x03 \x01(\bR\x06isRoot\x12\x1d\n" +
+	"\n" +
+	"topic_name\x18\x04 \x01(\tR\ttopicName\x12&\n" +
+	"\x0ftopic_color_key\x18\x05 \x01(\tR\rtopicColorKey\x12\x12\n" +
+	"\x04tags\x18\x06 \x03(\tR\x04tags\"A\n" +
 	"\tGraphEdge\x12\x1b\n" +
 	"\tfrom_page\x18\x01 \x01(\tR\bfromPage\x12\x17\n" +
 	"\ato_page\x18\x02 \x01(\tR\x06toPage\"\x15\n" +

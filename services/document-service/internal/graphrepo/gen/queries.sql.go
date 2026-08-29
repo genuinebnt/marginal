@@ -12,16 +12,27 @@ import (
 )
 
 const listPagesForGraph = `-- name: ListPagesForGraph :many
-SELECT id, title, parent_id, topic_id
-FROM docs.pages
-WHERE deleted_at IS NULL
+SELECT p.id, p.title, p.parent_id, p.topic_id,
+       t.name      AS topic_name,
+       t.color_key AS topic_color_key,
+       COALESCE(
+         (SELECT array_agg(pt.tag ORDER BY pt.tag)
+          FROM docs.page_tags pt WHERE pt.page_id = p.id),
+         '{}'
+       )::text[] AS tags
+FROM docs.pages p
+LEFT JOIN docs.topics t ON t.id = p.topic_id
+WHERE p.deleted_at IS NULL
 `
 
 type ListPagesForGraphRow struct {
-	ID       pgtype.UUID
-	Title    string
-	ParentID pgtype.UUID
-	TopicID  pgtype.UUID
+	ID            pgtype.UUID
+	Title         string
+	ParentID      pgtype.UUID
+	TopicID       pgtype.UUID
+	TopicName     *string
+	TopicColorKey *string
+	Tags          []string
 }
 
 // Every live page — the link graph's node set (graphalgo.Graph
@@ -32,6 +43,11 @@ type ListPagesForGraphRow struct {
 // page's title.
 // topic_id joins the DECLARED partition onto the graph, so modularity
 // can be scored against it (graphalgo.Modularity).
+// The topic NAME and colour key travel with the node, not just the id: the
+// id is what modularity scores a partition by, and the name is what a legend
+// prints. A client joining the name in for itself is what caused the bug this
+// join fixes — ListPages returns one parent's children, so the join silently
+// covered only the root pages.
 func (q *Queries) ListPagesForGraph(ctx context.Context) ([]ListPagesForGraphRow, error) {
 	rows, err := q.db.Query(ctx, listPagesForGraph)
 	if err != nil {
@@ -46,6 +62,9 @@ func (q *Queries) ListPagesForGraph(ctx context.Context) ([]ListPagesForGraphRow
 			&i.Title,
 			&i.ParentID,
 			&i.TopicID,
+			&i.TopicName,
+			&i.TopicColorKey,
+			&i.Tags,
 		); err != nil {
 			return nil, err
 		}

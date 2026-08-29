@@ -18,6 +18,7 @@
 import type { ReactNode } from "react";
 import type { BlockView } from "../collab/useCollabPage";
 import { renderMarkedHTML } from "../collab/marks";
+import { CodeBlock } from "../syntax-core/CodeBlock";
 
 const CALLOUT_ICON: Record<string, string> = {
   warn: "◌", danger: "◌", success: "✓", info: "✦", note: "✦", tip: "◆",
@@ -62,13 +63,8 @@ export function ReadBlocks({
 
     if (tag === "code_block") {
       return (
-        <div key={b.id} data-block-id={b.id} className="blk-code" style={{ margin: "0 0 16px" }}>
-          <div className="blk-code-h">
-            <span className="mono lang">
-              {((b.kind as { language?: string }).language || "plain text").toUpperCase()}
-            </span>
-          </div>
-          <pre>{b.text}</pre>
+        <div key={b.id} data-block-id={b.id} style={{ margin: "0 0 16px" }}>
+          <CodeBlock language={(b.kind as { language?: string }).language} source={b.text} />
         </div>
       );
     }

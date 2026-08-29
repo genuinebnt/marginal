@@ -17,9 +17,11 @@ import { useAuth } from "../auth/AuthContext";
 import { getBacklinks, getPage, listPages, type Backlink, type Page } from "../api/pages";
 import { useCollabPage } from "../collab/useCollabPage";
 import {
-  Body, Inspector, Label, Rule, Screen, StatusBar,
+  Body, Inspector, Label, Main, Readout, Rule, Screen, StatusBar,
   TopBar, TopicChip, num,
 } from "../shell/Chrome";
+import { PageCard, RowBars, ViewToggle, readMinutes, type ViewMode } from "../ui";
+import { PageTreeRail } from "./PageTreeRail";
 import { ReadingBar } from "../shell/ReadingProgress";
 import { DocumentOutline, outlineOf } from "./DocumentOutline";
 import { ReadBlocks } from "./ReadBlocks";
@@ -114,6 +116,8 @@ export function ReaderScreen() {
 
   /** Which inspector pane. § 05's own three, SIDENOTES first. */
   const [inspTab, setInspTab] = useState<InspTab>("sidenotes");
+  /** Grid or list, on the picker. View state, remembered per screen. */
+  const [pickView, setPickView] = useState<ViewMode>("grid");
   const [series, setSeries] = useState<PageSeries | null>(null);
   const [hood, setHood] = useState<GraphNeighborhood | null>(null);
   /** What a click on a dangling [[link]] said, so it can say something. */
@@ -185,31 +189,82 @@ export function ReaderScreen() {
   if (!id) {
     return (
       <Screen>
-        <TopBar crumb={<>read</>} />
+        <TopBar
+          crumb={<>read</>}
+          readouts={
+            <>
+              <Readout k="PAGES" v={num(pages.length)} />
+              <Readout k="READ TIME" v={`~${num(readMinutes(pages.reduce((n, p) => n + (p.word_count ?? 0), 0)) ?? 0)} min`} />
+            </>
+          }
+        />
         <Body>
-          <div className="rail">
-            <div className="rail-h">PAGES<div /><span style={{ color: "#585550" }}>{pages.length}</span></div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 1, padding: "0 8px", overflowY: "auto" }}>
-              {pages.map((p) => (
-                <div key={p.id} className="tr" style={{ cursor: "pointer" }}
-                     onClick={() => navigate(`/read/${p.id}`)}>
-                  {p.topic
-                    ? <span className="tr-topic" style={{ background: `var(--topic-${p.topic.color_key})` }} />
-                    : <span className="tr-topic tr-topic-none" />}
-                  <span className="tr-t">{p.title}</span>
+          <PageTreeRail actorId={actorId ?? ""} />
+          <Main style={{ padding: "28px 34px", overflow: "hidden" }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 16 }}>
+              <h1 className="h1" style={{ fontSize: 22 }}>Read</h1>
+              <span className="mono" style={{ fontSize: 11, color: "#585550" }}>
+                {num(pages.length)} pages · width and type are yours, never the document's
+              </span>
+              <div style={{ flex: 1 }} />
+              <Link to="/series" className="chip" style={{ textDecoration: "none" }}>SERIES →</Link>
+              <ViewToggle mode={pickView} onChange={setPickView} />
+            </div>
+
+            <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+              {pages.length === 0 && (
+                <div style={{ fontSize: 12.5, lineHeight: 1.7, color: "#585550", maxWidth: 560 }}>
+                  Nothing to read yet. A blank workspace is a correct state, not an empty one.
                 </div>
-              ))}
+              )}
+              {pickView === "grid" ? (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+                  {pages.map((p, i) => (
+                    <PageCard
+                      key={p.id}
+                      to={`/read/${p.id}`}
+                      title={p.title}
+                      topicName={p.topic?.name}
+                      colorKey={p.topic?.color_key}
+                      delay={Math.min(i, 12) * 0.03}
+                      excerpt={(p.tags ?? []).slice(0, 4).join(" · ")}
+                      meta={
+                        <>
+                          <span>{num(p.block_count)} blocks</span>
+                          <span>{readMinutes(p.word_count) ? `~${readMinutes(p.word_count)} min` : "empty"}</span>
+                        </>
+                      }
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  {pages.map((p) => (
+                    <div key={p.id} className="srow" onClick={() => navigate(`/read/${p.id}`)}>
+                      <RowBars colorKey={p.topic?.color_key} status="ok" />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div className="srow-t">{p.title}</div>
+                        <div className="tgrow" style={{ marginTop: 4 }}>
+                          {(p.tags ?? []).slice(0, 5).map((t) => <span key={t} className="tg">{t}</span>)}
+                        </div>
+                      </div>
+                      {p.topic && <TopicChip name={p.topic.name} colorKey={p.topic.color_key} small />}
+                      <span className="mono srow-n">
+                        {readMinutes(p.word_count) ? `~${readMinutes(p.word_count)} min` : "empty"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-          </div>
-          <div style={{ flex: 1, display: "grid", placeItems: "center", padding: 40 }}>
-            <div style={{ maxWidth: 520, fontSize: 12.5, lineHeight: 1.7, color: "#585550" }}>
-              Reading is per page. Width, typeface and scale are yours and are stored per user —
-              they are view state, so changing them never touches the document or anyone else's
-              view of it.
-            </div>
-          </div>
+          </Main>
         </Body>
-        <StatusBar route="/read" mechanism="view state, never model state" state="no page selected" healthy />
+        <StatusBar
+          route="/read"
+          mechanism="view state, never model state"
+          state={`${num(pages.length)} pages`}
+          healthy
+        />
       </Screen>
     );
   }

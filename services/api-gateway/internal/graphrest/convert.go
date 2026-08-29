@@ -6,6 +6,12 @@ type graphNodeJSON struct {
 	ID     string `json:"id"`
 	Title  string `json:"title"`
 	IsRoot bool   `json:"is_root"`
+	// Empty when untopiced — a real state, drawn in its own hue rather than
+	// one of the five. Carried here so a client never has to join ListPages,
+	// which returns one parent's children and silently covers only the roots.
+	TopicName     string   `json:"topic_name"`
+	TopicColorKey string   `json:"topic_color_key"`
+	Tags          []string `json:"tags"`
 }
 
 type graphEdgeJSON struct {
@@ -24,7 +30,11 @@ func toLinkGraphJSON(g *documentv1.LinkGraph) linkGraphJSON {
 		Edges: make([]graphEdgeJSON, len(g.GetEdges())),
 	}
 	for i, n := range g.GetNodes() {
-		out.Nodes[i] = graphNodeJSON{ID: n.GetId(), Title: n.GetTitle(), IsRoot: n.GetIsRoot()}
+		out.Nodes[i] = graphNodeJSON{
+			ID: n.GetId(), Title: n.GetTitle(), IsRoot: n.GetIsRoot(),
+			TopicName: n.GetTopicName(), TopicColorKey: n.GetTopicColorKey(),
+			Tags: emptyTags(n.GetTags()),
+		}
 	}
 	for i, e := range g.GetEdges() {
 		out.Edges[i] = graphEdgeJSON{FromPage: e.GetFromPage(), ToPage: e.GetToPage()}
@@ -179,4 +189,13 @@ func toNeighborhoodJSON(n *documentv1.GraphNeighborhoodResponse) neighborhoodJSO
 		Nearest:            nearest,
 		RingSizes:          rings,
 	}
+}
+
+// emptyTags ships `[]` rather than `null` — a client iterating tags should
+// not need a guard for "this page has none".
+func emptyTags(in []string) []string {
+	if in == nil {
+		return []string{}
+	}
+	return in
 }

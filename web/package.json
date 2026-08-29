@@ -12,8 +12,9 @@
     "build:trie-wasm": "../services/document-service/scripts/build-trie-wasm.sh",
     "lint": "oxlint",
     "preview": "vite preview",
-    "pretest": "npm run build:wasm && npm run build:graph-wasm && npm run build:diff-wasm && npm run build:trie-wasm",
-    "test": "vitest run"
+    "pretest": "npm run build:wasm && npm run build:graph-wasm && npm run build:diff-wasm && npm run build:trie-wasm && npm run build:syntax-wasm",
+    "test": "vitest run",
+    "build:syntax-wasm": "../services/document-service/scripts/build-syntax-wasm.sh"
   },
   "dependencies": {
     "react": "^19.2.8",

@@ -6,6 +6,21 @@ export interface GraphNode {
   id: string;
   title: string;
   is_root: boolean;
+  /**
+   * The page's declared topic — empty when untopiced, which is a real state
+   * drawn in its own hue rather than one of the five.
+   *
+   * Carried on the node rather than joined from ListPages, and that is the
+   * bug this field fixed: ListPages returns the direct children of ONE
+   * parent, so a client joining it against this node set coloured only the
+   * root pages and silently drew every nested page as untopiced. With a
+   * nested corpus that was half the graph.
+   */
+  topic_name: string;
+  topic_color_key: string;
+  /** Free-form tags, for the same reason as the topic above: the tag filter
+   *  joined ListPages too, and was therefore filtering over roots only. */
+  tags: string[];
 }
 
 export interface GraphEdge {

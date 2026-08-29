@@ -26,19 +26,20 @@ import { TOPIC_HEX, num } from "../shell/Chrome";
  * dot means one of them is always the one you cannot see.
  */
 export function RowBars({
-  status = "ok", colorKey, height = 34,
-}: { status?: "ok" | "warn" | "muted" | "live"; colorKey?: string | null; height?: number }) {
-  const tick = {
-    ok: "#3FCFA8", warn: "#E0A34E", live: "#A98CE8", muted: "rgba(255,255,255,.14)",
-  }[status];
+  status = "ok", colorKey,
+}: { status?: "ok" | "warn" | "muted" | "live"; colorKey?: string | null }) {
+  // The SAME classes the page tree uses, not a second set that looks like
+  // them. Two vocabularies for one mark is how the rail and the dashboard
+  // end up disagreeing about what a topic bar is.
+  const tick = { ok: "", warn: " tr-tick-del", live: " tr-tick-live", muted: "" }[status];
   return (
-    <div style={{ display: "flex", gap: 2, alignSelf: "stretch", flex: "none" }} aria-hidden>
-      <span style={{ width: 2, height: Math.round(height * 0.34), background: tick }} />
-      <span style={{
-        width: 2, alignSelf: "stretch",
-        background: colorKey ? TOPIC_HEX[colorKey] ?? "#4B4842" : "rgba(255,255,255,.09)",
-      }} />
-    </div>
+    <span className="tr-bars" aria-hidden>
+      <span className={`tr-tick${tick}`} />
+      <span
+        className="tr-bar"
+        style={colorKey ? { background: TOPIC_HEX[colorKey] ?? "#4B4842" } : undefined}
+      />
+    </span>
   );
 }
 

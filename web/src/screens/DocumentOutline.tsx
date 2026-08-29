@@ -41,9 +41,28 @@ export function outlineOf(blocks: BlockView[]): Entry[] {
       continue;
     }
     const kind = LANDMARK[tag];
-    if (kind) out.push({ type: "block", id: b.id, kind, text: b.text });
+    if (kind) out.push({ type: "block", id: b.id, kind, text: label(b, blocks) });
   }
   return out;
+}
+
+/**
+ * What a landmark is CALLED in the outline.
+ *
+ * A callout and an aside are CONTAINERS: RFC-001 keeps their prose in child
+ * blocks, so their own `text` is empty and the outline was listing a column
+ * of "(empty)" rows — one per callout, on a page with a lot of them, which
+ * is every page in the handbook. The label is the first child that has any
+ * text, which is what a person would read it as anyway.
+ *
+ * A code block is not a container and keeps its own text, so it falls
+ * through to the same rule and gets its first line.
+ */
+function label(b: BlockView, blocks: BlockView[]): string {
+  const own = b.text.trim();
+  if (own) return own.split("\n")[0];
+  const child = blocks.find((c) => c.parent === b.id && c.text.trim());
+  return child ? child.text.trim().split("\n")[0] : "";
 }
 
 export function DocumentOutline({

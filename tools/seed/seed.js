@@ -208,5 +208,19 @@ async function seedPage(actorId, pageId, blocks) {
     console.log(`  ${page.title} — ${page.blocks.length} blocks`);
   }
 
+  // 4. A few reading positions, so `resume` on the dashboard has something
+  //    true to show. Written through the real endpoint, like everything else
+  //    here — a position is view state stored per user, and seeding it any
+  //    other way would be seeding a table this app does not otherwise write.
+  const live = await (await fetch(`${GW}/graph`, { headers: H })).json();
+  const resumable = live.nodes.slice(0, 4);
+  for (const n of resumable) {
+    await fetch(`${GW}/pages/${n.id}/position`, {
+      method: 'PUT', headers: H,
+      body: JSON.stringify({ block_id: null, caret_start: 0, caret_end: 0 }),
+    });
+  }
+  console.log(`  resume positions: ${resumable.length}`);
+
   console.log(`seeded ${CONTENT.length} pages (${which})`);
 })().catch((e) => { console.error('FAILED:', e.message); process.exit(1); });
