@@ -1,0 +1,15 @@
+# Serves the built SPA inside the marginal stack. The public gateway proxies
+# here for everything that is not an API prefix, so this file deliberately
+# knows nothing about TLS, domains, or the backend services.
+:80 {
+	root * /srv
+	encode gzip zstd
+
+	# Hashed by Vite, so they can be cached forever.
+	@immutable path /assets/*
+	header @immutable Cache-Control "public, max-age=31536000, immutable"
+
+	# Client-side routing: unknown paths are SPA routes, not 404s.
+	try_files {path} /index.html
+	file_server
+}

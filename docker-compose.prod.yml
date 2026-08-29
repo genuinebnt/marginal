@@ -1,0 +1,258 @@
+# Production stack for marginal.genuinebasil.dev, sharing a 4 GB VPS with the
+# blog (genuinebnt/genuine.dev). Differs from docker-compose.yml deliberately:
+#
+#   * No published ports. Every service is reachable only on Docker networks;
+#     the dev compose publishes 8000-8008/9001-9008/5173, which on a public box
+#     would expose four databases and every gRPC port to the internet.
+#   * Passwords come from .env (see .env.prod.example), not the dev literal.
+#   * The SPA is a static build served by Caddy, not `vite dev`.
+#   * mem_limit everywhere, because the blog stack is on the same box.
+#
+# Only the three services the public gateway proxies to, plus web, join the
+# shared `edge` network. Databases, Redis, NATS and the internal gRPC services
+# stay on the project's default network, unreachable from the gateway.
+#
+# Usage (on the VPS, from the repo root):
+#   docker network create edge          # once, shared with the blog stack
+#   cp .env.prod.example .env && edit   # fill in the four passwords
+#   docker compose -f docker-compose.prod.yml up -d --build
+
+x-postgres-tuning: &postgres-tuning
+  # Four Postgres instances on a shared 4 GB box: keep each one small. The
+  # database-per-service split follows DATA_MODEL.md and is preserved here.
+  command:
+    - postgres
+    - -c
+    - shared_buffers=32MB
+    - -c
+    - max_connections=20
+
+services:
+  doc-db:
+    image: postgres:18-alpine
+    <<: *postgres-tuning
+    environment:
+      POSTGRES_USER: document_service
+      POSTGRES_PASSWORD: ${DOC_DB_PASSWORD:?set DOC_DB_PASSWORD in .env}
+      POSTGRES_DB: document_service
+    volumes:
+      - doc-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U document_service"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    mem_limit: 192m
+    restart: unless-stopped
+
+  auth-db:
+    image: postgres:18-alpine
+    <<: *postgres-tuning
+    environment:
+      POSTGRES_USER: auth_service
+      POSTGRES_PASSWORD: ${AUTH_DB_PASSWORD:?set AUTH_DB_PASSWORD in .env}
+      POSTGRES_DB: auth_service
+    volumes:
+      - auth-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U auth_service"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    mem_limit: 192m
+    restart: unless-stopped
+
+  collab-db:
+    image: postgres:18-alpine
+    <<: *postgres-tuning
+    environment:
+      POSTGRES_USER: collaboration_service
+      POSTGRES_PASSWORD: ${COLLAB_DB_PASSWORD:?set COLLAB_DB_PASSWORD in .env}
+      POSTGRES_DB: collaboration_service
+    volumes:
+      - collab-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U collaboration_service"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    mem_limit: 192m
+    restart: unless-stopped
+
+  notification-db:
+    image: postgres:18-alpine
+    <<: *postgres-tuning
+    environment:
+      POSTGRES_USER: notification_service
+      POSTGRES_PASSWORD: ${NOTIFICATION_DB_PASSWORD:?set NOTIFICATION_DB_PASSWORD in .env}
+      POSTGRES_DB: notification_service
+    volumes:
+      - notification-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U notification_service"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    mem_limit: 192m
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    mem_limit: 64m
+    restart: unless-stopped
+
+  nats:
+    image: nats:2-alpine
+    command: ["-m", "8222"] # monitoring endpoint, for the healthcheck below
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8222/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    mem_limit: 96m
+    restart: unless-stopped
+
+  document-service:
+    build:
+      context: .
+      dockerfile: services/document-service/Dockerfile
+    environment:
+      DATABASE_URL: postgres://document_service:${DOC_DB_PASSWORD}@doc-db:5432/document_service?sslmode=disable
+      NATS_URL: nats://nats:4222
+    depends_on:
+      doc-db:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    mem_limit: 256m
+    restart: unless-stopped
+
+  diagnostics-service:
+    build:
+      context: .
+      dockerfile: services/diagnostics-service/Dockerfile
+    environment:
+      DOCUMENT_SERVICE_GRPC_ADDR: document-service:9001
+    depends_on:
+      - document-service
+    mem_limit: 128m
+    restart: unless-stopped
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: services/auth-service/Dockerfile
+    environment:
+      DATABASE_URL: postgres://auth_service:${AUTH_DB_PASSWORD}@auth-db:5432/auth_service?sslmode=disable
+      REDIS_ADDR: redis:6379
+      NATS_URL: nats://nats:4222
+    depends_on:
+      auth-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    mem_limit: 128m
+    restart: unless-stopped
+
+  collaboration-service:
+    container_name: marginal-collaboration-service
+    build:
+      context: .
+      dockerfile: services/collaboration-service/Dockerfile
+    environment:
+      DATABASE_URL: postgres://collaboration_service:${COLLAB_DB_PASSWORD}@collab-db:5432/collaboration_service?sslmode=disable
+      COLLAB_WAL_DIR: /data/collab-wal
+      NATS_URL: nats://nats:4222
+      # The browser opens the WebSocket from the SPA's origin, not from this
+      # service's. Without this the upgrade is rejected as cross-origin.
+      COLLAB_ALLOWED_ORIGINS: ${PUBLIC_ORIGIN:?set PUBLIC_ORIGIN in .env}
+    volumes:
+      - collab-wal-data:/data/collab-wal
+    depends_on:
+      collab-db:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    networks:
+      - default
+      - edge
+    mem_limit: 192m
+    restart: unless-stopped
+
+  notification-service:
+    container_name: marginal-notification-service
+    build:
+      context: .
+      dockerfile: services/notification-service/Dockerfile
+    environment:
+      DATABASE_URL: postgres://notification_service:${NOTIFICATION_DB_PASSWORD}@notification-db:5432/notification_service?sslmode=disable
+      NATS_URL: nats://nats:4222
+      CORS_ALLOWED_ORIGIN: ${PUBLIC_ORIGIN}
+    depends_on:
+      notification-db:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    networks:
+      - default
+      - edge
+    mem_limit: 128m
+    restart: unless-stopped
+
+  api-gateway:
+    container_name: marginal-api-gateway
+    build:
+      context: .
+      dockerfile: services/api-gateway/Dockerfile
+    environment:
+      DOCUMENT_SERVICE_GRPC_ADDR: document-service:9001
+      AUTH_SERVICE_GRPC_ADDR: auth-service:9006
+      DIAGNOSTICS_SERVICE_GRPC_ADDR: diagnostics-service:9008
+      # Same-origin in production, so this could be tighter still, but the SPA
+      # is served from exactly one origin and naming it beats the "*" default.
+      CORS_ALLOWED_ORIGINS: ${PUBLIC_ORIGIN}
+    depends_on:
+      - document-service
+      - auth-service
+      - diagnostics-service
+    networks:
+      - default
+      - edge
+    mem_limit: 128m
+    restart: unless-stopped
+
+  web:
+    container_name: marginal-web
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+      args:
+        # Baked into the bundle — rebuild this image if the origin changes.
+        VITE_GATEWAY_URL: ${PUBLIC_ORIGIN}/api
+        VITE_COLLAB_URL: ${PUBLIC_ORIGIN}/ws
+        VITE_NOTIFICATIONS_URL: ${PUBLIC_ORIGIN}/notify
+    networks:
+      - edge
+    mem_limit: 64m
+    restart: unless-stopped
+
+volumes:
+  doc-db-data:
+  auth-db-data:
+  collab-db-data:
+  notification-db-data:
+  collab-wal-data:
+
+networks:
+  # Created out of band and shared with the blog stack's Caddy, which is the
+  # only thing that should be able to reach these services:
+  #   docker network create edge
+  edge:
+    external: true
