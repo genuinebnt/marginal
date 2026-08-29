@@ -18,6 +18,7 @@ import { NotificationsScreen } from "./screens/NotificationsScreen";
 import { DiscoverScreen } from "./screens/DiscoverScreen";
 import { SeriesScreen } from "./screens/SeriesScreen";
 import { TrashScreen } from "./screens/TrashScreen";
+import { NotFoundScreen } from "./screens/NotFoundScreen";
 
 function RequireAuth({ children }: { children: ReactElement }) {
   const { session } = useAuth();
@@ -123,7 +124,11 @@ function App() {
       <Route path="/history" element={<RequireAuth><HistoryScreen /></RequireAuth>} />
       <Route path="/lab/trace" element={<RequireAuth><TraceScreen /></RequireAuth>} />
       <Route path="/lab/diff" element={<RequireAuth><DiffScreen /></RequireAuth>} />
-      <Route path="*" element={<Navigate to="/pages" replace />} />
+      {/* A wrong URL is not a redirect. Bouncing to /pages silently discards
+          what the person actually asked for, and § 24e's whole argument is
+          that a missing page is a dangling state offering an action — not an
+          error, and certainly not a shrug that loses the name they typed. */}
+      <Route path="*" element={<RequireAuth><NotFoundScreen /></RequireAuth>} />
     </Routes>
   );
 }
