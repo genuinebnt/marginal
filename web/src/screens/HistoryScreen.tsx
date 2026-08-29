@@ -15,8 +15,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import {
-  getPalimpsest, getTrace, type PalimpsestChar, type TraceStep,
+  describeOp, getPalimpsest, getTrace, type PalimpsestChar, type TraceStep,
 } from "../api/history";
+import { useCollabPage } from "../collab/useCollabPage";
 import { listPages, type Page } from "../api/pages";
 import {
   Body, Inspector, Label, Readout, Rule, Screen, StatusBar, TopBar, num,
@@ -27,6 +28,27 @@ function actorHue(actorId: string, you: string | null): string {
   if (actorId === you) return "#3FCFA8";
   if (actorId.startsWith("assistant")) return "#7D9EC9";
   return "#A98CE8";
+}
+
+/** A short, stable two-character tag for a peer — never their id verbatim,
+ *  which is 36 characters of noise in a 10.5px mono line. */
+function actorTag(actorId: string): string {
+  let hash = 0;
+  for (let i = 0; i < actorId.length; i++) hash = (hash * 31 + actorId.charCodeAt(i)) | 0;
+  const A = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  return A[Math.abs(hash) % 26] + A[Math.abs(hash >> 5) % 26];
+}
+
+/** One label-value row in the inspector. Five of them in a column is the
+ *  shape § 17 uses for "as stored", and five hand-written copies is five
+ *  chances for the alignment to drift. */
+function Stat({ label, value, tone }: { label: string; value: string; tone?: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "baseline", gap: 8, fontSize: 11.5, color: "#9B968D" }}>
+      <span style={{ flex: 1 }}>{label}</span>
+      <span className="mono" style={{ fontSize: 11, color: tone ?? "#E4E2DC" }}>{value}</span>
+    </div>
+  );
 }
 
 export function HistoryScreen() {
@@ -42,6 +64,18 @@ export function HistoryScreen() {
   const [chars, setChars] = useState<PalimpsestChar[] | null>(null);
   const [actorFilter, setActorFilter] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [inspTab, setInspTab] = useState<"ops" | "revisions">("ops");
+  /** Which rendering of the same filtered array the middle column shows. */
+  const [lens, setLens] = useState<"TEXT" | "PALIMPSEST">("PALIMPSEST");
+  /** What the last action on this screen did, in words. Restore writes ops,
+   *  so it is worth reporting rather than leaving the scrubber to imply it. */
+  const [action, setAction] = useState<string | null>(null);
+
+  // A live connection, only so RESTORE is a real op rather than a chip that
+  // does nothing. Reading history needs no socket — that is HTTP — but
+  // restoring is an EDIT, and it goes down the same path every other edit
+  // takes so it acks, broadcasts and undoes like one.
+  const collab = useCollabPage(id ?? "", actorId ?? "");
 
   useEffect(() => {
     if (!actorId) return;
@@ -83,10 +117,39 @@ export function HistoryScreen() {
     [steps, actorFilter],
   );
 
+  /**
+   * Revisions grouped into GESTURES.
+   *
+   * One user action is often several ops — a replace is a DeleteText plus an
+   * InsertText, a paste is many — and RFC-002 §3 already ties them together
+   * with `undo_group` so one ⌘Z reverts the whole thing. A revision list that
+   * shows the ops instead of the gestures is a list where "I typed a word"
+   * appears as four rows, which is why the REVISIONS tab folds them.
+   *
+   * Ops with no group are their own gesture of one, which is that field's own
+   * documented meaning rather than a special case invented here.
+   */
+  const gestures = useMemo(() => {
+    const out: Array<{ key: string; steps: TraceStep[]; firstIndex: number }> = [];
+    steps.forEach((s, i) => {
+      const g = s.op.undo_group ?? null;
+      const last = out[out.length - 1];
+      if (g && last && last.key === g) {
+        last.steps.push(s);
+        return;
+      }
+      out.push({ key: g ?? `solo:${s.op.id}`, steps: [s], firstIndex: i });
+    });
+    return out;
+  }, [steps]);
+
   const stored = chars?.length ?? 0;
   const live = chars?.filter((c) => c.delete_step === undefined).length ?? 0;
   const tombstoned = stored - live;
   const head = steps[steps.length - 1]?.after ?? null;
+  // Restoring to head is a no-op the server already treats as one
+  // (collaboration.md §2.2), so the chip says so rather than firing.
+  const canRestore = collab.ready && steps.length > 0 && at < steps.length - 1;
 
   if (!id) {
     return (
@@ -126,6 +189,24 @@ export function HistoryScreen() {
             <Readout k="LIVE AT HEAD" v={num(live)} tone="#3FCFA8" />
             <Readout k="COPIES" v="0" />
           </>
+        }
+        right={
+          // § 17's own two views of one block. TEXT is what the document says
+          // at this revision; PALIMPSEST is what it is STORED as — the same
+          // array with the tombstones shown. Two renderings of one filter,
+          // never two stored copies, which is the screen's whole claim.
+          <div style={{ display: "flex", gap: 6 }}>
+            {(["TEXT", "PALIMPSEST"] as const).map((v) => (
+              <span
+                key={v}
+                className={`chip${lens === v ? " chip-e" : ""}`}
+                style={{ cursor: "pointer" }}
+                onClick={() => setLens(v)}
+              >
+                {v}
+              </span>
+            ))}
+          </div>
         }
       />
 
@@ -220,7 +301,11 @@ export function HistoryScreen() {
 
           <div style={{ padding: "26px 34px", flex: 1, minHeight: 0, overflowY: "auto" }}>
             <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 16 }}>
-              <Label>PALIMPSEST — TOMBSTONES THE LIVE TEXT IS READ FROM</Label>
+              <Label>
+                {lens === "PALIMPSEST"
+                  ? "PALIMPSEST — TOMBSTONES THE LIVE TEXT IS READ FROM"
+                  : "TEXT AT THIS REVISION — THE SAME FILTER, TOMBSTONES HIDDEN"}
+              </Label>
             </div>
 
             {chars === null && (
@@ -247,6 +332,9 @@ export function HistoryScreen() {
                   // that is the `ins <= v` half of the filter.
                   if (c.insert_step > at) return null;
                   const deletedByNow = gone && (c.delete_step as number) <= at;
+                  // TEXT is the same filter with the tombstones simply not
+                  // drawn — one array, two renderings, never two copies.
+                  if (lens === "TEXT" && deletedByNow) return null;
                   return (
                     <span
                       key={i}
@@ -277,58 +365,215 @@ export function HistoryScreen() {
         </div>
 
         <Inspector
-          tabs={[{ id: "ops", label: "OP STREAM" }, { id: "blocks", label: "BLOCKS" }]}
-          active="ops"
+          tabs={[
+            { id: "ops", label: "OP STREAM" },
+            { id: "revisions", label: "REVISIONS" },
+          ]}
+          active={inspTab}
+          onSelect={(t) => setInspTab(t as "ops" | "revisions")}
         >
-          <Label>
-            {actorFilter ? "OPS BY THIS ACTOR" : "ALL OPS"} · {num(shownSteps.length)}
-          </Label>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {shownSteps.slice(-14).map((s) => {
-              const i = steps.indexOf(s);
-              return (
-                <div
-                  key={s.op.id}
-                  onClick={() => setAt(i)}
-                  style={{ display: "flex", gap: 8, alignItems: "baseline", cursor: "pointer" }}
-                >
-                  <span style={{ width: 5, height: 5, flex: "none", background: actorHue(s.op.actor_id, actorId) }} />
-                  <span className="mono" style={{ fontSize: 10, color: i === at ? "#E4E2DC" : "#8C8880" }}>
-                    rev {i + 1}
-                  </span>
-                  <span className="mono" style={{ marginLeft: "auto", fontSize: 9.5, color: "#585550" }}>
-                    {new Date(s.op.created_at).toLocaleTimeString("en-GB")}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-
-          <Rule />
-          <Label>BLOCK</Label>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {(head?.blocks ?? []).map((b) => (
-              <div
-                key={b.id}
-                onClick={() => setBlockId(b.id)}
-                style={{
-                  fontSize: 11.5, cursor: "pointer",
-                  color: b.id === blockId ? "#E4E2DC" : "#8C8880",
-                  whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-                }}
-              >
-                {b.text.slice(0, 44) || `(empty ${b.kind.tag})`}
+          {inspTab === "ops" && (
+            <>
+              <Label>
+                {actorFilter ? "OPS BY THIS ACTOR" : "ALL OPS"} · {num(shownSteps.length)}
+              </Label>
+              {/* One line per op, in the log's own order, coloured by actor —
+                  and carrying WHAT the op did, not just when. A stream of
+                  timestamps is a stream nobody reads twice. */}
+              <div className="mono" style={{ fontSize: 10.5, lineHeight: 1.95, color: "#8C8880" }}>
+                {shownSteps.length === 0 && (
+                  <span style={{ color: "#585550" }}>No ops yet on this page.</span>
+                )}
+                {shownSteps.slice(-16).map((s) => {
+                  const i = steps.indexOf(s);
+                  const { kind, detail } = describeOp(s.op.op);
+                  const hue = actorHue(s.op.actor_id, actorId);
+                  return (
+                    <div
+                      key={s.op.id}
+                      onClick={() => setAt(i)}
+                      title={`rev ${i + 1} · ${new Date(s.op.created_at).toLocaleTimeString("en-GB")}`}
+                      style={{
+                        cursor: "pointer", display: "flex", gap: 7,
+                        color: i === at ? "#E4E2DC" : undefined,
+                        background: i === at ? "rgba(232,135,60,.08)" : undefined,
+                        boxShadow: i === at ? "inset 2px 0 0 #E8873C" : undefined,
+                        paddingLeft: i === at ? 5 : 7,
+                      }}
+                    >
+                      <span style={{ color: hue, flex: "none" }}>
+                        {s.op.actor_id === actorId ? "you" : s.op.actor_kind === "assistant" ? "✦" : actorTag(s.op.actor_id)}
+                      </span>
+                      <span style={{ flex: "none" }}>{kind}</span>
+                      <span style={{
+                        color: "#585550", overflow: "hidden",
+                        textOverflow: "ellipsis", whiteSpace: "nowrap",
+                      }}>
+                        {detail}
+                      </span>
+                      {/* The law is re-checked by replaying, every step — an
+                          invertibility claim nobody verifies is a comment. */}
+                      {!s.law_holds && (
+                        <span style={{ marginLeft: "auto", color: "#E0A34E", flex: "none" }}>law ✗</span>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-            ))}
-          </div>
 
-          <Rule />
-          <div style={{ fontSize: 11, lineHeight: 1.6, color: "#585550" }}>
-            A delete writes a version stamp and never removes, so every revision is the filter
-            <span className="mono" style={{ color: "#8C8880" }}> ins ≤ v &lt; del </span>
-            over one array. That is why COPIES reads 0 — scrubbing costs nothing to keep because
-            nothing is kept.
-          </div>
+              <Rule />
+              <Label>AT THIS REVISION</Label>
+              <div style={{ display: "flex", gap: 8 }}>
+                <span
+                  className="chip chip-e"
+                  style={{ cursor: canRestore ? "pointer" : "default", opacity: canRestore ? 1 : 0.45 }}
+                  title={canRestore
+                    ? `Revert ${steps.length - 1 - at} op(s) by writing their inverses`
+                    : "Already at head — nothing to revert"}
+                  onClick={() => {
+                    if (!canRestore) return;
+                    collab.restoreTo(at);
+                    setAction(`restored to rev ${at + 1} — ${steps.length - 1 - at} inverse op(s) written`);
+                    // The log grew, so re-read it rather than guessing what
+                    // the server appended.
+                    setTimeout(load, 400);
+                  }}
+                >
+                  RESTORE
+                </span>
+                <span
+                  className="chip"
+                  style={{ cursor: "pointer" }}
+                  title="Copy the ops between this revision and head as JSON"
+                  onClick={() => {
+                    const patch = steps.slice(at + 1).map((s) => s.op.op);
+                    void navigator.clipboard?.writeText(JSON.stringify(patch, null, 2));
+                    setAction(`copied ${patch.length} op(s) as JSON`);
+                  }}
+                >
+                  COPY AS PATCH
+                </span>
+              </div>
+              {action && (
+                <div className="mono" style={{ fontSize: 10, color: "#3FCFA8" }}>✓ {action}</div>
+              )}
+              <div style={{ fontSize: 11.5, lineHeight: 1.65, color: "#8C8880" }}>
+                Restoring writes new ops. Nothing in the log is rewritten, and every earlier
+                version stays readable — which is also why the restore itself undoes, as one
+                gesture, like any other edit.
+              </div>
+
+              <Rule />
+              <Label>UNDO IS PER ACTOR</Label>
+              <div style={{ fontSize: 11.5, lineHeight: 1.65, color: "#8C8880" }}>
+                Your ⌘Z pops your stack only — it never inverts someone else's ops, even the
+                ones that landed after yours. Possible only because each op carries its own
+                inverse rather than the document carrying a snapshot.
+              </div>
+
+              <Rule />
+              <Label>THIS BLOCK, AS STORED</Label>
+              <Stat label="chars ever inserted" value={num(stored)} />
+              <Stat label="live now" value={num(live)} />
+              <Stat label="tombstoned" value={num(tombstoned)} tone={tombstoned ? "#A98CE8" : undefined} />
+              <Stat label="versions addressable" value={num(steps.length)} />
+              <Stat label="copies made" value="0" tone="#3FCFA8" />
+              <div style={{ fontSize: 11, lineHeight: 1.6, color: "#585550" }}>
+                Reading version <span className="mono" style={{ color: "#8C8880" }}>v</span> is the
+                filter <span className="mono" style={{ color: "#9B968D" }}>ins ≤ v &lt; del</span>{" "}
+                over one array. History costs storage, never time, and never a second copy of
+                the text.
+              </div>
+            </>
+          )}
+
+          {inspTab === "revisions" && (
+            <>
+              <Label>GESTURES · {num(gestures.length)}</Label>
+              <div style={{ fontSize: 11, lineHeight: 1.55, color: "#585550" }}>
+                One action is often several ops — a replace is a delete and an insert. These
+                are folded by <span className="mono" style={{ color: "#8C8880" }}>undo_group</span>,
+                the same field one ⌘Z pops, so a word you typed is one row rather than four.
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                {gestures.slice(-18).reverse().map((g) => {
+                  const first = g.steps[0];
+                  const last = g.steps[g.steps.length - 1];
+                  const lastIndex = steps.indexOf(last);
+                  const { kind, detail } = describeOp(first.op.op);
+                  const inRange = at >= g.firstIndex;
+                  return (
+                    <div
+                      key={g.key}
+                      onClick={() => setAt(lastIndex)}
+                      style={{
+                        display: "flex", gap: 8, alignItems: "baseline", cursor: "pointer",
+                        opacity: inRange ? 1 : 0.45,
+                      }}
+                    >
+                      <span style={{
+                        width: 5, height: 5, flex: "none",
+                        background: actorHue(first.op.actor_id, actorId),
+                      }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{
+                          fontSize: 12, color: "#D2CFC8",
+                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                        }}>
+                          {kind}{detail ? ` ${detail}` : ""}
+                        </div>
+                        <div className="mono" style={{ fontSize: 9.5, color: "#585550" }}>
+                          rev {num(g.firstIndex + 1)}
+                          {g.steps.length > 1 ? `–${num(lastIndex + 1)} · ${g.steps.length} ops` : ""}
+                          {" · "}
+                          {new Date(first.op.created_at).toLocaleTimeString("en-GB")}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <Rule />
+              <Label>BLOCK · PALIMPSEST SOURCE</Label>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {(head?.blocks ?? []).map((b) => (
+                  <div
+                    key={b.id}
+                    onClick={() => setBlockId(b.id)}
+                    style={{
+                      fontSize: 11.5, cursor: "pointer",
+                      color: b.id === blockId ? "#E4E2DC" : "#8C8880",
+                      whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                      boxShadow: b.id === blockId ? "inset 2px 0 0 #E8873C" : undefined,
+                      paddingLeft: b.id === blockId ? 7 : 0,
+                    }}
+                  >
+                    {b.text.slice(0, 44) || `(empty ${b.kind.tag})`}
+                  </div>
+                ))}
+              </div>
+
+              <Rule />
+              <Label>WHO WROTE THIS PAGE</Label>
+              <div style={{ display: "flex", height: 7, gap: 1 }}>
+                {actors.map(([a, n]) => (
+                  <div key={a} style={{ flex: n, background: actorHue(a, actorId) }} title={`${n} ops`} />
+                ))}
+                {actors.length === 0 && (
+                  <div style={{ flex: 1, background: "rgba(255,255,255,.06)" }} />
+                )}
+              </div>
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", font: "400 10px 'IBM Plex Mono',monospace", color: "#585550" }}>
+                {actors.map(([a, n]) => (
+                  <span key={a}>
+                    <span style={{ color: actorHue(a, actorId) }}>■</span>{" "}
+                    {num(n)} {a === actorId ? "yours" : actorTag(a)}
+                  </span>
+                ))}
+              </div>
+            </>
+          )}
         </Inspector>
       </Body>
 
