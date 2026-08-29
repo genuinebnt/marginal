@@ -7,8 +7,11 @@
 #   docker build -t marginal-web -f web/Dockerfile .
 #
 # The .wasm files and wasm_exec.js are gitignored build output (see
-# web/.gitignore), so they must be produced here rather than copied from a
-# checkout — a clone has none of them.
+# web/.gitignore's `public/*.wasm`), so they must be produced here rather than
+# copied from a checkout — a clone has none of them. Every cmd/*wasm entrypoint
+# needs a pair in the loop below; one that is missing does not fail the build,
+# it just leaves the SPA's try_files fallback serving index.html under a .wasm
+# URL, which is how mdc.wasm silently became an HTML page.
 
 FROM golang:1.25-alpine AS wasm
 WORKDIR /src
@@ -18,7 +21,7 @@ WORKDIR /src/services/document-service
 # Same five builds as scripts/build-*-wasm.sh, inlined: the scripts write into
 # ../../web/public, which does not exist in this stage.
 RUN set -eux; \
-    for pair in wasm:documentcore graphwasm:graph diffwasm:diff triewasm:trie syntaxwasm:syntax; do \
+    for pair in wasm:documentcore graphwasm:graph diffwasm:diff triewasm:trie syntaxwasm:syntax mdcwasm:mdc; do \
         GOOS=js GOARCH=wasm go build -o "/out/${pair#*:}.wasm" "./cmd/${pair%%:*}"; \
     done; \
     cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" /out/wasm_exec.js
