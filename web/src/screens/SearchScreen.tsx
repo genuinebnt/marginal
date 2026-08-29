@@ -151,6 +151,17 @@ export function SearchScreen() {
         <div className="rail">
           <div className="rail-h">FACETS<div /></div>
           <div style={{ padding: "0 14px", display: "flex", flexDirection: "column", gap: 16, overflowY: "auto" }}>
+            {/* Spaces do not exist yet (v3.1.0). Marked rather than omitted:
+                §9.4 — a facet rail that silently drops an axis is a design
+                lying about what it can filter on. */}
+            <div style={undrawn}>
+              <Label>SPACE</Label>
+              <div className="mono" style={{ marginTop: 8, fontSize: 10.5, color: "#585550", lineHeight: 1.5 }}>
+                no spaces until RBAC
+              </div>
+            </div>
+
+            <Rule />
             {/* Topic facet: single-select, because a page has exactly one
                 topic. Counts are over the current hits, so picking one
                 narrows the tag facet below. */}

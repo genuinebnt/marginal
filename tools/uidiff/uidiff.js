@@ -61,6 +61,7 @@ const EXTRACT = (props, chromeSel) => `(root) => {
     for (const p of ${JSON.stringify(props)}) style[p] = cs[p];
     const rect = n.getBoundingClientRect();
     out.push({
+      order: out.length,
       key,
       style,
       w: Math.round(rect.width),
@@ -121,11 +122,22 @@ async function main() {
   // Index by class signature rather than exact path — the app nests
   // differently in places for real reasons (a router Link where the mockup
   // has a span), and a path-exact match would report those as total misses.
+  //
+  // Two rules keep this honest, both learned from false positives:
+  //
+  // 1. Elements with NO class are skipped. Their signature is a bare `div`,
+  //    which matches thousands of unrelated nodes — it reported the search
+  //    input against an arbitrary layout wrapper and called the fonts wrong.
+  // 2. Occurrences are compared PAIRWISE in document order, not first-to-
+  //    first. `.tb` is both the nav tab and the graph's colour-by chip; a
+  //    first-to-first match compared the nav against the chip and reported
+  //    the chip's smaller padding as a defect.
   const sigOf = (e) => e.key.split('>').pop();
   const group = (list) => {
     const g = new Map();
     for (const e of list) {
       const s = sigOf(e);
+      if (!s.includes('.')) continue;   // rule 1: no class, no signal
       if (!g.has(s)) g.set(s, []);
       g.get(s).push(e);
     }
@@ -135,20 +147,31 @@ async function main() {
 
   const norm = (s) => (s || '').replace(/^a\./, 'span.').replace(/^aside\./, 'div.').replace(/^input\./, 'div.');
   const Anorm = new Map();
-  for (const [k, v] of A) Anorm.set(norm(k), v);
+  for (const [k, v] of A) {
+    const nk = norm(k);
+    Anorm.set(nk, (Anorm.get(nk) || []).concat(v));
+  }
+  // Merged buckets must stay in document order, or pairwise comparison
+  // pairs a late element against an early one.
+  for (const v of Anorm.values()) v.sort((x, y) => x.order - y.order);
 
   let missing = [], propDiffs = [], textDiffs = [];
   for (const [sig, els] of M) {
     const hit = Anorm.get(norm(sig));
     if (!hit) { missing.push(sig); continue; }
-    const me = els[0], ae = hit[0];
-    for (const p of PROPS) {
-      if (me.style[p] !== ae.style[p]) {
-        propDiffs.push(`${sig}  ${p}: ${me.style[p]}  ->  ${ae.style[p]}`);
+    // Rule 2: pair up occurrence-by-occurrence, and only as far as both
+    // sides go. A count difference is content, not design.
+    const n = Math.min(els.length, hit.length);
+    for (let i = 0; i < n; i++) {
+      const me = els[i], ae = hit[i];
+      for (const p of PROPS) {
+        if (me.style[p] !== ae.style[p]) {
+          propDiffs.push(`${sig}[${i}]  ${p}: ${me.style[p]}  ->  ${ae.style[p]}`);
+        }
       }
-    }
-    if (me.text && ae.text && me.text !== ae.text && /^[A-Z0-9 ·⌘/&—+]+$/.test(me.text)) {
-      textDiffs.push(`${sig}  "${me.text}"  ->  "${ae.text}"`);
+      if (me.text && ae.text && me.text !== ae.text && /^[A-Z0-9 ·⌘/&—+]+$/.test(me.text)) {
+        textDiffs.push(`${sig}[${i}]  "${me.text}"  ->  "${ae.text}"`);
+      }
     }
   }
   const extra = [...A.keys()].filter(k => !M.has(k) && !M.has(norm(k)));

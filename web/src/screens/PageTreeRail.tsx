@@ -359,7 +359,7 @@ function PageRow({
         <span className="tr-a">
         <span
           className="tr-n"
-          style={{ cursor: "pointer", fontSize: 11 }}
+          style={{ cursor: "pointer" }}
           title="New sub-page"
           onClick={(e) => {
             e.preventDefault();
@@ -371,7 +371,7 @@ function PageRow({
         </span>
         <span
           className="tr-n"
-          style={{ cursor: "pointer", fontSize: 11 }}
+          style={{ cursor: "pointer" }}
           title="Delete page"
           onClick={async (e) => {
             e.preventDefault();
