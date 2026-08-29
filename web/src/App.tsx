@@ -19,6 +19,7 @@ import { DiscoverScreen } from "./screens/DiscoverScreen";
 import { SeriesScreen } from "./screens/SeriesScreen";
 import { TrashScreen } from "./screens/TrashScreen";
 import { NotFoundScreen } from "./screens/NotFoundScreen";
+import { LabCompilerScreen } from "./screens/LabCompilerScreen";
 
 function RequireAuth({ children }: { children: ReactElement }) {
   const { session } = useAuth();
@@ -122,6 +123,7 @@ function App() {
       {/* The lab screens are per page; without an id they render their own
           page picker rather than 404ing, so these are real destinations. */}
       <Route path="/history" element={<RequireAuth><HistoryScreen /></RequireAuth>} />
+      <Route path="/lab/compiler" element={<RequireAuth><LabCompilerScreen /></RequireAuth>} />
       <Route path="/lab/trace" element={<RequireAuth><TraceScreen /></RequireAuth>} />
       <Route path="/lab/diff" element={<RequireAuth><DiffScreen /></RequireAuth>} />
       {/* A wrong URL is not a redirect. Bouncing to /pages silently discards

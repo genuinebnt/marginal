@@ -127,6 +127,24 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
   await p.locator('.trash-row').first().click(); await p.waitForTimeout(1500);
   check('§23c a trashed row explains it has no live blast radius', /already deleted, so there is no blast radius/.test(await txt()));
 
+  // ── § 11 COMPILER: the buffer is editable and everything follows it ───
+  await go('/lab/compiler', 7000);
+  const readouts = () => p.evaluate(()=>[...document.querySelectorAll('.rd')].map(e=>e.innerText.replace(/\n/g,'=')).join(' | '));
+  check('§11 the projection holds on the sample', /FIELD-BY-FIELD EQUAL/.test(await txt()));
+  const beforeEdit = await readouts();
+  await p.locator('.labedit').click();
+  await p.keyboard.press('Meta+a');
+  await p.keyboard.type('# Live\n\n- one\n  - two\n\n```rust\nunclosed');
+  await p.waitForTimeout(1400);
+  check('§11 editing the buffer recomputes every panel', (await readouts()) !== beforeEdit);
+  check('§11 an unclosed fence reports rather than failing', /never closed/.test(await txt()));
+  check('§11 and still round-trips', /FIELD-BY-FIELD EQUAL/.test(await txt()));
+  await p.keyboard.press('Meta+a');
+  await p.keyboard.type('café — こんにちは');
+  await p.waitForTimeout(1000);
+  check('§11 chars and bytes diverge, and the divergence is named',
+        /DIVERGENCE/.test(await txt()) && !/pure ASCII/.test(await txt()));
+
   // ── § 24e NOT FOUND ───────────────────────────────────────────────────
   await go('/p/the-documnt-block-modl', 4000);
   check('§24e a wrong URL is not a redirect', (await p.evaluate(()=>location.pathname)) === '/p/the-documnt-block-modl');

@@ -54,8 +54,9 @@ const ENTRIES: Entry[] = [
   {
     name: "Compiler",
     route: "/lab/compiler",
-    blurb: "Paste as a pipeline — buffer → tokens → AST → tree → ops. Replaying the emitted ops must equal the tree it built directly.",
-    facts: ["NOT BUILT"],
+    to: () => "/lab/compiler",
+    blurb: "Paste as a pipeline — buffer → tokens → AST → tree → ops. The buffer is editable, and replaying the emitted ops must equal the tree it built directly, checked on every keystroke.",
+    facts: ["EDITABLE", "CHECKED LIVE"],
   },
   {
     name: "Netcode",

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { COLLAB_URL } from "../api/config";
 import type { Mark } from "./marks";
 import type { AnchorRange, BlockKind, ClientMessage, PageOp, ServerMessage } from "./types";
+import type { CompiledOp } from "../mdc-core/wasm";
 
 export type ConnectionState = "connecting" | "open" | "closed";
 
@@ -73,6 +74,9 @@ export interface CollabPage {
    * Returns the new block's client-generated id so the caller can focus
    * it once it appears. */
   insertBlock: (afterId: string | null, kind: BlockKind, parent?: string | null) => string;
+  /** Paste: a compiled batch of InsertBlocks, one undo group, ids rewritten
+   *  to UUIDs. Returns the last top-level block inserted. */
+  insertCompiled: (ops: CompiledOp[], afterId: string | null) => string | null;
   /** Removes a block entirely. Refuses (no-op) if it's the last block —
    * a page always has at least one block in this editor. The backend
    * itself refuses a non-empty container (ContainerNotEmptyError) — this
@@ -646,6 +650,63 @@ export function useCollabPage(pageId: string, actorId: string): CollabPage {
     [send],
   );
 
+  /**
+   * Paste: a compiled batch of ordinary InsertBlocks.
+   *
+   * Paste is NOT a special path. `marginal/mdc` turns the pasted text into
+   * exactly the ops the editor would have sent had you typed it, and they go
+   * down the same wire under ONE undo group — so a 200-block paste is one ⌘Z,
+   * which is the behaviour people actually report when it is missing.
+   *
+   * The compiler's own block ids are readable placeholders (`b0`, `b1`) so
+   * § 11 can print them; they are rewritten to UUIDs here, because a block id
+   * has to be unique across a workspace and `b0` is not. The mapping is
+   * applied to `parent` and `after` too — an op naming an id that was
+   * rewritten and a parent that was not is the bug this loop exists to
+   * avoid.
+   *
+   * Returns the id of the last top-level block inserted, so the caller can
+   * put the caret after it.
+   */
+  const insertCompiled = useCallback(
+    (ops: CompiledOp[], afterId: string | null): string | null => {
+      if (ops.length === 0) return null;
+      const undoGroup = crypto.randomUUID();
+      const idOf = new Map<string, string>();
+      for (const op of ops) idOf.set(op.id, crypto.randomUUID());
+
+      let lastTop: string | null = null;
+      let previousTop = afterId;
+      for (const op of ops) {
+        const id = idOf.get(op.id)!;
+        const parent = op.parent ? idOf.get(op.parent) ?? null : null;
+        // A top-level block follows the last one this paste inserted; the
+        // first follows wherever the caret was. A nested block's `after` is
+        // always inside the batch, so the map answers it.
+        const after = op.after
+          ? idOf.get(op.after) ?? null
+          : parent === null
+            ? previousTop
+            : null;
+        if (parent === null) {
+          previousTop = id;
+          lastTop = id;
+        }
+        send({
+          type: "op",
+          undo_group: undoGroup,
+          op: {
+            scope: "block", type: "InsertBlock", id, parent, after,
+            kind: op.kind as BlockKind,
+            content: { text: op.content.text, marks: op.content.marks as Mark[] },
+          },
+        });
+      }
+      return lastTop;
+    },
+    [send],
+  );
+
   const deleteBlock = useCallback(
     (blockId: string) => {
       if (orderRef.current.length <= 1) return; // always keep at least one block
@@ -689,5 +750,5 @@ export function useCollabPage(pageId: string, actorId: string): CollabPage {
   const redo = useCallback(() => send({ type: "redo" }), [send]);
   const restoreTo = useCallback((toStep: number) => send({ type: "restore", to_step: toStep }), [send]);
 
-  return { state, ready, blocks, peers, cursors, ackP99, queued, attempt, retryAt, retryNow, setCursor, setBlockText, setBlockContent, insertBlock, deleteBlock, setBlockKind, moveBlock, undo, redo, restoreTo };
+  return { state, ready, blocks, peers, cursors, ackP99, queued, attempt, retryAt, retryNow, setCursor, insertCompiled, setBlockText, setBlockContent, insertBlock, deleteBlock, setBlockKind, moveBlock, undo, redo, restoreTo };
 }

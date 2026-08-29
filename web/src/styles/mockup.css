@@ -305,7 +305,7 @@ a{color:#E8873C}a:hover{color:#F2A264}
    are computed rather than quoted; this is what makes that checkable — you
    change the input and watch every panel move. Monospace because what you are
    editing is a byte sequence with offsets printed beside it. */
-.labedit{width:100%;box-sizing:border-box;background:#141617;border:1px solid rgba(232,135,60,.25);color:#B3AFA7;font:400 12px/1.8 'IBM Plex Mono',monospace;padding:10px 12px;resize:none;outline:none;transition:border-color .14s ease}
+.labedit{width:100%;display:block;box-sizing:border-box;background:#141617;border:1px solid rgba(232,135,60,.25);color:#B3AFA7;font:400 12px/1.8 'IBM Plex Mono',monospace;padding:10px 12px;resize:none;outline:none;transition:border-color .14s ease}
 .labedit:focus{border-color:rgba(232,135,60,.5)}
 /* A stage panel that just recomputed. One frame of ember, so a change you
    made has a visible consequence even when the numbers happen to match. */

@@ -3,6 +3,7 @@ import type { Page } from "../api/pages";
 import type { Diagnostic } from "../api/diagnostics";
 import { getLinkGraph } from "../api/graph";
 import { prefixSearch } from "../trie-core/wasm";
+import { compile as compileMarkdown } from "../mdc-core/wasm";
 import type { CollabPage, BlockView } from "../collab/useCollabPage";
 import type { BlockKind } from "../collab/types";
 import { CONTAINER_KEYS, KIND_LABELS, KIND_ORDER, kindFromKey, keyOf, type BlockKindKey } from "../collab/blockKind";
@@ -128,7 +129,7 @@ export function RichEditorPane({
    * autocomplete keeps compiling unchanged. */
   actorId?: string;
 }) {
-  const { state, ready, blocks, peers, cursors, setCursor, setBlockText, setBlockContent, insertBlock, deleteBlock, setBlockKind, moveBlock } = collab;
+  const { state, ready, blocks, peers, cursors, setCursor, setBlockText, setBlockContent, insertBlock, insertCompiled, deleteBlock, setBlockKind, moveBlock } = collab;
   const pendingFocusId = useRef<string | null>(null);
   const rowRefs = useRef<Map<string, HTMLElement>>(new Map());
   const createdFirstBlock = useRef(false);
@@ -146,6 +147,43 @@ export function RichEditorPane({
   // scrolls in here while the chrome stays put, so measuring the window
   // would report nothing.
   const canvasRef = useRef<HTMLElement | null>(null);
+
+  /** Where the caret is, so a paste knows which block to land after. */
+  const caretBlockRef = useRef<string | null>(null);
+  /** What the last paste produced, for the status line — a paste that
+   *  silently inserts 200 blocks should say so. */
+  const [pasteNote, setPasteNote] = useState<string | null>(null);
+
+  /**
+   * Paste, as a compile.
+   *
+   * The browser hands us text; `marginal/mdc` (Go, via wasm — the same
+   * function § 11 draws) turns it into exactly the ops the editor would have
+   * sent had you typed it, and they go down the same wire under ONE undo
+   * group. Paste is not a special path.
+   *
+   * PLAIN text — one line, no markdown — falls through to the browser's own
+   * insertion. Compiling "hello" into an InsertBlock would replace the block
+   * you are typing in with a new one, which is not what pasting a word means.
+   */
+  function handlePaste(e: React.ClipboardEvent) {
+    const text = e.clipboardData?.getData("text/plain") ?? "";
+    if (!text.trim()) return;
+    const structural = /\n/.test(text.trim()) || /^\s*(#{1,3} |[-*+] |\d+[.)] |> |```)/m.test(text);
+    if (!structural) return; // let the browser paste it into the caret
+
+    e.preventDefault();
+    void compileMarkdown(text).then((r) => {
+      if (r.ops.length === 0) return;
+      const last = insertCompiled(r.ops, caretBlockRef.current);
+      setPasteNote(
+        `${r.ops.length} block${r.ops.length === 1 ? "" : "s"} · one undo group` +
+        (r.holds ? "" : ` · ⚠ projection mismatch: ${r.mismatch}`),
+      );
+      if (last) caretBlockRef.current = last;
+      window.setTimeout(() => setPasteNote(null), 6000);
+    }).catch(() => setPasteNote("paste could not be compiled — nothing was inserted"));
+  }
   const [bubble, setBubble] = useState<{ blockId: string; start: number; end: number; top: number; left: number } | null>(null);
   // The `[[` page-link autocomplete (v2.5.0). startIndex is where the
   // in-progress query begins in that block's own live text — right after
@@ -376,6 +414,10 @@ export function RichEditorPane({
             onHandleClick={(el) => handleHandleClick(b.id, el)}
             onCursorChange={(start, end) => {
               if (start === -1) { setCursor(null, 0, 0); onCaretMoved?.(null, 0, 0); return; }
+              // A paste lands after the block the caret is in, so the caret
+              // block has to be tracked here — collab.cursors is PEER state
+              // and may not echo your own.
+              caretBlockRef.current = b.id;
               setCursor(b.id, start, end);
               onCaretMoved?.(b.id, start, end);
             }}
@@ -623,7 +665,7 @@ export function RichEditorPane({
   }
 
   return (
-    <main className="canvas" ref={canvasRef}>
+    <main className="canvas" ref={canvasRef} onPaste={handlePaste}>
       <ReadingProgress target={canvasRef} />
       <article className="doc standard">
         <PageTitle title={page.title} onRename={onRename} />
@@ -638,6 +680,11 @@ export function RichEditorPane({
               {state === "open" ? "synced" : state === "connecting" ? "connecting…" : "disconnected"}
             </span>
           </span>
+          {/* A paste that silently inserts two hundred blocks should say so —
+              and say that all of them are one ⌘Z. */}
+          {pasteNote && (
+            <span className="fx" style={{ color: "#E8873C" }}>· pasted {pasteNote}</span>
+          )}
           {peers.size > 0 && (
             <div className="avatars">
               {[...peers].map((p) => (

@@ -51,6 +51,12 @@ a{color:#E8873C}a:hover{color:#F2A264}
 .rail-h{padding:14px 14px 9px;display:flex;align-items:center;gap:8px;font:600 9px 'IBM Plex Mono',monospace;letter-spacing:.19em;color:#585550}
 .rail-h div{flex:1;height:1px;background:rgba(255,255,255,.07)}
 .filt{margin:0 12px 12px;padding:6px 9px;background:#141617;border:1px solid rgba(255,255,255,.07);font:400 11px 'IBM Plex Mono',monospace;color:#585550}
+/* The lab's editable source pane. Every § 1x screen states that its figures
+   are computed rather than quoted; this is what makes that checkable — you
+   change the input and watch every panel move. Monospace because what you are
+   editing is a byte sequence with offsets printed beside it. */
+.labedit{width:100%;display:block;box-sizing:border-box;background:#141617;border:1px solid rgba(232,135,60,.25);color:#B3AFA7;font:400 12px/1.8 'IBM Plex Mono',monospace;padding:10px 12px;resize:none;outline:none}
+.labedit:focus{border-color:rgba(232,135,60,.5)}
 .tr{display:flex;align-items:center;gap:9px;padding:5px 9px;color:#9B968D;font-size:12.5px;white-space:nowrap;overflow:hidden;position:relative}
 /* A tree row is one line, always. Wrapping makes rows uneven, doubles the
    height of exactly the pages with the most descriptive titles, and destroys
@@ -2127,23 +2133,27 @@ a{color:#E8873C}a:hover{color:#F2A264}
     <div class="tabs"><span class="tb">Write</span><span class="tb">Read</span><span class="tb">Search</span><span class="tb">Graph</span><span class="tb">History</span><span class="tb tb-on">Lab</span></div>
     <span class="crumb">lab / <b>compiler</b></span>
     <div style="flex:1"></div>
-    <div class="rd"><span class="rd-k">BYTES READ</span><span class="rd-v">48</span></div>
+    <div class="rd"><span class="rd-k">BYTES</span><span class="rd-v">305</span></div>
     <div class="rd"><span class="rd-k">PROJECTION</span><span class="rd-v" style="color:#3FCFA8">HOLDS</span></div>
     <div class="vr"></div>
     <div class="clk"><b>14:06</b><span>THU 12 MAR</span></div><span class="kbd">⌘K</span><div class="icb">◎<div class="bdg">6</div></div><div class="icb">⚙</div><div class="av av-you">GN</div>
   </div>
-  <div class="sub"><span class="sb">BUFFER</span><span class="sb">TOKENS</span><span class="sb sb-on">AST</span><span class="sb">BLOCK TREE</span><span class="sb">OPS</span><div style="flex:1"></div><span class="sb">TRIGGER: <span style="color:#E8873C">## + space</span></span></div>
+  <div class="sub"><span class="sb">BUFFER</span><span class="sb sb-on">TOKENS</span><span class="sb">AST</span><span class="sb">BLOCK TREE</span><span class="sb">OPS</span><div style="flex:1"></div><span class="sb">LIVE · <span style="color:#E8873C">recomputes on every keystroke</span></span></div>
   <div class="body">
     <div style="flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden">
       <div style="display:flex;flex:1;min-height:0">
         <div style="flex:1;border-right:1px solid rgba(255,255,255,.07);padding:18px 20px;min-width:0">
-          <div class="lbl" style="margin-bottom:12px">BUFFER · UTF-8</div>
-          <pre style="margin:0;font:400 12px/1.8 'IBM Plex Mono',monospace;color:#B3AFA7;white-space:pre-wrap">## Why not a rope
+          <div class="lbl" style="margin-bottom:12px">BUFFER · UTF-8 · EDITABLE</div>
+          <!-- Editable, and that is the point of the whole § 1x set: each of
+               these screens claims its figures are computed rather than
+               quoted, and the only way to make that claim checkable is to let
+               you change the input and watch every panel move. -->
+          <textarea class="labedit" rows="6">## Why not a rope
 A rope is the wrong primitive — a
 café of fragments.
 ```rust
 enum Op { InsertText }
-```</pre>
+```</textarea>
           <div style="margin-top:16px;display:flex;gap:20px">
             <div class="rd"><span class="rd-k">CHARS</span><span class="rd-v">96</span></div>
             <div class="rd"><span class="rd-k">BYTES</span><span class="rd-v" style="color:#E0A34E">99</span></div>
@@ -2188,7 +2198,7 @@ enum Op { InsertText }
       </div>
     </div>
     <div class="insp">
-      <div class="insp-t"><span class="it it-on">TRIGGERS</span><span class="it">COST</span></div>
+      <div class="insp-t"><span class="it it-on">PIPELINE</span><span class="it">COST</span></div>
       <div style="padding:14px;display:flex;flex-direction:column;gap:13px">
         <span class="lbl">INPUT RULE SCANNER</span>
         <div style="border:1px solid rgba(232,135,60,.3);background:rgba(232,135,60,.05);padding:11px 12px">
