@@ -103,11 +103,11 @@ export function AuthPage() {
       />
 
       <Body>
-        <div style={{
+        <div className="auth-main" style={{
           flex: 1, minWidth: 0, display: "flex", alignItems: "center",
           justifyContent: "center", borderRight: "1px solid rgba(255,255,255,.07)",
         }}>
-          <form onSubmit={handleSubmit} style={{ width: 380 }}>
+          <form className="auth-form" onSubmit={handleSubmit} style={{ width: 380 }}>
             <div className="mono" style={{
               fontSize: 9.5, letterSpacing: ".2em", color: "#E8873C", marginBottom: 14,
             }}>
@@ -204,7 +204,7 @@ export function AuthPage() {
           </form>
         </div>
 
-        <div style={{
+        <div className="auth-aside" style={{
           width: 420, flex: "none", boxSizing: "border-box",
           background: "#0F1012", display: "flex", flexDirection: "column",
         }}>

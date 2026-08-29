@@ -269,3 +269,30 @@ a{color:#E8873C}a:hover{color:#F2A264}
    recovers from, not a failure — red is not in this palette for a reason. */
 .offline{position:relative;z-index:7;height:34px;flex:none;display:flex;align-items:center;gap:12px;padding:0 16px;background:rgba(224,163,78,.1);border-bottom:1px solid rgba(224,163,78,.35)}
 .offline-spin{width:11px;height:11px;border:1.5px solid rgba(224,163,78,.35);border-top-color:#E0A34E;border-radius:50%;animation:spin .9s linear infinite;flex:none}
+
+
+/* ── narrow viewports ──────────────────────────────────────────────────────
+   This is a three-pane desktop layout: a 272px page tree, a main column, and a
+   332px inspector, all flex:none so they hold their width. On a phone that
+   sums to more than the viewport, and because the main column is the only one
+   that shrinks, it collapses to nothing and its contents are pushed off-screen
+   entirely — the login form included.
+   Below this width the side panels fold away and the main column takes the
+   whole viewport. The rails are supplementary — the tree duplicates navigation
+   the dashboard also offers, and the inspector is a readout — so hiding them
+   loses no content that cannot be reached another way. */
+@media (max-width: 860px) {
+  .bar {
+    height: auto;
+    min-height: 54px;
+    flex-wrap: wrap;
+    row-gap: 8px;
+    padding: 9px 12px;
+  }
+  .rail,
+  .insp,
+  .auth-aside { display: none; }
+
+  .auth-main { border-right: none !important; padding: 0 18px; }
+  .auth-form { width: 100% !important; max-width: 400px; }
+}
