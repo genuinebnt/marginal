@@ -20,6 +20,11 @@
 x-postgres-tuning: &postgres-tuning
   # Four Postgres instances on a shared 4 GB box: keep each one small. The
   # database-per-service split follows DATA_MODEL.md and is preserved here.
+  #
+  # Note the volumes below mount /var/lib/postgresql, NOT the pre-18
+  # /var/lib/postgresql/data. The 18+ images store data in a major-version
+  # subdirectory so pg_upgrade --link can work without crossing a mount
+  # boundary, and they refuse to start if data sits at the old path.
   command:
     - postgres
     - -c
@@ -36,7 +41,7 @@ services:
       POSTGRES_PASSWORD: ${DOC_DB_PASSWORD:?set DOC_DB_PASSWORD in .env}
       POSTGRES_DB: document_service
     volumes:
-      - doc-db-data:/var/lib/postgresql/data
+      - doc-db-data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U document_service"]
       interval: 5s
@@ -53,7 +58,7 @@ services:
       POSTGRES_PASSWORD: ${AUTH_DB_PASSWORD:?set AUTH_DB_PASSWORD in .env}
       POSTGRES_DB: auth_service
     volumes:
-      - auth-db-data:/var/lib/postgresql/data
+      - auth-db-data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U auth_service"]
       interval: 5s
@@ -70,7 +75,7 @@ services:
       POSTGRES_PASSWORD: ${COLLAB_DB_PASSWORD:?set COLLAB_DB_PASSWORD in .env}
       POSTGRES_DB: collaboration_service
     volumes:
-      - collab-db-data:/var/lib/postgresql/data
+      - collab-db-data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U collaboration_service"]
       interval: 5s
@@ -87,7 +92,7 @@ services:
       POSTGRES_PASSWORD: ${NOTIFICATION_DB_PASSWORD:?set NOTIFICATION_DB_PASSWORD in .env}
       POSTGRES_DB: notification_service
     volumes:
-      - notification-db-data:/var/lib/postgresql/data
+      - notification-db-data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U notification_service"]
       interval: 5s
