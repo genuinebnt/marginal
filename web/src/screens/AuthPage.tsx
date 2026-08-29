@@ -124,14 +124,14 @@ export function AuthPage() {
 
             {!signin && (
               <>
-                <Label style={{ display: "block", marginBottom: 7 }}>DISPLAY NAME</Label>
+                <Label>DISPLAY NAME</Label>
                 <div style={{ marginBottom: 16 }}>
                   <Field value={displayName} onChange={setDisplayName} placeholder="Ada Lovelace" />
                 </div>
               </>
             )}
 
-            <Label style={{ display: "block", marginBottom: 7 }}>EMAIL</Label>
+            <Label>EMAIL</Label>
             <div style={{ marginBottom: 16 }}>
               <Field value={email} onChange={setEmail} type="email" placeholder="you@example.com" />
             </div>
@@ -209,7 +209,7 @@ export function AuthPage() {
           background: "#0F1012", display: "flex", flexDirection: "column",
         }}>
           <div style={{ padding: "34px 40px", borderBottom: "1px solid rgba(255,255,255,.07)" }}>
-            <Label style={{ display: "block", marginBottom: 14 }}>WHERE YOU LEFT OFF</Label>
+            <Label>WHERE YOU LEFT OFF</Label>
             <PlaceholderNote>resume needs per-user caret state — no endpoint yet</PlaceholderNote>
             <div className="fx" style={{
               display: "flex", alignItems: "baseline", gap: 12, padding: "10px 0",

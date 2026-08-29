@@ -22,7 +22,8 @@ import { search, suggestTitles, type SearchHit, type TitleSuggestion } from "../
 import { listPages, type Page } from "../api/pages";
 import { getTopics, type Topic } from "../api/topics";
 import {
-  Body, Label, Readout, Rule, Screen, StatusBar, TopBar, TopicChip, TOPIC_HEX, num,
+  Body, Inspector, Label, Readout, Rule, Screen, StatusBar, TopBar, TopicChip,
+  TOPIC_HEX, num,
 } from "../shell/Chrome";
 import { ph, PlaceholderNote, undrawn } from "../shell/placeholder";
 
@@ -325,6 +326,70 @@ export function SearchScreen() {
             })}
           </div>
         </div>
+        <Inspector
+          tabs={[{ id: "hood", label: "NEIGHBOURHOOD" }, { id: "history", label: "HISTORY" }]}
+          active="hood"
+        >
+          <Label>WHY THESE, IN THIS ORDER</Label>
+          <div style={{ fontSize: 11.5, lineHeight: 1.7, color: "#8C8880" }}>
+            Score is <span className="mono" style={{ color: "#C3BFB7" }}>ts_rank</span> over title
+            and block text. A page whose{" "}
+            <span className="mono" style={{ color: "#C3BFB7" }}>topic</span> matches a selected
+            facet is filtered in, but carrying more tags earns nothing — the moment tags boost
+            rank, people farm them.
+          </div>
+
+          <Rule />
+          <Label>WHAT THE INDEX HAS NOT SEEN</Label>
+          <PlaceholderNote>needs the projector's own clock</PlaceholderNote>
+          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+            {[
+              { k: "pages not yet indexed", v: ph("—") },
+              { k: "pages deleted, not purged", v: ph("—") },
+            ].map((r) => (
+              <div key={r.k} style={{
+                display: "flex", alignItems: "baseline", gap: 8, fontSize: 11.5, color: "#9B968D",
+              }}>
+                <span style={{ flex: 1 }}>{r.k}</span>
+                <span className="mono" style={{ fontSize: 11, color: "#E0A34E" }}>{r.v}</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize: 11, lineHeight: 1.6, color: "#585550" }}>
+            The tree is authoritative and the index trails it. Saying so beats implying a
+            transaction that does not exist.
+          </div>
+
+          <Rule />
+          <Label>SELECTED</Label>
+          {shown.length > 0 ? (
+            <>
+              <div style={{ fontFamily: "Spectral,serif", fontSize: 15, color: "#EFEDE7" }}>
+                {shown[0].page_title}
+              </div>
+              <div className="tgrow">
+                {pageOf.get(shown[0].page_id)?.topic && (
+                  <TopicChip
+                    name={pageOf.get(shown[0].page_id)!.topic!.name}
+                    colorKey={pageOf.get(shown[0].page_id)!.topic!.color_key}
+                  />
+                )}
+                {(pageOf.get(shown[0].page_id)?.tags ?? []).map((t) => (
+                  <span key={t} className="tg">{t}</span>
+                ))}
+              </div>
+              <div
+                className="mono"
+                style={{ fontSize: 10.5, color: "#E8873C", cursor: "pointer" }}
+                onClick={() => navigate("/graph")}
+              >
+                Open graph →
+              </div>
+            </>
+          ) : (
+            <span style={{ fontSize: 11.5, color: "#585550" }}>Nothing selected.</span>
+          )}
+        </Inspector>
       </Body>
 
       <StatusBar

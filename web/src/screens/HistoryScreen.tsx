@@ -169,7 +169,7 @@ export function HistoryScreen() {
 
         <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <div style={{ padding: "24px 34px 18px", borderBottom: "1px solid rgba(255,255,255,.07)" }}>
-            <Label style={{ display: "block" }}>SCRUBBER · TICKS COLOURED BY ACTOR</Label>
+            <Label>SCRUBBER · TICKS COLOURED BY ACTOR</Label>
             <div
               style={{ position: "relative", height: 34, cursor: steps.length ? "pointer" : "default" }}
               onClick={(e) => {

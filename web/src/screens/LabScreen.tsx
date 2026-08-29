@@ -151,7 +151,7 @@ export function LabScreen() {
             display: "grid", gridTemplateColumns: "1fr 1fr 1.1fr", gap: 26,
           }}>
             <div>
-              <Label style={{ display: "block", marginBottom: 11 }}>THE RULE FOR THIS SECTION</Label>
+              <Label>THE RULE FOR THIS SECTION</Label>
               <div style={{ fontSize: 11.5, lineHeight: 1.7, color: "#8C8880" }}>
                 If a screen states a number, the page computed it. Nothing here is a screenshot of
                 a result, and nothing is a hard-coded figure dressed as one — which is why every
@@ -159,14 +159,14 @@ export function LabScreen() {
               </div>
             </div>
             <div>
-              <Label style={{ display: "block", marginBottom: 11 }}>WHY IT IS SHIPPED, NOT HIDDEN</Label>
+              <Label>WHY IT IS SHIPPED, NOT HIDDEN</Label>
               <div style={{ fontSize: 11.5, lineHeight: 1.7, color: "#8C8880" }}>
                 These are the parts of the product that are hard to believe from a description. A
                 claim about convergence is cheap; a page where you can break it is not.
               </div>
             </div>
             <div>
-              <Label style={{ display: "block", marginBottom: 11 }}>WHAT IS NOT BUILT</Label>
+              <Label>WHAT IS NOT BUILT</Label>
               <div style={{ fontSize: 11.5, lineHeight: 1.7, color: "#585550" }}>
                 Three of six. Compiler, Netcode and Perf are dimmed above rather than omitted,
                 because a hub that lists only what exists cannot be read as a map of what the

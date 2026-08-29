@@ -50,6 +50,45 @@ const PROPS = [
 /** Chrome text worth comparing — short, uppercase-ish, structural. */
 const CHROME_SELECTORS = '.lbl,.rd-k,.tb,.sb,.it,.chip,.btn,.kbd,.tpc,.wm';
 
+/**
+ * Per-screen setup, run before the app is measured.
+ *
+ * Without this the diff cannot tell "not built" from "not shown yet": a
+ * search screen with no query has no result chips, and reporting those as
+ * MISSING is reporting an empty text box. Each entry puts the screen into
+ * the state its mockup depicts, so anything still missing afterwards is
+ * genuinely absent.
+ *
+ * Keep these to interactions a person would perform. Reaching into React
+ * state would prove the markup can render, not that it does.
+ */
+const SEED = {
+  '06': async (p) => {                       // SEARCH — the mockup shows hits
+    await p.keyboard.type('rope');
+    await p.waitForTimeout(1600);
+  },
+  '07': async (p) => {                       // GRAPH — a node is selected
+    await p.waitForTimeout(2500);            // let the layout settle first
+    const n = p.locator('svg circle').nth(3);
+    if (await n.count()) await n.click({ force: true });
+    await p.waitForTimeout(900);
+  },
+  '08': async (p) => {                       // ALGORITHMS — a source is picked
+    await p.waitForTimeout(2500);
+    const n = p.locator('svg circle').nth(2);
+    if (await n.count()) await n.click({ force: true });
+    await p.waitForTimeout(1200);
+  },
+  '10': async (p) => {                       // FACTS — a definition is selected
+    const d = p.locator('.tr').first();
+    if (await d.count()) await d.click();
+    await p.waitForTimeout(1200);
+  },
+  '17': async (p) => {                       // HISTORY — a block with characters
+    await p.waitForTimeout(1500);
+  },
+};
+
 const EXTRACT = (props, chromeSel) => `(root) => {
   const out = [];
   const walk = (n, path) => {
@@ -114,6 +153,11 @@ async function main() {
   await a.goto(APP + route, { waitUntil: 'networkidle' });
   await a.evaluate('document.fonts.ready');
   await a.waitForTimeout(3500);
+  if (SEED[screen]) {
+    // Put the screen into the state its mockup depicts, so what remains
+    // missing afterwards is absent rather than merely unshown.
+    try { await SEED[screen](a); } catch (e) { console.error('seed failed:', e.message); }
+  }
   const app = await a.evaluate(`(() => {
     const extract = ${EXTRACT(PROPS, CHROME_SELECTORS)};
     return extract(document.querySelector('.sc') || document.body);
@@ -145,7 +189,20 @@ async function main() {
   };
   const M = group(mockup), A = group(app);
 
-  const norm = (s) => (s || '').replace(/^a\./, 'span.').replace(/^aside\./, 'div.').replace(/^input\./, 'div.');
+  /**
+   * Generic containers compare by CLASS, not by tag.
+   *
+   * This design system is class-driven: `.lbl` is a label wherever it
+   * appears, and the mockup writes it as a span in one place and a div in
+   * another. The app renders `.icb` as a router <a> because it navigates.
+   * None of that is a design difference, and treating it as one buried the
+   * real gaps under tag noise.
+   *
+   * Non-generic tags keep theirs — a <pre> is not a <div>, and a heading
+   * level is a real distinction.
+   */
+  const GENERIC = /^(div|span|a|aside|input|button|section|article|nav|main|li|ul|ol)\./;
+  const norm = (s) => (s || '').replace(GENERIC, 'box.');
   const Anorm = new Map();
   for (const [k, v] of A) {
     const nk = norm(k);

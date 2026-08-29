@@ -204,7 +204,7 @@ export function FactsScreen() {
 
           <div style={{ padding: "22px 34px", flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: 18 }}>
             <div>
-              <Label style={{ display: "block", marginBottom: 11 }}>
+              <Label>
                 WHAT GOES STALE IF THIS CHANGES · {num(visited)}
               </Label>
               {visited === 0 && (
@@ -236,7 +236,7 @@ export function FactsScreen() {
             <div style={{ marginTop: "auto", paddingTop: 22, borderTop: "1px solid rgba(255,255,255,.07)",
                           display: "grid", gridTemplateColumns: "1fr 1fr 1.1fr", gap: 26 }}>
               <div>
-                <Label style={{ display: "block", marginBottom: 11 }}>CYCLES</Label>
+                <Label>CYCLES</Label>
                 {(facts?.cycle.length ?? 0) === 0 ? (
                   <div style={{ fontSize: 11.5, color: "#8C8880", lineHeight: 1.6 }}>
                     <span style={{ color: "#3FCFA8" }}>✓</span> None. Three-colour DFS —
@@ -249,7 +249,7 @@ export function FactsScreen() {
                 )}
               </div>
               <div>
-                <Label style={{ display: "block", marginBottom: 11 }}>DUPLICATES</Label>
+                <Label>DUPLICATES</Label>
                 {(facts?.duplicates.length ?? 0) === 0 ? (
                   <div style={{ fontSize: 11.5, color: "#8C8880", lineHeight: 1.6 }}>
                     <span style={{ color: "#3FCFA8" }}>✓</span> Every name defined once.
@@ -268,7 +268,7 @@ export function FactsScreen() {
                 )}
               </div>
               <div>
-                <Label style={{ display: "block", marginBottom: 10 }}>WHY A DAG AT ALL</Label>
+                <Label>WHY A DAG AT ALL</Label>
                 <div style={{ fontSize: 11.5, lineHeight: 1.7, color: "#8C8880" }}>
                   The counter is nodes <i>visited</i> against nodes that exist. If editing one
                   definition walked all of them, the graph would be costing more than it saves —

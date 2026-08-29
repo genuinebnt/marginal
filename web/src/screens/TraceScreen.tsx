@@ -205,7 +205,7 @@ export function TraceScreen() {
             flex: 1, padding: "30px 40px", borderBottom: "1px solid rgba(255,255,255,.07)",
             minHeight: 0, overflowY: "auto",
           }}>
-            <Label style={{ display: "block", marginBottom: 16 }}>
+            <Label>
               DOCUMENT AT STEP {steps.length === 0 ? 0 : at + 1}
             </Label>
             {err && (
@@ -233,7 +233,7 @@ export function TraceScreen() {
           </div>
 
           <div style={{ padding: "22px 40px" }}>
-            <Label style={{ display: "block", marginBottom: 14 }}>THIS OP AND ITS INVERSE</Label>
+            <Label>THIS OP AND ITS INVERSE</Label>
             {step ? (
               <div style={{ display: "flex", gap: 16 }}>
                 <div style={{

@@ -141,7 +141,7 @@ export function DashboardScreen() {
           </div>
 
           {/* Resume, not "recent". The distinction is the caret. */}
-          <Label style={{ display: "block", marginBottom: 12 }}>RESUME</Label>
+          <Label>RESUME</Label>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 11, marginBottom: 28 }}>
             {resume.length === 0 && (
               <div style={{
@@ -212,7 +212,7 @@ export function DashboardScreen() {
               </div>
 
               <div style={{ marginTop: 22 }}>
-                <Label style={{ display: "block", marginBottom: 11 }}>START</Label>
+                <Label>START</Label>
                 <div style={{ display: "flex", gap: 9 }}>
                   <div
                     className="btn"
@@ -229,7 +229,7 @@ export function DashboardScreen() {
 
             <div style={{ display: "flex", flexDirection: "column", gap: 20, minHeight: 0 }}>
               <div>
-                <Label style={{ display: "block", marginBottom: 11 }}>
+                <Label>
                   NEEDS YOU · {untopiced > 0 ? 1 : 0}
                 </Label>
                 <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
@@ -258,7 +258,7 @@ export function DashboardScreen() {
               </div>
 
               <div>
-                <Label style={{ display: "block", marginBottom: 11 }}>WORKSPACE</Label>
+                <Label>WORKSPACE</Label>
                 <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                   {[
                     { k: "Pages", v: num(pages.length), tone: "#E4E2DC" },
@@ -277,7 +277,7 @@ export function DashboardScreen() {
               </div>
 
               <div style={{ marginTop: "auto" }}>
-                <Label style={{ display: "block", marginBottom: 10 }}>WHY NO FEED</Label>
+                <Label>WHY NO FEED</Label>
                 <div style={{ fontSize: 11.5, lineHeight: 1.7, color: "#585550" }}>
                   A feed of everything makes the workspace something to keep up with. This lists
                   what changed <i>and</i> what wants a decision — both finite, both clearable. When

@@ -238,7 +238,7 @@ export function TopicsScreen() {
           {/* Tag cloud sized by count, NOT coloured. Colour is reserved for
               the topic; a tag cloud that also carries hue is two encodings
               fighting. */}
-          <Label style={{ display: "block", marginBottom: 12 }}>
+          <Label>
             TAGS INSIDE THIS TOPIC · {tagsInTopic.length} OF {facets.length}
           </Label>
           <div className="tgrow" style={{ gap: 7, marginBottom: 26, alignItems: "baseline" }}>
@@ -272,7 +272,7 @@ export function TopicsScreen() {
 
           <div style={{ display: "grid", gridTemplateColumns: "1.25fr 1fr", gap: 28, flex: 1, minHeight: 0 }}>
             <div style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
-              <Label style={{ display: "block", marginBottom: 11 }}>PAGES</Label>
+              <Label>PAGES</Label>
               <div style={{ display: "flex", flexDirection: "column", overflowY: "auto" }}>
                 {topicPages.map((p, i) => (
                   <div
@@ -300,7 +300,7 @@ export function TopicsScreen() {
 
             <div style={{ display: "flex", flexDirection: "column", gap: 18, minHeight: 0 }}>
               <div>
-                <Label style={{ display: "block", marginBottom: 10 }}>WHERE THIS TOPIC'S TAGS ALSO LIVE</Label>
+                <Label>WHERE THIS TOPIC'S TAGS ALSO LIVE</Label>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   {spread.length === 0 && (
                     <span style={{ fontSize: 11.5, color: "#585550" }}>
@@ -323,7 +323,7 @@ export function TopicsScreen() {
               </div>
 
               <div>
-                <Label style={{ display: "block", marginBottom: 10 }}>TAGS THAT ESCAPE THIS TOPIC</Label>
+                <Label>TAGS THAT ESCAPE THIS TOPIC</Label>
                 <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                   {escaping.length === 0 && (
                     <span style={{ fontSize: 11.5, color: "#585550" }}>
