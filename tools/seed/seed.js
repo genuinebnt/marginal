@@ -29,17 +29,27 @@ if (!CORPUS[which]) {
 }
 const CONTENT = CORPUS[which]();
 
-const GW = 'http://localhost:8000';
-const COLLAB = 'ws://localhost:8002';
+// Default to the local docker-compose ports; override to seed a deployed
+// instance, where the services sit behind the gateway's namespaced prefixes:
+//   SEED_GATEWAY_URL=https://marginal.genuinebasil.dev/api \
+//   SEED_COLLAB_URL=wss://marginal.genuinebasil.dev/ws \
+//   SEED_EMAIL=... SEED_PASSWORD=... node tools/seed/seed.js all
+const GW = process.env.SEED_GATEWAY_URL || 'http://localhost:8000';
+const COLLAB = process.env.SEED_COLLAB_URL || 'ws://localhost:8002';
+const SEED_EMAIL = process.env.SEED_EMAIL || 'ui-demo@example.com';
+const SEED_PASSWORD = process.env.SEED_PASSWORD || 'ui-demo-password-123';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function login() {
   const r = await fetch(`${GW}/auth/login`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: 'ui-demo@example.com', password: 'ui-demo-password-123' }),
+    body: JSON.stringify({ email: SEED_EMAIL, password: SEED_PASSWORD }),
   });
   const pair = await r.json();
+  if (!pair.access_token) {
+    throw new Error(`login failed for ${SEED_EMAIL} at ${GW}: ${JSON.stringify(pair)}`);
+  }
   const sub = JSON.parse(Buffer.from(pair.access_token.split('.')[1], 'base64url')).sub;
   return sub;
 }
