@@ -27,6 +27,16 @@ const CALLOUT_TONE_COLOR: Record<string, string> = {
   success: "var(--green, #22c55e)",
 };
 
+/** One glyph per kind, in the mono cell every menu row carries. Text rather
+ *  than icons — this design has no icon set, and inventing one for a menu
+ *  would be the only place it appeared. */
+const KIND_GLYPH: Partial<Record<BlockKindKey, string>> = {
+  paragraph: "¶", heading1: "H1", heading2: "H2", heading3: "H3",
+  quote: "❝", code_block: "</>", divider: "—",
+  bulleted_list: "•", numbered_list: "1.", todo_list: "☑",
+  toggle: "▸", callout: "◌", aside: "▎", image: "▣",
+};
+
 const EMPTY_DIAGNOSTICS: Diagnostic[] = [];
 
 /** Topic colour-key -> the chip class. Mirrors shell/Chrome's own map; kept
@@ -678,15 +688,14 @@ export function RichEditorPane({
           <>
             <div style={{ position: "fixed", inset: 0, zIndex: 29 }} onClick={() => setKindMenu(null)} />
             <div className="slash" style={{ top: kindMenu.top, left: kindMenu.left }}>
-              <div className="mono" style={{
-                padding: "4px 9px 6px", fontSize: 8.5, letterSpacing: ".14em", color: "#585550",
-              }}>
+              <div className="slash-h">
                 {kindMenu.containersOnly ? "WRAP IN" : "TURN INTO"}
               </div>
               {KIND_ORDER.filter((k) => !kindMenu.containersOnly || CONTAINER_KEYS.has(k)).map((k) => (
                 <div key={k} className="palette-item" onClick={() => chooseKind(k)}>
-                  <span className="lead mono muted">{k === "heading1" ? "H1" : k === "heading2" ? "H2" : k === "heading3" ? "H3" : k === "code_block" ? "<>" : k === "divider" ? "—" : k === "quote" ? "❝" : "¶"}</span>
+                  <span className="lead">{KIND_GLYPH[k] ?? "¶"}</span>
                   {KIND_LABELS[k]}
+                  <span className="keys">{CONTAINER_KEYS.has(k) ? "::" : "/"}</span>
                 </div>
               ))}
               {kindMenu.mode === "handle" && (
@@ -985,24 +994,25 @@ function BlockRow({
     body = <hr className="block-divider" />;
   } else if (tag === "code_block") {
     const language = block.kind.tag === "code_block" ? block.kind.language : "";
+    // § 04's code block: one bordered box with a header strip carrying the
+    // language, then the code. The language was a floating <select> hovering
+    // above the box, which is neither in the mockup nor anywhere else in this
+    // design — every other control here is a chip, a row, or a bordered field.
     body = (
-      <div>
-        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 4 }}>
+      <div className="blk-code">
+        <div className="blk-code-h">
+          <span className="mono lang">{(language || "plain text").toUpperCase()}</span>
           <select
             value={language}
             disabled={disabled}
             onChange={(e) => onSetLanguage(e.target.value)}
-            title="Code block language — documentcore.BlockKind's own Language field"
-            style={{
-              fontFamily: "var(--mono)", fontSize: 11, color: "var(--ink-faint)",
-              background: "transparent", border: "1px solid var(--rule)", borderRadius: "var(--radius)",
-              padding: "2px 6px", cursor: "pointer",
-            }}
+            title="Which grammar to highlight against — documentcore.BlockKind.Language"
           >
             {CODE_LANGUAGES.map((l) => (
               <option key={l} value={l}>{l || "plain text"}</option>
             ))}
           </select>
+          <span className="mono count">{block.text.split("\n").length} lines</span>
         </div>
         <CodeBlockField
           text={block.text}

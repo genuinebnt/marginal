@@ -266,17 +266,51 @@
 .palette-item {
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 6px 9px;
-  font-size: 12px;
+  gap: 10px;
+  padding: 7px 10px;
+  font-size: 12.5px;
   color: #9B968D;
   cursor: pointer;
   white-space: nowrap;
+}
+/* The leading glyph sits in a fixed, bordered cell — the same treatment the
+   outline's H1/H2 marks and the status chips use, so a menu row reads as
+   part of this design rather than as a generic dropdown. */
+.palette-item .lead {
+  width: 22px;
+  height: 18px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255,255,255,.09);
+  font: 500 9px 'IBM Plex Mono', monospace;
+  color: #6E6A63;
 }
 .palette-item:hover, .palette-item[aria-selected="true"] {
   background: #181A1B;
   color: #E4E2DC;
   box-shadow: inset 2px 0 0 #E8873C;
+}
+.palette-item:hover .lead, .palette-item[aria-selected="true"] .lead {
+  border-color: rgba(232,135,60,.45);
+  color: #E8873C;
+}
+/* What you typed to get here, so the shortcut is learnable from the menu
+   rather than from documentation. */
+.palette-item .keys {
+  margin-left: auto;
+  font: 400 9px 'IBM Plex Mono', monospace;
+  color: #4B4842;
+  padding-left: 14px;
+}
+.slash-h {
+  padding: 6px 10px 7px;
+  font: 600 8.5px 'IBM Plex Mono', monospace;
+  letter-spacing: .19em;
+  color: #585550;
+  border-bottom: 1px solid rgba(255,255,255,.07);
+  margin-bottom: 4px;
 }
 .menu-divider { height: 1px; background: rgba(255,255,255,.07); margin: 4px 0; }
 .sep { width: 1px; height: 12px; background: rgba(255,255,255,.14); }
@@ -501,3 +535,76 @@
 }
 .editable s { text-decoration-color: rgba(255,255,255,.4); }
 .editable b, .editable strong { font-weight: 600; color: #EFEDE7; }
+
+/* ── code block ─────────────────────────────────────────────────────────────
+   § 04 draws one bordered box: a header strip carrying the language, then the
+   code. The language selector used to float above the box as a bare <select>,
+   which appears nowhere in this design — every other control is a chip, a
+   row, or a bordered field. */
+.blk-code {
+  border: 1px solid rgba(255,255,255,.08);
+  background: #111214;
+}
+.blk-code-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 11px;
+  border-bottom: 1px solid rgba(255,255,255,.07);
+  position: relative;
+}
+.blk-code-h .lang {
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: .14em;
+  color: #6E6A63;
+  pointer-events: none;
+}
+.blk-code-h .count {
+  margin-left: auto;
+  font-size: 9px;
+  color: #4B4842;
+  pointer-events: none;
+}
+/* The <select> covers the strip invisibly: it stays a real, keyboard-
+   reachable control while the strip renders as § 04 draws it. Styling a
+   <select>'s own box to match would mean fighting four browsers' shadow DOM
+   for the same result. */
+.blk-code-h select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  font: inherit;
+}
+.blk-code .code-editable {
+  border: 0;
+  background: transparent;
+}
+
+/* ── page tree rows ─────────────────────────────────────────────────────────
+   A rail row should say what a page IS, not only what it is called. Each
+   carries its topic hue and, for a branch, how many pages are under it —
+   both readable without expanding anything. */
+.tr-topic {
+  width: 5px;
+  height: 5px;
+  flex: none;
+  margin-right: 1px;
+}
+/* Untopiced draws an outline rather than a fill: absence of a topic is a
+   real state and gets its own mark, not one of the five hues. */
+.tr-topic-none {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,.16);
+}
+.tr-count {
+  margin-left: auto;
+  padding-left: 8px;
+  color: #4B4842;
+}
+/* Actions replace the count on hover — both competing for the same right
+   edge would make the row jump as the pointer crosses it. */
+.tr:hover .tr-count { display: none; }

@@ -270,7 +270,12 @@ function PageRow({
 }: TreeProps & { page: Page; depth: number }) {
   const rowRef = useRef<HTMLDivElement>(null);
   const expanded = tree.expanded.has(page.id);
-  const hasChildren = (tree.childrenByParent[page.id]?.length ?? 0) > 0 || tree.childrenByParent[page.id] === undefined;
+  const loadedChildren = tree.childrenByParent[page.id];
+  // Undefined means "not loaded yet", which is different from "none" — the
+  // twisty must appear for an unexpanded branch, but the COUNT must not
+  // claim a number nobody has fetched.
+  const hasChildren = (loadedChildren?.length ?? 0) > 0 || loadedChildren === undefined;
+  const childCount = loadedChildren?.length ?? 0;
   const isDeleting = page.lifecycle_state === "deleting";
   const isDropTarget = dropTarget?.id === page.id;
   const isBeingDragged = dragId === page.id;
@@ -327,6 +332,17 @@ function PageRow({
         ) : (
           <span className="tr-n" style={{ width: 9 }} />
         )}
+        {/* Topic hue as a 5px square, before the title. The graph colours
+            nodes this way, so the rail and the graph agree at a glance about
+            what a page is — the same fact drawn the same way twice. */}
+        {page.topic && (
+          <span
+            className="tr-topic"
+            style={{ background: `var(--topic-${page.topic.color_key})` }}
+            title={page.topic.name}
+          />
+        )}
+        {!page.topic && <span className="tr-topic tr-topic-none" title="Untopiced" />}
         <span className="tr-t">{page.title || "Untitled"}</span>
         {isDeleting && (
           <span style={{
@@ -336,6 +352,9 @@ function PageRow({
           }}>
             DELETING
           </span>
+        )}
+        {!isDeleting && hasChildren && (
+          <span className="tr-n tr-count" title={`${childCount} sub-pages`}>{childCount}</span>
         )}
         <span className="tr-a">
         <span
