@@ -31,6 +31,7 @@ import (
 
 	"marginal/api-gateway/internal/authrest"
 	"marginal/api-gateway/internal/diagnosticsrest"
+	"marginal/api-gateway/internal/discoverrest"
 	"marginal/api-gateway/internal/graphrest"
 	"marginal/api-gateway/internal/pagesrest"
 	"marginal/api-gateway/internal/searchrest"
@@ -94,6 +95,7 @@ func run() error {
 	pages := pagesrest.NewHandler(documentv1.NewPageServiceClient(documentConn))
 	graphHandler := graphrest.NewHandler(documentv1.NewGraphServiceClient(documentConn))
 	searchHandler := searchrest.NewHandler(documentv1.NewSearchServiceClient(documentConn))
+	discoverHandler := discoverrest.NewHandler(documentv1.NewDiscoverServiceClient(documentConn))
 	diagnosticsHandler := diagnosticsrest.NewHandler(diagnosticsv1.NewDiagnosticsServiceClient(diagnosticsConn))
 	auth := authrest.NewHandler(authv1.NewAuthServiceClient(authConn))
 
@@ -127,6 +129,7 @@ func run() error {
 	pages.Mount(r)
 	graphHandler.Mount(r)
 	searchHandler.Mount(r)
+	discoverHandler.Mount(r)
 	diagnosticsHandler.Mount(r)
 	auth.Mount(r)
 

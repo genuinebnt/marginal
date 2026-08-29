@@ -88,6 +88,10 @@ const IGNORED_PROPS = {
   // left over by the content above it — a measurement of the corpus, not of
   // the design.
   'div.wal': new Set(['marginTop']),
+  // .ping is a keyframe animation. Its opacity is whatever phase the pulse
+  // happened to be in when the page was measured — a clock reading, not a
+  // style.
+  'div.ping': new Set(['opacity']),
 };
 
 /** Chrome text worth comparing — short, uppercase-ish, structural. */
@@ -126,6 +130,15 @@ const SEED = {
     const c = p.locator('main.canvas');
     if (await c.count()) await c.evaluate((el) => { el.scrollTop = el.scrollHeight * 0.4; });
     await p.waitForTimeout(600);
+  },
+  '09': async (p) => {                       // DISCOVER — a scope and a tag are chosen
+    await p.waitForTimeout(1200);
+    const topic = p.locator('.tpc').first();
+    if (await topic.count()) await topic.click();
+    await p.waitForTimeout(700);
+    const tag = p.locator('.tg').first();
+    if (await tag.count()) await tag.click();
+    await p.waitForTimeout(900);
   },
   '10': async (p) => {                       // FACTS — a definition is selected
     const d = p.locator('.tr').first();

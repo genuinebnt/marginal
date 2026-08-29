@@ -21,6 +21,7 @@
  * says it is about). When they disagree, that disagreement is the finding.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { analyzeGraph, getLinkGraph, type GraphAnalysis, type LinkGraph } from "../api/graph";
 import { getTopics, type Topic } from "../api/topics";
 import { listPages } from "../api/pages";
@@ -47,6 +48,7 @@ const H = 754;
 export function GraphScreen() {
   const { session } = useAuth();
   const actorId = session?.actorId ?? null;
+  const navigate = useNavigate();
   const [graph, setGraph] = useState<LinkGraph | null>(null);
   const [analysis, setAnalysis] = useState<GraphAnalysis | null>(null);
   const [topics, setTopics] = useState<Topic[]>([]);
@@ -337,6 +339,11 @@ export function GraphScreen() {
         <SubItem on={lens === "territory"} onClick={() => setLens("territory")}>TERRITORY · VORONOI</SubItem>
         <SubItem on={lens === "delaunay"} onClick={() => setLens("delaunay")}>DELAUNAY DUAL</SubItem>
         <div style={{ flex: 1 }} />
+        {/* The other two ways of asking "what is near this", reachable from
+            the one that draws it. Near by citation is § 08; near by meaning
+            is § 09; this screen is near in space. */}
+        <SubItem onClick={() => navigate("/graph/algorithms")}>ALGORITHMS →</SubItem>
+        <SubItem onClick={() => navigate(sel ? `/discover/${sel}` : "/discover")}>DISCOVER →</SubItem>
         <SubItem tone={cooled ? "#3FCFA8" : "#E0A34E"}>
           {cooled ? "SIMULATION COOLED" : "SIMULATION RUNNING"}
         </SubItem>

@@ -28,6 +28,7 @@ import (
 
 	documentv1 "marginal/document-service/genproto/documentv1"
 	"marginal/document-service/internal/blockproj"
+	"marginal/document-service/internal/discover"
 	"marginal/document-service/internal/graph"
 	"marginal/document-service/internal/migrate"
 	"marginal/document-service/internal/pages"
@@ -91,7 +92,12 @@ func run() error {
 
 	grpcServer := grpc.NewServer()
 	documentv1.RegisterPageServiceServer(grpcServer, pages.NewServer(pages.NewPostgresRepo(pool)))
-	documentv1.RegisterGraphServiceServer(grpcServer, graph.NewServer(graph.NewPostgresRepo(pool)))
+	graphRepo := graph.NewPostgresRepo(pool)
+	documentv1.RegisterGraphServiceServer(grpcServer, graph.NewServer(graphRepo))
+	// DiscoverService shares the graph repo: link distance is one of § 09's
+	// three signals, and it is the same BFS GraphService already runs over the
+	// same table — a second reader of one result, not a second implementation.
+	documentv1.RegisterDiscoverServiceServer(grpcServer, discover.NewServer(discover.NewPostgresRepo(pool), graphRepo))
 	documentv1.RegisterSearchServiceServer(grpcServer, searchServer)
 	reflection.Register(grpcServer) // lets grpcurl/grpcui introspect without a .proto file, local dev only
 

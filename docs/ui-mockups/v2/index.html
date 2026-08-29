@@ -1311,7 +1311,9 @@ a{color:#E8873C}a:hover{color:#F2A264}
     <div class="vr"></div>
     <div class="clk"><b>14:06</b><span>THU 12 MAR</span></div><span class="kbd">⌘K</span><div class="icb">◎<div class="bdg">6</div></div><div class="icb">⚙</div><div class="av av-you">GN</div>
   </div>
-  <div class="sub"><span class="sb sb-on">FORCE</span><span class="sb">TERRITORY · VORONOI</span><span class="sb">DELAUNAY DUAL</span><div style="flex:1"></div><span class="sb" style="color:#3FCFA8">SIMULATION COOLED</span></div>
+  <div class="sub"><span class="sb sb-on">FORCE</span><span class="sb">TERRITORY · VORONOI</span><span class="sb">DELAUNAY DUAL</span><div style="flex:1"></div><!-- The other two ways of asking "what is near this", reachable from the
+       one that draws it: near by citation is § 08, near by meaning is § 09,
+       and this screen is near in space. --><span class="sb">ALGORITHMS →</span><span class="sb">DISCOVER →</span><span class="sb" style="color:#3FCFA8">SIMULATION COOLED</span></div>
   <div class="body">
     <div style="flex:1;position:relative;overflow:hidden">
       <svg viewBox="0 0 1104 754" style="width:100%;height:100%;display:block">
@@ -1579,7 +1581,7 @@ a{color:#E8873C}a:hover{color:#F2A264}
     <div style="flex:1;min-width:0;padding:28px 34px;overflow:hidden;display:flex;flex-direction:column">
       <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:14px">
         <h1 class="h1" style="font-size:22px">Semantically near</h1>
-        <span class="mono" style="font-size:11px;color:#585550">cosine over 384-d embeddings · greedy descent from layer 3</span>
+        <span class="mono" style="font-size:11px;color:#585550">cosine over 256-d hashed TF-IDF · greedy descent from layer 3</span>
       </div>
       <!-- Topic here is a PRE-filter on the index, not a post-filter on the
            results: filtering after the fact silently destroys recall (ask for
@@ -1630,7 +1632,7 @@ a{color:#E8873C}a:hover{color:#F2A264}
         <div class="lbl" style="margin-bottom:12px">WHY EACH ONE SURFACED · THREE SIGNALS, NOT ONE BLENDED SCORE</div>
         <div style="display:grid;grid-template-columns:150px 1fr 1fr 1fr;gap:9px 14px;align-items:center;font-size:11.5px">
           <span class="mono" style="font-size:9px;letter-spacing:.14em;color:#585550"></span>
-          <span class="mono" style="font-size:9px;letter-spacing:.14em;color:#585550">EMBEDDING COSINE</span>
+          <span class="mono" style="font-size:9px;letter-spacing:.14em;color:#585550">TERM COSINE</span>
           <span class="mono" style="font-size:9px;letter-spacing:.14em;color:#585550">TAG OVERLAP · JACCARD</span>
           <span class="mono" style="font-size:9px;letter-spacing:.14em;color:#585550">GRAPH DISTANCE</span>
 

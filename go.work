@@ -5,6 +5,7 @@ use (
 	./services/envconfig
 	./services/outboxpoll
 	./services/graphalgo
+	./services/semantic
 	./services/textdiff
 	./services/api-gateway
 	./services/auth-service

@@ -1,0 +1,89 @@
+// DiscoverService — the gRPC contract for § 09 DISCOVER, "what is near this
+// page by MEANING", as opposed to near by citation (GraphService) or near in
+// the drawn layout (§ 07's SPACE lens). See docs/api/discover.md.
+//
+// Read-only and computed fresh per request, like GraphService: there is no
+// persisted index yet, and internal/discover's own doc comment says exactly
+// what would replace the per-request rebuild and when.
+syntax = "proto3";
+
+package marginal.document.v1;
+
+option go_package = "marginal/document-service/genproto/documentv1";
+
+service DiscoverService {
+  // Near returns the k pages closest to source_page_id in term space, with
+  // the three signals kept separate, plus the index statistics that make the
+  // answer checkable rather than merely fast.
+  rpc Near(NearRequest) returns (NearResponse);
+}
+
+message NearRequest {
+  string source_page_id = 1;
+  // 0 means the server's default (5).
+  int32 k = 2;
+  // topics restricts results to these topic NAMES; empty means every topic.
+  // tags requires EVERY listed tag; empty means no tag constraint.
+  //
+  // Both are applied DURING the index descent, never to the result set —
+  // post-filtering asks for k=5, throws three away and ships two, and recall
+  // collapses exactly when the filter is narrow, which is when someone is
+  // relying on it.
+  repeated string topics = 3;
+  repeated string tags   = 4;
+}
+
+message NearResponse {
+  repeated SemanticNeighbour neighbours = 1;
+  DiscoverStats stats = 2;
+  // topics is every distinct topic in the live corpus — the scope control's
+  // own option set, so the client never has to make a second call to draw a
+  // filter for the thing it just queried.
+  repeated string topics = 3;
+}
+
+message SemanticNeighbour {
+  string page_id = 1;
+  string title   = 2;
+  // The first ~120 characters of the INDEXED body — the same string the
+  // vector was built from, so what you read is what was scored.
+  string excerpt = 3;
+  string topic_name = 4;
+  string topic_color_key = 5;
+  repeated string tags = 6;
+
+  // The three signals, never blended into one number. A blended score is
+  // unarguable: when it puts the wrong page first there is nothing to
+  // inspect. Three can be read against each other, and the interesting row is
+  // always the one where they disagree.
+  double cosine = 7;       // hashed TF-IDF cosine, [0,1]
+  int32  shared_tags = 8;  // |A ∩ B| — what a person reads
+  double tag_jaccard = 9;  // |A ∩ B| / |A ∪ B| — what compares fairly
+  // Undirected link distance. -1 is UNREACHABLE, deliberately not a large
+  // number: "far" and "not connected at all" are different findings.
+  int32  hops = 10;
+}
+
+message DiscoverStats {
+  // What the approximate search cost, against what an exact scan would have.
+  // The entire justification for the index existing.
+  int32 comparisons = 1;
+  int32 exact_comparisons = 2;
+  int32 hops = 3;
+  int32 layers = 4;
+  // recall_at_k against a brute-force scan run beside every query. Speed
+  // without recall is half a result.
+  double recall_at_k = 5;
+  // How many pages passed the filter at all.
+  int32 candidates = 6;
+  // The HNSW tower's shape, layer 0 first.
+  repeated int32 layer_sizes = 7;
+  int32 corpus = 8;
+  // The source page's own heaviest terms — why it sits where it sits.
+  repeated string top_terms = 9;
+  // The index's stated parameters, so the numbers above can be read against
+  // a setting rather than against nothing.
+  int32 m = 10;
+  int32 ef_search = 11;
+  int32 dimensions = 12;
+}

@@ -18,14 +18,22 @@ import { useInbox } from "../notifications/NotificationsContext";
 import { NotificationsPanel } from "../notifications/NotificationsPanel";
 
 /** The six primary destinations, in the mockup's own order. */
-const TABS: Array<{ label: string; to: string }> = [
+const TABS: Array<{ label: string; to: string; also?: string[] }> = [
   { label: "Write", to: "/pages" },
   { label: "Read", to: "/read" },
   { label: "Search", to: "/search" },
-  { label: "Graph", to: "/graph" },
+  // Graph owns four routes, not one. /discover, /topics and /facts are all
+  // ways of asking how pages relate, and a nav that goes dark the moment you
+  // follow a link out of /graph is a nav that has lost you.
+  { label: "Graph", to: "/graph", also: ["/discover", "/topics", "/facts"] },
   { label: "History", to: "/history" },
   { label: "Lab", to: "/lab" },
 ];
+
+/** Whether a tab owns the current route — its own prefix, or one it adopts. */
+function tabActive(tab: { to: string; also?: string[] }, pathname: string): boolean {
+  return [tab.to, ...(tab.also ?? [])].some((p) => pathname.startsWith(p));
+}
 
 /**
  * One readout in the top bar — a label over a value, always mono.
@@ -160,7 +168,7 @@ export function TopBar({
             <Link
               key={t.to}
               to={t.to}
-              className={`tb${pathname.startsWith(t.to) ? " tb-on" : ""}`}
+              className={`tb${tabActive(t, pathname) ? " tb-on" : ""}`}
               style={{ textDecoration: "none" }}
             >
               {t.label}
@@ -304,9 +312,16 @@ const TOPIC_CLASS: Record<string, string> = {
   research: "tpc-rsch",
 };
 
-export function TopicChip({ name, colorKey }: { name: string; colorKey: string }) {
+export function TopicChip({
+  name, colorKey, small,
+}: { name: string; colorKey: string; small?: boolean }) {
   return (
-    <span className={`tpc ${TOPIC_CLASS[colorKey] ?? "tpc-proto"}`}>
+    <span
+      className={`tpc ${TOPIC_CLASS[colorKey] ?? "tpc-proto"}`}
+      // § 09's result rows draw the chip one size down, beside a title rather
+      // than as the title's own label. Same component, not a second chip.
+      style={small ? { padding: "1px 6px" } : undefined}
+    >
       <i />
       {name.toUpperCase()}
     </span>
