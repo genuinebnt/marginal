@@ -169,9 +169,7 @@ export function HistoryScreen() {
 
         <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <div style={{ padding: "24px 34px 18px", borderBottom: "1px solid rgba(255,255,255,.07)" }}>
-            <Label style={{ display: "block", marginBottom: 12 }}>
-              SCRUBBER · TICKS COLOURED BY ACTOR
-            </Label>
+            <Label style={{ display: "block" }}>SCRUBBER · TICKS COLOURED BY ACTOR</Label>
             <div
               style={{ position: "relative", height: 34, cursor: steps.length ? "pointer" : "default" }}
               onClick={(e) => {
@@ -269,11 +267,11 @@ export function HistoryScreen() {
             )}
 
             <div style={{ marginTop: 24, display: "flex", gap: 28 }}>
-              <Readout k="STORED" v={<span style={{ fontSize: 15 }}>{num(stored)}</span>} />
-              <Readout k="LIVE" v={<span style={{ fontSize: 15 }}>{num(live)}</span>} />
-              <Readout k="TOMBSTONED" v={<span style={{ fontSize: 15 }}>{num(tombstoned)}</span>}
+              <Readout k="STORED" v={num(stored)} size={15} />
+              <Readout k="LIVE" v={num(live)} size={15} />
+              <Readout k="TOMBSTONED" v={num(tombstoned)} size={15}
                        tone={tombstoned > 0 ? "#E0A34E" : undefined} />
-              <Readout k="FILTER AT REV" v={<span style={{ fontSize: 15 }}>ins ≤ v &lt; del</span>} />
+              <Readout k="FILTER AT REV" v={<>ins ≤ v &lt; del</>} size={15} />
             </div>
           </div>
         </div>

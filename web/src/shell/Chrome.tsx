@@ -53,11 +53,21 @@ export function Spark({ values }: { values: number[] }) {
   );
 }
 
-export function Readout({ k, v, tone }: { k: string; v: ReactNode; tone?: string }) {
+export function Readout({
+  k, v, tone, size,
+}: { k: string; v: ReactNode; tone?: string; size?: number }) {
   return (
     <div className="rd">
       <span className="rd-k">{k}</span>
-      <span className="rd-v" style={tone ? { color: tone } : undefined}>{v}</span>
+      {/* size lands ON .rd-v, as the mockup applies it. Wrapping the value in
+          an inner span looks identical and is not: the class itself then
+          reports the default, which is what a style audit reads. */}
+      <span
+        className="rd-v"
+        style={{ ...(tone ? { color: tone } : {}), ...(size ? { fontSize: size } : {}) }}
+      >
+        {v}
+      </span>
     </div>
   );
 }

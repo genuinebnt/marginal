@@ -101,7 +101,7 @@ export function LabScreen() {
 
       <Body>
         <div style={{ flex: 1, minWidth: 0, padding: "34px 40px", overflowY: "auto" }}>
-          <h1 className="h1" style={{ fontSize: 29, marginBottom: 7 }}>The lab</h1>
+          <h1 className="h1" style={{ fontSize: 27, marginBottom: 8 }}>The lab</h1>
           <div style={{ fontSize: 13, color: "#8C8880", lineHeight: 1.6, maxWidth: 640, marginBottom: 26 }}>
             Screens where the thing being described is running rather than illustrated. Every
             number on them is computed from real input — if an implementation is correct the
@@ -126,9 +126,9 @@ export function LabScreen() {
                     <span style={{ fontFamily: "Spectral,serif", fontSize: 16, color: "#EFEDE7" }}>
                       {e.name}
                     </span>
-                    <span className="mono" style={{ fontSize: 10, color: "#585550" }}>{e.route}</span>
+                    <span className="mono" style={{ fontSize: 9.5, color: "#585550" }}>{e.route}</span>
                     <div style={{ flex: 1 }} />
-                    {live && <span className="mono" style={{ fontSize: 11, color: "#E8873C" }}>→</span>}
+                    {live && <span className="mono" style={{ fontSize: 9.5, color: "#E8873C" }}>→</span>}
                   </div>
                   <div style={{ fontSize: 12, lineHeight: 1.6, color: "#8C8880", marginBottom: 9 }}>
                     {e.blurb}
