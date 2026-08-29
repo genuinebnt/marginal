@@ -59,6 +59,13 @@ const ENTRIES: Entry[] = [
     facts: ["EDITABLE", "CHECKED LIVE"],
   },
   {
+    name: "Analytics",
+    route: "/lab/analytics",
+    to: () => "/lab/analytics",
+    blurb: "HyperLogLog, Count-Min and a t-digest over one editable stream, each beside its exact answer. Duplicate a line and watch the cardinality estimate refuse to move.",
+    facts: ["EDITABLE", "ERROR SHOWN"],
+  },
+  {
     name: "Netcode",
     route: "/lab/netcode",
     blurb: "One editor, four lenses — prediction, rollback, transform, log. Replay from empty must match the incremental view.",

@@ -3974,3 +3974,91 @@ expected and is not a corruption signal.
 
 After the migration: `trace` answers 200 on all 38 pages, and the
 invertibility law holds on every step of every one.
+
+---
+
+## 2026-08-29 — § 12 ANALYTICS: three sketches over an editable stream
+
+`marginal/sketch`, a new module, and `/lab/analytics` — the second of the
+lab screens whose input is a textarea rather than a fixture.
+
+**Why editable.** These screens all claim their figures are *computed*, not
+quoted. The only way to make that claim checkable from the outside is to
+let someone change the input and watch every panel move. § 12 is the best
+case for it in the whole set: duplicate a line and the cardinality estimate
+does not budge, which is the entire argument for a sketch in one gesture;
+paste two hundred distinct actors and the estimate drifts past what 64
+registers can promise, which is the other half of the same argument.
+
+**What is real.**
+
+- `hll.go` — precision clamped 4..16, register = leading-zero run of a
+  splitmix64-mixed hash, harmonic-mean estimate with the linear-counting
+  small-range correction below `2.5m`, register-wise `Merge`. Reports its
+  own `StandardError` (`1.04/√m`), which the screen prints beside the
+  measured error: inside the bound is the structure working, outside it is
+  a finding, and a number with nothing to be judged against is neither.
+- `countmin.go` — `depth × width` of counters, estimate = min across rows.
+  `TopK` takes the candidate set explicitly, because **a Count-Min cannot
+  enumerate its own keys** — the same fact as its privacy property, seen
+  from the query side.
+- `tdigest.go` — buffered adds, scale-limited merging
+  (`4·N·q(1−q)/compression`), interpolated `Quantile`. Its compression
+  claim is tested as what it actually is: ten times the input must not
+  produce ten times the centroids. An assertion on a fixed count would
+  have been a test of one constant.
+- `analyze.go` — `ParseStream` (`actor, page, topic, ms, tags`) **skips**
+  malformed lines and counts them rather than failing: half a line is the
+  normal state of a text box being typed into, and a parser that refused
+  the whole stream mid-keystroke would break the screen exactly while it
+  is in use. `Analyze` returns every sketch's answer *and* the exact one
+  computed from ordinary maps beside it.
+
+**Two bugs that only exist on the far side of the JSON boundary**, both
+shipped once and both now tested at the boundary rather than in Go:
+
+1. `HLLRegisters []uint8` — `encoding/json` renders a `[]byte` as a
+   **base64 string**. The register chart got a string, called `.map` on
+   it, and the whole screen white-screened. Widened to `[]int` at the
+   boundary on purpose.
+2. `P50, P95, P99 float64 \`json:"p50"\`` — a grouped field declaration
+   gives **every** name the same tag, and `encoding/json` drops all
+   fields in a name conflict. The quantiles left Go correct and arrived
+   nowhere; the screen printed `—` for all three while the digest held 16
+   centroids. One tag per field now.
+
+Neither is visible from Go. `TestTheReportSurvivesJSON` marshals and
+unmarshals a real report and asserts on the wire shape.
+
+**Three mockup corrections, made in the mockup first** (`CLAUDE.md`'s rule
+— the mockup is the spec, so it gets changed, never silently diverged
+from):
+
+- § 12's LIVE STREAM was a static list of six timestamped rows. It is now
+  a `.labedit` textarea in the same format `ParseStream` reads, with the
+  field order printed under it.
+- "READS BY TOPIC · 7 DAYS" and "reads per tag, 7 d vs prior 7 d" claimed
+  a window the input cannot support. The window is now stated as what it
+  is: the buffer's second half against its first. `Event` gained `Tags`
+  so TAG MOMENTUM is computed rather than drawn.
+- Two readouts added, because the mockup's originals were unjudgeable:
+  **ITS OWN BOUND** (the HLL's `1.04/√m`, beside the measured error) and
+  **VS RAW ROWS** (what storing the stream would have cost, beside
+  RETENTION/PII — the saving *is* the argument).
+
+`Chrome.Body` gained a `style` prop: § 12 styles `.body` itself, and
+pushing that onto an inner div reads identically but diffs as a defect on
+`.body`.
+
+**Gate:** `node tools/uidiff/uidiff.js 12 /lab/analytics` → **missing 0 ·
+property diffs 0 · chrome text diffs 0**. Nine § 12 checks added to
+`verify.js`, including the two that are the screen's actual claims — a
+duplicate actor must not move the estimate while it *does* move the page
+count, and a new actor must.
+
+**Still not real, stated plainly:** § 12 reads a text box, not
+`docs.page_views`. Nothing in this repo writes page-view events yet, so
+there is no live stream to sketch — that is `v4.1.0`'s own work, and
+`RELEASES.md` now carries a "Landed early, out of order" table saying so
+for this, for Discover (`v4.4.0`), and for the notifications inbox
+(`v3.3.0`).

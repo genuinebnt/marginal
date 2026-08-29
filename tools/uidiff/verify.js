@@ -145,6 +145,56 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
   check('§11 chars and bytes diverge, and the divergence is named',
         /DIVERGENCE/.test(await txt()) && !/pure ASCII/.test(await txt()));
 
+  // ── § 12 ANALYTICS: the stream is editable, and each sketch's behaviour
+  //    under editing IS the claim the screen makes about it ───────────────
+  await go('/lab/analytics', 7000);
+  const rd = async (key) => p.evaluate((k) => {
+    const el = [...document.querySelectorAll('.rd')].find(e => e.innerText.startsWith(k));
+    return el ? el.innerText.split('\n')[1] : null;
+  }, key);
+  check('§12 registers are drawn, one bar each', (await count('.hll-regs > div')) === 64);
+  check('§12 the HLL is shown against its own bound',
+        /ITS OWN BOUND/.test(await txt()) && (await rd('ITS OWN BOUND'))?.startsWith('±'));
+  check('§12 Count-Min never underestimates', /0 underestimates/.test(await txt()));
+
+  // The whole argument for a sketch, in one gesture: a duplicate actor must
+  // not move the cardinality estimate, while the page counter DOES move.
+  const beforeUnique = await rd('ESTIMATE');
+  // The row's own text, not a body-text regex: the page name and its
+  // "4 / 4" counter sit on different lines, so `/name.*/` could never see
+  // the number it was supposed to be watching.
+  const cmRow = (name) => p.evaluate((n) => {
+    const el = [...document.querySelectorAll('.cm-row')].find(e => e.innerText.startsWith(n));
+    return el ? el.innerText.replace(/\n/g, ' ') : null;
+  }, name);
+  const beforeHeavy = await cmRow('sync-protocol-notes');
+  await p.locator('.labedit').click();
+  await p.keyboard.press('Meta+ArrowDown');
+  await p.keyboard.type('\nana, sync-protocol-notes, protocol, 60000, crdt rope');
+  await p.waitForTimeout(1200);
+  check('§12 a duplicate actor does not move the cardinality estimate',
+        (await rd('ESTIMATE')) === beforeUnique, `${beforeUnique} → ${await rd('ESTIMATE')}`);
+  const afterHeavy = await cmRow('sync-protocol-notes');
+  check('§12 but it does move the page count', afterHeavy !== beforeHeavy,
+        `${beforeHeavy} → ${afterHeavy}`);
+
+  // A new actor must move it, or the panel is simply not reading the buffer.
+  const beforeNew = await rd('ESTIMATE');
+  await p.keyboard.type('\nzed, sync-protocol-notes, protocol, 1000, crdt');
+  await p.waitForTimeout(1200);
+  check('§12 a new actor does', (await rd('ESTIMATE')) !== beforeNew,
+        `${beforeNew} → ${await rd('ESTIMATE')}`);
+
+  // Half a line is the normal state of a text box being typed into.
+  await p.keyboard.type('\nthis line is nonsense');
+  await p.waitForTimeout(1000);
+  check('§12 a malformed line is counted, not fatal',
+        /1 skipped/.test(await txt()) && /ESTIMATE/.test(await txt()));
+
+  // Momentum and the topic split are computed from the buffer's two halves,
+  // so appending has to move them too.
+  check('§12 tag momentum is populated', /crdt|rope|blocks/.test(await txt()) && /second half vs first/.test(await txt()));
+
   // ── § 24e NOT FOUND ───────────────────────────────────────────────────
   await go('/p/the-documnt-block-modl', 4000);
   check('§24e a wrong URL is not a redirect', (await p.evaluate(()=>location.pathname)) === '/p/the-documnt-block-modl');

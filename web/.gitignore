@@ -12,14 +12,12 @@ dist
 dist-ssr
 *.local
 
-# Built by services/document-service/scripts/build-wasm.sh /
-# build-graph-wasm.sh / build-diff-wasm.sh / build-trie-wasm.sh —
-# regenerate, don't commit (Go build output + a vendored copy of the Go
-# toolchain's wasm_exec.js).
-public/documentcore.wasm
-public/graph.wasm
-public/diff.wasm
-public/trie.wasm
+# Built by services/document-service/scripts/build-*-wasm.sh — regenerate,
+# don't commit (Go build output, ~3 MB each, plus a vendored copy of the Go
+# toolchain's wasm_exec.js). One line per entrypoint; a new cmd/*wasm needs
+# a new line here, and syntax/mdc were committed once because they didn't
+# get one.
+public/*.wasm
 public/wasm_exec.js
 
 # Editor directories and files

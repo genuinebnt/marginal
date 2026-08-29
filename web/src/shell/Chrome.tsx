@@ -280,9 +280,16 @@ export function Screen({ children }: { children: ReactNode }) {
 
 /** §1.1 — min-height:0 is load-bearing; without it flex children refuse to shrink. */
 export function Body({
-  children, onClick,
-}: { children: ReactNode; onClick?: (e: React.MouseEvent) => void }) {
-  return <div className="body" onClick={onClick}>{children}</div>;
+  children, onClick, style,
+}: {
+  children: ReactNode;
+  onClick?: (e: React.MouseEvent) => void;
+  /** Some mockup sections style `.body` itself rather than a column inside
+   *  it (§ 12 pads and stacks it). Pushing that onto an inner div instead
+   *  reads identically and diffs as a defect on `.body`, so it goes here. */
+  style?: React.CSSProperties;
+}) {
+  return <div className="body" onClick={onClick} style={style}>{children}</div>;
 }
 
 /** The main column. min-width:0 for the same reason Body needs min-height:0. */

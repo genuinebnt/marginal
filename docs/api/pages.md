@@ -333,8 +333,42 @@ span, correlated by trace id.
 | `DELETE` | `/pages/{id}` | `DeletePage` |
 | `GET` | `/pages/{id}/backlinks` | `ListBacklinks` |
 | `GET` | `/pages/{id}/delete-preview` | `PreviewDelete` |
+| `GET` | `/pages/{id}/series` | `GetPageSeries` |
+| `GET` | `/series` | `ListSeries` |
 | `GET` | `/trash` | `ListTrash` |
 | `POST` | `/pages/{id}/restore` | `RestorePage` |
+
+**A series is a page with children.** There is no series table and no
+series id: `GET /pages/{id}/series` answers for *any* page, and the answer
+says which of three positions that page occupies —
+
+```json
+{
+  "membership": "member",
+  "series_page_id": "018f…a1",
+  "series_title": "The Rust Porting Handbook",
+  "number": 7,
+  "parts": [
+    { "page_id": "018f…b2", "title": "The block model", "number": 1,
+      "word_count": 2840, "topic": { "name": "Storage", "color_key": "storage" },
+      "tags": ["blocks", "anchors"] }
+  ]
+}
+```
+
+`membership` is `"none" | "member" | "leader"` — three states that need
+three different sentences on screen (no banner / "Part 7 of 19" with
+prev-next / "19 parts"), so it is one string with three values rather
+than two booleans that can both be true.
+
+`number` is 1-based, as printed. `0` is never a valid part number, which
+is what lets a missing series be an omitted field rather than a sentinel.
+Ordering is `sort_key` — the same ordering the page tree already uses, not
+a second one that could disagree with it.
+
+`GET /series` is the index: every page that has children, with its part
+count and total word count. It is top-level for the same reason `/trash`
+is — it is a view *across* the collection, not a member of it.
 
 `/trash` is top-level rather than `/pages/trash`: it lists pages that are
 no longer in the tree, and nesting it under the collection they left would
