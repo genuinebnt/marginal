@@ -264,3 +264,8 @@ a{color:#E8873C}a:hover{color:#F2A264}
    saga still running. */
 .trash-row{display:flex;align-items:center;gap:12px;padding:11px 0;cursor:pointer;transition:background .14s ease}
 .trash-row:hover{background:#161819}
+
+/* § 24's offline strip. Amber because this is a degradation the product
+   recovers from, not a failure — red is not in this palette for a reason. */
+.offline{position:relative;z-index:7;height:34px;flex:none;display:flex;align-items:center;gap:12px;padding:0 16px;background:rgba(224,163,78,.1);border-bottom:1px solid rgba(224,163,78,.35)}
+.offline-spin{width:11px;height:11px;border:1.5px solid rgba(224,163,78,.35);border-top-color:#E0A34E;border-radius:50%;animation:spin .9s linear infinite;flex:none}

@@ -114,6 +114,14 @@ export interface CollabPage {
   /** Round-trip p99 in ms over the last ACK_WINDOW acks, or null before the
    *  first one. § 04's ACK P99, measured on this connection. */
   ackP99: number | null;
+  /** Ops written while the socket was down, waiting to replay in order. */
+  queued: number;
+  /** Reconnect attempts since the last successful open; 0 while connected. */
+  attempt: number;
+  /** Unix ms of the next scheduled reconnect, or null when not waiting. */
+  retryAt: number | null;
+  /** Reconnect now rather than waiting out the backoff. */
+  retryNow: () => void;
 }
 
 /** How many recent acks the latency percentile is taken over. 100 is one
@@ -230,6 +238,32 @@ export function useCollabPage(pageId: string, actorId: string): CollabPage {
   const inFlightRef = useRef<number[]>([]);
   const samplesRef = useRef<number[]>([]);
   const [ackP99, setAckP99] = useState<number | null>(null);
+
+  /**
+   * The offline queue — § 24 OFFLINE / RECONNECT, made real.
+   *
+   * Before this, `send` was `socketRef.current?.send(...)`: with the socket
+   * gone, the `?.` swallowed the op and the edit was simply lost. Nothing on
+   * screen said so, which is the worst version of this failure — the text was
+   * in the DOM and nowhere else.
+   *
+   * Queued ops replay IN ORDER on reconnect, and that is sound for the same
+   * reason a delayed op is sound: text ops carry anchors, not offsets, and an
+   * anchor resolves in any version that still contains its neighbour — which
+   * it does, because a delete tombstones rather than removes (RFC-002, and
+   * the palimpsest is the same fact from the other side). What is NOT covered:
+   * an op whose anchor neighbour a peer deleted while you were away. The
+   * server rejects that with an error frame, which is surfaced rather than
+   * swallowed — there is no operational transform here and pretending
+   * otherwise would be the dishonest option.
+   */
+  const queueRef = useRef<ClientMessage[]>([]);
+  const [queued, setQueued] = useState(0);
+  /** Reconnect attempts since the last successful open. 0 while connected. */
+  const [attempt, setAttempt] = useState(0);
+  /** Unix ms of the next scheduled reconnect, or null when not waiting. */
+  const [retryAt, setRetryAt] = useState<number | null>(null);
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // How many of THIS block's own text-scope ops are still awaiting their
   // ack — see setBlockText and the "ack" case below. Absent/0 means no
   // batch is in flight.
@@ -242,15 +276,23 @@ export function useCollabPage(pageId: string, actorId: string): CollabPage {
     }));
   }, []);
 
+  // Resetting the document is a PAGE change, not a reconnect. Blanking the
+  // block list every time the socket blinks would flash an empty page at
+  // someone whose text is sitting safely in the queue.
   useEffect(() => {
-    setState("connecting");
     setReady(false);
     orderRef.current = [];
     liveRef.current = new Map();
     pendingTextAcksRef.current = new Map();
+    queueRef.current = [];
+    setQueued(0);
     setBlocks([]);
     setPeers(new Set());
     setCursors(new Map());
+  }, [pageId, actorId]);
+
+  useEffect(() => {
+    setState("connecting");
 
     const url = new URL(`${COLLAB_URL}/collab/pages/${pageId}`);
     url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
@@ -262,9 +304,40 @@ export function useCollabPage(pageId: string, actorId: string): CollabPage {
     const ws = new WebSocket(url);
     socketRef.current = ws;
 
-    ws.onopen = () => setState("open");
-    ws.onclose = () => setState("closed");
-    ws.onerror = () => setState("closed");
+    ws.onopen = () => {
+      setState("open");
+      setAttempt(0);
+      setRetryAt(null);
+      // Replay in order. The server applies each against its own current
+      // state, exactly as it would have when they were sent.
+      const pending = queueRef.current;
+      queueRef.current = [];
+      setQueued(0);
+      for (const msg of pending) {
+        if (msg.type === "op") inFlightRef.current.push(performance.now());
+        ws.send(JSON.stringify(msg));
+      }
+    };
+
+    /**
+     * Exponential backoff, capped, with the delay reported rather than
+     * hidden: a screen that says "retrying" and nothing else is a screen you
+     * cannot tell from a hung one. Capped at 15s because this is a person
+     * waiting, not a batch job — and reset to 0 on a successful open, so a
+     * flaky connection does not inherit yesterday's backoff.
+     */
+    const scheduleReconnect = () => {
+      if (retryTimer.current) return;
+      const delay = Math.min(1000 * 2 ** attempt, 15000);
+      setRetryAt(Date.now() + delay);
+      retryTimer.current = setTimeout(() => {
+        retryTimer.current = null;
+        setAttempt((a) => a + 1);
+      }, delay);
+    };
+
+    ws.onclose = () => { setState("closed"); scheduleReconnect(); };
+    ws.onerror = () => { setState("closed"); scheduleReconnect(); };
 
     function applyStructural(op: PageOp & { scope: "block" }) {
       switch (op.type) {
@@ -450,8 +523,30 @@ export function useCollabPage(pageId: string, actorId: string): CollabPage {
       }
     };
 
-    return () => ws.close();
-  }, [pageId, actorId, publish]);
+    return () => {
+      // Clear the handlers before closing: onclose would otherwise fire
+      // during teardown and schedule a reconnect for a socket nobody wants.
+      ws.onclose = null;
+      ws.onerror = null;
+      ws.close();
+    };
+  }, [pageId, actorId, publish, attempt]);
+
+  // A reconnect timer must not outlive the hook.
+  useEffect(() => () => {
+    if (retryTimer.current) clearTimeout(retryTimer.current);
+    retryTimer.current = null;
+  }, []);
+
+  /** Try now instead of waiting out the backoff — § 24's RETRY NOW. */
+  const retryNow = useCallback(() => {
+    if (retryTimer.current) {
+      clearTimeout(retryTimer.current);
+      retryTimer.current = null;
+    }
+    setRetryAt(null);
+    setAttempt((a) => a + 1);
+  }, []);
 
   const send = useCallback((msg: ClientMessage) => {
     if (msg.type === "op") {
@@ -466,7 +561,20 @@ export function useCollabPage(pageId: string, actorId: string): CollabPage {
       // smaller lie than a p99 measured against the wrong send.
       inFlightRef.current.length = 0;
     }
-    socketRef.current?.send(JSON.stringify(msg));
+    const ws = socketRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(msg));
+      return;
+    }
+    // Offline. The op is kept, in order, and replayed on reconnect. A cursor
+    // frame is NOT: it is a position that will be stale by the time the
+    // socket returns, and replaying it would move a caret nobody moved.
+    if (msg.type === "cursor") return;
+    // The latency sample cannot be paired against an ack that has not been
+    // asked for yet — it is re-timestamped at flush.
+    if (msg.type === "op") inFlightRef.current.pop();
+    queueRef.current.push(msg);
+    setQueued(queueRef.current.length);
   }, []);
 
   const setCursor = useCallback(
@@ -581,5 +689,5 @@ export function useCollabPage(pageId: string, actorId: string): CollabPage {
   const redo = useCallback(() => send({ type: "redo" }), [send]);
   const restoreTo = useCallback((toStep: number) => send({ type: "restore", to_step: toStep }), [send]);
 
-  return { state, ready, blocks, peers, cursors, ackP99, setCursor, setBlockText, setBlockContent, insertBlock, deleteBlock, setBlockKind, moveBlock, undo, redo, restoreTo };
+  return { state, ready, blocks, peers, cursors, ackP99, queued, attempt, retryAt, retryNow, setCursor, setBlockText, setBlockContent, insertBlock, deleteBlock, setBlockKind, moveBlock, undo, redo, restoreTo };
 }

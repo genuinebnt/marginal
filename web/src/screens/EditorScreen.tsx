@@ -12,7 +12,8 @@ import { SeriesBanner } from "../ui";
 import { RichEditorPane } from "./RichEditorPane";
 import { InspectorRail } from "./InspectorRail";
 import { PageTreeRail } from "./PageTreeRail";
-import { Body, Readout, Screen, Spark, StatusBar, TopBar } from "../shell/Chrome";
+import { Body, Readout, Screen, Spark, StatusBar, TopBar, num } from "../shell/Chrome";
+import { OfflineBanner } from "../shell/OfflineBanner";
 
 /**
  * The editor screen for one page: the real nested page tree (rail), the
@@ -197,6 +198,9 @@ export function EditorScreen() {
               v={collab.ackP99 === null ? "—" : `${Math.round(collab.ackP99)} ms`}
               tone={collab.ackP99 === null ? undefined : collab.ackP99 < 50 ? "#3FCFA8" : "#E0A34E"}
             />
+            {collab.queued > 0 && (
+              <Readout k="QUEUED OPS" v={num(collab.queued)} tone="#E0A34E" />
+            )}
             <Readout
               k="LINK"
               v={collab.state === "open" ? "live" : collab.state}
@@ -226,6 +230,17 @@ export function EditorScreen() {
             </div>
           </>
         }
+      />
+
+      {/* § 24: the state every route can enter. Nothing is lost — the ops are
+          queued in order and replay on reconnect — so the strip reports the
+          queue and the countdown rather than raising an error. */}
+      <OfflineBanner
+        state={collab.state}
+        queued={collab.queued}
+        attempt={collab.attempt}
+        retryAt={collab.retryAt}
+        onRetry={collab.retryNow}
       />
 
       {/* The same series strip the reader carries — the page is one page, and

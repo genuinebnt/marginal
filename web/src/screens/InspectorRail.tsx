@@ -20,7 +20,7 @@ import type { Diagnostic } from "../api/diagnostics";
 import type { CollabPage } from "../collab/useCollabPage";
 import { Label, Rule, TopicChip, num } from "../shell/Chrome";
 
-type Tab = "outline" | "checks" | "links" | "presence";
+type Tab = "outline" | "checks" | "links" | "presence" | "queue";
 
 /** A short, stable two-character tag for an actor — never their id verbatim. */
 function actorTag(actorId: string): string {
@@ -72,6 +72,13 @@ export function InspectorRail({
           { id: "checks", label: "CHECKS", count: open.length, tone: "#E0A34E" },
           { id: "links", label: "LINKS", count: backlinks.length, tone: "#E8873C" },
           { id: "presence", label: "PRESENCE", count: collab.peers.size, tone: "#A98CE8" },
+          // § 24's own tab, and it appears only when there IS a queue: a
+          // permanently-visible "QUEUE 0" is a tab that teaches you to ignore
+          // it, which is exactly wrong for the one that matters when it is
+          // not zero.
+          ...(collab.queued > 0 || collab.state !== "open"
+            ? [{ id: "queue" as Tab, label: "QUEUE", count: collab.queued, tone: "#E0A34E" }]
+            : []),
         ] as Array<{ id: Tab; label: string; count?: number; tone?: string }>).map((t) => (
           <span
             key={t.id}
@@ -183,6 +190,69 @@ export function InspectorRail({
                 )}
               </div>
             ))}
+          </>
+        )}
+
+        {tab === "queue" && (
+          <>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+              <Label>QUEUED · IN ORDER</Label>
+              <span className="mono" style={{ marginLeft: "auto", fontSize: 10, color: "#E0A34E" }}>
+                {num(collab.queued)}
+              </span>
+            </div>
+            <div style={{ fontSize: 11.5, lineHeight: 1.65, color: "#8C8880" }}>
+              Nothing is lost. Ops replay in the order they were written, and the server
+              applies each against its own current state — which works because a text op
+              names an <b style={{ color: "#C3BFB7", fontWeight: 500 }}>anchor</b>, not an
+              offset, and an anchor resolves in any version that still contains its
+              neighbour. A delete tombstones rather than removes, so it always does.
+            </div>
+
+            <Rule />
+            <Label>ON RECONNECT</Label>
+            {[
+              "Queued ops replay, in order",
+              "The server re-sends a snapshot, so the document is its state, not ours",
+              "Anything that could not apply comes back as an error frame",
+            ].map((line, i) => (
+              <div key={i} style={{ display: "flex", gap: 9, alignItems: "baseline" }}>
+                <span style={{ color: "#3FCFA8", fontSize: 10 }}>{i + 1}</span>
+                <span style={{ fontSize: 11.5, color: "#8C8880" }}>{line}</span>
+              </div>
+            ))}
+            <div style={{ fontSize: 11, lineHeight: 1.6, color: "#585550" }}>
+              No conflict dialog appears when the socket returns — but there is no
+              operational transform here either, so an op whose anchor a peer deleted while
+              you were away is REJECTED rather than merged. Stated, because pretending
+              otherwise is the dishonest option.
+            </div>
+
+            <Rule />
+            <Label>WHAT IS NOT CACHED</Label>
+            <div style={{ fontSize: 11.5, lineHeight: 1.65, color: "#8C8880" }}>
+              The document itself. A page's blocks arrive in the server's snapshot, so a page
+              you have not opened this session is <b style={{ color: "#C3BFB7", fontWeight: 500 }}>unavailable</b>{" "}
+              offline rather than stale — nothing here keeps a local copy. The queue protects
+              edits you already made; it does not make the workspace readable without a server.
+            </div>
+
+            <Rule />
+            <Label>WHAT KEEPS WORKING</Label>
+            {[["typing", true], ["undo / redo", true], ["reading this page", true],
+              ["opening a page you have not opened", false],
+              ["search", false], ["the graph", false], ["opening another page", false]].map(
+              ([what, ok]) => (
+                <div key={what as string} style={{
+                  display: "flex", alignItems: "baseline", gap: 8, fontSize: 11.5, color: "#9B968D",
+                }}>
+                  <span style={{ flex: 1 }}>{what}</span>
+                  <span className="mono" style={{ fontSize: 11, color: ok ? "#3FCFA8" : "#585550" }}>
+                    {ok ? "yes" : "no"}
+                  </span>
+                </div>
+              ),
+            )}
           </>
         )}
 
