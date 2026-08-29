@@ -85,9 +85,17 @@ export function TrashScreen() {
 
   // The blast radius panel is about a LIVE page, so it can only be shown for
   // one that still exists. A deleted page's descendants have gone with it.
+  /** Set when a selected row has no live blast radius to report. */
+  const [previewGone, setPreviewGone] = useState(false);
   useEffect(() => {
-    if (!actorId || !selected) { setPreview(null); return; }
-    previewDelete(actorId, selected).then(setPreview).catch(() => setPreview(null));
+    if (!actorId || !selected) { setPreview(null); setPreviewGone(false); return; }
+    previewDelete(actorId, selected)
+      .then((r) => { setPreview(r); setPreviewGone(false); })
+      // PreviewDelete reads a LIVE page, and this one is in the trash — its
+      // subtree went with it and its inbound links are already dangling. That
+      // is a real answer, not a failure, and saying nothing would leave the
+      // panel looking like it had not loaded.
+      .catch(() => { setPreview(null); setPreviewGone(true); });
   }, [actorId, selected]);
 
   const deleting = entries.filter((e) => e.page.lifecycle_state === "deleting").length;
@@ -244,9 +252,21 @@ export function TrashScreen() {
           {!selected && (
             <div style={{ fontSize: 11.5, lineHeight: 1.65, color: "#585550" }}>
               Pick a row. The blast radius is computed for a LIVE page — the subtree it would
-              take and the links that would dangle — so a page already in the trash has none
-              left to report.
+              take and the links that would dangle.
             </div>
+          )}
+          {selected && previewGone && (
+            <>
+              <div style={{ fontSize: 11.5, lineHeight: 1.65, color: "#8C8880" }}>
+                This page is already deleted, so there is no blast radius left to compute: its
+                subtree went with it, and every link that pointed here is{" "}
+                <b style={{ color: "#E0A34E", fontWeight: 500 }}>dangling</b> already.
+              </div>
+              <div style={{ fontSize: 11, lineHeight: 1.6, color: "#585550" }}>
+                Restoring it re-resolves those links — the projection rebuilds from the op log,
+                which was sealed rather than deleted. Nothing about them was stored as broken.
+              </div>
+            </>
           )}
           {selected && preview && (
             <>

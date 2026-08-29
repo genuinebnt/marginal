@@ -33,9 +33,14 @@ ON CONFLICT (id) DO NOTHING
 RETURNING *;
 
 -- name: ListOpsForPage :many
+-- ORDER BY seq, not created_at. `created_at` defaults to now(), which is the
+-- TRANSACTION start time, and internal/flush writes a whole drain batch in
+-- one transaction — so every op in a batch shared a timestamp and replay
+-- ordered them arbitrarily. That broke I0.2 directly: a container's child
+-- could replay before the container existed, and .../trace answered 500.
 SELECT * FROM collab.ops
 WHERE page_id = $1
-ORDER BY created_at ASC;
+ORDER BY seq ASC;
 
 -- name: InsertOutboxEvent :one
 -- id is generated application-side (uuid.Must(uuid.NewV7()) in opstore.go),

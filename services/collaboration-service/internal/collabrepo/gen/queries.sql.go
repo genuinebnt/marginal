@@ -59,7 +59,7 @@ INSERT INTO collab.ops (
     $1, $2, $3, $4, $5, $6, $7, $8, $9
 )
 ON CONFLICT (id) DO NOTHING
-RETURNING id, page_id, actor_id, actor_kind, undo_group, encoding_version, kind, payload, vector_clock, created_at
+RETURNING id, page_id, actor_id, actor_kind, undo_group, encoding_version, kind, payload, vector_clock, created_at, seq
 `
 
 type InsertOpParams struct {
@@ -106,6 +106,7 @@ func (q *Queries) InsertOp(ctx context.Context, arg InsertOpParams) (CollabOp, e
 		&i.Payload,
 		&i.VectorClock,
 		&i.CreatedAt,
+		&i.Seq,
 	)
 	return i, err
 }
@@ -145,11 +146,16 @@ func (q *Queries) InsertOutboxEvent(ctx context.Context, arg InsertOutboxEventPa
 }
 
 const listOpsForPage = `-- name: ListOpsForPage :many
-SELECT id, page_id, actor_id, actor_kind, undo_group, encoding_version, kind, payload, vector_clock, created_at FROM collab.ops
+SELECT id, page_id, actor_id, actor_kind, undo_group, encoding_version, kind, payload, vector_clock, created_at, seq FROM collab.ops
 WHERE page_id = $1
-ORDER BY created_at ASC
+ORDER BY seq ASC
 `
 
+// ORDER BY seq, not created_at. `created_at` defaults to now(), which is the
+// TRANSACTION start time, and internal/flush writes a whole drain batch in
+// one transaction — so every op in a batch shared a timestamp and replay
+// ordered them arbitrarily. That broke I0.2 directly: a container's child
+// could replay before the container existed, and .../trace answered 500.
 func (q *Queries) ListOpsForPage(ctx context.Context, pageID pgtype.UUID) ([]CollabOp, error) {
 	rows, err := q.db.Query(ctx, listOpsForPage, pageID)
 	if err != nil {
@@ -170,6 +176,7 @@ func (q *Queries) ListOpsForPage(ctx context.Context, pageID pgtype.UUID) ([]Col
 			&i.Payload,
 			&i.VectorClock,
 			&i.CreatedAt,
+			&i.Seq,
 		); err != nil {
 			return nil, err
 		}

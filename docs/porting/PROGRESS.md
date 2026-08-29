@@ -3935,3 +3935,42 @@ child reveal, reduced-motion honoured.
   Compiler, 12 Analytics, 14 Netcode, 16 Perf, 18/18b/18c Admin, 19
   Settings, 21 Media, 22 Plugins, 23/23b/23d Spaces, Profile,
   Import-export, 24 Offline, 24d Assistant.
+
+
+### `collab.ops` had no ordering column, and replay was arbitrary
+
+Found by running the verification pass rather than by reading the code:
+`GET .../trace` returned **500** on a page whose seed batch happened to
+land the wrong way round —
+
+```
+session: trace: replaying op 16: block not found: a5ba8e49…
+```
+
+`ORDER BY created_at`, and `created_at` defaults to `now()` — which in
+Postgres is the **transaction start time**. `internal/flush` writes a
+whole drain batch in one transaction (RFC-002 §7's batching), so every op
+in a batch shares one timestamp and replay ordered them arbitrarily. A
+container's child could replay before the container existed.
+
+That is **I0.2 broken directly** — replay must reproduce the projection —
+and the visible symptom was that Trace and History were dark on affected
+pages while the editor looked fine, because the editor never replays: it
+reads the server's live session state.
+
+`DATA_MODEL.md` has specified `seq bigint` since the schema was written.
+It was never implemented. Migration `00002_ops_seq` adds it, backfilling
+by `(created_at, id)` — the op id is a server-generated UUIDv7 assigned as
+each op is accepted, so it is monotonic in arrival order and puts every
+container back in front of its children (verified against the corrupted
+rows).
+
+**One deliberate weakening of DATA_MODEL's wording, recorded rather than
+quietly diverged from:** the sequence is GLOBAL, not gapless per page.
+Gapless-per-page needs a counter per page, which needs a lock or a row on
+the write path that every keystroke pays for; what ordering actually
+requires is monotonicity. A gap in one page's numbers is therefore
+expected and is not a corruption signal.
+
+After the migration: `trace` answers 200 on all 38 pages, and the
+invertibility law holds on every step of every one.

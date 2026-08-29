@@ -19,6 +19,7 @@ type CollabOp struct {
 	Payload         []byte
 	VectorClock     []byte
 	CreatedAt       pgtype.Timestamptz
+	Seq             int64
 }
 
 type CollabOutbox struct {

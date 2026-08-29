@@ -25,7 +25,7 @@ INSERT INTO collab.ops (
     $1, $2, $3, $4, $5, $6, $7, $8, $9
 )
 ON CONFLICT (id) DO NOTHING
-RETURNING id, page_id, actor_id, actor_kind, undo_group, encoding_version, kind, payload, vector_clock, created_at
+RETURNING id, page_id, actor_id, actor_kind, undo_group, encoding_version, kind, payload, vector_clock, created_at, seq
 `
 
 type InsertOpBatchBatchResults struct {
@@ -94,6 +94,7 @@ func (b *InsertOpBatchBatchResults) QueryRow(f func(int, CollabOp, error)) {
 			&i.Payload,
 			&i.VectorClock,
 			&i.CreatedAt,
+			&i.Seq,
 		)
 		if f != nil {
 			f(t, i, err)
