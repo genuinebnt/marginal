@@ -63,6 +63,25 @@ a{color:#E8873C}a:hover{color:#F2A264}
 .tr:hover .tr-a{opacity:1}
 .tr-n{font:400 9px 'IBM Plex Mono',monospace;color:#4B4842}
 .tr-on{position:relative;padding-left:24px;background:#181A1B;color:#E4E2DC;font-weight:500}
+/* v2.9.0 · the rail carries four facts per row, not one.
+   The left-edge pair is genuine-folio's ContentRowBars: "what state is this
+   in" and "what is it about" are two questions, and one coloured dot can only
+   ever answer one of them. Depth guides replace bare indentation, which stops
+   being legible past two levels. */
+.tr-bars{display:flex;gap:2px;align-self:stretch;flex:none;margin-right:2px}
+.tr-tick{width:2px;height:8px;align-self:center;background:rgba(255,255,255,.14)}
+.tr-tick-on{background:#E8873C;height:14px}
+.tr-tick-del{background:#E0A34E}
+.tr-tick-live{background:#3FCFA8}
+.tr-bar{width:2px;align-self:stretch;background:rgba(255,255,255,.08)}
+.tr-guides{display:flex;flex:none;align-self:stretch}
+.tr-guide{width:16px;align-self:stretch;border-left:1px solid rgba(255,255,255,.055)}
+/* A branch says how many pages are under it, and says PARTS once it has
+   enough of them to BE a series. Two is the threshold, matching the server. */
+.tr-parts{font:400 8.5px 'IBM Plex Mono',monospace;letter-spacing:.1em;color:#6E6A63;border:1px solid rgba(255,255,255,.1);padding:0 4px;flex:none}
+.tr-parts-series{color:#E8873C;border-color:rgba(232,135,60,.35)}
+.tr-count{margin-left:auto;padding-left:8px;color:#4B4842}
+.tr-hit{background:rgba(232,135,60,.22);color:#EFEDE7}
 .tr-on i{position:absolute;left:0;top:4px;bottom:4px;width:2px;background:#E8873C}
 .wal{margin-top:auto;padding:12px 14px;border-top:1px solid rgba(255,255,255,.07);display:flex;flex-direction:column;gap:6px}
 .insp{width:332px;flex:none;box-sizing:border-box;background:#0F1012;border-left:1px solid rgba(255,255,255,.07);display:flex;flex-direction:column}
@@ -102,6 +121,42 @@ a{color:#E8873C}a:hover{color:#F2A264}
 .chip-t{border-color:rgba(63,207,168,.45);color:#3FCFA8}
 .chip-s{border-color:rgba(125,158,201,.5);color:#7D9EC9}
 .chip-e{border-color:rgba(232,135,60,.45);color:#E8873C}
+/* ── § 10d, § 05, § 04 · adapted from genuine-folio ─────────────────────────
+   Its writing index and series pages are built from four small pieces: a
+   left-edge status/topic bar pair, a list/grid toggle, a card, and a numbered
+   path list. The IDEAS are reused; none of its CSS is, because that belongs
+   to another design system and importing it would fork this palette. */
+.card{position:relative;color:#E4E2DC;display:flex;flex-direction:column;gap:6px;padding:12px 13px;box-sizing:border-box;background:#131415;border:1px solid rgba(255,255,255,.08)}
+.card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--acc,#4B4842);opacity:.55}
+.card-top{display:flex;align-items:center;gap:7px}
+.card-dot{width:5px;height:5px;flex:none}
+.card-topic{font-size:8.5px;letter-spacing:.16em}
+.card-title{font-family:Spectral,serif;font-size:14px;line-height:1.3;color:#E4E2DC}
+.card-ex{font-size:10.5px;line-height:1.45;color:#8C8880;overflow:hidden;max-height:2.9em}
+.card-meta{margin-top:auto;font-size:9px;color:#585550;display:flex;gap:10px;align-items:center}
+.sbanner{display:flex;align-items:center;gap:12px;flex:none;padding:8px 16px;background:#131415;border-bottom:1px solid rgba(255,255,255,.07);z-index:6}
+.sbanner-of{font-size:12px;color:#9B968D}
+.sbanner-of b{color:#E4E2DC;font-weight:500}
+.sbanner-name{color:#E8873C;text-decoration:none}
+.sbanner-total{font-size:10px;color:#585550}
+.sbanner-rule{width:120px;height:2px;background:rgba(255,255,255,.09);flex:none}
+.sbanner-rule i{display:block;height:100%;background:#E8873C;font-style:normal}
+.sbanner-nav{max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11.5px;color:#9B968D;text-decoration:none}
+.sbanner-nav-next{color:#C3BFB7}
+.sbanner-nav-off{color:#4B4842}
+.path{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+.path-step{display:flex;gap:10px;align-items:baseline}
+.path-n{font:400 9.5px 'IBM Plex Mono',monospace;color:#4B4842;width:16px;flex:none;text-align:right}
+.path-dest .path-n{color:#E8873C}
+.path-body{flex:1;min-width:0;display:flex;align-items:baseline;gap:8px;padding:3px 6px;text-decoration:none}
+.path-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:#9B968D}
+.path-dest .path-title{color:#E4E2DC}
+.path-why{font:400 9px 'IBM Plex Mono',monospace;color:#4B4842;flex:none}
+.srow{display:flex;align-items:center;gap:12px;padding:11px 6px;border-bottom:1px solid rgba(255,255,255,.06)}
+.srow-t{font-family:Spectral,serif;font-size:15px;color:#E4E2DC}
+.srow-m{font:400 10px 'IBM Plex Mono',monospace;color:#585550;margin-top:3px}
+.srow-n{font:400 10px 'IBM Plex Mono',monospace;color:#585550;flex:none}
+.srow-p{font:400 10px 'IBM Plex Mono',monospace;color:#E8873C;width:18px;flex:none}
 /* ── topics & tags ──────────────────────────────────────────────────────────
    A TOPIC is a single owned classification (one per page, a real column) and
    is what the graph clusters by, what Discover's HNSW filters on, and what
@@ -748,20 +803,20 @@ a{color:#E8873C}a:hover{color:#F2A264}
     <div class="spark"><div style="width:3px;height:6px;background:rgba(232,135,60,.35)"></div><div style="width:3px;height:11px;background:rgba(232,135,60,.5)"></div><div style="width:3px;height:8px;background:rgba(232,135,60,.4)"></div><div style="width:3px;height:15px;background:#E8873C"></div><div style="width:3px;height:9px;background:rgba(232,135,60,.45)"></div></div>
     <div class="vr"></div>
     <div style="display:flex;gap:5px"><div class="clk"><b>14:06</b><span>THU 12 MAR</span></div><span class="kbd">⌘K</span><div class="icb">◎<div class="bdg">6</div></div><div class="icb">⚙</div><div class="av av-you">GN</div><div class="av av-them">AD</div><div class="av av-ai">✦</div></div>
-    <div class="btn">SHARE<div class="brk-tl"></div><div class="brk-br"></div></div>
+    <div class="btn">READ<div class="brk-tl"></div><div class="brk-br"></div></div><div class="btn">SHARE<div class="brk-tl"></div><div class="brk-br"></div></div>
   </div>
   <div class="body">
     <div class="rail">
       <div class="rail-h">PAGE TREE<div></div><span style="color:#585550">31</span></div>
       <div class="filt">filter…</div>
       <div style="display:flex;flex-direction:column;gap:1px;padding:0 8px">
-        <div class="tr"><span class="tr-n">01</span>Inbox</div>
-        <div class="tr"><span class="tr-n">02</span>Product<span style="margin-left:auto" class="tr-n">12</span></div>
-        <div class="tr tr-on"><i></i><span class="tr-n" style="color:#E8873C">03</span>Sync protocol notes</div>
-        <div class="tr" style="padding-left:24px"><span class="tr-n">04</span>Block model</div>
-        <div class="tr" style="padding-left:24px;color:#585550;text-decoration:line-through;text-decoration-color:rgba(224,163,78,.7)"><span class="tr-n">05</span>Old rope notes<span style="margin-left:auto;font:400 8.5px 'IBM Plex Mono',monospace;color:#E0A34E">DELETING</span></div>
-        <div class="tr"><span class="tr-n">06</span>Research</div>
-        <div class="tr"><span class="tr-n">07</span>Archive<span style="margin-left:auto" class="tr-n">88</span></div>
+        <div class="tr"><span class="tr-bars"><span class="tr-tick"></span><span class="tr-bar"></span></span><span class="tr-n">01</span><span class="tr-t">Inbox</span><span class="tr-n tr-count">1m</span></div>
+        <div class="tr"><span class="tr-bars"><span class="tr-tick tr-tick-live"></span><span class="tr-bar" style="background:#7AA8E8"></span></span><span class="tr-n">02</span><span class="tr-t">Product</span><span class="tr-parts tr-parts-series">12 PARTS</span><span class="tr-n tr-count">9m</span></div>
+        <div class="tr tr-on"><i></i><span class="tr-bars"><span class="tr-tick tr-tick-on"></span><span class="tr-bar" style="background:#7AA8E8"></span></span><span class="tr-n" style="color:#E8873C">03</span><span class="tr-t">Sync protocol notes</span><span class="tr-n tr-count">6m</span></div>
+        <div class="tr"><span class="tr-guides"><span class="tr-guide"></span></span><span class="tr-bars"><span class="tr-tick"></span><span class="tr-bar" style="background:#C48AE0"></span></span><span class="tr-n">04</span><span class="tr-t">Block model</span><span class="tr-n tr-count">4m</span></div>
+        <div class="tr" style="color:#585550;text-decoration:line-through;text-decoration-color:rgba(224,163,78,.7)"><span class="tr-guides"><span class="tr-guide"></span></span><span class="tr-bars"><span class="tr-tick tr-tick-del"></span><span class="tr-bar"></span></span><span class="tr-n">05</span><span class="tr-t">Old rope notes</span><span style="margin-left:auto;font:400 8.5px 'IBM Plex Mono',monospace;color:#E0A34E">DELETING</span></div>
+        <div class="tr"><span class="tr-bars"><span class="tr-tick"></span><span class="tr-bar" style="background:#D07C8A"></span></span><span class="tr-n">06</span><span class="tr-t">Research</span><span class="tr-n tr-count">3m</span></div>
+        <div class="tr"><span class="tr-bars"><span class="tr-tick"></span><span class="tr-bar"></span></span><span class="tr-n">07</span><span class="tr-t">Archive</span><span class="tr-parts tr-parts-series">88 PARTS</span><span class="tr-n tr-count">2m</span></div>
       </div>
       <!-- Hierarchy of the CONTENT, not of the workspace. Kept in the rail
            rather than behind an inspector tab because it is navigation, and
@@ -898,7 +953,7 @@ a{color:#E8873C}a:hover{color:#F2A264}
       </div>
     </div>
     <div class="insp">
-      <div class="insp-t"><span class="it">OUTLINE</span><span class="it it-on">CHECKS <span style="color:#E0A34E">2</span></span><span class="it">LINKS</span><span class="it">PRESENCE</span></div>
+      <div class="insp-t"><span class="it">OUTLINE</span><span class="it it-on">CHECKS <span style="color:#E0A34E">2</span></span><span class="it">LINKS <span style="color:#E8873C">4</span></span><span class="it">PRESENCE <span style="color:#A98CE8">1</span></span></div>
       <div style="padding:14px;display:flex;flex-direction:column;gap:12px">
         <span class="lbl">STRUCTURAL</span>
         <div style="display:flex;gap:9px"><div style="width:2px;background:#E0A34E"></div><div><div style="font-size:12.5px;line-height:1.45;color:#D2CFC8">Link to a page that does not exist yet</div><div class="mono" style="font-size:10px;color:#585550;margin-top:3px">block 7f3a · [[Rope internals]]</div><div style="margin-top:7px"><span class="chip chip-a">CREATE PAGE</span></div></div></div>
@@ -2023,6 +2078,56 @@ a{color:#E8873C}a:hover{color:#F2A264}
   <div class="status"><span>/lab</span><span>six screens · every figure computed</span><div style="flex:1"></div><span style="color:#3FCFA8">● 0 authored numbers</span></div>
 </div>
 
+<div class="tag"><b>10d</b> SERIES <i>a series is a page with children — nothing else to set up</i></div>
+<div class="sc">
+  <div class="scan"></div>
+  <div class="bar">
+    <span class="wm">m<span style="color:#E8873C">/</span>arginal</span>
+    <div class="tabs"><span class="tb">Write</span><span class="tb tb-on">Read</span><span class="tb">Search</span><span class="tb">Graph</span><span class="tb">History</span><span class="tb">Lab</span></div>
+    <span class="crumb">series / <b>The Rust Porting Handbook</b></span>
+    <div style="flex:1"></div>
+    <div class="rd"><span class="rd-k">SERIES</span><span class="rd-v">1</span></div>
+    <div class="rd"><span class="rd-k">PARTS</span><span class="rd-v">19</span></div>
+    <div class="rd"><span class="rd-k">READ TIME</span><span class="rd-v">~48 min</span></div>
+    <div class="vr"></div>
+    <div class="clk"><b>14:06</b><span>THU 12 MAR</span></div><span class="kbd">⌘K</span><div class="icb">◎<div class="bdg">6</div></div><div class="icb">⚙</div><div class="av av-you">GN</div>
+  </div>
+  <!-- No series table, no series_name column, no second ordering. The page
+       tree already says "these belong together, in this order" and sort_key
+       already orders them — so dragging a part in the rail reorders the
+       series, by construction rather than by a second write. The accepted
+       cost: a page cannot be in two series, which is the tree's own
+       constraint and the same one a topic has. -->
+  <div class="sub"><span class="sb">ALL SERIES</span><span class="sb sb-on">THE RUST PORTING HANDBOOK</span><div style="flex:1"></div><span class="sb">a series is a page with children — reorder it in the rail</span></div>
+  <div class="body">
+    <div style="flex:1;min-width:0;padding:24px 32px;display:flex;flex-direction:column;overflow:hidden">
+      <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:16px">
+        <h1 class="h1" style="font-size:22px">The Rust Porting Handbook</h1>
+        <span class="mono" style="font-size:11px;color:#585550">19 parts · ~48 min · ordered by the page tree</span>
+        <div style="flex:1"></div>
+        <span class="chip">≡ LIST</span><span class="chip chip-e">⊞ GRID</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+        <div class="card" style="--acc:#D6A660"><div class="card-top"><span class="card-dot" style="background:#D6A660"></span><span class="mono card-topic" style="color:#D6A660">OPERATIONS</span></div><div class="card-title">The shape of the port</div><div class="card-ex">rust · porting · architecture</div><div class="card-meta mono"><span style="color:#E8873C">PART 01</span><span>~4 min</span></div></div>
+        <div class="card" style="--acc:#D6A660"><div class="card-top"><span class="card-dot" style="background:#D6A660"></span><span class="mono card-topic" style="color:#D6A660">OPERATIONS</span></div><div class="card-title">Crate layout and the workspace</div><div class="card-ex">rust · porting · cargo</div><div class="card-meta mono"><span style="color:#E8873C">PART 02</span><span>~4 min</span></div></div>
+        <div class="card" style="--acc:#C48AE0"><div class="card-top"><span class="card-dot" style="background:#C48AE0"></span><span class="mono card-topic" style="color:#C48AE0">STORAGE</span></div><div class="card-title">The data model, in Rust types</div><div class="card-ex">rust · postgres · datamodel</div><div class="card-meta mono"><span style="color:#E8873C">PART 03</span><span>~6 min</span></div></div>
+        <div class="card" style="--acc:#7AA8E8"><div class="card-top"><span class="card-dot" style="background:#7AA8E8"></span><span class="mono card-topic" style="color:#7AA8E8">PROTOCOL</span></div><div class="card-title">The document block model</div><div class="card-ex">rust · editor · datastructures</div><div class="card-meta mono"><span style="color:#E8873C">PART 04</span><span>~5 min</span></div></div>
+        <div class="card" style="--acc:#5AC8B4"><div class="card-top"><span class="card-dot" style="background:#5AC8B4"></span><span class="mono card-topic" style="color:#5AC8B4">INTERFACE</span></div><div class="card-title">The grammar, in full</div><div class="card-ex">grammar · editor · parsing</div><div class="card-meta mono"><span style="color:#E8873C">PART 05</span><span>~4 min</span></div></div>
+        <div class="card" style="--acc:#5AC8B4"><div class="card-top"><span class="card-dot" style="background:#5AC8B4"></span><span class="mono card-topic" style="color:#5AC8B4">INTERFACE</span></div><div class="card-title">The parser and the paste pipeline</div><div class="card-ex">compilers · parsing · rust</div><div class="card-meta mono"><span style="color:#E8873C">PART 06</span><span>~5 min</span></div></div>
+      </div>
+      <div style="margin-top:auto;padding-top:20px;border-top:1px solid rgba(255,255,255,.07);display:flex;gap:26px;align-items:flex-start">
+        <div style="flex:1">
+          <div class="lbl" style="margin-bottom:10px">HOW THE ORDER IS DECIDED</div>
+          <div style="font-size:11.5px;line-height:1.7;color:#8C8880;max-width:560px">By <span class="mono" style="color:#C3BFB7">sort_key</span> — the same fractional index the page tree orders by, so dragging a part in the rail reorders the series and there is no second write to keep in step.</div>
+        </div>
+        <div class="rd"><span class="rd-k">PARTS</span><span class="rd-v" style="font-size:15px">19</span></div>
+        <div class="rd"><span class="rd-k">WORDS</span><span class="rd-v" style="font-size:15px">10 569</span></div>
+        <div class="rd"><span class="rd-k">TOPICS SPANNED</span><span class="rd-v" style="font-size:15px">5</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="status"><span>/series/the-rust-porting-handbook</span><span>a series is a page with children · ordered by sort_key</span><div style="flex:1"></div><span style="color:#3FCFA8">● no series table · the tree IS the ordering</span></div>
+</div>
 <div class="tag"><b>11</b> COMPILER <i>paste and import as a pipeline — buffer → tokens → AST → tree → ops</i></div>
 <div class="sc">
   <div class="scan"></div>

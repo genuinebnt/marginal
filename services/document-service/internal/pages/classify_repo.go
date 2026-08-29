@@ -163,6 +163,43 @@ func (r *PostgresRepo) StatsFor(ctx context.Context, ids []PageID) (map[PageID]P
 	return out, nil
 }
 
+// ChildrenOrdered is every live child of one page, in the parent's own sort
+// order — the series part list. Deliberately the same ordering ListPages
+// returns: a series that disagreed with the page tree about what comes next
+// would be a second ordering nobody asked for.
+func (r *PostgresRepo) ChildrenOrdered(ctx context.Context, parent PageID) ([]SeriesChild, error) {
+	rows, err := r.q.ListChildrenOrdered(ctx, toPgUUID(uuid.UUID(parent)))
+	if err != nil {
+		return nil, fmt.Errorf("pages: children of %s: %w", parent, err)
+	}
+	out := make([]SeriesChild, len(rows))
+	for i, row := range rows {
+		out[i] = SeriesChild{ID: PageID(fromPgUUID(row.ID)), Title: row.Title}
+	}
+	return out, nil
+}
+
+// SeriesRoot is one page that has children, with how many.
+type SeriesRoot struct {
+	ID        PageID
+	Title     string
+	PartCount int32
+}
+
+// SeriesRoots is every page with at least one live child. Counted in SQL, not
+// joined: a series with 40 parts costs one row here, not 40.
+func (r *PostgresRepo) SeriesRoots(ctx context.Context) ([]SeriesRoot, error) {
+	rows, err := r.q.ListSeriesRoots(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("pages: series roots: %w", err)
+	}
+	out := make([]SeriesRoot, len(rows))
+	for i, row := range rows {
+		out[i] = SeriesRoot{ID: PageID(fromPgUUID(row.ID)), Title: row.Title, PartCount: row.PartCount}
+	}
+	return out, nil
+}
+
 // ClassificationFor batch-loads topics and tags for many pages at once.
 // ListPages decorates 50 rows at a time, and doing that with PageTopic/
 // PageTags per row would be 100 round trips to annotate a list that cost

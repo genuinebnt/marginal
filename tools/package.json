@@ -5,9 +5,12 @@
   "scripts": {
     "uidiff": "node uidiff/uidiff.js",
     "navcheck": "node uidiff/navcheck.js",
-    "seed": "node seed/seed.js"
+    "seed": "node seed/seed.js",
+    "seed:handbook": "node seed/seed.js handbook --append",
+    "seed:all": "node seed/seed.js all"
   },
   "devDependencies": {
-    "playwright-core": "^1.56.0"
+    "playwright-core": "^1.56.0",
+    "ws": "^8.18.0"
   }
 }

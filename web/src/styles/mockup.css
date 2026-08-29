@@ -178,3 +178,77 @@ a{color:#E8873C}a:hover{color:#F2A264}
 .ping{position:absolute;inset:0;border-radius:50%;animation:pulse 2.2s ease-out infinite}
 .dot{position:relative}
 .fx{animation:rise .5s cubic-bezier(.2,.8,.2,1) both}
+
+/* ── Adapted from genuine-folio ─────────────────────────────────────────────
+   Its writing index, projects grid and series pages are built from four small
+   pieces; the IDEAS are reused here, redrawn in the Instrument language. None
+   of genuine-folio's CSS is copied — it belongs to a different design system,
+   and importing it would fork the palette (DESIGN_GUIDELINES.md §3).         */
+
+/* A card in a grid of pages. --acc is the topic hue; the bracket corners are
+   the mockup's own selection marker (.brk-tl/.brk-br). */
+/* color is explicit: the card is wrapped in a router <a>, and inheriting
+   the link colour would paint every card ember. */
+.card{position:relative;color:#E4E2DC;display:flex;flex-direction:column;gap:6px;padding:12px 13px;box-sizing:border-box;background:#131415;border:1px solid rgba(255,255,255,.08);transition:border-color .16s ease,background .16s ease,transform .16s cubic-bezier(.2,.8,.2,1)}
+.card:hover{border-color:rgba(255,255,255,.16);background:#161819;transform:translateY(-1px)}
+.card-on{border-color:rgba(232,135,60,.5);background:rgba(232,135,60,.07)}
+/* The accent rule is drawn, not bordered: a border would move the content by
+   a pixel on hover, and a card that shifts under the cursor reads as a bug. */
+.card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--acc,#4B4842);opacity:.55;transition:opacity .16s ease}
+.card:hover::before,.card-on::before{opacity:1}
+.card-top{display:flex;align-items:center;gap:7px}
+.card-dot{width:5px;height:5px;flex:none}
+.card-topic{font-size:8.5px;letter-spacing:.16em}
+.card-title{font-family:Spectral,serif;font-size:14px;line-height:1.3;color:#E4E2DC}
+/* Two lines, hard. A card whose excerpt is allowed to grow is a grid
+   whose rows stop lining up. */
+.card-ex{font-size:10.5px;line-height:1.45;color:#8C8880;overflow:hidden;max-height:2.9em}
+.card-meta{margin-top:auto;font-size:9px;color:#585550;display:flex;gap:10px;align-items:center}
+
+/* The series banner: one strip under the chrome, on every part. */
+.sbanner{display:flex;align-items:center;gap:12px;flex:none;padding:8px 16px;background:#131415;border-bottom:1px solid rgba(255,255,255,.07);z-index:6}
+.sbanner-of{font-size:12px;color:#9B968D}
+.sbanner-of b{color:#E4E2DC;font-weight:500}
+.sbanner-name{color:#E8873C;text-decoration:none}
+.sbanner-name:hover{color:#F2A264}
+.sbanner-total{font-size:10px;color:#585550}
+.sbanner-rule{width:120px;height:2px;background:rgba(255,255,255,.09);flex:none}
+.sbanner-rule i{display:block;height:100%;background:#E8873C;font-style:normal;transition:width .3s cubic-bezier(.2,.8,.2,1)}
+.sbanner-nav{max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11.5px;color:#9B968D;text-decoration:none;transition:color .14s ease}
+.sbanner-nav:hover{color:#E4E2DC}
+.sbanner-nav-next{color:#C3BFB7}
+.sbanner-nav-off{color:#4B4842;pointer-events:none}
+
+/* "Read these, in this order." */
+.path{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+.path-step{display:flex;gap:10px;align-items:baseline}
+.path-n{font-size:9.5px;color:#4B4842;width:16px;flex:none;text-align:right}
+.path-dest .path-n{color:#E8873C}
+.path-body{flex:1;min-width:0;display:flex;align-items:baseline;gap:8px;padding:3px 6px;text-decoration:none;transition:background .14s ease}
+.path-body:hover{background:#181A1B}
+.path-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:#9B968D}
+.path-dest .path-title{color:#E4E2DC}
+.path-why{font-size:9px;color:#4B4842;flex:none}
+
+/* A page link, resolved and dangling. The dangling form is the mockup's own
+   amber dotted underline (§ 04) — a link to a page you have not written yet
+   is a real state, not a broken one. */
+.pl{cursor:pointer}
+.pl:hover{color:#C4A6F0}
+.pl-dangling{color:#9B968D;text-decoration:underline;text-decoration-style:dotted;text-decoration-thickness:1.5px;text-decoration-color:#E0A34E;text-underline-offset:3px}
+.pl-dangling:hover{color:#E0A34E}
+
+/* A list row on the series screens. One line of identity, one of context. */
+.srow{display:flex;align-items:center;gap:12px;padding:11px 6px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.06);transition:background .14s ease}
+.srow:hover{background:#161819}
+.srow-t{font-family:Spectral,serif;font-size:15px;color:#E4E2DC}
+.srow-m{font-size:10px;color:#585550;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.srow-n{font-size:10px;color:#585550;flex:none}
+.srow-p{font-size:10px;color:#E8873C;width:18px;flex:none}
+
+/* Motion, kept to the four the design system actually uses. Each is a
+   position or a state change, never decoration: something arrived, something
+   is live, something is being carried, something opened. */
+@media (prefers-reduced-motion: reduce) {
+  .fx, .card, .srow, .path-body, .tr, .sbanner-rule i { animation: none !important; transition: none !important; }
+}

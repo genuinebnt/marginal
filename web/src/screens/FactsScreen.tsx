@@ -179,7 +179,7 @@ export function FactsScreen() {
                 <span
                   className="chip"
                   style={{ cursor: "pointer" }}
-                  onClick={() => navigate(`/pages/${selDef.page_id}`)}
+                  onClick={() => navigate(`/read/${selDef.page_id}`)}
                 >
                   OPEN SOURCE PAGE
                 </span>
@@ -219,7 +219,7 @@ export function FactsScreen() {
                     key={`${r.page_id}-${r.block_id}-${i}`}
                     className="row"
                     style={{ padding: "9px 0", cursor: "pointer" }}
-                    onClick={() => navigate(`/pages/${r.page_id}`)}
+                    onClick={() => navigate(`/read/${r.page_id}`)}
                   >
                     <span style={{ color: "#E0A34E", fontSize: 10 }}>◌</span>
                     <span style={{ flex: 1, fontSize: 12.5, color: "#D2CFC8" }}>
@@ -288,7 +288,7 @@ export function FactsScreen() {
           {selDef ? (
             <div
               style={{ fontSize: 12, color: "#D2CFC8", cursor: "pointer" }}
-              onClick={() => navigate(`/pages/${selDef.page_id}`)}
+              onClick={() => navigate(`/read/${selDef.page_id}`)}
             >
               block {selDef.block_id.slice(0, 8)}
             </div>
@@ -303,7 +303,7 @@ export function FactsScreen() {
               <div
                 key={i}
                 style={{ display: "flex", gap: 8, fontSize: 11.5, cursor: "pointer" }}
-                onClick={() => navigate(`/pages/${r.page_id}`)}
+                onClick={() => navigate(`/read/${r.page_id}`)}
               >
                 <span style={{ flex: 1, color: r.name === sel ? "#E4E2DC" : "#8C8880" }}>
                   {`{{${r.name}}}`}

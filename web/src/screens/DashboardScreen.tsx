@@ -154,7 +154,7 @@ export function DashboardScreen() {
             {resume.map((p, i) => (
               <div
                 key={p.page_id}
-                onClick={() => navigate(`/pages/${p.page_id}`)}
+                onClick={() => navigate(`/read/${p.page_id}`)}
                 style={{
                   border: i === 0 ? "1px solid rgba(232,135,60,.35)" : "1px solid rgba(255,255,255,.09)",
                   background: i === 0 ? "rgba(232,135,60,.04)" : undefined,

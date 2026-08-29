@@ -275,6 +275,43 @@ func (q *Queries) LastSiblingSortKey(ctx context.Context, arg LastSiblingSortKey
 	return sort_key, err
 }
 
+const listChildrenOrdered = `-- name: ListChildrenOrdered :many
+SELECT id, title, sort_key
+FROM docs.pages
+WHERE deleted_at IS NULL AND parent_id = $1
+ORDER BY sort_key ASC
+`
+
+type ListChildrenOrderedRow struct {
+	ID      pgtype.UUID
+	Title   string
+	SortKey string
+}
+
+// Every live child of one page, in the parent's own sort order. The series
+// reader's whole part list, and deliberately the same ordering ListPages
+// returns — a series that disagreed with the page tree about what comes next
+// would be a second ordering nobody asked for.
+func (q *Queries) ListChildrenOrdered(ctx context.Context, parentID pgtype.UUID) ([]ListChildrenOrderedRow, error) {
+	rows, err := q.db.Query(ctx, listChildrenOrdered, parentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListChildrenOrderedRow
+	for rows.Next() {
+		var i ListChildrenOrderedRow
+		if err := rows.Scan(&i.ID, &i.Title, &i.SortKey); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPageTags = `-- name: ListPageTags :many
 SELECT tag FROM docs.page_tags WHERE page_id = $1 ORDER BY tag
 `
@@ -462,6 +499,48 @@ func (q *Queries) ListReadingPositions(ctx context.Context, arg ListReadingPosit
 			&i.Title,
 			&i.TopicID,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSeriesRoots = `-- name: ListSeriesRoots :many
+SELECT p.id, p.title, c.part_count
+FROM docs.pages p
+JOIN (
+  SELECT parent_id, COUNT(*)::int AS part_count
+  FROM docs.pages
+  WHERE deleted_at IS NULL AND parent_id IS NOT NULL
+  GROUP BY parent_id
+) c ON c.parent_id = p.id
+WHERE p.deleted_at IS NULL
+ORDER BY c.part_count DESC, p.title ASC
+`
+
+type ListSeriesRootsRow struct {
+	ID        pgtype.UUID
+	Title     string
+	PartCount int32
+}
+
+// Every page that has at least one live child — which is the definition of a
+// series here (a series IS a page with children). Counted rather than joined
+// so a series with 40 parts costs one row, not 40.
+func (q *Queries) ListSeriesRoots(ctx context.Context) ([]ListSeriesRootsRow, error) {
+	rows, err := q.db.Query(ctx, listSeriesRoots)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListSeriesRootsRow
+	for rows.Next() {
+		var i ListSeriesRootsRow
+		if err := rows.Scan(&i.ID, &i.Title, &i.PartCount); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

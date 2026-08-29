@@ -325,3 +325,28 @@ SELECT b.page_id,
 FROM docs.blocks b
 WHERE b.page_id = ANY(@page_ids::uuid[])
 GROUP BY b.page_id;
+
+-- name: ListChildrenOrdered :many
+-- Every live child of one page, in the parent's own sort order. The series
+-- reader's whole part list, and deliberately the same ordering ListPages
+-- returns — a series that disagreed with the page tree about what comes next
+-- would be a second ordering nobody asked for.
+SELECT id, title, sort_key
+FROM docs.pages
+WHERE deleted_at IS NULL AND parent_id = $1
+ORDER BY sort_key ASC;
+
+-- name: ListSeriesRoots :many
+-- Every page that has at least one live child — which is the definition of a
+-- series here (a series IS a page with children). Counted rather than joined
+-- so a series with 40 parts costs one row, not 40.
+SELECT p.id, p.title, c.part_count
+FROM docs.pages p
+JOIN (
+  SELECT parent_id, COUNT(*)::int AS part_count
+  FROM docs.pages
+  WHERE deleted_at IS NULL AND parent_id IS NOT NULL
+  GROUP BY parent_id
+) c ON c.parent_id = p.id
+WHERE p.deleted_at IS NULL
+ORDER BY c.part_count DESC, p.title ASC;

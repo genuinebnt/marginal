@@ -48,6 +48,8 @@ const (
 	PageService_ListTagFacets_FullMethodName        = "/marginal.document.v1.PageService/ListTagFacets"
 	PageService_SaveReadingPosition_FullMethodName  = "/marginal.document.v1.PageService/SaveReadingPosition"
 	PageService_ListReadingPositions_FullMethodName = "/marginal.document.v1.PageService/ListReadingPositions"
+	PageService_GetPageSeries_FullMethodName        = "/marginal.document.v1.PageService/GetPageSeries"
+	PageService_ListSeries_FullMethodName           = "/marginal.document.v1.PageService/ListSeries"
 )
 
 // PageServiceClient is the client API for PageService service.
@@ -87,6 +89,20 @@ type PageServiceClient interface {
 	// v2.8.0 — resume. Where the caret was, per user per page.
 	SaveReadingPosition(ctx context.Context, in *SaveReadingPositionRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ListReadingPositions(ctx context.Context, in *ListReadingPositionsRequest, opts ...grpc.CallOption) (*ListReadingPositionsResponse, error)
+	// v2.9.0 — series.
+	//
+	// A SERIES IS A PAGE WITH CHILDREN. No table, no `series_name` column, no
+	// second ordering: the page tree already expresses "these pages belong
+	// together, in this order", and `sort_key` already orders them. Adding a
+	// parallel grouping would mean two answers to "what comes after this" that
+	// can disagree — and the drag-to-reorder the rail already has would only
+	// update one of them.
+	//
+	// The consequence, accepted deliberately: a page cannot be in two series.
+	// That is the same constraint the tree has, and the same one a topic has
+	// (S9.3's argument) — a thing that belongs to two orderings has no next.
+	GetPageSeries(ctx context.Context, in *GetPageSeriesRequest, opts ...grpc.CallOption) (*PageSeries, error)
+	ListSeries(ctx context.Context, in *ListSeriesRequest, opts ...grpc.CallOption) (*ListSeriesResponse, error)
 }
 
 type pageServiceClient struct {
@@ -277,6 +293,26 @@ func (c *pageServiceClient) ListReadingPositions(ctx context.Context, in *ListRe
 	return out, nil
 }
 
+func (c *pageServiceClient) GetPageSeries(ctx context.Context, in *GetPageSeriesRequest, opts ...grpc.CallOption) (*PageSeries, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PageSeries)
+	err := c.cc.Invoke(ctx, PageService_GetPageSeries_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *pageServiceClient) ListSeries(ctx context.Context, in *ListSeriesRequest, opts ...grpc.CallOption) (*ListSeriesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListSeriesResponse)
+	err := c.cc.Invoke(ctx, PageService_ListSeries_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // PageServiceServer is the server API for PageService service.
 // All implementations must embed UnimplementedPageServiceServer
 // for forward compatibility.
@@ -314,6 +350,20 @@ type PageServiceServer interface {
 	// v2.8.0 — resume. Where the caret was, per user per page.
 	SaveReadingPosition(context.Context, *SaveReadingPositionRequest) (*emptypb.Empty, error)
 	ListReadingPositions(context.Context, *ListReadingPositionsRequest) (*ListReadingPositionsResponse, error)
+	// v2.9.0 — series.
+	//
+	// A SERIES IS A PAGE WITH CHILDREN. No table, no `series_name` column, no
+	// second ordering: the page tree already expresses "these pages belong
+	// together, in this order", and `sort_key` already orders them. Adding a
+	// parallel grouping would mean two answers to "what comes after this" that
+	// can disagree — and the drag-to-reorder the rail already has would only
+	// update one of them.
+	//
+	// The consequence, accepted deliberately: a page cannot be in two series.
+	// That is the same constraint the tree has, and the same one a topic has
+	// (S9.3's argument) — a thing that belongs to two orderings has no next.
+	GetPageSeries(context.Context, *GetPageSeriesRequest) (*PageSeries, error)
+	ListSeries(context.Context, *ListSeriesRequest) (*ListSeriesResponse, error)
 	mustEmbedUnimplementedPageServiceServer()
 }
 
@@ -377,6 +427,12 @@ func (UnimplementedPageServiceServer) SaveReadingPosition(context.Context, *Save
 }
 func (UnimplementedPageServiceServer) ListReadingPositions(context.Context, *ListReadingPositionsRequest) (*ListReadingPositionsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListReadingPositions not implemented")
+}
+func (UnimplementedPageServiceServer) GetPageSeries(context.Context, *GetPageSeriesRequest) (*PageSeries, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetPageSeries not implemented")
+}
+func (UnimplementedPageServiceServer) ListSeries(context.Context, *ListSeriesRequest) (*ListSeriesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListSeries not implemented")
 }
 func (UnimplementedPageServiceServer) mustEmbedUnimplementedPageServiceServer() {}
 func (UnimplementedPageServiceServer) testEmbeddedByValue()                     {}
@@ -723,6 +779,42 @@ func _PageService_ListReadingPositions_Handler(srv interface{}, ctx context.Cont
 	return interceptor(ctx, in, info, handler)
 }
 
+func _PageService_GetPageSeries_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetPageSeriesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PageServiceServer).GetPageSeries(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PageService_GetPageSeries_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PageServiceServer).GetPageSeries(ctx, req.(*GetPageSeriesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _PageService_ListSeries_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListSeriesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PageServiceServer).ListSeries(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PageService_ListSeries_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PageServiceServer).ListSeries(ctx, req.(*ListSeriesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // PageService_ServiceDesc is the grpc.ServiceDesc for PageService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -801,6 +893,14 @@ var PageService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListReadingPositions",
 			Handler:    _PageService_ListReadingPositions_Handler,
+		},
+		{
+			MethodName: "GetPageSeries",
+			Handler:    _PageService_GetPageSeries_Handler,
+		},
+		{
+			MethodName: "ListSeries",
+			Handler:    _PageService_ListSeries_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

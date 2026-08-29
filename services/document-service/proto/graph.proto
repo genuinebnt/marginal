@@ -154,10 +154,37 @@ message GraphNeighborhoodResponse {
   // d = 0 (the source itself). The shape is the argument: a frontier that
   // stops growing is a graph that stops connecting.
   repeated int32 ring_sizes = 4;
+
+  // reading_path is "what to read before this page, and in what order" —
+  // everything that reaches it by following links FORWARD, layered so that a
+  // page with no prerequisites of its own comes first, ending at the page
+  // itself (graphalgo.ReadingPath).
+  //
+  // Deliberately NOT the shortest path, which answers "how are these two
+  // connected" and already has its own field, and deliberately not "pages
+  // with similar tags", because shared tags give you neighbours rather than
+  // prerequisites — only the arrows carry order.
+  //
+  // A page nothing links to has a path of ONE step: itself. That is what
+  // "start here" looks like, and it is a real answer rather than an empty one.
+  repeated PathStep reading_path = 5;
 }
 
 message GraphNeighbour {
   string page_id = 1;
   string title = 2;
   int32 hops = 3;
+}
+
+// PathStep is one page on the way to another — graphalgo.ReadingPath.
+message PathStep {
+  string page_id = 1;
+  string title   = 2;
+  // The dependency LAYER, not the distance from the target: two pages at the
+  // same depth can be read in either order.
+  int32  depth   = 3;
+  // Always true for exactly the last step. The list is what to read UP TO the
+  // page you asked about, so ending anywhere else would leave the reader
+  // wondering where they were going.
+  bool   destination = 4;
 }

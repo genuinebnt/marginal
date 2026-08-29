@@ -142,6 +142,16 @@ type neighborhoodJSON struct {
 	Nearest []graphNeighbourJSON `json:"nearest"`
 	// ring_sizes[d] is how many pages sit exactly d hops out, from d = 0.
 	RingSizes []int32 `json:"ring_sizes"`
+	// "Read these, in this order" — everything that reaches this page by
+	// following links forward, layered, ending at the page itself.
+	ReadingPath []pathStepJSON `json:"reading_path"`
+}
+
+type pathStepJSON struct {
+	PageID      string `json:"page_id"`
+	Title       string `json:"title"`
+	Depth       int32  `json:"depth"`
+	Destination bool   `json:"destination"`
 }
 
 func toNeighborhoodJSON(n *documentv1.GraphNeighborhoodResponse) neighborhoodJSON {
@@ -155,7 +165,15 @@ func toNeighborhoodJSON(n *documentv1.GraphNeighborhoodResponse) neighborhoodJSO
 	if rings == nil {
 		rings = []int32{}
 	}
+	path := make([]pathStepJSON, 0, len(n.GetReadingPath()))
+	for _, s := range n.GetReadingPath() {
+		path = append(path, pathStepJSON{
+			PageID: s.GetPageId(), Title: s.GetTitle(),
+			Depth: s.GetDepth(), Destination: s.GetDestination(),
+		})
+	}
 	return neighborhoodJSON{
+		ReadingPath:        path,
 		UndirectedDistance: n.GetUndirectedDistance(),
 		ForwardReachable:   n.GetForwardReachable(),
 		Nearest:            nearest,

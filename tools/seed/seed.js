@@ -5,9 +5,29 @@
 // here writes to a database — so the op log, the projection, the link graph,
 // the FTS index and the fact DAG all get built the way they would be by a
 // person typing, and a seeding bug is a real bug.
+//
+// Usage:
+//   node tools/seed/seed.js              base corpus only  (clears first)
+//   node tools/seed/seed.js handbook     the Rust porting series only
+//   node tools/seed/seed.js all          both              (clears first)
+//   node tools/seed/seed.js handbook --append   add without clearing
 const WebSocket = require('ws');
 const { randomUUID } = require('crypto');
-const CONTENT = require('./content');
+
+const args = process.argv.slice(2);
+const which = args.find((a) => !a.startsWith('--')) ?? 'base';
+const append = args.includes('--append');
+
+const CORPUS = {
+  base:     () => require('./content'),
+  handbook: () => require('./handbook'),
+  all:      () => [...require('./content'), ...require('./handbook')],
+};
+if (!CORPUS[which]) {
+  console.error(`unknown corpus "${which}" — expected base | handbook | all`);
+  process.exit(2);
+}
+const CONTENT = CORPUS[which]();
 
 const GW = 'http://localhost:8000';
 const COLLAB = 'ws://localhost:8002';
@@ -142,22 +162,38 @@ async function seedPage(actorId, pageId, blocks) {
   const actorId = await login();
   const H = { 'X-Actor-Id': actorId, 'Content-Type': 'application/json' };
 
-  // 1. Clear what is there. DELETE is idempotent and cascades to descendants.
-  const existing = await (await fetch(`${GW}/pages`, { headers: H })).json();
-  for (const p of existing.pages) {
-    await fetch(`${GW}/pages/${p.id}`, { method: 'DELETE', headers: H });
+  // 1. Clear what is there, unless asked to append. DELETE is idempotent and
+  //    cascades to descendants.
+  if (append) {
+    console.log('appending — nothing cleared');
+  } else {
+    const existing = await (await fetch(`${GW}/pages`, { headers: H })).json();
+    for (const p of existing.pages) {
+      await fetch(`${GW}/pages/${p.id}`, { method: 'DELETE', headers: H });
+    }
+    console.log(`cleared ${existing.pages.length} pages`);
   }
-  console.log(`cleared ${existing.pages.length} pages`);
 
   // 2. Topics, so classification can be assigned by name.
   const topics = await (await fetch(`${GW}/topics`, { headers: H })).json();
   const topicId = Object.fromEntries(topics.topics.map((t) => [t.color_key, t.id]));
 
   // 3. Create, classify, then fill.
+  //    `parent` names an earlier page by TITLE. Nesting is seeded rather than
+  //    left flat because a page tree of 38 roots exercises none of the rail —
+  //    no indent, no twisty, no lazy child load — and those are the parts most
+  //    likely to be quietly broken.
+  const idByTitle = new Map();
   for (const page of CONTENT) {
+    const parentId = page.parent ? idByTitle.get(page.parent) : undefined;
+    if (page.parent && !parentId) {
+      throw new Error(`"${page.title}" names parent "${page.parent}", which is not seeded before it`);
+    }
     const created = await (await fetch(`${GW}/pages`, {
-      method: 'POST', headers: H, body: JSON.stringify({ title: page.title }),
+      method: 'POST', headers: H,
+      body: JSON.stringify({ title: page.title, parent_id: parentId }),
     })).json();
+    idByTitle.set(page.title, created.id);
 
     await fetch(`${GW}/pages/${created.id}/topic`, {
       method: 'PUT', headers: H, body: JSON.stringify({ topic_id: topicId[page.topic] }),
@@ -172,5 +208,5 @@ async function seedPage(actorId, pageId, blocks) {
     console.log(`  ${page.title} — ${page.blocks.length} blocks`);
   }
 
-  console.log(`seeded ${CONTENT.length} pages`);
+  console.log(`seeded ${CONTENT.length} pages (${which})`);
 })().catch((e) => { console.error('FAILED:', e.message); process.exit(1); });

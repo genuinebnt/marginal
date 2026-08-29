@@ -20,7 +20,8 @@ import { NotificationsPanel } from "../notifications/NotificationsPanel";
 /** The six primary destinations, in the mockup's own order. */
 const TABS: Array<{ label: string; to: string; also?: string[] }> = [
   { label: "Write", to: "/pages" },
-  { label: "Read", to: "/read" },
+  // Read owns the reading surfaces: a page, and the series a page sits in.
+  { label: "Read", to: "/read", also: ["/series"] },
   { label: "Search", to: "/search" },
   // Graph owns four routes, not one. /discover, /topics and /facts are all
   // ways of asking how pages relate, and a nav that goes dark the moment you
@@ -248,8 +249,10 @@ export function Screen({ children }: { children: ReactNode }) {
 }
 
 /** §1.1 — min-height:0 is load-bearing; without it flex children refuse to shrink. */
-export function Body({ children }: { children: ReactNode }) {
-  return <div className="body">{children}</div>;
+export function Body({
+  children, onClick,
+}: { children: ReactNode; onClick?: (e: React.MouseEvent) => void }) {
+  return <div className="body" onClick={onClick}>{children}</div>;
 }
 
 /** The main column. min-width:0 for the same reason Body needs min-height:0. */

@@ -1,10 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { getPage, renamePage, type Page } from "../api/pages";
 import { savePosition } from "../api/resume";
 import { getPageDiagnostics, type Diagnostic } from "../api/diagnostics";
 import { useCollabPage } from "../collab/useCollabPage";
+import { isPageLinkClick, pageLinkTarget } from "../collab/pagelinks";
+import { getLinkGraph } from "../api/graph";
+import { getPageSeries, type PageSeries } from "../api/series";
+import { SeriesBanner } from "../ui";
 import { RichEditorPane } from "./RichEditorPane";
 import { InspectorRail } from "./InspectorRail";
 import { PageTreeRail } from "./PageTreeRail";
@@ -26,7 +30,13 @@ import { Body, Readout, Screen, Spark, StatusBar, TopBar } from "../shell/Chrome
 export function EditorScreen() {
   const { id } = useParams();
   const { session } = useAuth();
+  const navigate = useNavigate();
   const [activePage, setActivePage] = useState<Page | null>(null);
+  /** Every live page, for resolving a [[link]] on ⌘-click. GetLinkGraph, not
+   *  ListPages: the latter returns root pages only, so a link into a nested
+   *  page would resolve to nothing. */
+  const [pages, setPages] = useState<Array<{ id: string; title: string }>>([]);
+  const [series, setSeries] = useState<PageSeries | null>(null);
   const [linkCopied, setLinkCopied] = useState(false);
   const [diagnostics, setDiagnostics] = useState<Diagnostic[] | null>(null);
   const [diagnosticsError, setDiagnosticsError] = useState<string | null>(null);
@@ -40,7 +50,14 @@ export function EditorScreen() {
     if (!id) return;
     setActivePage(null);
     getPage(actorId, id).then(setActivePage).catch(() => setActivePage(null));
+    getPageSeries(actorId, id).then(setSeries).catch(() => setSeries(null));
   }, [id, actorId]);
+
+  useEffect(() => {
+    getLinkGraph(actorId)
+      .then((g) => setPages(g.nodes.map((n) => ({ id: n.id, title: n.title }))))
+      .catch(() => setPages([]));
+  }, [actorId]);
 
   // Remember where the caret is, so the dashboard can resume here.
   //
@@ -145,6 +162,23 @@ export function EditorScreen() {
   const live = collab.peers.size + 1;
   const unflushed = collab.state === "open" ? 0 : null;
 
+  /**
+   * ⌘/Ctrl-click on a [[page link]] opens it.
+   *
+   * A plain click must still place the caret — this is a contenteditable, and
+   * hijacking the click would make the link the one span in the document you
+   * cannot put a cursor in. Modifier-click is the same convention every code
+   * editor uses for "go to definition", for the same reason.
+   */
+  function handleLinkNavigate(e: React.MouseEvent) {
+    if (!e.metaKey && !e.ctrlKey) return;
+    const title = isPageLinkClick(e);
+    if (!title) return;
+    e.preventDefault();
+    const target = pageLinkTarget(e, pages);
+    if (target) navigate(`/pages/${target.id}`);
+  }
+
   return (
     <Screen>
       <TopBar
@@ -181,6 +215,11 @@ export function EditorScreen() {
             {/* Presence lives with the prose (the pane's dek), not up here:
                 an actor id sliced to two characters is noise, and the tag
                 the pane derives is at least stable per actor. */}
+            {/* The other half of the read/write switch. One page, two views. */}
+            <Link to={`/read/${id}`} className="btn" style={{ textDecoration: "none" }}>
+              READ
+              <div className="brk-tl" /><div className="brk-br" />
+            </Link>
             <div className="btn" onClick={copyShareLink} style={{ cursor: "pointer" }}>
               {linkCopied ? "COPIED" : "SHARE"}
               <div className="brk-tl" /><div className="brk-br" />
@@ -189,10 +228,28 @@ export function EditorScreen() {
         }
       />
 
-      <Body>
+      {/* The same series strip the reader carries — the page is one page, and
+          knowing it is part 4 of 19 matters as much while writing it. */}
+      {series?.membership === "member" && (
+        <SeriesBanner
+          seriesTitle={series.series_title}
+          seriesTo={`/series/${series.series_page_id}`}
+          number={series.number}
+          total={series.parts.length}
+          prev={series.number > 1
+            ? { title: series.parts[series.number - 2].title, to: `/pages/${series.parts[series.number - 2].page_id}` }
+            : null}
+          next={series.number < series.parts.length
+            ? { title: series.parts[series.number].title, to: `/pages/${series.parts[series.number].page_id}` }
+            : null}
+        />
+      )}
+
+      <Body onClick={handleLinkNavigate}>
         <PageTreeRail
           actorId={actorId}
           activePageId={id}
+          activePagePath={activePage?.path}
           blocks={collab.blocks}
           onJumpToBlock={(blockId) => {
             document

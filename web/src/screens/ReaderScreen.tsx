@@ -12,7 +12,7 @@
  * be a collaborative edit that resized the document for everyone on the page.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { getBacklinks, getPage, listPages, type Backlink, type Page } from "../api/pages";
 import { useCollabPage } from "../collab/useCollabPage";
@@ -22,6 +22,11 @@ import {
 } from "../shell/Chrome";
 import { ReadingBar } from "../shell/ReadingProgress";
 import { DocumentOutline, outlineOf } from "./DocumentOutline";
+import { ReadBlocks } from "./ReadBlocks";
+import { getPageSeries, type PageSeries } from "../api/series";
+import { getLinkGraph, graphNeighborhood, type GraphNeighborhood } from "../api/graph";
+import { pageLinkTarget, isPageLinkClick, titleSet } from "../collab/pagelinks";
+import { ReadingPath, SeriesBanner } from "../ui";
 
 type InspTab = "sidenotes" | "comments" | "backlinks";
 type Width = "S" | "M" | "L";
@@ -39,6 +44,16 @@ export function ReaderScreen() {
   const navigate = useNavigate();
 
   const [pages, setPages] = useState<Page[]>([]);
+  /**
+   * Every live page, as (id, title) — the link resolver's own index.
+   *
+   * NOT `pages`, which is ListPages and therefore ROOT pages only: resolving
+   * against it made every link into a nested page look dangling, and clicking
+   * one did nothing. GetLinkGraph is already the "every live page" endpoint,
+   * and it is the same set docs.page_links resolves backlinks against — so
+   * the click and the graph cannot disagree about whether a link resolves.
+   */
+  const [allPages, setAllPages] = useState<Array<{ id: string; title: string }>>([]);
   const [page, setPage] = useState<Page | null>(null);
   const [backlinks, setBacklinks] = useState<Backlink[]>([]);
   const [width, setWidth] = useState<Width>("M");
@@ -51,13 +66,38 @@ export function ReaderScreen() {
   useEffect(() => {
     if (!actorId) return;
     listPages(actorId).then((r) => setPages(r.pages)).catch(() => {});
+    getLinkGraph(actorId)
+      .then((g) => setAllPages(g.nodes.map((n) => ({ id: n.id, title: n.title }))))
+      .catch(() => setAllPages([]));
   }, [actorId]);
 
   useEffect(() => {
     if (!actorId || !id) { setPage(null); return; }
     getPage(actorId, id).then(setPage).catch(() => setPage(null));
     getBacklinks(actorId, id).then((r) => setBacklinks(r.backlinks)).catch(() => setBacklinks([]));
+    getPageSeries(actorId, id).then(setSeries).catch(() => setSeries(null));
+    graphNeighborhood(actorId, id).then(setHood).catch(() => setHood(null));
+    setLinkNote(null);
   }, [actorId, id]);
+
+  /** Live titles, so a [[link]] to a page nobody has written yet renders as
+   *  the unwritten link it is rather than as a broken one. */
+  const known = useMemo(() => titleSet(allPages), [allPages]);
+
+  /**
+   * A click anywhere in the prose. Page links are a DECORATION over plain
+   * text, not stored marks, so resolution happens here rather than at write
+   * time — which is what lets a link to a page that does not exist start
+   * working the moment someone creates it, with no stored op rewritten.
+   */
+  function handleProseClick(e: React.MouseEvent) {
+    const title = isPageLinkClick(e);
+    if (!title) return;
+    e.preventDefault();
+    const target = pageLinkTarget(e, allPages);
+    if (target) { navigate(`/read/${target.id}`); return; }
+    setLinkNote(`No page called “${title}” yet.`);
+  }
 
   const outline = useMemo(() => outlineOf(collab.blocks), [collab.blocks]);
 
@@ -74,6 +114,10 @@ export function ReaderScreen() {
 
   /** Which inspector pane. § 05's own three, SIDENOTES first. */
   const [inspTab, setInspTab] = useState<InspTab>("sidenotes");
+  const [series, setSeries] = useState<PageSeries | null>(null);
+  const [hood, setHood] = useState<GraphNeighborhood | null>(null);
+  /** What a click on a dangling [[link]] said, so it can say something. */
+  const [linkNote, setLinkNote] = useState<string | null>(null);
 
   /**
    * Tags that share a page with this page's own tags, ranked.
@@ -174,6 +218,16 @@ export function ReaderScreen() {
     <Screen>
       <TopBar
         crumb={<>read / <b>{page?.title ?? "…"}</b></>}
+        right={
+          // Read and write are two views of ONE page, and the switch between
+          // them belongs where you are rather than three clicks away in a
+          // rail. § 05's own status line already claims the tree is untouched
+          // by view state; this is that claim made usable.
+          <Link to={`/pages/${id}`} className="btn" style={{ textDecoration: "none" }}>
+            EDIT
+            <div className="brk-tl" /><div className="brk-br" />
+          </Link>
+        }
         readouts={
           <>
             {/* § 05 puts the reading tools IN the top bar, as two labelled
@@ -214,6 +268,39 @@ export function ReaderScreen() {
           rather than as an overlay inside the column. It reflows nothing, and
           it is the reason this design has no scrollbars. */}
       <ReadingBar pct={pct} />
+
+      {/* § 10d's banner, on every part. The single most common thing a reader
+          of part 4 wants is part 5, and making them find it in a rail is
+          making them find it. */}
+      {series?.membership === "member" && (
+        <SeriesBanner
+          seriesTitle={series.series_title}
+          seriesTo={`/series/${series.series_page_id}`}
+          number={series.number}
+          total={series.parts.length}
+          prev={series.number > 1
+            ? { title: series.parts[series.number - 2].title, to: `/read/${series.parts[series.number - 2].page_id}` }
+            : null}
+          next={series.number < series.parts.length
+            ? { title: series.parts[series.number].title, to: `/read/${series.parts[series.number].page_id}` }
+            : null}
+        />
+      )}
+      {series?.membership === "leader" && (
+        <div className="sbanner">
+          <span className="lbl">SERIES PAGE</span>
+          <span className="sbanner-of">
+            This page leads <b>{num(series.parts.length)}</b> parts
+          </span>
+          <div style={{ flex: 1 }} />
+          <Link to={`/series/${series.series_page_id}`} className="sbanner-nav sbanner-nav-next">
+            all parts →
+          </Link>
+          <Link to={`/read/${series.parts[0].page_id}`} className="sbanner-nav sbanner-nav-next">
+            start with {series.parts[0].title} →
+          </Link>
+        </div>
+      )}
 
       <Body>
         <div className="rail">
@@ -269,51 +356,26 @@ export function ReaderScreen() {
             {/* Read-only: the same blocks, no contenteditable, no ops. The
                 typeface is view state and is applied here rather than stored,
                 so it can never reach the document. */}
-            <div style={{
-              fontFamily: face === "SERIF" ? "Spectral, serif" : "Archivo, system-ui, sans-serif",
-              fontSize: face === "SERIF" ? 18 : 16,
-              lineHeight: 1.75,
-              color: "#D2CFC8",
-            }}>
-              {collab.blocks.filter((b) => !b.parent || b.kind.tag === "list_item").map((b) => {
-                const tag = b.kind.tag;
-                if (tag === "divider") return <hr key={b.id} className="block-divider" />;
-                if (tag === "heading") {
-                  const level = (b.kind as { level?: number }).level ?? 1;
-                  const size = level === 1 ? 27 : level === 2 ? 22 : 18;
-                  return (
-                    <div key={b.id} data-block-id={b.id} style={{
-                      fontFamily: "Spectral, serif", fontWeight: 500, fontSize: size,
-                      letterSpacing: "-.015em", color: "#EFEDE7", margin: "26px 0 12px",
-                    }}>
-                      {b.text}
-                    </div>
-                  );
-                }
-                if (tag === "code_block") {
-                  return (
-                    <div key={b.id} data-block-id={b.id} className="blk-code" style={{ margin: "0 0 16px" }}>
-                      <div className="blk-code-h">
-                        <span className="mono lang">
-                          {((b.kind as { language?: string }).language || "plain text").toUpperCase()}
-                        </span>
-                      </div>
-                      <pre>{b.text}</pre>
-                    </div>
-                  );
-                }
-                if (tag === "list_item") {
-                  return (
-                    <div key={b.id} data-block-id={b.id} className="li-row">
-                      <span className="li-marker">•</span>
-                      <div className="li-body">{b.text}</div>
-                    </div>
-                  );
-                }
-                return (
-                  <p key={b.id} data-block-id={b.id} style={{ margin: "0 0 16px" }}>{b.text}</p>
-                );
-              })}
+            {linkNote && (
+              <div className="mono" style={{
+                margin: "0 0 14px", padding: "6px 9px", fontSize: 10,
+                border: "1px solid rgba(224,163,78,.28)", background: "rgba(224,163,78,.05)",
+                color: "#E0A34E",
+              }}>
+                ◌ {linkNote} A link to a page you have not written is how you write forward —
+                it starts working the moment the page exists.
+              </div>
+            )}
+            <div
+              onClick={handleProseClick}
+              style={{
+                fontFamily: face === "SERIF" ? "Spectral, serif" : "Archivo, system-ui, sans-serif",
+                fontSize: face === "SERIF" ? 18 : 16,
+                lineHeight: 1.75,
+                color: "#D2CFC8",
+              }}
+            >
+              <ReadBlocks blocks={collab.blocks} known={known} />
             </div>
           </article>
         </main>
@@ -375,6 +437,18 @@ export function ReaderScreen() {
                   <span style={{ fontSize: 11.5, color: "#585550" }}>None.</span>
                 )}
               </div>
+
+              <Rule />
+              {/* "Read these, in this order", over the real dependency layers —
+                  everything that reaches this page by following links FORWARD.
+                  Not the shortest path, which answers how two pages are
+                  connected, and not similar tags, which give you neighbours
+                  rather than prerequisites: only the arrows carry order. */}
+              <Label>READ THESE FIRST · {num(Math.max((hood?.reading_path.length ?? 1) - 1, 0))}</Label>
+              <ReadingPath
+                steps={hood?.reading_path ?? []}
+                hrefFor={(pid) => `/read/${pid}`}
+              />
 
               <Rule />
               <Label>CO-OCCURRING TAGS</Label>

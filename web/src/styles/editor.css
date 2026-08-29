@@ -611,3 +611,65 @@
 /* Actions replace the count on hover — both competing for the same right
    edge would make the row jump as the pointer crosses it. */
 .tr:hover .tr-count { display: none; }
+
+/* ── page tree, v2.9.0 redesign ─────────────────────────────────────────────
+
+   The rail was one flat list of titles. It is the surface you spend the most
+   time in and it was carrying the least information per row, so this pass
+   gives every row four facts it already had access to and drew none of:
+   what state it is in, what it is about, how long it is, and whether it
+   leads a series. The vocabulary is genuine-folio's ContentRowBars — a
+   status tick above a topic bar — because "what state" and "what about" are
+   two questions and one coloured dot can only answer one of them.
+
+   Every animation below is a POSITION or a STATE change. Nothing decorative:
+   children slide down because they arrived, the drop line moves because you
+   are carrying something, the shimmer runs because a fetch is in flight. */
+
+.tr {
+  /* The row is a grid so the title column is the only thing that shrinks —
+     markers, counts and read time keep their width no matter the depth. */
+  transition: background .13s ease, color .13s ease, padding-left .18s cubic-bezier(.2,.8,.2,1);
+}
+.tr:hover { background: #16181A; }
+
+/* The left-edge pair. Two 2px rules, not one dot: state and subject. */
+.tr-bars { display: flex; gap: 2px; align-self: stretch; flex: none; margin-right: 2px; }
+.tr-tick { width: 2px; height: 8px; align-self: center; background: rgba(255,255,255,.14); transition: background .16s ease, height .16s ease; }
+.tr-tick-on   { background: #E8873C; height: 14px; }
+.tr-tick-del  { background: #E0A34E; }
+.tr-tick-live { background: #3FCFA8; }
+.tr-bar { width: 2px; align-self: stretch; background: rgba(255,255,255,.08); transition: background .16s ease; }
+
+/* Depth guides. Indent alone stops being legible past two levels; a hairline
+   per level is how a file tree has always solved it. */
+.tr-guides { display: flex; flex: none; align-self: stretch; }
+.tr-guide { width: 16px; align-self: stretch; border-left: 1px solid rgba(255,255,255,.055); }
+.tr:hover .tr-guide { border-left-color: rgba(255,255,255,.1); }
+
+/* A branch's part count, and the series badge it becomes when it has enough
+   children to BE a series. Two is the threshold, matching the server's. */
+.tr-parts { font: 400 8.5px 'IBM Plex Mono', monospace; letter-spacing: .1em; color: #6E6A63; border: 1px solid rgba(255,255,255,.1); padding: 0 4px; flex: none; }
+.tr-parts-series { color: #E8873C; border-color: rgba(232,135,60,.35); }
+
+/* Reading progress, as a 2px underline on the row itself — resume position
+   is a real column (docs.reading_positions) and had nowhere to show. */
+.tr-read { position: absolute; left: 0; bottom: 0; height: 2px; background: rgba(232,135,60,.45); transition: width .3s cubic-bezier(.2,.8,.2,1); }
+
+/* Children arrive rather than appear. The stagger is capped so a 19-part
+   series does not take two seconds to open. */
+.tr-child { animation: rise .22s cubic-bezier(.2,.8,.2,1) both; }
+
+/* The drop indicator is a LINE, not a border on the row: a border changes the
+   row's height and everything below it jumps as you drag across. */
+.tr-drop { position: absolute; left: 0; right: 0; height: 2px; background: var(--violet, #A98CE8); pointer-events: none; z-index: 2; }
+.tr-drop-into { position: absolute; inset: 0; border: 1px solid var(--violet, #A98CE8); pointer-events: none; }
+
+/* A branch whose children are still loading. Shimmer, not a spinner: the row
+   is already there and only its contents are pending. */
+.tr-skel { height: 22px; margin: 1px 0; background: rgba(255,255,255,.045); animation: shimmer 1.1s ease-in-out infinite; }
+
+/* The filter's own report. A filter that hides rows without saying how many
+   is a filter you cannot trust you have finished typing. */
+.tr-filter-note { padding: 2px 12px 8px; font: 400 9.5px 'IBM Plex Mono', monospace; color: #585550; }
+.tr-hit { background: rgba(232,135,60,.22); color: #EFEDE7; }

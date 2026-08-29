@@ -660,7 +660,20 @@ type GraphNeighborhoodResponse struct {
 	// ring_sizes[d] is how many pages sit exactly d hops away, starting at
 	// d = 0 (the source itself). The shape is the argument: a frontier that
 	// stops growing is a graph that stops connecting.
-	RingSizes     []int32 `protobuf:"varint,4,rep,packed,name=ring_sizes,json=ringSizes,proto3" json:"ring_sizes,omitempty"`
+	RingSizes []int32 `protobuf:"varint,4,rep,packed,name=ring_sizes,json=ringSizes,proto3" json:"ring_sizes,omitempty"`
+	// reading_path is "what to read before this page, and in what order" —
+	// everything that reaches it by following links FORWARD, layered so that a
+	// page with no prerequisites of its own comes first, ending at the page
+	// itself (graphalgo.ReadingPath).
+	//
+	// Deliberately NOT the shortest path, which answers "how are these two
+	// connected" and already has its own field, and deliberately not "pages
+	// with similar tags", because shared tags give you neighbours rather than
+	// prerequisites — only the arrows carry order.
+	//
+	// A page nothing links to has a path of ONE step: itself. That is what
+	// "start here" looks like, and it is a real answer rather than an empty one.
+	ReadingPath   []*PathStep `protobuf:"bytes,5,rep,name=reading_path,json=readingPath,proto3" json:"reading_path,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -719,6 +732,13 @@ func (x *GraphNeighborhoodResponse) GetNearest() []*GraphNeighbour {
 func (x *GraphNeighborhoodResponse) GetRingSizes() []int32 {
 	if x != nil {
 		return x.RingSizes
+	}
+	return nil
+}
+
+func (x *GraphNeighborhoodResponse) GetReadingPath() []*PathStep {
+	if x != nil {
+		return x.ReadingPath
 	}
 	return nil
 }
@@ -783,6 +803,80 @@ func (x *GraphNeighbour) GetHops() int32 {
 	return 0
 }
 
+// PathStep is one page on the way to another — graphalgo.ReadingPath.
+type PathStep struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	PageId string                 `protobuf:"bytes,1,opt,name=page_id,json=pageId,proto3" json:"page_id,omitempty"`
+	Title  string                 `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
+	// The dependency LAYER, not the distance from the target: two pages at the
+	// same depth can be read in either order.
+	Depth int32 `protobuf:"varint,3,opt,name=depth,proto3" json:"depth,omitempty"`
+	// Always true for exactly the last step. The list is what to read UP TO the
+	// page you asked about, so ending anywhere else would leave the reader
+	// wondering where they were going.
+	Destination   bool `protobuf:"varint,4,opt,name=destination,proto3" json:"destination,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PathStep) Reset() {
+	*x = PathStep{}
+	mi := &file_graph_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PathStep) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PathStep) ProtoMessage() {}
+
+func (x *PathStep) ProtoReflect() protoreflect.Message {
+	mi := &file_graph_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PathStep.ProtoReflect.Descriptor instead.
+func (*PathStep) Descriptor() ([]byte, []int) {
+	return file_graph_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *PathStep) GetPageId() string {
+	if x != nil {
+		return x.PageId
+	}
+	return ""
+}
+
+func (x *PathStep) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *PathStep) GetDepth() int32 {
+	if x != nil {
+		return x.Depth
+	}
+	return 0
+}
+
+func (x *PathStep) GetDestination() bool {
+	if x != nil {
+		return x.Destination
+	}
+	return false
+}
+
 var File_graph_proto protoreflect.FileDescriptor
 
 const file_graph_proto_rawDesc = "" +
@@ -837,13 +931,14 @@ const file_graph_proto_rawDesc = "" +
 	"\ttriangles\x18\x06 \x01(\x05R\ttriangles\x12\x14\n" +
 	"\x05rank2\x18\a \x01(\x05R\x05rank2\"@\n" +
 	"\x18GraphNeighborhoodRequest\x12$\n" +
-	"\x0esource_page_id\x18\x01 \x01(\tR\fsourcePageId\"\xf4\x03\n" +
+	"\x0esource_page_id\x18\x01 \x01(\tR\fsourcePageId\"\xb7\x04\n" +
 	"\x19GraphNeighborhoodResponse\x12x\n" +
 	"\x13undirected_distance\x18\x01 \x03(\v2G.marginal.document.v1.GraphNeighborhoodResponse.UndirectedDistanceEntryR\x12undirectedDistance\x12r\n" +
 	"\x11forward_reachable\x18\x02 \x03(\v2E.marginal.document.v1.GraphNeighborhoodResponse.ForwardReachableEntryR\x10forwardReachable\x12>\n" +
 	"\anearest\x18\x03 \x03(\v2$.marginal.document.v1.GraphNeighbourR\anearest\x12\x1d\n" +
 	"\n" +
-	"ring_sizes\x18\x04 \x03(\x05R\tringSizes\x1aE\n" +
+	"ring_sizes\x18\x04 \x03(\x05R\tringSizes\x12A\n" +
+	"\freading_path\x18\x05 \x03(\v2\x1e.marginal.document.v1.PathStepR\vreadingPath\x1aE\n" +
 	"\x17UndirectedDistanceEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\x05R\x05value:\x028\x01\x1aC\n" +
@@ -853,7 +948,12 @@ const file_graph_proto_rawDesc = "" +
 	"\x0eGraphNeighbour\x12\x17\n" +
 	"\apage_id\x18\x01 \x01(\tR\x06pageId\x12\x14\n" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x12\x12\n" +
-	"\x04hops\x18\x03 \x01(\x05R\x04hops2\xc0\x02\n" +
+	"\x04hops\x18\x03 \x01(\x05R\x04hops\"q\n" +
+	"\bPathStep\x12\x17\n" +
+	"\apage_id\x18\x01 \x01(\tR\x06pageId\x12\x14\n" +
+	"\x05title\x18\x02 \x01(\tR\x05title\x12\x14\n" +
+	"\x05depth\x18\x03 \x01(\x05R\x05depth\x12 \n" +
+	"\vdestination\x18\x04 \x01(\bR\vdestination2\xc0\x02\n" +
 	"\fGraphService\x12Z\n" +
 	"\fGetLinkGraph\x12).marginal.document.v1.GetLinkGraphRequest\x1a\x1f.marginal.document.v1.LinkGraph\x12^\n" +
 	"\fAnalyzeGraph\x12).marginal.document.v1.AnalyzeGraphRequest\x1a#.marginal.document.v1.GraphAnalysis\x12t\n" +
@@ -871,7 +971,7 @@ func file_graph_proto_rawDescGZIP() []byte {
 	return file_graph_proto_rawDescData
 }
 
-var file_graph_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
+var file_graph_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
 var file_graph_proto_goTypes = []any{
 	(*GetLinkGraphRequest)(nil),       // 0: marginal.document.v1.GetLinkGraphRequest
 	(*LinkGraph)(nil),                 // 1: marginal.document.v1.LinkGraph
@@ -884,34 +984,36 @@ var file_graph_proto_goTypes = []any{
 	(*GraphNeighborhoodRequest)(nil),  // 8: marginal.document.v1.GraphNeighborhoodRequest
 	(*GraphNeighborhoodResponse)(nil), // 9: marginal.document.v1.GraphNeighborhoodResponse
 	(*GraphNeighbour)(nil),            // 10: marginal.document.v1.GraphNeighbour
-	nil,                               // 11: marginal.document.v1.GraphAnalysis.ComponentOfEntry
-	nil,                               // 12: marginal.document.v1.GraphAnalysis.BetweennessEntry
-	nil,                               // 13: marginal.document.v1.GraphAnalysis.StronglyConnectedEntry
-	nil,                               // 14: marginal.document.v1.GraphNeighborhoodResponse.UndirectedDistanceEntry
-	nil,                               // 15: marginal.document.v1.GraphNeighborhoodResponse.ForwardReachableEntry
+	(*PathStep)(nil),                  // 11: marginal.document.v1.PathStep
+	nil,                               // 12: marginal.document.v1.GraphAnalysis.ComponentOfEntry
+	nil,                               // 13: marginal.document.v1.GraphAnalysis.BetweennessEntry
+	nil,                               // 14: marginal.document.v1.GraphAnalysis.StronglyConnectedEntry
+	nil,                               // 15: marginal.document.v1.GraphNeighborhoodResponse.UndirectedDistanceEntry
+	nil,                               // 16: marginal.document.v1.GraphNeighborhoodResponse.ForwardReachableEntry
 }
 var file_graph_proto_depIdxs = []int32{
 	2,  // 0: marginal.document.v1.LinkGraph.nodes:type_name -> marginal.document.v1.GraphNode
 	3,  // 1: marginal.document.v1.LinkGraph.edges:type_name -> marginal.document.v1.GraphEdge
-	11, // 2: marginal.document.v1.GraphAnalysis.component_of:type_name -> marginal.document.v1.GraphAnalysis.ComponentOfEntry
+	12, // 2: marginal.document.v1.GraphAnalysis.component_of:type_name -> marginal.document.v1.GraphAnalysis.ComponentOfEntry
 	7,  // 3: marginal.document.v1.GraphAnalysis.betti:type_name -> marginal.document.v1.BettiNumbers
-	12, // 4: marginal.document.v1.GraphAnalysis.betweenness:type_name -> marginal.document.v1.GraphAnalysis.BetweennessEntry
-	13, // 5: marginal.document.v1.GraphAnalysis.strongly_connected:type_name -> marginal.document.v1.GraphAnalysis.StronglyConnectedEntry
+	13, // 4: marginal.document.v1.GraphAnalysis.betweenness:type_name -> marginal.document.v1.GraphAnalysis.BetweennessEntry
+	14, // 5: marginal.document.v1.GraphAnalysis.strongly_connected:type_name -> marginal.document.v1.GraphAnalysis.StronglyConnectedEntry
 	6,  // 6: marginal.document.v1.GraphAnalysis.layers:type_name -> marginal.document.v1.GraphLayer
-	14, // 7: marginal.document.v1.GraphNeighborhoodResponse.undirected_distance:type_name -> marginal.document.v1.GraphNeighborhoodResponse.UndirectedDistanceEntry
-	15, // 8: marginal.document.v1.GraphNeighborhoodResponse.forward_reachable:type_name -> marginal.document.v1.GraphNeighborhoodResponse.ForwardReachableEntry
+	15, // 7: marginal.document.v1.GraphNeighborhoodResponse.undirected_distance:type_name -> marginal.document.v1.GraphNeighborhoodResponse.UndirectedDistanceEntry
+	16, // 8: marginal.document.v1.GraphNeighborhoodResponse.forward_reachable:type_name -> marginal.document.v1.GraphNeighborhoodResponse.ForwardReachableEntry
 	10, // 9: marginal.document.v1.GraphNeighborhoodResponse.nearest:type_name -> marginal.document.v1.GraphNeighbour
-	0,  // 10: marginal.document.v1.GraphService.GetLinkGraph:input_type -> marginal.document.v1.GetLinkGraphRequest
-	4,  // 11: marginal.document.v1.GraphService.AnalyzeGraph:input_type -> marginal.document.v1.AnalyzeGraphRequest
-	8,  // 12: marginal.document.v1.GraphService.GraphNeighborhood:input_type -> marginal.document.v1.GraphNeighborhoodRequest
-	1,  // 13: marginal.document.v1.GraphService.GetLinkGraph:output_type -> marginal.document.v1.LinkGraph
-	5,  // 14: marginal.document.v1.GraphService.AnalyzeGraph:output_type -> marginal.document.v1.GraphAnalysis
-	9,  // 15: marginal.document.v1.GraphService.GraphNeighborhood:output_type -> marginal.document.v1.GraphNeighborhoodResponse
-	13, // [13:16] is the sub-list for method output_type
-	10, // [10:13] is the sub-list for method input_type
-	10, // [10:10] is the sub-list for extension type_name
-	10, // [10:10] is the sub-list for extension extendee
-	0,  // [0:10] is the sub-list for field type_name
+	11, // 10: marginal.document.v1.GraphNeighborhoodResponse.reading_path:type_name -> marginal.document.v1.PathStep
+	0,  // 11: marginal.document.v1.GraphService.GetLinkGraph:input_type -> marginal.document.v1.GetLinkGraphRequest
+	4,  // 12: marginal.document.v1.GraphService.AnalyzeGraph:input_type -> marginal.document.v1.AnalyzeGraphRequest
+	8,  // 13: marginal.document.v1.GraphService.GraphNeighborhood:input_type -> marginal.document.v1.GraphNeighborhoodRequest
+	1,  // 14: marginal.document.v1.GraphService.GetLinkGraph:output_type -> marginal.document.v1.LinkGraph
+	5,  // 15: marginal.document.v1.GraphService.AnalyzeGraph:output_type -> marginal.document.v1.GraphAnalysis
+	9,  // 16: marginal.document.v1.GraphService.GraphNeighborhood:output_type -> marginal.document.v1.GraphNeighborhoodResponse
+	14, // [14:17] is the sub-list for method output_type
+	11, // [11:14] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_graph_proto_init() }
@@ -925,7 +1027,7 @@ func file_graph_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_graph_proto_rawDesc), len(file_graph_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   16,
+			NumMessages:   17,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

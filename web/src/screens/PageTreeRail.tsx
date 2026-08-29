@@ -1,8 +1,10 @@
-import { useMemo, useRef, useState, type DragEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { Link } from "react-router-dom";
 import { DocumentOutline } from "./DocumentOutline";
 import type { Page } from "../api/pages";
+import { listSeries } from "../api/series";
 import { ROOT, usePageTree } from "./usePageTree";
+import { getResume } from "../api/resume";
 
 type DropZone = "before" | "into" | "after";
 
@@ -18,10 +20,15 @@ type DropZone = "before" | "into" | "after";
  * backend endpoint to list soft-deleted pages at all (pages.md § Delete).
  */
 export function PageTreeRail({
-  actorId, activePageId, blocks, onJumpToBlock,
+  actorId, activePageId, activePagePath, blocks, onJumpToBlock,
 }: {
   actorId: string;
   activePageId?: string;
+  /** The open page's LTREE ancestry. Passed in rather than re-fetched: the
+   *  caller already has the page, and a second GetPage per navigation both
+   *  costs a request and delays the reveal by a round trip — long enough to
+   *  see the rail render without your own row in it. */
+  activePagePath?: string;
   /** The open page's live blocks, for the outline. Absent on screens that
    *  show the tree without a document (the dashboard). */
   blocks?: import("../collab/useCollabPage").BlockView[];
@@ -29,6 +36,50 @@ export function PageTreeRail({
 }) {
   const tree = usePageTree(actorId);
   const [filter, setFilter] = useState("");
+  /**
+   * Pages you have a stored reading position for.
+   *
+   * docs.reading_positions has existed since v2.8.0 with exactly one reader —
+   * the dashboard's resume list. The rail is where you actually decide what
+   * to open, so "you have been here" belongs on the row, as a mark rather
+   * than a percentage: a position is a block id and a caret offset, and
+   * turning that into "37% read" would be arithmetic over a number nobody
+   * measured.
+   */
+  const [resumedIds, setResumedIds] = useState<Set<string>>(new Set());
+
+  // Reveal the open page in the rail. Without it, opening a page from search,
+  // a link or the graph left the rail showing root pages only — with no mark
+  // on the row you were in, because the row was not rendered at all. `path`
+  // is the LTREE ancestry GetPage already returns, so this costs one request
+  // rather than one per level.
+  useEffect(() => {
+    if (activePagePath) tree.revealPath(activePagePath);
+  }, [activePagePath, tree.revealPath]);
+
+  /**
+   * How many children each branch has, before expanding it.
+   *
+   * ListSeries already counts them — a series IS a page with children — so
+   * this is one request for the whole rail rather than one per row, and it
+   * is what lets a collapsed branch say "19 PARTS" instead of nothing. It
+   * also fixes the twisty: without counts, every row had to assume it MIGHT
+   * have children, so every row grew a caret on hover.
+   */
+  const [partCountOf, setPartCountOf] = useState<Map<string, number>>(new Map());
+  useEffect(() => {
+    if (!actorId) return;
+    listSeries(actorId)
+      .then((r) => setPartCountOf(new Map(r.series.map((x) => [x.series_page_id, x.part_count]))))
+      .catch(() => setPartCountOf(new Map()));
+  }, [actorId]);
+
+  useEffect(() => {
+    if (!actorId) return;
+    getResume(actorId, 50)
+      .then((r) => setResumedIds(new Set(r.positions.map((p) => p.page_id))))
+      .catch(() => setResumedIds(new Set()));
+  }, [actorId]);
   const [creatingUnder, setCreatingUnder] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [dragId, setDragId] = useState<string | null>(null);
@@ -129,6 +180,13 @@ export function PageTreeRail({
           ＋
         </span>
       </div>
+      {/* A filter that hides rows without saying how many is a filter you
+          cannot tell you have finished typing. */}
+      {filterLower && (
+        <div className="tr-filter-note">
+          {filteredIds?.length ?? 0} of {Object.keys(tree.nodes).length} loaded
+        </div>
+      )}
       <input
         className="filt"
         placeholder="filter…"
@@ -140,7 +198,10 @@ export function PageTreeRail({
       <div style={{ display: "flex", flexDirection: "column", gap: 1, padding: "0 8px", overflowY: "auto", flex: 1 }}>
         {filteredIds ? (
           filteredIds.length === 0 ? (
-            <div style={{ padding: 8, fontSize: 11.5, color: "#585550" }}>No loaded pages match.</div>
+            <div style={{ padding: 8, fontSize: 11.5, color: "#585550", lineHeight: 1.6 }}>
+              No loaded pages match. The filter searches what the rail has already
+              fetched — expand a branch to bring its children into range.
+            </div>
           ) : (
             filteredIds.map((id) => (
               <PageRow
@@ -149,6 +210,9 @@ export function PageTreeRail({
                 depth={0}
                 ordinal={ordinalOf.get(id) ?? "—"}
                 ordinalOf={ordinalOf}
+                match={filter}
+                resumedIds={resumedIds}
+                partCountOf={partCountOf}
                 activePageId={activePageId}
                 tree={tree}
                 dragId={dragId}
@@ -174,6 +238,9 @@ export function PageTreeRail({
                 id={id}
                 depth={0}
                 ordinalOf={ordinalOf}
+                match={filter}
+                resumedIds={resumedIds}
+                partCountOf={partCountOf}
                 activePageId={activePageId}
                 tree={tree}
                 dragId={dragId}
@@ -242,6 +309,13 @@ export function PageTreeRail({
 interface TreeProps {
   activePageId?: string;
   ordinalOf: Map<string, string>;
+  /** The live filter string, for match highlighting. A filter that dims the
+   *  list without showing WHERE it matched makes you re-read every row. */
+  match: string;
+  /** Page ids you have a stored reading position for. */
+  resumedIds: Set<string>;
+  /** Child count per branch, known before expanding it. */
+  partCountOf: Map<string, number>;
   tree: ReturnType<typeof usePageTree>;
   dragId: string | null;
   dropTarget: { id: string; zone: DropZone } | null;
@@ -268,11 +342,24 @@ function TreeBranch({ id, depth, ...rest }: TreeProps & { id: string; depth: num
       <PageRow page={page} depth={depth} ordinal={rest.ordinalOf.get(id) ?? "—"} {...rest} />
       {expanded && (
         <>
-          {(children ?? []).map((childId) => (
-            <TreeBranch key={childId} id={childId} depth={depth + 1} {...rest} />
+          {/* Children arrive rather than appear. The stagger is capped at 12
+              so a nineteen-part series does not take two seconds to open —
+              motion that outlasts the intent it acknowledges stops reading as
+              feedback and starts reading as lag. */}
+          {(children ?? []).map((childId, i) => (
+            <div key={childId} className="tr-child" style={{ animationDelay: `${Math.min(i, 12) * 0.018}s` }}>
+              <TreeBranch id={childId} depth={depth + 1} {...rest} />
+            </div>
           ))}
+          {/* Shimmer, not a spinner: the branch is already on screen and only
+              its contents are pending, so the placeholder should have the
+              shape of what is coming. */}
           {rest.tree.loading.has(id) && children === undefined && (
-            <div style={{ padding: "4px 8px", fontSize: 11, color: "#585550", paddingLeft: depthPadding(depth + 1) }}>Loading…</div>
+            <div style={{ paddingLeft: depthPadding(depth + 1), paddingRight: 8 }}>
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="tr-skel" style={{ animationDelay: `${i * 0.12}s`, width: `${88 - i * 14}%` }} />
+              ))}
+            </div>
           )}
           {rest.creatingUnder === id && (
             <div style={{ paddingLeft: depthPadding(depth + 1) }}>
@@ -298,6 +385,27 @@ function depthPadding(depth: number): number {
 const WORDS_PER_MINUTE = 220;
 
 /**
+ * Marks where the filter matched, inside the title.
+ *
+ * A filter that removes rows without showing WHERE it matched makes you
+ * re-read every surviving row to find out why it survived — which is most of
+ * the work the filter was supposed to save.
+ */
+function highlight(title: string, match: string) {
+  const q = match.trim().toLowerCase();
+  if (!q) return title;
+  const at = title.toLowerCase().indexOf(q);
+  if (at < 0) return title;
+  return (
+    <>
+      {title.slice(0, at)}
+      <span className="tr-hit">{title.slice(at, at + q.length)}</span>
+      {title.slice(at + q.length)}
+    </>
+  );
+}
+
+/**
  * A page's reading estimate, from the word count document-service computed
  * over docs.blocks — never counted here. Null when the page has no blocks:
  * an empty page and a page whose projection has not caught up both hold zero
@@ -312,6 +420,9 @@ function PageRow({
   page,
   depth,
   ordinal,
+  match,
+  resumedIds,
+  partCountOf,
   activePageId,
   tree,
   dragId,
@@ -329,14 +440,17 @@ function PageRow({
   // Undefined means "not loaded yet", which is different from "none" — the
   // twisty must appear for an unexpanded branch, but the COUNT must not
   // claim a number nobody has fetched.
-  const hasChildren = (loadedChildren?.length ?? 0) > 0 || loadedChildren === undefined;
-  const childCount = loadedChildren?.length ?? 0;
+  // Known up front from ListSeries, so a collapsed branch says how many
+  // pages are under it and a LEAF grows no twisty at all.
+  const knownCount = partCountOf.get(page.id) ?? 0;
+  const childCount = loadedChildren?.length ?? knownCount;
+  const hasChildren = childCount > 0;
   const isDeleting = page.lifecycle_state === "deleting";
   const mins = readMinutes(page);
+  const resumed = resumedIds.has(page.id);
   const isDropTarget = dropTarget?.id === page.id;
   const isBeingDragged = dragId === page.id;
 
-  const style = depth >= 1 ? { paddingLeft: depthPadding(depth) } : undefined;
 
   return (
     <div
@@ -348,18 +462,20 @@ function PageRow({
       onDragEnd={onDragEnd}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      style={{
-        opacity: isBeingDragged ? 0.4 : 1,
-        outline: isDropTarget && dropTarget?.zone === "into" ? "2px solid var(--violet)" : undefined,
-        borderTop: isDropTarget && dropTarget?.zone === "before" ? "2px solid var(--violet)" : "2px solid transparent",
-        borderBottom: isDropTarget && dropTarget?.zone === "after" ? "2px solid var(--violet)" : "2px solid transparent",
-      }}
+      style={{ position: "relative", opacity: isBeingDragged ? 0.4 : 1 }}
     >
+      {/* The drop indicator is a LINE over the row, not a border on it. A
+          border changes the row's height, so everything below jumps as the
+          pointer crosses — which reads as the list fighting the drag. */}
+      {isDropTarget && dropTarget?.zone === "before" && <div className="tr-drop" style={{ top: -1 }} />}
+      {isDropTarget && dropTarget?.zone === "after" && <div className="tr-drop" style={{ bottom: -1 }} />}
+      {isDropTarget && dropTarget?.zone === "into" && <div className="tr-drop-into" />}
+
       <Link
         to={`/pages/${page.id}`}
         className={`tr${page.id === activePageId ? " tr-on" : ""}`}
         style={{
-          ...style,
+          paddingLeft: 9,
           textDecoration: "none",
           // A page mid-saga must not look active (DATA_MODEL's own
           // lifecycle_state note) — struck through in amber, never red.
@@ -371,15 +487,44 @@ function PageRow({
               }
             : {}),
         }}
-        title={isDeleting ? "lifecycle_state = deleting" : undefined}
+        title={isDeleting ? "lifecycle_state = deleting" : page.title}
       >
         {page.id === activePageId && <i />}
+
+        {/* Depth guides. Indent alone stops being legible past two levels;
+            one hairline per level is how a file tree has always solved it,
+            and it costs nothing the indent was not already spending. */}
+        {depth > 0 && (
+          <span className="tr-guides" aria-hidden>
+            {Array.from({ length: depth }, (_, i) => <span key={i} className="tr-guide" />)}
+          </span>
+        )}
+
+        {/* Two 2px rules, not one dot: "what state is this in" and "what is
+            it about" are different questions, and a single coloured mark can
+            only ever answer one of them. genuine-folio's ContentRowBars. */}
+        <span className="tr-bars" aria-hidden>
+          {/* The tick is state: amber mid-delete, ember where you are, teal
+              where you have been. Teal comes from docs.reading_positions —
+              a real column that had nowhere to show. Deliberately a MARK and
+              not a percentage: a position is a block id and a caret offset,
+              and turning that into "37% read" would be arithmetic over a
+              number nobody measured. */}
+          <span className={`tr-tick${
+            isDeleting ? " tr-tick-del"
+              : page.id === activePageId ? " tr-tick-on"
+                : resumed ? " tr-tick-live" : ""
+          }`} title={resumed ? "you were reading this" : undefined} />
+          <span
+            className="tr-bar"
+            style={page.topic ? { background: `var(--topic-${page.topic.color_key})` } : undefined}
+            title={page.topic?.name ?? "Untopiced"}
+          />
+        </span>
+
         {/* § 04 leads every row with a two-digit ordinal, ember on the row
-            you are in. The app drew a disclosure caret in that slot instead,
-            which meant the rail had no stable way to refer to a row at all —
-            "the third one" is how people actually talk about a list.
-            One span, not two: the caret takes the ordinal's place on hover
-            for rows that have children, so the affordance is still there
+            you are in. One span, not two: the caret takes the ordinal's place
+            on hover for rows with children, so the affordance is there
             without a second column of glyphs competing for 238px. */}
         <span
           className="tr-n"
@@ -398,18 +543,9 @@ function PageRow({
         >
           {hasChildren && hovered ? (expanded ? "▾" : "▸") : ordinal}
         </span>
-        {/* Topic hue as a 5px square, before the title. The graph colours
-            nodes this way, so the rail and the graph agree at a glance about
-            what a page is — the same fact drawn the same way twice. */}
-        {page.topic && (
-          <span
-            className="tr-topic"
-            style={{ background: `var(--topic-${page.topic.color_key})` }}
-            title={page.topic.name}
-          />
-        )}
-        {!page.topic && <span className="tr-topic tr-topic-none" title="Untopiced" />}
-        <span className="tr-t">{page.title || "Untitled"}</span>
+
+        <span className="tr-t">{highlight(page.title || "Untitled", match)}</span>
+
         {isDeleting && (
           <span style={{
             marginLeft: "auto",
@@ -419,20 +555,32 @@ function PageRow({
             DELETING
           </span>
         )}
-        {/* The right-hand slot is the READING ESTIMATE, not the sub-page
-            count. Both were candidates; this one is the fact you actually
-            act on — "is this a two-minute read or a twenty" decides whether
-            you open it now, where the number of children is already implied
-            by the row having a twisty at all. The sub-page count moves to
-            the ordinal's tooltip rather than being dropped. */}
+
+        {/* A branch says how many pages are under it, and says SERIES once it
+            has enough of them to be one. Two is the threshold, matching the
+            server's: one child is a sub-page, and "Part 1 of 1" tells a
+            reader nothing. */}
+        {!isDeleting && childCount > 0 && (
+          <span
+            className={`tr-parts${childCount >= 2 ? " tr-parts-series" : ""}`}
+            title={childCount >= 2 ? `A series of ${childCount} parts` : `${childCount} sub-page`}
+          >
+            {childCount >= 2 ? `${childCount} PARTS` : childCount}
+          </span>
+        )}
+
+        {/* The right-hand slot is the READING ESTIMATE. "Is this a two-minute
+            read or a twenty" decides whether you open it now; the number of
+            children is already said by the badge beside it. */}
         {!isDeleting && mins !== null && (
           <span
             className="tr-n tr-count"
-            title={`${page.word_count} words${hasChildren ? ` · ${childCount} sub-pages` : ""}`}
+            title={`${page.word_count} words`}
           >
             {mins}m
           </span>
         )}
+
         <span className="tr-a">
         <span
           className="tr-n"

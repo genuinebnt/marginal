@@ -298,7 +298,7 @@ export function TopicsScreen() {
                     key={p.id}
                     className="row"
                     style={{ padding: "9px 0", cursor: "pointer", borderBottom: i === topicPages.length - 1 ? 0 : undefined }}
-                    onClick={() => navigate(`/pages/${p.id}`)}
+                    onClick={() => navigate(`/read/${p.id}`)}
                   >
                     <span style={{ flex: 1, fontSize: 13, color: i === 0 ? "#EFEDE7" : "#D2CFC8" }}>
                       {p.title}

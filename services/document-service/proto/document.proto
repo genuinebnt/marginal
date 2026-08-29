@@ -53,6 +53,21 @@ service PageService {
   // v2.8.0 — resume. Where the caret was, per user per page.
   rpc SaveReadingPosition (SaveReadingPositionRequest) returns (google.protobuf.Empty);
   rpc ListReadingPositions(ListReadingPositionsRequest) returns (ListReadingPositionsResponse);
+
+  // v2.9.0 — series.
+  //
+  // A SERIES IS A PAGE WITH CHILDREN. No table, no `series_name` column, no
+  // second ordering: the page tree already expresses "these pages belong
+  // together, in this order", and `sort_key` already orders them. Adding a
+  // parallel grouping would mean two answers to "what comes after this" that
+  // can disagree — and the drag-to-reorder the rail already has would only
+  // update one of them.
+  //
+  // The consequence, accepted deliberately: a page cannot be in two series.
+  // That is the same constraint the tree has, and the same one a topic has
+  // (S9.3's argument) — a thing that belongs to two orderings has no next.
+  rpc GetPageSeries(GetPageSeriesRequest) returns (PageSeries);
+  rpc ListSeries    (ListSeriesRequest)    returns (ListSeriesResponse);
 }
 
 enum LifecycleState {
@@ -95,6 +110,54 @@ message Topic {
   string color_key = 3;  // protocol|storage|interface|operations|research
   int32  page_count = 4; // live pages only; 0 unless returned by ListTopics
 }
+
+message GetPageSeriesRequest { string page_id = 1; }
+
+// SeriesPart is one entry, in the parent's own sort order.
+message SeriesPart {
+  string page_id     = 1;
+  string title       = 2;
+  // 1-based, as printed ("Part 3 of 19"). 0 is never a valid part number,
+  // which makes an unset field visibly wrong rather than plausibly first.
+  int32  number      = 3;
+  int32  word_count  = 4;
+  optional Topic topic = 5;
+  repeated string tags = 6;
+}
+
+message PageSeries {
+  // The three states, kept apart because they need different words on screen:
+  //   MEMBER  — this page is a part; `parts` are its siblings, `number` is it.
+  //   LEADER  — this page IS the series page; `parts` are its children.
+  //   NONE    — neither. A page with no parent and no children.
+  Membership membership = 1;
+  string series_page_id = 2;
+  string series_title   = 3;
+  repeated SeriesPart parts = 4;
+  // 1-based position of the requested page within `parts`. 0 when LEADER or
+  // NONE — the page is not itself a part.
+  int32 number = 5;
+}
+
+enum Membership {
+  MEMBERSHIP_UNSPECIFIED = 0;
+  MEMBERSHIP_NONE        = 1;
+  MEMBERSHIP_MEMBER      = 2;
+  MEMBERSHIP_LEADER      = 3;
+}
+
+message ListSeriesRequest {}
+
+message SeriesSummary {
+  string series_page_id = 1;
+  string title          = 2;
+  optional Topic topic  = 3;
+  int32  part_count     = 4;
+  int32  word_count     = 5;   // the whole series, parts plus the series page
+  repeated SeriesPart parts = 6;
+}
+
+message ListSeriesResponse { repeated SeriesSummary series = 1; }
 
 message CreatePageRequest {
   string title = 1;

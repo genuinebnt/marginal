@@ -210,8 +210,12 @@ async function main() {
   // per-page screens live.
   let route = appPath;
   if (pageTitle) {
-    const pages = await (await fetch(`${GW}/pages`, { headers: { 'X-Actor-Id': sub } })).json();
-    const p = pages.pages.find(x => x.title === pageTitle);
+    // /graph, not /pages: ListPages returns ROOT pages only, so once the
+    // corpus had nested pages every title inside a series resolved to
+    // nothing and the diff silently ran against the wrong route.
+    const graph = await (await fetch(`${GW}/graph`, { headers: { 'X-Actor-Id': sub } })).json();
+    const p = graph.nodes.find(x => x.title === pageTitle);
+    if (!p) console.error(`no page titled "${pageTitle}" — diffing ${appPath} as given`);
     if (p) route = appPath.includes('{id}') ? appPath.replace('{id}', p.id) : `/pages/${p.id}`;
   }
 
@@ -221,7 +225,12 @@ async function main() {
     { actorId: sub, accessToken: pair.access_token, refreshToken: pair.refresh_token });
   await a.goto(APP + route, { waitUntil: 'networkidle' });
   await a.evaluate('document.fonts.ready');
-  await a.waitForTimeout(3500);
+  // 3.5s was enough when the rail listed 18 flat pages. It is not enough now
+  // that the editor also resolves a series, a diagnostics pass, a link graph
+  // and a reveal-to-active-page — and a diff taken mid-load reports "missing"
+  // for everything that had not arrived yet, which is the most misleading
+  // failure this tool can produce.
+  await a.waitForTimeout(7000);
   if (SEED[screen]) {
     // Put the screen into the state its mockup depicts, so what remains
     // missing afterwards is absent rather than merely unshown.

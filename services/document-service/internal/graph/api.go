@@ -197,7 +197,20 @@ func (s *Server) GraphNeighborhood(ctx context.Context, req *documentv1.GraphNei
 		ringSizes[i] = int32(n)
 	}
 
+	// "What to read before this page." Over the same graph, one more walk —
+	// a second reader of the link structure, not a second copy of it.
+	path := make([]*documentv1.PathStep, 0)
+	for _, step := range graphalgo.ReadingPath(g.Graph, source) {
+		path = append(path, &documentv1.PathStep{
+			PageId:      string(step.ID),
+			Title:       g.Nodes[step.ID].Title,
+			Depth:       int32(step.Depth),
+			Destination: step.Destination,
+		})
+	}
+
 	return &documentv1.GraphNeighborhoodResponse{
+		ReadingPath:        path,
 		UndirectedDistance: undirected,
 		ForwardReachable:   forwardOut,
 		Nearest:            nearest,

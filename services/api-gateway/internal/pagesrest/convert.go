@@ -149,3 +149,89 @@ func toListPagesJSON(resp *documentv1.ListPagesResponse) listPagesJSON {
 	}
 	return listPagesJSON{Pages: pages, NextCursor: resp.NextCursor}
 }
+
+// --- series (v2.9.0) -------------------------------------------------------
+
+type seriesPartJSON struct {
+	PageID string `json:"page_id"`
+	Title  string `json:"title"`
+	// 1-based, as printed ("Part 3 of 19"). 0 is never a valid part number.
+	Number    int32      `json:"number"`
+	WordCount int32      `json:"word_count"`
+	Topic     *topicJSON `json:"topic"`
+	Tags      []string   `json:"tags"`
+}
+
+type pageSeriesJSON struct {
+	// "none" | "member" | "leader" — three states that need different words
+	// on screen, so they are three strings rather than two booleans.
+	Membership   string           `json:"membership"`
+	SeriesPageID string           `json:"series_page_id"`
+	SeriesTitle  string           `json:"series_title"`
+	Parts        []seriesPartJSON `json:"parts"`
+	Number       int32            `json:"number"`
+}
+
+type seriesSummaryJSON struct {
+	SeriesPageID string           `json:"series_page_id"`
+	Title        string           `json:"title"`
+	Topic        *topicJSON       `json:"topic"`
+	PartCount    int32            `json:"part_count"`
+	WordCount    int32            `json:"word_count"`
+	Parts        []seriesPartJSON `json:"parts"`
+}
+
+type listSeriesJSON struct {
+	Series []seriesSummaryJSON `json:"series"`
+}
+
+func membershipJSON(m documentv1.Membership) string {
+	switch m {
+	case documentv1.Membership_MEMBERSHIP_MEMBER:
+		return "member"
+	case documentv1.Membership_MEMBERSHIP_LEADER:
+		return "leader"
+	default:
+		return "none"
+	}
+}
+
+func toSeriesPartsJSON(in []*documentv1.SeriesPart) []seriesPartJSON {
+	out := make([]seriesPartJSON, 0, len(in))
+	for _, p := range in {
+		tags := p.GetTags()
+		if tags == nil {
+			tags = []string{}
+		}
+		out = append(out, seriesPartJSON{
+			PageID: p.GetPageId(), Title: p.GetTitle(), Number: p.GetNumber(),
+			WordCount: p.GetWordCount(), Topic: toTopicJSON(p.GetTopic()), Tags: tags,
+		})
+	}
+	return out
+}
+
+func toPageSeriesJSON(s *documentv1.PageSeries) pageSeriesJSON {
+	return pageSeriesJSON{
+		Membership:   membershipJSON(s.GetMembership()),
+		SeriesPageID: s.GetSeriesPageId(),
+		SeriesTitle:  s.GetSeriesTitle(),
+		Parts:        toSeriesPartsJSON(s.GetParts()),
+		Number:       s.GetNumber(),
+	}
+}
+
+func toListSeriesJSON(r *documentv1.ListSeriesResponse) listSeriesJSON {
+	out := listSeriesJSON{Series: make([]seriesSummaryJSON, 0, len(r.GetSeries()))}
+	for _, s := range r.GetSeries() {
+		out.Series = append(out.Series, seriesSummaryJSON{
+			SeriesPageID: s.GetSeriesPageId(),
+			Title:        s.GetTitle(),
+			Topic:        toTopicJSON(s.GetTopic()),
+			PartCount:    s.GetPartCount(),
+			WordCount:    s.GetWordCount(),
+			Parts:        toSeriesPartsJSON(s.GetParts()),
+		})
+	}
+	return out
+}

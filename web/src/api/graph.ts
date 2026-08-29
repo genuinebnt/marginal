@@ -72,6 +72,16 @@ export interface GraphNeighbour {
   hops: number;
 }
 
+export interface PathStep {
+  page_id: string;
+  title: string;
+  /** The dependency LAYER, not the distance: two pages at the same depth can
+   *  be read in either order. */
+  depth: number;
+  /** Always exactly the last step — the page the path was computed for. */
+  destination: boolean;
+}
+
 export interface GraphNeighborhood {
   undirected_distance: Record<string, number>;
   forward_reachable: Record<string, number>;
@@ -84,6 +94,11 @@ export interface GraphNeighborhood {
    *  (the source itself). A frontier that stops growing is a graph that
    *  stops connecting. */
   ring_sizes: number[];
+  /** "Read these, in this order" — everything that reaches this page by
+   *  following links FORWARD, layered so a page with no prerequisites of its
+   *  own comes first, ending at the page itself. A page nothing links to has
+   *  a path of one step: itself, which is what "start here" looks like. */
+  reading_path: PathStep[];
 }
 
 export function getLinkGraph(actorId: string): Promise<LinkGraph> {

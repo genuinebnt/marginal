@@ -47,6 +47,11 @@ func (h *Handler) Mount(r chi.Router) {
 	// v2.8.0 resume. /resume is top-level because it is a cross-page read
 	// scoped to the CALLER, not to any one page.
 	r.Get("/resume", h.listResume)
+
+	// v2.9.0 — series. A series IS a page with children, so these read the
+	// tree rather than a table of their own.
+	r.Get("/series", h.listSeries)
+	r.Get("/pages/{id}/series", h.pageSeries)
 	r.Put("/pages/{id}/position", h.savePosition)
 }
 
@@ -270,7 +275,6 @@ func (h *Handler) tagFacets(w http.ResponseWriter, r *http.Request) {
 	apierror.WriteJSON(w, http.StatusOK, map[string]any{"facets": facets})
 }
 
-
 // --- v2.8.0 resume -------------------------------------------------------
 
 type savePositionRequest struct {
@@ -319,4 +323,23 @@ func (h *Handler) listResume(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	apierror.WriteJSON(w, http.StatusOK, map[string]any{"positions": out})
+}
+
+func (h *Handler) listSeries(w http.ResponseWriter, r *http.Request) {
+	resp, err := h.client.ListSeries(actorctx.FromRequest(r), &documentv1.ListSeriesRequest{})
+	if err != nil {
+		apierror.WriteGRPCStatus(w, err)
+		return
+	}
+	apierror.WriteJSON(w, http.StatusOK, toListSeriesJSON(resp))
+}
+
+func (h *Handler) pageSeries(w http.ResponseWriter, r *http.Request) {
+	resp, err := h.client.GetPageSeries(actorctx.FromRequest(r),
+		&documentv1.GetPageSeriesRequest{PageId: chi.URLParam(r, "id")})
+	if err != nil {
+		apierror.WriteGRPCStatus(w, err)
+		return
+	}
+	apierror.WriteJSON(w, http.StatusOK, toPageSeriesJSON(resp))
 }

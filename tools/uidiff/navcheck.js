@@ -13,7 +13,7 @@ const { chromium } = require('playwright-core');
   await p.goto('http://localhost:5173/', { waitUntil:'domcontentloaded' });
   await p.evaluate(s=>localStorage.setItem('marginal.session',JSON.stringify(s)),
     {actorId:sub,accessToken:pair.access_token,refreshToken:pair.refresh_token});
-  for (const route of ['/pages','/read','/search','/graph','/history','/lab','/topics','/facts','/graph/algorithms','/discover','/notifications']) {
+  for (const route of ['/pages','/read','/search','/graph','/history','/lab','/topics','/facts','/graph/algorithms','/discover','/notifications','/series']) {
     await p.goto('http://localhost:5173' + route, { waitUntil:'networkidle' });
     await p.waitForTimeout(1200);
     const landed = await p.evaluate(() => location.pathname);

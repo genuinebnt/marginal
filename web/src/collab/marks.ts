@@ -168,12 +168,22 @@ function escapeAttr(s: string): string {
  * is the same thing it looked like before, so the failure is invisible
  * rather than broken.
  */
-function linkify(escaped: string): string {
-  return escaped.replace(/\[\[([^\[\]\n]+)\]\]/g, '<span class="pl">[[$1]]</span>');
+function linkify(escaped: string, known?: Set<string>): string {
+  return escaped.replace(/\[\[([^\[\]\n]+)\]\]/g, (_m, title: string) => {
+    // `known` is the set of live page titles, lowercased. Absent means "do
+    // not judge" — the editor renders as you type, and a title you have not
+    // finished typing is not yet a dangling link.
+    const dangling = known !== undefined && !known.has(title.trim().toLowerCase());
+    const cls = dangling ? "pl pl-dangling" : "pl";
+    // data-title is what the click handler reads. Parsing the span's own
+    // text back out would work until a mark boundary splits it — see the
+    // known limit above — and then the click would silently open nothing.
+    return `<span class="${cls}" data-title="${title.trim()}">[[${title}]]</span>`;
+  });
 }
 
-export function renderMarkedHTML(text: string, marks: Mark[]): string {
-  if (marks.length === 0) return linkify(escapeHtml(text));
+export function renderMarkedHTML(text: string, marks: Mark[], known?: Set<string>): string {
+  if (marks.length === 0) return linkify(escapeHtml(text), known);
 
   const boundaries = new Set<number>([0, text.length]);
   for (const m of marks) {
@@ -197,7 +207,7 @@ export function renderMarkedHTML(text: string, marks: Mark[]): string {
         close = def.close + close;
       }
     }
-    html += open + linkify(escapeHtml(text.slice(segStart, segEnd))) + close;
+    html += open + linkify(escapeHtml(text.slice(segStart, segEnd)), known) + close;
   }
   return html;
 }

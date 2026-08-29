@@ -235,7 +235,7 @@ export function SearchScreen() {
                   <span style={{ color: "#585550" }}>{query.trim() ? "no near titles" : "—"}</span>
                 )}
                 {suggestions.map((s) => (
-                  <div key={s.page_id} style={{ cursor: "pointer" }} onClick={() => navigate(`/pages/${s.page_id}`)}>
+                  <div key={s.page_id} style={{ cursor: "pointer" }} onClick={() => navigate(`/read/${s.page_id}`)}>
                     {s.title} <span style={{ color: "#4B4842" }}>· d={s.distance}</span>
                   </div>
                 ))}
@@ -289,7 +289,7 @@ export function SearchScreen() {
               return (
                 <div
                   key={`${h.page_id}-${h.block_id ?? i}`}
-                  onClick={() => navigate(`/pages/${h.page_id}`)}
+                  onClick={() => navigate(`/read/${h.page_id}`)}
                   style={{
                     padding: first ? "16px 0 16px 16px" : "16px 0 16px 16px",
                     borderBottom: "1px solid rgba(255,255,255,.07)",
