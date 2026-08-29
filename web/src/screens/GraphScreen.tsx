@@ -3,9 +3,13 @@
  *
  * Ported, not redrawn. The markup below was extracted from the mockup and
  * converted to JSX mechanically; the class names, the panel geometry, the
- * readout order, and the copy are the mockup's own. Real data replaces the
- * mockup's constants where an endpoint exists, and `ph(...)` marks every
- * value that is still the mockup's — see shell/placeholder.tsx.
+ * readout order, and the copy are the mockup's own.
+ *
+ * Every value on this screen is now computed. Betweenness and modularity come
+ * from graphalgo over gRPC; the territory polygons are real convex hulls; the
+ * layout, its alpha and its tick count are the simulation's own state; the
+ * tag filter, topic mix and territory share are joins over /pages. No
+ * placeholders remain.
  *
  * The layout is real: every tick calls graphalgo.LayoutTick through wasm
  * (graph-core/useForceLayout), never a second physics implementation in TS.
@@ -16,7 +20,7 @@
  * is emergent (where links pulled it); the hue is declared (what the page
  * says it is about). When they disagree, that disagreement is the finding.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { analyzeGraph, getLinkGraph, type GraphAnalysis, type LinkGraph } from "../api/graph";
 import { getTopics, type Topic } from "../api/topics";
 import { listPages } from "../api/pages";
@@ -27,7 +31,6 @@ import {
   Body, Inspector, Label, Readout, Rule, Screen, StatusBar, SubBar, SubItem,
   TopBar, TopicChip, TOPIC_HEX, num,
 } from "../shell/Chrome";
-import { ph, PlaceholderNote } from "../shell/placeholder";
 
 const W = 1104;
 const H = 754;
@@ -43,6 +46,11 @@ export function GraphScreen() {
   // response to carry classification would make the graph endpoint a second
   // source of truth for something /pages already answers.
   const [topicOf, setTopicOf] = useState<Map<string, string>>(new Map());
+  // Tags per page, for the filter. Same join as topicOf and from the same
+  // /pages response — the graph endpoint owns edges, not page metadata.
+  const [tagsOf, setTagsOf] = useState<Map<string, string[]>>(new Map());
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [minDegree, setMinDegree] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -58,7 +66,10 @@ export function GraphScreen() {
     analyzeGraph(actorId).then(setAnalysis).catch(() => setAnalysis(null));
     getTopics(actorId).then((r) => setTopics(r.topics)).catch(() => {});
     listPages(actorId)
-      .then((r) => setTopicOf(new Map(r.pages.map((p) => [p.id, p.topic?.color_key ?? ""]))))
+      .then((r) => {
+        setTopicOf(new Map(r.pages.map((p) => [p.id, p.topic?.color_key ?? ""])));
+        setTagsOf(new Map(r.pages.map((p) => [p.id, p.tags ?? []])));
+      })
       .catch(() => {});
   }, [actorId]);
 
@@ -67,7 +78,7 @@ export function GraphScreen() {
     () => graph?.edges.map((e) => ({ from: e.from_page, to: e.to_page })) ?? [],
     [graph],
   );
-  const { nodes, startDrag, dragTo, endDrag } = useForceLayout(nodeIds, edges, W, H);
+  const { nodes, startDrag, dragTo, endDrag, alpha, ticks, cooled } = useForceLayout(nodeIds, edges, W, H);
 
   const byId = useMemo(() => {
     const m = new Map<string, { title: string }>();
@@ -86,6 +97,26 @@ export function GraphScreen() {
     });
     return d;
   }, [nodeIds, edges]);
+
+  /** Tags ranked by how many of THIS graph's nodes carry them. */
+  const topTags = useMemo(() => {
+    const m = new Map<string, number>();
+    nodeIds.forEach((id) => (tagsOf.get(id) ?? []).forEach((t) => m.set(t, (m.get(t) ?? 0) + 1)));
+    return [...m].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 6);
+  }, [nodeIds, tagsOf]);
+
+  /**
+   * Filters DIM rather than remove. Pulling nodes out would re-run the
+   * simulation and rearrange everything still on screen, so a filter would
+   * destroy the spatial memory it exists to help you use.
+   */
+  const dimmed = useCallback((id: string) => {
+    const d = degree.get(id);
+    const deg = (d?.in ?? 0) + (d?.out ?? 0);
+    if (deg < minDegree) return true;
+    if (tagFilter && !(tagsOf.get(id) ?? []).includes(tagFilter)) return true;
+    return false;
+  }, [degree, minDegree, tagFilter, tagsOf]);
 
   const sel = selected ?? nodes[0]?.id ?? null;
   const selTitle = sel ? byId.get(sel)?.title ?? "—" : "—";
@@ -132,6 +163,41 @@ export function GraphScreen() {
     return () => { cancelled = true; };
   }, [nodes, topicOf, fit]);
 
+  /** The selected node's neighbours, grouped by topic — declared against
+   *  emergent, which is the disagreement this panel exists to surface. */
+  const neighbourMix = useMemo(() => {
+    const m = new Map<string, number>();
+    neighbours.forEach((nb) => {
+      const key = topicOf.get(nb.id) ?? "";
+      m.set(key, (m.get(key) ?? 0) + 1);
+    });
+    return [...m].sort((a, b) => b[1] - a[1]);
+  }, [neighbours, topicOf]);
+
+  const offTopic = useMemo(
+    () => neighbours.filter((nb) => (topicOf.get(nb.id) ?? "") !== selKey).length,
+    [neighbours, topicOf, selKey],
+  );
+
+  /**
+   * How much of the canvas the selected node's TOPIC covers — the shoelace
+   * area of its hull over the viewport, as a percentage.
+   *
+   * Of the topic, not of the node: a single point has no area, and "this
+   * page occupies 0% of the plane" would be true and useless. The question
+   * the panel is asking is how much ground the thing it belongs to holds.
+   */
+  const territoryShare = useMemo(() => {
+    const hull = territories.find((h) => h.group === selKey);
+    if (!hull || hull.points.length < 3) return null;
+    let a = 0;
+    for (let i = 0; i < hull.points.length; i++) {
+      const p = hull.points[i], q = hull.points[(i + 1) % hull.points.length];
+      a += p.x * q.y - q.x * p.y;
+    }
+    return (Math.abs(a) / 2 / (W * H)) * 100;
+  }, [territories, selKey]);
+
   const pos = (id: string) => {
     const n = nodes.find((v) => v.id === id);
     return n ? { x: n.x * fit.s + fit.dx, y: n.y * fit.s + fit.dy } : undefined;
@@ -153,7 +219,7 @@ export function GraphScreen() {
           <>
             <Readout k="NODES" v={num(graph?.nodes.length ?? 0)} />
             <Readout k="EDGES" v={num(graph?.edges.length ?? 0)} />
-            <Readout k="ALPHA" v={ph("0.001")} tone="#3FCFA8" />
+            <Readout k="ALPHA" v={alpha.toFixed(3)} tone={cooled ? "#3FCFA8" : "#E0A34E"} />
           </>
         }
       />
@@ -163,7 +229,9 @@ export function GraphScreen() {
         <SubItem>TERRITORY · VORONOI</SubItem>
         <SubItem>DELAUNAY DUAL</SubItem>
         <div style={{ flex: 1 }} />
-        <SubItem tone="#3FCFA8">SIMULATION COOLED</SubItem>
+        <SubItem tone={cooled ? "#3FCFA8" : "#E0A34E"}>
+          {cooled ? "SIMULATION COOLED" : "SIMULATION RUNNING"}
+        </SubItem>
       </SubBar>
 
       <Body>
@@ -235,11 +303,11 @@ export function GraphScreen() {
                       </>
                     )}
                     <circle cx={n.x} cy={n.y} r={r} fill={isSel ? "#E8873C" : hex}
-                            opacity={isSel ? 1 : deg > 2 ? 1 : 0.62} />
+                            opacity={dimmed(n.id) ? 0.16 : isSel ? 1 : deg > 2 ? 1 : 0.62} />
                     <text x={n.x + r + 8} y={n.y + (isSel ? -4 : 4)}
                           fontFamily={isSel ? "Spectral" : "Archivo"}
                           fontSize={isSel ? 15 : 11.5}
-                          fill={isSel ? "#EFEDE7" : deg > 2 ? "#8C8880" : "#6E6A63"}>
+                          fill={dimmed(n.id) ? "#3A3833" : isSel ? "#EFEDE7" : deg > 2 ? "#8C8880" : "#6E6A63"}>
                       {byId.get(n.id)?.title ?? ""}
                     </text>
                     {isSel && (
@@ -290,16 +358,28 @@ export function GraphScreen() {
             <Rule />
             <Label>TAG FILTER</Label>
             <div className="tgrow">
-              <span className="tg tg-on">{ph("crdt")}</span>
-              <span className="tg">{ph("anchors")}</span>
-              <span className="tg">{ph("rope")}</span>
+              {topTags.length === 0 && (
+                <span className="mono" style={{ fontSize: 9.5, color: "#585550" }}>no tags yet</span>
+              )}
+              {topTags.map(([t, n]) => (
+                <span
+                  key={t}
+                  className={`tg${tagFilter === t ? " tg-on" : ""}`}
+                  style={{ cursor: "pointer" }}
+                  onClick={() => setTagFilter(tagFilter === t ? null : t)}
+                >
+                  {t}<span style={{ color: "#585550", marginLeft: 5, fontSize: 9 }}>{n}</span>
+                </span>
+              ))}
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 9, marginTop: 4 }}>
               <span className="rd-k">MIN DEGREE</span>
-              <div style={{ width: 90, height: 2, background: "rgba(255,255,255,.12)" }}>
-                <div style={{ width: "34%", height: "100%", background: "#E8873C" }} />
-              </div>
-              <span className="mono" style={{ fontSize: 10, color: "#8C8880" }}>{ph(2)}</span>
+              <input
+                type="range" min={0} max={6} value={minDegree}
+                onChange={(e) => setMinDegree(Number(e.target.value))}
+                style={{ width: 90, accentColor: "#E8873C" }}
+              />
+              <span className="mono" style={{ fontSize: 10, color: "#8C8880" }}>{minDegree}</span>
             </div>
           </div>
 
@@ -325,14 +405,15 @@ export function GraphScreen() {
             ) : (
               <span className="chip">UNTOPICED</span>
             )}
-            <span className="tg">{ph("crdt")}</span>
-            <span className="tg">{ph("lamport")}</span>
+            {(tagsOf.get(sel ?? "") ?? []).map((t) => (
+              <span key={t} className="tg">{t}</span>
+            ))}
           </div>
           <div className="mono" style={{ fontSize: 10.5, lineHeight: 1.95, color: "#8C8880" }}>
             degree&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{(selDeg?.in ?? 0) + (selDeg?.out ?? 0)}<br />
             in / out&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{selDeg?.in ?? 0} / {selDeg?.out ?? 0}<br />
             topic&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{selKey || "none"}<br />
-            territory&nbsp;&nbsp;{ph("9.4% of plane")}
+            territory&nbsp;&nbsp;{territoryShare === null ? "—" : `${territoryShare.toFixed(1)}% of plane`}
           </div>
           <Rule />
           <Label>NEIGHBOURS</Label>
@@ -355,22 +436,45 @@ export function GraphScreen() {
               derived from the clustering it could never contradict it, and a
               contradiction is the only thing here worth acting on. */}
           <Label>TOPIC MIX OF NEIGHBOURS</Label>
-          <PlaceholderNote>topic mix needs per-node topics on the graph endpoint</PlaceholderNote>
-          <div style={{ display: "flex", height: 7, gap: 1 }}>
-            <div style={{ flex: 5, background: "#7AA8E8" }} title="Protocol" />
-            <div style={{ flex: 3, background: "#C48AE0" }} title="Storage" />
-            <div style={{ flex: 1, background: "#D07C8A" }} title="Research" />
-          </div>
-          <div style={{ display: "flex", gap: 12, font: "400 10px 'IBM Plex Mono',monospace", color: "#585550" }}>
-            <span><span style={{ color: "#7AA8E8" }}>■</span> {ph(5)} protocol</span>
-            <span><span style={{ color: "#C48AE0" }}>■</span> {ph(3)} storage</span>
-            <span><span style={{ color: "#D07C8A" }}>■</span> {ph(1)} research</span>
-          </div>
+          {neighbourMix.length === 0 ? (
+            <span style={{ fontSize: 11.5, color: "#585550" }}>No neighbours to mix.</span>
+          ) : (
+            <>
+              <div style={{ display: "flex", height: 7, gap: 1 }}>
+                {neighbourMix.map(([key, n]) => (
+                  <div key={key} style={{ flex: n, background: TOPIC_HEX[key] ?? "#6E6A63" }}
+                       title={`${n} ${key || "untopiced"}`} />
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", font: "400 10px 'IBM Plex Mono',monospace", color: "#585550" }}>
+                {neighbourMix.map(([key, n]) => (
+                  <span key={key}>
+                    <span style={{ color: TOPIC_HEX[key] ?? "#6E6A63" }}>■</span> {n} {key || "untopiced"}
+                  </span>
+                ))}
+              </div>
+              {offTopic > 0 && (
+                <div style={{
+                  display: "flex", gap: 9, padding: "9px 11px",
+                  border: "1px solid rgba(224,163,78,.3)", background: "rgba(224,163,78,.06)",
+                }}>
+                  <span style={{ color: "#E0A34E", fontSize: 11 }}>◌</span>
+                  <div style={{ flex: 1, fontSize: 11.5, lineHeight: 1.55, color: "#9B968D" }}>
+                    {offTopic} of {neighbours.length} neighbours sit outside{" "}
+                    <span style={{ color: TOPIC_HEX[selKey] ?? "#6E6A63" }}>{selKey || "no topic"}</span>.
+                    Either this page spans two topics, or one of them is mis-topiced — the graph
+                    can show the disagreement, not settle it.
+                  </div>
+                </div>
+              )}
+            </>
+          )}
           <Rule />
           <Label>SIMULATION</Label>
           <div className="mono" style={{ fontSize: 10.5, lineHeight: 1.9, color: "#8C8880" }}>
-            alpha&nbsp;&nbsp;&nbsp;{ph("0.001")} <span style={{ color: "#3FCFA8" }}>cooled</span><br />
-            ticks&nbsp;&nbsp;&nbsp;{ph(412)}<br />
+            alpha&nbsp;&nbsp;&nbsp;{alpha.toFixed(3)}{" "}
+            <span style={{ color: cooled ? "#3FCFA8" : "#E0A34E" }}>{cooled ? "cooled" : "running"}</span><br />
+            ticks&nbsp;&nbsp;&nbsp;{num(ticks)}<br />
             seed&nbsp;&nbsp;&nbsp;&nbsp;0x5EED<br />
             modularity&nbsp;{(analysis?.modularity_by_topic ?? 0).toFixed(2)} <span style={{ color: "#585550" }}>by topic</span><br />
             &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{(analysis?.modularity_by_component ?? 0).toFixed(2)} <span style={{ color: "#585550" }}>by component</span>
@@ -381,8 +485,15 @@ export function GraphScreen() {
       <StatusBar
         route="/graph"
         mechanism="force sim in wasm"
-        state={err ? "graph unavailable" : `${nodes.length} nodes settled`}
-        healthy={!err}
+        // Must agree with the sub-bar: reporting "settled" while the strip
+        // says RUNNING is the screen contradicting itself about the one thing
+        // it is watching.
+        state={
+          err ? "graph unavailable"
+            : cooled ? `${nodes.length} nodes settled`
+            : `${nodes.length} nodes · cooling, α ${alpha.toFixed(3)}`
+        }
+        healthy={!err && cooled}
       />
     </Screen>
   );
