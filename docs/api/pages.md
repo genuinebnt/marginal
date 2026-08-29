@@ -238,8 +238,21 @@ message Page {
   google.protobuf.Timestamp created_at = 8;
   google.protobuf.Timestamp updated_at = 9;
   optional google.protobuf.Timestamp deleted_at = 10;
+  optional Topic topic    = 11;  // v2.7.0 — absent = untopiced, a real state
+  repeated string tags    = 12;
+  int32 block_count       = 13;  // v2.8.0 — over the docs.blocks projection
+  int32 word_count        = 14;
 }
 ```
+
+`block_count`/`word_count` are counted server-side, over `docs.blocks`,
+and travel **on the page** rather than behind their own RPC. A reading
+estimate is drawn wherever a page title is — the rail, the dashboard, the
+reader, search — and four client-side word counts over four
+differently-shaped payloads is four numbers that disagree about one page.
+Both are `0` when the projection holds no rows for the page: an empty page
+and a page whose projection has not caught up are the same fact from here,
+and the client says "no estimate" rather than "0 min" for either.
 
 Field numbers are **never renumbered and never reused**, and messages only ever grow.
 Same discipline as `content_version` in `DATA_MODEL.md` — an old reader must survive a

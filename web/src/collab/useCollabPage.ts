@@ -111,7 +111,15 @@ export interface CollabPage {
    * repeated undo server-side, never a snapshot swap. Same "ack" path as
    * undo/redo, no separate reducer needed here either. */
   restoreTo: (toStep: number) => void;
+  /** Round-trip p99 in ms over the last ACK_WINDOW acks, or null before the
+   *  first one. § 04's ACK P99, measured on this connection. */
+  ackP99: number | null;
 }
+
+/** How many recent acks the latency percentile is taken over. 100 is one
+ *  nearest-rank bucket per percent, so p99 is a real sample rather than an
+ *  interpolation between two. */
+const ACK_WINDOW = 100;
 
 interface liveBlock {
   parent: string | null;
@@ -203,6 +211,25 @@ export function useCollabPage(pageId: string, actorId: string): CollabPage {
   const orderRef = useRef<string[]>([]);
   const liveRef = useRef<Map<string, liveBlock>>(new Map());
   const socketRef = useRef<WebSocket | null>(null);
+
+  /**
+   * Round-trip latency: the time between sending an op and the server acking
+   * it, in milliseconds. § 04's ACK P99 readout, measured rather than quoted.
+   *
+   * Matched in ORDER, not by id, because the wire has no correlation id: this
+   * connection's own acks come back in the order its ops were sent
+   * (docs/api/collaboration.md §2), so a FIFO of send timestamps pairs
+   * correctly. That holds for ordinary edits and breaks for undo/redo/restore,
+   * which ack once per reverted op — `send` empties the queue there rather
+   * than letting every later sample pair against the wrong send.
+   *
+   * A rolling window, not an all-time percentile: the number worth reading is
+   * "how is this connection behaving now", and an all-time p99 stops moving
+   * after a few minutes of use.
+   */
+  const inFlightRef = useRef<number[]>([]);
+  const samplesRef = useRef<number[]>([]);
+  const [ackP99, setAckP99] = useState<number | null>(null);
   // How many of THIS block's own text-scope ops are still awaiting their
   // ack — see setBlockText and the "ack" case below. Absent/0 means no
   // batch is in flight.
@@ -338,6 +365,18 @@ export function useCollabPage(pageId: string, actorId: string): CollabPage {
         // Outline) still ends up correct, just never exposed to the
         // transient all-empty half-state in between.
         case "ack": {
+          const sentAt = inFlightRef.current.shift();
+          if (sentAt !== undefined) {
+            const samples = samplesRef.current;
+            samples.push(performance.now() - sentAt);
+            if (samples.length > ACK_WINDOW) samples.shift();
+            // Nearest-rank p99 over the window. With fewer than 100 samples
+            // that is the slowest one, which is the honest answer to "what is
+            // the worst this connection has done lately" at small n.
+            const sorted = [...samples].sort((a, b) => a - b);
+            const idx = Math.min(sorted.length - 1, Math.ceil(sorted.length * 0.99) - 1);
+            setAckP99(sorted[Math.max(0, idx)]);
+          }
           const op = msg.op.op;
           if (op.scope === "block") {
             applyStructural(op);
@@ -415,6 +454,18 @@ export function useCollabPage(pageId: string, actorId: string): CollabPage {
   }, [pageId, actorId, publish]);
 
   const send = useCallback((msg: ClientMessage) => {
+    if (msg.type === "op") {
+      // One timestamp per op sent, matched against acks in order — see
+      // ackLatencyRef's own comment for why in-order is sound here and where
+      // it stops being.
+      inFlightRef.current.push(performance.now());
+    } else if (msg.type === "undo" || msg.type === "redo" || msg.type === "restore") {
+      // These ack once per op the server actually reverted, which this side
+      // cannot predict. Rather than mismatch every later sample, the queue is
+      // abandoned: a few edits go unmeasured after an undo, which is a
+      // smaller lie than a p99 measured against the wrong send.
+      inFlightRef.current.length = 0;
+    }
     socketRef.current?.send(JSON.stringify(msg));
   }, []);
 
@@ -530,5 +581,5 @@ export function useCollabPage(pageId: string, actorId: string): CollabPage {
   const redo = useCallback(() => send({ type: "redo" }), [send]);
   const restoreTo = useCallback((toStep: number) => send({ type: "restore", to_step: toStep }), [send]);
 
-  return { state, ready, blocks, peers, cursors, setCursor, setBlockText, setBlockContent, insertBlock, deleteBlock, setBlockKind, moveBlock, undo, redo, restoreTo };
+  return { state, ready, blocks, peers, cursors, ackP99, setCursor, setBlockText, setBlockContent, insertBlock, deleteBlock, setBlockKind, moveBlock, undo, redo, restoreTo };
 }

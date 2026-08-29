@@ -89,8 +89,52 @@ func (s *Server) AnalyzeGraph(ctx context.Context, _ *documentv1.AnalyzeGraphReq
 		byComponent[id] = strconv.Itoa(c)
 	}
 
+	// Strong connectivity, over the DIRECTED graph. component_of above
+	// ignores direction and answers "is this reachable at all"; this answers
+	// "is it reachable both ways", and a component of size > 1 is a set of
+	// pages citing each other in a loop.
+	scc := graphalgo.StronglyConnected(g.Graph)
+	stronglyConnected := make(map[string]int32, len(scc))
+	for id, c := range scc {
+		stronglyConnected[string(id)] = int32(c)
+	}
+	sizes := graphalgo.SCCSizes(scc)
+	sccSizes := make([]int32, len(sizes))
+	for i, n := range sizes {
+		sccSizes[i] = int32(n)
+	}
+
+	// A reading order in which nothing precedes what it links to. Partial
+	// when the graph has a cycle — which is the useful half of that failure,
+	// so `unplaced` ships alongside rather than the whole thing collapsing
+	// into an error.
+	order, isDAG := graphalgo.TopologicalSort(g.Graph)
+	topological := make([]string, len(order))
+	for i, id := range order {
+		topological[i] = string(id)
+	}
+	unplacedIDs := graphalgo.Unplaced(g.Graph, order)
+	unplaced := make([]string, len(unplacedIDs))
+	for i, id := range unplacedIDs {
+		unplaced[i] = string(id)
+	}
+	layers := make([]*documentv1.GraphLayer, 0)
+	for _, level := range graphalgo.Layers(g.Graph, order) {
+		ids := make([]string, len(level))
+		for i, id := range level {
+			ids[i] = string(id)
+		}
+		layers = append(layers, &documentv1.GraphLayer{PageIds: ids})
+	}
+
 	return &documentv1.GraphAnalysis{
 		Betweenness:           betweenness,
+		StronglyConnected:     stronglyConnected,
+		SccSizes:              sccSizes,
+		TopologicalOrder:      topological,
+		IsDag:                 isDAG,
+		Unplaced:              unplaced,
+		Layers:                layers,
 		ModularityByTopic:     graphalgo.Modularity(g.Graph, byTopic),
 		ModularityByComponent: graphalgo.Modularity(g.Graph, byComponent),
 		ComponentOf:           componentOf,
@@ -135,8 +179,28 @@ func (s *Server) GraphNeighborhood(ctx context.Context, req *documentv1.GraphNei
 		forwardOut[string(id)] = int32(d)
 	}
 
+	// The ranked ring around the source. Titles are joined here rather than
+	// left to the client: a "nearest pages" list that ships bare ids forces
+	// every caller to re-fetch the graph to render one panel.
+	const nearestLimit = 12
+	nearest := make([]*documentv1.GraphNeighbour, 0, nearestLimit)
+	for _, nb := range graphalgo.NearestNeighbours(g.Graph, source, nearestLimit) {
+		nearest = append(nearest, &documentv1.GraphNeighbour{
+			PageId: string(nb.ID),
+			Title:  g.Nodes[nb.ID].Title,
+			Hops:   int32(nb.Hops),
+		})
+	}
+	rings := graphalgo.RingSizes(g.Graph, source)
+	ringSizes := make([]int32, len(rings))
+	for i, n := range rings {
+		ringSizes[i] = int32(n)
+	}
+
 	return &documentv1.GraphNeighborhoodResponse{
 		UndirectedDistance: undirected,
 		ForwardReachable:   forwardOut,
+		Nearest:            nearest,
+		RingSizes:          ringSizes,
 	}, nil
 }

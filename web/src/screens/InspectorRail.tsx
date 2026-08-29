@@ -22,13 +22,6 @@ import { Label, Rule, TopicChip, num } from "../shell/Chrome";
 
 type Tab = "outline" | "checks" | "links" | "presence";
 
-const TABS: Array<{ id: Tab; label: string }> = [
-  { id: "outline", label: "OUTLINE" },
-  { id: "checks", label: "CHECKS" },
-  { id: "links", label: "LINKS" },
-  { id: "presence", label: "PRESENCE" },
-];
-
 /** A short, stable two-character tag for an actor — never their id verbatim. */
 function actorTag(actorId: string): string {
   let hash = 0;
@@ -70,7 +63,16 @@ export function InspectorRail({
           top-bar nav, and redefining it here put the inspector's padding on
           the nav strip (caught by tools/uidiff, invisible in a screenshot). */}
       <div className="insp-t">
-        {TABS.map((t) => (
+        {/* Counts live ON the tab, per § 04: an inspector that only reports
+            two open checks once you have already opened the checks tab is an
+            inspector you have to go and interrogate. A zero is not drawn —
+            "CHECKS 0" reads as a finding rather than as its absence. */}
+        {([
+          { id: "outline", label: "OUTLINE" },
+          { id: "checks", label: "CHECKS", count: open.length, tone: "#E0A34E" },
+          { id: "links", label: "LINKS", count: backlinks.length, tone: "#E8873C" },
+          { id: "presence", label: "PRESENCE", count: collab.peers.size, tone: "#A98CE8" },
+        ] as Array<{ id: Tab; label: string; count?: number; tone?: string }>).map((t) => (
           <span
             key={t.id}
             className={`it${t.id === tab ? " it-on" : ""}`}
@@ -78,9 +80,7 @@ export function InspectorRail({
             onClick={() => setTab(t.id)}
           >
             {t.label}
-            {t.id === "checks" && open.length > 0 && (
-              <span style={{ color: "#E0A34E" }}> {open.length}</span>
-            )}
+            {t.count ? <span style={{ color: t.tone }}> {t.count}</span> : null}
           </span>
         ))}
       </div>

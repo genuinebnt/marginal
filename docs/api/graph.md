@@ -71,6 +71,33 @@ over the whole graph:
   interior isn't) comes free from the Euler characteristic
   (`chi − b0 + b1_clique`), no second elimination pass needed.
 
+- `strongly_connected` / `scc_sizes` — Tarjan over the **directed** graph
+  (`graphalgo.StronglyConnected`). Deliberately *not* the same thing as
+  `component_of`: that one ignores which way a link points and answers
+  "can I get there at all"; this answers "can I get there **and back**,
+  following links as written". A component of size 1 is the normal case
+  and means nothing on its own; a component of size > 1 is a set of pages
+  citing each other in a loop. Component ids are renumbered so the one
+  holding the smallest page id is `0` — Tarjan's own discovery order
+  depends on where the outer loop started, and an index that moves
+  between requests is an index nothing can be coloured by.
+- `topological_order` / `is_dag` / `unplaced` / `layers` — Kahn
+  (`graphalgo.TopologicalSort`): a reading order in which no page comes
+  before one it links to. Ties break on page id, so the order is stable
+  across requests.
+  **`topological_order` is PARTIAL when `is_dag` is false** — it holds
+  every page that could be placed before the algorithm ran out of
+  prerequisite-free nodes, and `unplaced` holds the rest (every page in
+  or downstream of a cycle). That partial result is the useful half of
+  the failure: "these 40 are orderable, these 6 are tangled" is
+  actionable where a bare error is not. Note the three cycle-related
+  fields answer three different questions — `cycle` points at *one* loop
+  as a path, `strongly_connected` splits *all* of them into sets, and
+  `unplaced` *measures* the damage.
+  `layers` groups the order into dependency **levels**: everything in one
+  level can be read in any order, or by two people at once, and the
+  number of levels is the longest dependency chain in the workspace.
+
 **`GraphNeighborhood`** — the one parameterized view, from one chosen
 `source_page_id`:
 - `undirected_distance` — BFS link-distance (a link's existence, not its
@@ -80,6 +107,19 @@ over the whole graph:
 - `forward_reachable` — directed BFS, outbound links only: the blast
   radius a cascading delete starting at source would take with it
   (`v2.6.0`'s Page-Delete Saga consumes this same computation).
+- `nearest` — the ranked ring around source, nearest first by hop
+  distance, ties broken on page id (`graphalgo.NearestNeighbours`, capped
+  at 12). Titles are joined server-side: a "nearest pages" list shipping
+  bare ids forces every caller to re-fetch the whole graph to render one
+  panel. **Near by LINKS** — deliberately a different question from near
+  by *meaning*, which `/discover` answers with cosine distance over
+  embeddings, and from near in *space*, which § 07's SPACE lens answers
+  over the drawn layout's Delaunay dual. The gap between those three
+  answers is the finding: a page about the same thing you have never
+  cited is near by meaning and far by links.
+- `ring_sizes` — `ring_sizes[d]` is how many pages sit exactly `d` hops
+  out, from `d = 0` (the source itself). The shape is the argument: a
+  frontier that stops growing is a graph that stops connecting.
 
 `NOT_FOUND` if `source_page_id` doesn't name a live page.
 
@@ -106,19 +146,29 @@ over the whole graph:
   "orphan_components": [1],
   "cycle": ["<page-id>", "<page-id>", "<page-id>"],
   "diameter": 4,
-  "betti": { "b0": 1, "b1": 3, "b1_clique": 0, "b2": 1, "chi": 2, "triangles": 4, "rank2": 3 }
+  "betti": { "b0": 1, "b1": 3, "b1_clique": 0, "b2": 1, "chi": 2, "triangles": 4, "rank2": 3 },
+  "strongly_connected": { "<page-id>": 0 },
+  "scc_sizes": [3, 1, 1],
+  "topological_order": ["<page-id>", "<page-id>"],
+  "is_dag": true,
+  "unplaced": [],
+  "layers": [["<page-id>"], ["<page-id>", "<page-id>"]]
 }
 
 // GET /graph/neighborhood/{id}
 {
   "undirected_distance": { "<page-id>": 0, "<page-id>": 1 },
-  "forward_reachable": { "<page-id>": 0 }
+  "forward_reachable": { "<page-id>": 0 },
+  "nearest": [{ "page_id": "...", "title": "Anchors vs offsets", "hops": 1 }],
+  "ring_sizes": [1, 3, 7]
 }
 ```
 
-`cycle`/`orphan_components` are always `[]`, never `null`, when there's
-nothing to report — a client that only ever checks `.length` shouldn't
-also need a null guard.
+`cycle`/`orphan_components`/`scc_sizes`/`topological_order`/`unplaced`/
+`layers`/`nearest`/`ring_sizes` are always `[]`, never `null`, when
+there's nothing to report — a client that only ever checks `.length`
+shouldn't also need a null guard. `strongly_connected` is likewise `{}`
+rather than `null`.
 
 Auth follows every other endpoint in this repo's current scope: `X-Actor-Id`
 header (or `actor_id` query param), unauthenticated — the same temporary

@@ -170,6 +170,15 @@ func (s *Server) attachClassification(ctx context.Context, out *documentv1.Page,
 		return err
 	}
 	out.Tags = tags
+	// Stats travel with the page for the same reason classification does: a
+	// reading estimate is drawn wherever a page title is.
+	stats, err := s.repo.StatsFor(ctx, []PageID{id})
+	if err != nil {
+		return err
+	}
+	if st, ok := stats[id]; ok {
+		out.BlockCount, out.WordCount = st.Blocks, st.Words
+	}
 	return nil
 }
 

@@ -269,9 +269,35 @@ async function main() {
   for (const v of Anorm.values()) v.sort((x, y) => x.order - y.order);
 
   let missing = [], propDiffs = [], textDiffs = [];
+  /**
+   * An app element may carry MORE classes than the mockup's counterpart, and
+   * that is not a difference worth reporting.
+   *
+   * The editor's title is `class="h1 editable page-title"`: `h1` is the
+   * mockup's type rule, and the other two are what makes it a live
+   * contenteditable rather than a drawing of one. An exact class-set match
+   * called that a missing `h1.h1` — the element was right there, doing more.
+   *
+   * So: exact match first (it pairs in document order and is what most
+   * elements hit), then a subset fallback — same tag, and every class the
+   * mockup names present. Reported once, so a superset match still pairs its
+   * properties and text like any other.
+   */
+  const subsetMatch = (sig) => {
+    const [tag, ...want] = norm(sig).split('.');
+    const out = [];
+    for (const [k, v] of Anorm) {
+      const [atag, ...have] = k.split('.');
+      if (atag !== tag) continue;
+      if (!want.every((c) => have.includes(c))) continue;
+      out.push(...v);
+    }
+    return out.length ? out.sort((x, y) => x.order - y.order) : null;
+  };
+
   for (const [sig, els] of M) {
     if (IGNORED_MISSING.has(sig)) continue;
-    const hit = Anorm.get(norm(sig));
+    const hit = Anorm.get(norm(sig)) || subsetMatch(sig);
     if (!hit) { missing.push(sig); continue; }
     // Rule 2: pair up occurrence-by-occurrence, and only as far as both
     // sides go. A count difference is content, not design.

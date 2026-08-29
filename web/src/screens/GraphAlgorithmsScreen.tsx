@@ -25,12 +25,31 @@ import {
 const W = 1104;
 const H = 722;
 
-type Lens = "path" | "components" | "cycles" | "reach" | "blast" | "topology";
+type Lens =
+  | "path" | "components" | "cycles" | "reach" | "blast" | "topology"
+  | "scc" | "topo" | "nearest";
 
+/**
+ * The nine algorithms this screen paints, in the order § 08's strip lists
+ * them, with the three that answer a question none of the others do appended.
+ *
+ * Each is a DIFFERENT question, and the point of putting them on one canvas
+ * is that they disagree about the same graph:
+ *
+ *   COMPONENTS   can I get there at all, ignoring direction
+ *   SCC          can I get there AND back, following links as written
+ *   CYCLES       show me one loop, as a path
+ *   TOPO SORT    an order in which nothing precedes what it links to
+ *   NEAREST      the ranked ring around one page, by hop distance
+ *   BLAST RADIUS what a cascading delete here would take with it
+ */
 const LENSES: Array<{ id: Lens; label: string }> = [
   { id: "path", label: "BFS · SHORTEST PATH" },
+  { id: "nearest", label: "NEAREST" },
   { id: "components", label: "COMPONENTS" },
+  { id: "scc", label: "SCC · TARJAN" },
   { id: "cycles", label: "CYCLES · 3-COLOUR DFS" },
+  { id: "topo", label: "TOPO SORT · KAHN" },
   { id: "reach", label: "REACHABILITY" },
   { id: "blast", label: "BLAST RADIUS" },
   { id: "topology", label: "TOPOLOGY" },
@@ -48,7 +67,7 @@ export function GraphAlgorithmsScreen() {
   const [analysis, setAnalysis] = useState<GraphAnalysis | null>(null);
   const [source, setSource] = useState<string | null>(null);
   const [hood, setHood] = useState<GraphNeighborhood | null>(null);
-  const [lens, setLens] = useState<Lens>("components");
+  const [lens, setLens] = useState<Lens>("path");
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
@@ -61,6 +80,28 @@ export function GraphAlgorithmsScreen() {
     if (!actorId || !source) { setHood(null); return; }
     graphNeighborhood(actorId, source).then(setHood).catch(() => setHood(null));
   }, [actorId, source]);
+
+  /**
+   * Land on the most-connected page rather than on nothing.
+   *
+   * Every source-relative lens (BFS, nearest, blast radius) is blank until a
+   * source exists, so an unselected screen is a screen that looks broken. The
+   * hub is the least arbitrary default: it is the page the graph itself
+   * nominates, and every other node is reachable from it if anything is.
+   * Explicit selection wins the moment there is one.
+   */
+  useEffect(() => {
+    if (source || !graph || graph.nodes.length === 0) return;
+    const degree = new Map<string, number>();
+    graph.edges.forEach((e) => {
+      degree.set(e.from_page, (degree.get(e.from_page) ?? 0) + 1);
+      degree.set(e.to_page, (degree.get(e.to_page) ?? 0) + 1);
+    });
+    // Ties break on page id, so the landing node does not move between loads.
+    const best = [...graph.nodes]
+      .sort((a, b) => (degree.get(b.id) ?? 0) - (degree.get(a.id) ?? 0) || a.id.localeCompare(b.id))[0];
+    setSource(best.id);
+  }, [graph, source]);
 
   const nodeIds = useMemo(() => graph?.nodes.map((n) => n.id) ?? [], [graph]);
   const edges = useMemo(
@@ -109,6 +150,28 @@ export function GraphAlgorithmsScreen() {
   }, [hood]);
 
   const cycleSet = useMemo(() => new Set(analysis?.cycle ?? []), [analysis]);
+
+  /** How many pages each strongly connected component holds — a singleton is
+   *  the normal case, so only >1 gets a hue. */
+  const sccSize = useMemo(() => {
+    const m = new Map<number, number>();
+    Object.values(analysis?.strongly_connected ?? {}).forEach((c) => m.set(c, (m.get(c) ?? 0) + 1));
+    return m;
+  }, [analysis]);
+
+  /** Dependency level per page, inverted out of `layers`. */
+  const layerOf = useMemo(() => {
+    const m = new Map<string, number>();
+    (analysis?.layers ?? []).forEach((level, i) => level.forEach((id) => m.set(id, i)));
+    return m;
+  }, [analysis]);
+
+  /** Position in the ranked ring around the source — 0 is nearest. */
+  const nearestRank = useMemo(() => {
+    const m = new Map<string, number>();
+    (hood?.nearest ?? []).forEach((n, i) => m.set(n.page_id, i));
+    return m;
+  }, [hood]);
   const reachable = useMemo(() => new Set(Object.keys(hood?.forward_reachable ?? {})), [hood]);
   const visited = hood ? Object.keys(hood.undirected_distance).length : 0;
   const total = graph?.nodes.length ?? 0;
@@ -134,6 +197,34 @@ export function GraphAlgorithmsScreen() {
       const d = hood.undirected_distance[id];
       if (d === undefined) return { fill: "#585550", opacity: 0.35 };
       return { fill: "#3FCFA8", opacity: Math.max(0.4, 1 - d / 6) };
+    }
+    if (lens === "scc" && analysis) {
+      const c = analysis.strongly_connected[id];
+      if (c === undefined) return { fill: "#585550", opacity: 0.4 };
+      // A singleton SCC is the normal case and is deliberately NOT given a
+      // hue of its own: colouring all eighteen of them would spend the whole
+      // palette saying "nothing here". Only a real citation loop is coloured.
+      const looped = (sccSize.get(c) ?? 1) > 1;
+      return looped
+        ? { fill: COMPONENT_HUES[c % COMPONENT_HUES.length], opacity: 1 }
+        : { fill: "#585550", opacity: 0.45 };
+    }
+    if (lens === "topo" && analysis) {
+      const level = layerOf.get(id);
+      if (level === undefined) {
+        // Unplaced: inside a cycle, or downstream of one. Amber, because
+        // this is the one state on this lens that is a finding.
+        return { fill: "#E0A34E", opacity: 1 };
+      }
+      const depth = Math.max(analysis.layers.length - 1, 1);
+      // Earlier levels are brighter: level 0 is what you can read first.
+      return { fill: "#3FCFA8", opacity: Math.max(0.35, 1 - level / (depth + 1)) };
+    }
+    if (lens === "nearest" && hood) {
+      if (id === source) return { fill: "#E8873C", opacity: 1 };
+      const rank = nearestRank.get(id);
+      if (rank === undefined) return { fill: "#585550", opacity: 0.3 };
+      return { fill: "#3FCFA8", opacity: Math.max(0.35, 1 - rank / 12) };
     }
     return { fill: "#7D9EC9", opacity: 0.9 };
   }
@@ -284,6 +375,106 @@ export function GraphAlgorithmsScreen() {
                 </>
               )}
             </div>
+          </div>
+
+          <Rule />
+          {/* Strong connectivity. The interesting row here is usually the
+              absence of one: all-singletons means nothing cites in a loop. */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <Label>SCC · TARJAN</Label>
+            {(() => {
+              const sizes = analysis?.scc_sizes ?? [];
+              const loops = sizes.filter((n) => n > 1);
+              return (
+                <>
+                  <div style={{ display: "flex", gap: 4, height: 8 }}>
+                    {sizes.slice(0, 12).map((n, i) => (
+                      <div key={i} style={{
+                        flex: n,
+                        background: n > 1 ? COMPONENT_HUES[i % COMPONENT_HUES.length] : "rgba(255,255,255,.09)",
+                      }} />
+                    ))}
+                  </div>
+                  <span style={{ fontSize: 11.5, color: "#8C8880" }}>
+                    {loops.length === 0
+                      ? `${num(sizes.length)} singletons · no page cites another that cites it back`
+                      : `${num(loops.length)} citation loop${loops.length === 1 ? "" : "s"} · largest holds ${num(loops[0])} pages`}
+                  </span>
+                  <span style={{ fontSize: 11, lineHeight: 1.55, color: "#585550" }}>
+                    Different from components above: that one ignores which way a link
+                    points, this one does not. A component can be one piece and still
+                    contain no loop at all.
+                  </span>
+                </>
+              );
+            })()}
+          </div>
+
+          <Rule />
+          {/* Kahn's order, and the shape of it. The layer histogram is the
+              part worth reading: it is how deep the workspace goes. */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <Label>TOPOLOGICAL SORT · KAHN</Label>
+            <div style={{ display: "flex", alignItems: "flex-end", gap: 5, height: 46 }}>
+              {(analysis?.layers ?? []).slice(0, 10).map((level, i, arr) => {
+                const max = Math.max(...arr.map((l) => l.length), 1);
+                return (
+                  <div key={i} style={{
+                    flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+                  }}>
+                    <div style={{
+                      width: "100%",
+                      height: `${Math.max(8, (level.length / max) * 100)}%`,
+                      background: `rgba(63,207,168,${0.4 + (level.length / max) * 0.6})`,
+                    }} />
+                    <span className="mono" style={{ fontSize: 8.5, color: "#585550" }}>{i}</span>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="mono" style={{ fontSize: 10.5, lineHeight: 1.9, color: "#8C8880" }}>
+              orderable&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{num(analysis?.topological_order.length ?? 0)} / {num(total)}<br />
+              depth&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{num(analysis?.layers.length ?? 0)} levels<br />
+              <span style={{ color: analysis?.is_dag === false ? "#E0A34E" : "#3FCFA8" }}>
+                {analysis?.is_dag === false
+                  ? `${num(analysis.unplaced.length)} unplaced — a cycle blocks them`
+                  : "acyclic · a full reading order exists"}
+              </span>
+            </div>
+            <span style={{ fontSize: 11, lineHeight: 1.55, color: "#585550" }}>
+              Everything in one level can be read in any order, or by two people at
+              once. The number of levels is the longest dependency chain there is.
+            </span>
+          </div>
+
+          <Rule />
+          {/* The ranked ring. Near BY LINKS — a different notion from near by
+              meaning, and the gap between them is what /discover exists for. */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <Label>NEAREST · BY LINK DISTANCE</Label>
+            {!source && (
+              <span style={{ fontSize: 11.5, color: "#585550" }}>Pick a source on the canvas.</span>
+            )}
+            {source && (hood?.nearest.length ?? 0) === 0 && (
+              <span style={{ fontSize: 11.5, color: "#585550" }}>
+                Nothing links to or from this page — it is an island, not merely far.
+              </span>
+            )}
+            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+              {(hood?.nearest ?? []).slice(0, 6).map((n) => (
+                <div key={n.page_id} style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                  <span style={{ flex: 1, fontSize: 12, color: "#D2CFC8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {n.title}
+                  </span>
+                  <span className="mono" style={{ fontSize: 10, color: "#585550" }}>{n.hops} hop{n.hops === 1 ? "" : "s"}</span>
+                </div>
+              ))}
+            </div>
+            {(hood?.ring_sizes.length ?? 0) > 1 && (
+              <span className="mono" style={{ fontSize: 10, color: "#8C8880" }}>
+                {hood!.ring_sizes.join(" → ")} · {num(visited)} reached
+              </span>
+            )}
           </div>
 
           <Rule />

@@ -664,6 +664,60 @@ func (q *Queries) NextSiblingSortKey(ctx context.Context, arg NextSiblingSortKey
 	return sort_key, err
 }
 
+const pageStatsFor = `-- name: PageStatsFor :many
+SELECT b.page_id,
+       COUNT(*)::int AS block_count,
+       COALESCE(SUM(
+         CASE
+           WHEN trim(coalesce(b.content->>'text', '')) = '' THEN 0
+           ELSE array_length(regexp_split_to_array(trim(b.content->>'text'), '\s+'), 1)
+         END
+       ), 0)::int AS word_count
+FROM docs.blocks b
+WHERE b.page_id = ANY($1::uuid[])
+GROUP BY b.page_id
+`
+
+type PageStatsForRow struct {
+	PageID     pgtype.UUID
+	BlockCount int32
+	WordCount  int32
+}
+
+// Block and word counts per page, over the docs.blocks projection.
+//
+// Counted HERE rather than in the browser for the same reason every other
+// figure in this app is: the reader, the page tree, the dashboard and search
+// all print a reading estimate, and four client-side word counts over four
+// differently-shaped payloads is four numbers that disagree. Postgres already
+// holds the text.
+//
+// Batched over an array, like ClassificationFor — ListPages decorates 50 rows
+// at a time and a per-row query would be the N+1 that avoids.
+//
+// A block whose text is empty (a divider, an empty list container) counts as
+// zero words but still as a block: it is structure, and the block count is
+// how much structure there is.
+func (q *Queries) PageStatsFor(ctx context.Context, pageIds []pgtype.UUID) ([]PageStatsForRow, error) {
+	rows, err := q.db.Query(ctx, pageStatsFor, pageIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []PageStatsForRow
+	for rows.Next() {
+		var i PageStatsForRow
+		if err := rows.Scan(&i.PageID, &i.BlockCount, &i.WordCount); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const recordPageDeletionFailure = `-- name: RecordPageDeletionFailure :exec
 UPDATE docs.page_deletions
 SET last_error = $1, attempts = attempts + 1, updated_at = NOW()

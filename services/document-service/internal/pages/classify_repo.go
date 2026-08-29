@@ -131,6 +131,38 @@ func (r *PostgresRepo) ListTagFacets(ctx context.Context, limit int) ([]TagFacet
 	return out, nil
 }
 
+// PageStats is how much document a page actually holds — block count and
+// word count over the docs.blocks projection. Not on Page itself: Page is a
+// row in docs.pages, and these two are an aggregate over a different table
+// that a caller who only wants to rename something should not pay for.
+type PageStats struct {
+	Blocks int32
+	Words  int32
+}
+
+// StatsFor batch-loads block/word counts for many pages at once — the same
+// N+1 avoidance, and for the same call site, as ClassificationFor.
+//
+// A page with no blocks is ABSENT from the result rather than present with
+// zeroes. The caller distinguishes them: an empty page and a page whose
+// projection has not caught up yet are different states, and only the caller
+// knows which one it is looking at.
+func (r *PostgresRepo) StatsFor(ctx context.Context, ids []PageID) (map[PageID]PageStats, error) {
+	pg := make([]pgtype.UUID, 0, len(ids))
+	for _, id := range ids {
+		pg = append(pg, toPgUUID(uuid.UUID(id)))
+	}
+	rows, err := r.q.PageStatsFor(ctx, pg)
+	if err != nil {
+		return nil, fmt.Errorf("pages: stats for pages: %w", err)
+	}
+	out := make(map[PageID]PageStats, len(rows))
+	for _, row := range rows {
+		out[PageID(fromPgUUID(row.PageID))] = PageStats{Blocks: row.BlockCount, Words: row.WordCount}
+	}
+	return out, nil
+}
+
 // ClassificationFor batch-loads topics and tags for many pages at once.
 // ListPages decorates 50 rows at a time, and doing that with PageTopic/
 // PageTags per row would be 100 round trips to annotate a list that cost

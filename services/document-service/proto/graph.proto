@@ -26,8 +26,9 @@ service GraphService {
 
   // GraphNeighborhood is the one parameterized view: BFS shortest-path
   // distances (undirected — "link distance" doesn't care which way a
-  // link points) and forward reachability ("blast radius," directed —
-  // outbound links only) from one chosen source page.
+  // link points), forward reachability ("blast radius," directed —
+  // outbound links only), and the ranked nearest ring, from one chosen
+  // source page.
   rpc GraphNeighborhood(GraphNeighborhoodRequest) returns (GraphNeighborhoodResponse);
 }
 
@@ -87,7 +88,37 @@ message GraphAnalysis {
   // modularity_by_component is Q for the connected components — the
   // emergent partition, and the honest baseline to read the above against.
   double modularity_by_component = 8;
+
+  // strongly_connected maps every page to its strongly connected component
+  // (graphalgo.StronglyConnected, Tarjan, over the DIRECTED graph).
+  //
+  // A different question from component_of, which is why both are here:
+  // component_of asks "can I walk between these two pages ignoring
+  // direction"; this asks "can I walk there AND back following links as
+  // written". A component of size > 1 is a citation loop.
+  map<string, int32> strongly_connected = 9;
+  // scc_sizes are those components' sizes, largest first. All ones means no
+  // citation loops anywhere — the healthy default, worth being able to state.
+  repeated int32 scc_sizes = 10;
+
+  // topological_order is a reading order in which no page comes before one it
+  // links to (graphalgo.TopologicalSort, Kahn, ties broken on page id so the
+  // order is stable across requests).
+  //
+  // PARTIAL when is_dag is false: it holds every page that could be placed
+  // before the algorithm ran out of prerequisite-free nodes, and `unplaced`
+  // holds the rest. That partial result is the useful half of a failure.
+  repeated string topological_order = 11;
+  bool is_dag = 12;
+  repeated string unplaced = 13;
+  // layers groups topological_order into dependency LEVELS — everything in
+  // one level can be read in any order, or by two people at once. The number
+  // of layers is the longest dependency chain in the workspace.
+  repeated GraphLayer layers = 14;
 }
+
+// GraphLayer exists only because proto3 has no repeated-of-repeated.
+message GraphLayer { repeated string page_ids = 1; }
 
 message BettiNumbers {
   int32 b0 = 1;         // components
@@ -110,4 +141,23 @@ message GraphNeighborhoodResponse {
   // only — the blast radius a cascading delete starting there would take
   // with it.
   map<string, int32> forward_reachable = 2;
+
+  // nearest is the ranked ring around source_page_id — nearest first by hop
+  // distance, ties broken on page id (graphalgo.NearestNeighbours).
+  //
+  // Near BY LINKS, deliberately not near by meaning: /discover answers that
+  // one with cosine distance over embeddings, and the gap between the two
+  // answers is the finding — a page about the same thing you have never cited
+  // is near by meaning and far by links.
+  repeated GraphNeighbour nearest = 3;
+  // ring_sizes[d] is how many pages sit exactly d hops away, starting at
+  // d = 0 (the source itself). The shape is the argument: a frontier that
+  // stops growing is a graph that stops connecting.
+  repeated int32 ring_sizes = 4;
+}
+
+message GraphNeighbour {
+  string page_id = 1;
+  string title = 2;
+  int32 hops = 3;
 }

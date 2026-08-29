@@ -48,8 +48,9 @@ type GraphServiceClient interface {
 	AnalyzeGraph(ctx context.Context, in *AnalyzeGraphRequest, opts ...grpc.CallOption) (*GraphAnalysis, error)
 	// GraphNeighborhood is the one parameterized view: BFS shortest-path
 	// distances (undirected — "link distance" doesn't care which way a
-	// link points) and forward reachability ("blast radius," directed —
-	// outbound links only) from one chosen source page.
+	// link points), forward reachability ("blast radius," directed —
+	// outbound links only), and the ranked nearest ring, from one chosen
+	// source page.
 	GraphNeighborhood(ctx context.Context, in *GraphNeighborhoodRequest, opts ...grpc.CallOption) (*GraphNeighborhoodResponse, error)
 }
 
@@ -105,8 +106,9 @@ type GraphServiceServer interface {
 	AnalyzeGraph(context.Context, *AnalyzeGraphRequest) (*GraphAnalysis, error)
 	// GraphNeighborhood is the one parameterized view: BFS shortest-path
 	// distances (undirected — "link distance" doesn't care which way a
-	// link points) and forward reachability ("blast radius," directed —
-	// outbound links only) from one chosen source page.
+	// link points), forward reachability ("blast radius," directed —
+	// outbound links only), and the ranked nearest ring, from one chosen
+	// source page.
 	GraphNeighborhood(context.Context, *GraphNeighborhoodRequest) (*GraphNeighborhoodResponse, error)
 	mustEmbedUnimplementedGraphServiceServer()
 }

@@ -9,7 +9,7 @@
 // BFS, diameter, Betti) is server-side only, reached over
 // docs/api/graph.md instead; this file has no business duplicating those.
 
-import type { LayoutEdge, LayoutNode, LayoutParams, Site, Rect, TerritoryResult } from "./types";
+import type { DelaunayPair, LayoutEdge, LayoutNode, LayoutParams, Site, Rect, TerritoryResult } from "./types";
 
 interface WasmResult {
   value: string | null;
@@ -21,6 +21,7 @@ interface GraphWasmExports {
   graphLayoutTick(reqJson: string): WasmResult;
   graphTerritory(reqJson: string): WasmResult;
   graphHulls(reqJson: string): WasmResult;
+  graphSpatialMajority(reqJson: string): WasmResult;
 }
 
 interface GoRuntime {
@@ -169,4 +170,29 @@ export async function hulls(points: HullPoint[], pad = 26): Promise<Hull[]> {
   const api = await loadGraphCore();
   const out = unwrap<{ hulls: Hull[] }>(api.graphHulls(JSON.stringify({ points, pad })));
   return out.hulls;
+}
+
+/**
+ * § 07's SPACE lens: colour a node by what its spatial NEIGHBOURS are about,
+ * not by what it declares.
+ *
+ * `adjacent` is the Delaunay dual `territory()` already returned — cells that
+ * share a border — so this is a vote over spatial adjacency rather than over
+ * citation. The three lenses on that screen exist precisely because they can
+ * disagree, and the vote is graphalgo.NeighbourMajority in Go; this is only
+ * the bridge.
+ *
+ * A node with no label and no labelled neighbour is ABSENT from the result
+ * rather than mapped to "": untopiced is a state the caller draws in its own
+ * hue, not a gap to fill with a guess.
+ */
+export async function spatialMajority(
+  adjacent: DelaunayPair[],
+  label: Record<string, string>,
+): Promise<Record<string, string>> {
+  const api = await loadGraphCore();
+  const out = unwrap<{ majority: Record<string, string> }>(
+    api.graphSpatialMajority(JSON.stringify({ adjacent, label })),
+  );
+  return out.majority;
 }

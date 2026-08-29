@@ -55,6 +55,16 @@ type graphAnalysisJSON struct {
 	// alone is a number with nothing to read it against.
 	ModularityByTopic     float64 `json:"modularity_by_topic"`
 	ModularityByComponent float64 `json:"modularity_by_component"`
+	// Strong connectivity over the DIRECTED graph — "can I get there AND
+	// back", where component_of asks only "can I get there at all".
+	StronglyConnected map[string]int32 `json:"strongly_connected"`
+	SccSizes          []int32          `json:"scc_sizes"`
+	// A reading order where nothing precedes what it links to. PARTIAL when
+	// is_dag is false; `unplaced` then holds what could not be ordered.
+	TopologicalOrder []string   `json:"topological_order"`
+	IsDAG            bool       `json:"is_dag"`
+	Unplaced         []string   `json:"unplaced"`
+	Layers           [][]string `json:"layers"`
 }
 
 func toGraphAnalysisJSON(a *documentv1.GraphAnalysis) graphAnalysisJSON {
@@ -71,14 +81,46 @@ func toGraphAnalysisJSON(a *documentv1.GraphAnalysis) graphAnalysisJSON {
 	if bc == nil {
 		bc = map[string]float64{}
 	}
+	// Every slice below ships empty rather than null: a client indexing or
+	// iterating these should never need a guard for "the server had nothing".
+	scc := a.GetStronglyConnected()
+	if scc == nil {
+		scc = map[string]int32{}
+	}
+	sccSizes := a.GetSccSizes()
+	if sccSizes == nil {
+		sccSizes = []int32{}
+	}
+	topo := a.GetTopologicalOrder()
+	if topo == nil {
+		topo = []string{}
+	}
+	unplaced := a.GetUnplaced()
+	if unplaced == nil {
+		unplaced = []string{}
+	}
+	layers := make([][]string, 0, len(a.GetLayers()))
+	for _, l := range a.GetLayers() {
+		ids := l.GetPageIds()
+		if ids == nil {
+			ids = []string{}
+		}
+		layers = append(layers, ids)
+	}
 	return graphAnalysisJSON{
+		StronglyConnected:     scc,
+		SccSizes:              sccSizes,
+		TopologicalOrder:      topo,
+		IsDAG:                 a.GetIsDag(),
+		Unplaced:              unplaced,
+		Layers:                layers,
 		Betweenness:           bc,
 		ModularityByTopic:     a.GetModularityByTopic(),
 		ModularityByComponent: a.GetModularityByComponent(),
-		ComponentOf:      a.GetComponentOf(),
-		OrphanComponents: orphans,
-		Cycle:            cycle,
-		Diameter:         a.GetDiameter(),
+		ComponentOf:           a.GetComponentOf(),
+		OrphanComponents:      orphans,
+		Cycle:                 cycle,
+		Diameter:              a.GetDiameter(),
 		Betti: bettiNumbersJSON{
 			B0: b.GetB0(), B1: b.GetB1(), B1Clique: b.GetB1Clique(), B2: b.GetB2(),
 			Chi: b.GetChi(), Triangles: b.GetTriangles(), Rank2: b.GetRank2(),
@@ -86,14 +128,37 @@ func toGraphAnalysisJSON(a *documentv1.GraphAnalysis) graphAnalysisJSON {
 	}
 }
 
+type graphNeighbourJSON struct {
+	PageID string `json:"page_id"`
+	Title  string `json:"title"`
+	Hops   int32  `json:"hops"`
+}
+
 type neighborhoodJSON struct {
 	UndirectedDistance map[string]int32 `json:"undirected_distance"`
 	ForwardReachable   map[string]int32 `json:"forward_reachable"`
+	// The ranked ring, nearest first. Near BY LINKS — a different question
+	// from near by meaning, and the gap between the two is the finding.
+	Nearest []graphNeighbourJSON `json:"nearest"`
+	// ring_sizes[d] is how many pages sit exactly d hops out, from d = 0.
+	RingSizes []int32 `json:"ring_sizes"`
 }
 
 func toNeighborhoodJSON(n *documentv1.GraphNeighborhoodResponse) neighborhoodJSON {
+	nearest := make([]graphNeighbourJSON, 0, len(n.GetNearest()))
+	for _, nb := range n.GetNearest() {
+		nearest = append(nearest, graphNeighbourJSON{
+			PageID: nb.GetPageId(), Title: nb.GetTitle(), Hops: nb.GetHops(),
+		})
+	}
+	rings := n.GetRingSizes()
+	if rings == nil {
+		rings = []int32{}
+	}
 	return neighborhoodJSON{
 		UndirectedDistance: n.GetUndirectedDistance(),
 		ForwardReachable:   n.GetForwardReachable(),
+		Nearest:            nearest,
+		RingSizes:          rings,
 	}
 }

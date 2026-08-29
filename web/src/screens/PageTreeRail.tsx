@@ -34,6 +34,32 @@ export function PageTreeRail({
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{ id: string; zone: DropZone } | null>(null);
 
+  /**
+   * The two-digit ordinal each visible row carries.
+   *
+   * Numbered over the FLATTENED, currently-visible order — expanding a branch
+   * renumbers everything below it, which is correct: the ordinal is "the nth
+   * row in this rail", the thing people actually say out loud, not a stable
+   * id. A stable per-page number would drift out of agreement with the list
+   * the moment anything collapsed.
+   *
+   * Computed here rather than counted during the recursive render because a
+   * counter threaded through recursion is a counter that double-counts under
+   * StrictMode's second render pass.
+   */
+  const ordinalOf = useMemo(() => {
+    const out = new Map<string, string>();
+    let n = 0;
+    const walk = (parent: string) => {
+      for (const id of tree.childrenByParent[parent] ?? []) {
+        out.set(id, String(++n).padStart(2, "0"));
+        if (tree.expanded.has(id)) walk(id);
+      }
+    };
+    walk(ROOT);
+    return out;
+  }, [tree.childrenByParent, tree.expanded]);
+
   const filterLower = filter.trim().toLowerCase();
   const filteredIds = useMemo(() => {
     if (!filterLower) return null;
@@ -121,6 +147,8 @@ export function PageTreeRail({
                 key={id}
                 page={tree.nodes[id]}
                 depth={0}
+                ordinal={ordinalOf.get(id) ?? "—"}
+                ordinalOf={ordinalOf}
                 activePageId={activePageId}
                 tree={tree}
                 dragId={dragId}
@@ -145,6 +173,7 @@ export function PageTreeRail({
                 key={id}
                 id={id}
                 depth={0}
+                ordinalOf={ordinalOf}
                 activePageId={activePageId}
                 tree={tree}
                 dragId={dragId}
@@ -212,6 +241,7 @@ export function PageTreeRail({
 
 interface TreeProps {
   activePageId?: string;
+  ordinalOf: Map<string, string>;
   tree: ReturnType<typeof usePageTree>;
   dragId: string | null;
   dropTarget: { id: string; zone: DropZone } | null;
@@ -235,7 +265,7 @@ function TreeBranch({ id, depth, ...rest }: TreeProps & { id: string; depth: num
 
   return (
     <>
-      <PageRow page={page} depth={depth} {...rest} />
+      <PageRow page={page} depth={depth} ordinal={rest.ordinalOf.get(id) ?? "—"} {...rest} />
       {expanded && (
         <>
           {(children ?? []).map((childId) => (
@@ -255,13 +285,33 @@ function TreeBranch({ id, depth, ...rest }: TreeProps & { id: string; depth: num
   );
 }
 
+// § 04's own indents: a root row sits at 9px (the .tr rule's own padding),
+// a child at 24px, and each level after that adds another 16. Depth 1 is not
+// a special case bolted on — it is the level the mockup actually draws, and
+// the app was flattening it.
 function depthPadding(depth: number): number {
-  return depth === 0 ? 8 : 22 + (depth - 1) * 16;
+  return depth === 0 ? 9 : 24 + (depth - 1) * 16;
+}
+
+/** Average adult reading speed. The reader prints "~n min left" from the
+ *  same constant; two speeds would be two different estimates of one page. */
+const WORDS_PER_MINUTE = 220;
+
+/**
+ * A page's reading estimate, from the word count document-service computed
+ * over docs.blocks — never counted here. Null when the page has no blocks:
+ * an empty page and a page whose projection has not caught up both hold zero
+ * words right now, and printing "0m" would state a fact about neither.
+ */
+function readMinutes(page: Page): number | null {
+  if (!page.word_count) return null;
+  return Math.max(1, Math.round(page.word_count / WORDS_PER_MINUTE));
 }
 
 function PageRow({
   page,
   depth,
+  ordinal,
   activePageId,
   tree,
   dragId,
@@ -271,8 +321,9 @@ function PageRow({
   onDrop,
   onDragEnd,
   startCreate,
-}: TreeProps & { page: Page; depth: number }) {
+}: TreeProps & { page: Page; depth: number; ordinal: string }) {
   const rowRef = useRef<HTMLDivElement>(null);
+  const [hovered, setHovered] = useState(false);
   const expanded = tree.expanded.has(page.id);
   const loadedChildren = tree.childrenByParent[page.id];
   // Undefined means "not loaded yet", which is different from "none" — the
@@ -281,10 +332,11 @@ function PageRow({
   const hasChildren = (loadedChildren?.length ?? 0) > 0 || loadedChildren === undefined;
   const childCount = loadedChildren?.length ?? 0;
   const isDeleting = page.lifecycle_state === "deleting";
+  const mins = readMinutes(page);
   const isDropTarget = dropTarget?.id === page.id;
   const isBeingDragged = dragId === page.id;
 
-  const style = depth >= 2 ? { paddingLeft: depthPadding(depth) } : undefined;
+  const style = depth >= 1 ? { paddingLeft: depthPadding(depth) } : undefined;
 
   return (
     <div
@@ -294,6 +346,8 @@ function PageRow({
       onDragOver={(e) => onDragOver(e, page.id)}
       onDrop={(e) => { e.preventDefault(); onDrop(page); }}
       onDragEnd={onDragEnd}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
         opacity: isBeingDragged ? 0.4 : 1,
         outline: isDropTarget && dropTarget?.zone === "into" ? "2px solid var(--violet)" : undefined,
@@ -320,21 +374,30 @@ function PageRow({
         title={isDeleting ? "lifecycle_state = deleting" : undefined}
       >
         {page.id === activePageId && <i />}
-        {hasChildren ? (
-          <span
-            className="tr-n"
-            style={{ cursor: "pointer", width: 9 }}
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              tree.toggleExpand(page.id);
-            }}
-          >
-            {expanded ? "▾" : "▸"}
-          </span>
-        ) : (
-          <span className="tr-n" style={{ width: 9 }} />
-        )}
+        {/* § 04 leads every row with a two-digit ordinal, ember on the row
+            you are in. The app drew a disclosure caret in that slot instead,
+            which meant the rail had no stable way to refer to a row at all —
+            "the third one" is how people actually talk about a list.
+            One span, not two: the caret takes the ordinal's place on hover
+            for rows that have children, so the affordance is still there
+            without a second column of glyphs competing for 238px. */}
+        <span
+          className="tr-n"
+          style={{
+            width: 15,
+            flex: "none",
+            ...(page.id === activePageId ? { color: "#E8873C" } : {}),
+            ...(hasChildren ? { cursor: "pointer" } : {}),
+          }}
+          title={hasChildren ? (expanded ? "Collapse" : "Expand") : undefined}
+          onClick={hasChildren ? (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            tree.toggleExpand(page.id);
+          } : undefined}
+        >
+          {hasChildren && hovered ? (expanded ? "▾" : "▸") : ordinal}
+        </span>
         {/* Topic hue as a 5px square, before the title. The graph colours
             nodes this way, so the rail and the graph agree at a glance about
             what a page is — the same fact drawn the same way twice. */}
@@ -356,8 +419,19 @@ function PageRow({
             DELETING
           </span>
         )}
-        {!isDeleting && hasChildren && (
-          <span className="tr-n tr-count" title={`${childCount} sub-pages`}>{childCount}</span>
+        {/* The right-hand slot is the READING ESTIMATE, not the sub-page
+            count. Both were candidates; this one is the fact you actually
+            act on — "is this a two-minute read or a twenty" decides whether
+            you open it now, where the number of children is already implied
+            by the row having a twisty at all. The sub-page count moves to
+            the ordinal's tooltip rather than being dropped. */}
+        {!isDeleting && mins !== null && (
+          <span
+            className="tr-n tr-count"
+            title={`${page.word_count} words${hasChildren ? ` · ${childCount} sub-pages` : ""}`}
+          >
+            {mins}m
+          </span>
         )}
         <span className="tr-a">
         <span

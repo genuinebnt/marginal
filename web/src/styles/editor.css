@@ -68,7 +68,10 @@
   font-weight: 500;
   font-size: 36px;
   line-height: 1.14;
-  letter-spacing: -.02em;
+  /* -.015em, the value .h1 carries — the title had drifted to -.02em, which
+     is the kind of difference nobody sees on one screen and everybody feels
+     across two. */
+  letter-spacing: -.015em;
   color: #EFEDE7;
   margin: 10px 0 8px;
 }

@@ -16,6 +16,17 @@ export interface Page {
   /** v2.7.0 — absent when untopiced, a real reported state. */
   topic?: PageTopic | null;
   tags?: string[];
+  /**
+   * v2.8.0 — how much document the page holds, counted by document-service
+   * over docs.blocks. Always present, 0 when the projection has no rows yet.
+   *
+   * Carried on the page rather than counted in the browser because a reading
+   * estimate is drawn wherever a page title is — the rail, the dashboard, the
+   * reader, search — and four client-side word counts over four
+   * differently-shaped payloads is four numbers that disagree.
+   */
+  block_count: number;
+  word_count: number;
 }
 
 export function createPage(actorId: string, title: string, parentId?: string, after?: string): Promise<Page> {

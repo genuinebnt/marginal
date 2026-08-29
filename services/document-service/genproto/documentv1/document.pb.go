@@ -99,8 +99,16 @@ type Page struct {
 	DeletedAt      *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=deleted_at,json=deletedAt,proto3,oneof" json:"deleted_at,omitempty"`
 	// v2.7.0. One owned topic (absent = untopiced, a real state the UI
 	// reports rather than a gap), and any number of free-form tags.
-	Topic         *Topic   `protobuf:"bytes,11,opt,name=topic,proto3,oneof" json:"topic,omitempty"`
-	Tags          []string `protobuf:"bytes,12,rep,name=tags,proto3" json:"tags,omitempty"`
+	Topic *Topic   `protobuf:"bytes,11,opt,name=topic,proto3,oneof" json:"topic,omitempty"`
+	Tags  []string `protobuf:"bytes,12,rep,name=tags,proto3" json:"tags,omitempty"`
+	// v2.8.0. How much document the page holds, over the docs.blocks
+	// projection. Carried on Page because a reading estimate is drawn wherever
+	// a page title is — the rail, the dashboard, the reader, search — and four
+	// client-side word counts over four differently-shaped payloads is four
+	// numbers that disagree. Both are 0 when the projection has no rows for
+	// the page yet, which an empty page and a lagging projection share.
+	BlockCount    int32 `protobuf:"varint,13,opt,name=block_count,json=blockCount,proto3" json:"block_count,omitempty"`
+	WordCount     int32 `protobuf:"varint,14,opt,name=word_count,json=wordCount,proto3" json:"word_count,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -217,6 +225,20 @@ func (x *Page) GetTags() []string {
 		return x.Tags
 	}
 	return nil
+}
+
+func (x *Page) GetBlockCount() int32 {
+	if x != nil {
+		return x.BlockCount
+	}
+	return 0
+}
+
+func (x *Page) GetWordCount() int32 {
+	if x != nil {
+		return x.WordCount
+	}
+	return 0
 }
 
 // A topic is singular per page and carries a colour KEY, never a hex value
@@ -2019,7 +2041,7 @@ var File_document_proto protoreflect.FileDescriptor
 
 const file_document_proto_rawDesc = "" +
 	"\n" +
-	"\x0edocument.proto\x12\x14marginal.document.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1bgoogle/protobuf/empty.proto\"\x94\x04\n" +
+	"\x0edocument.proto\x12\x14marginal.document.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1bgoogle/protobuf/empty.proto\"\xd4\x04\n" +
 	"\x04Page\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -2037,7 +2059,11 @@ const file_document_proto_rawDesc = "" +
 	"deleted_at\x18\n" +
 	" \x01(\v2\x1a.google.protobuf.TimestampH\x01R\tdeletedAt\x88\x01\x01\x126\n" +
 	"\x05topic\x18\v \x01(\v2\x1b.marginal.document.v1.TopicH\x02R\x05topic\x88\x01\x01\x12\x12\n" +
-	"\x04tags\x18\f \x03(\tR\x04tagsB\f\n" +
+	"\x04tags\x18\f \x03(\tR\x04tags\x12\x1f\n" +
+	"\vblock_count\x18\r \x01(\x05R\n" +
+	"blockCount\x12\x1d\n" +
+	"\n" +
+	"word_count\x18\x0e \x01(\x05R\twordCountB\f\n" +
 	"\n" +
 	"_parent_idB\r\n" +
 	"\v_deleted_atB\b\n" +

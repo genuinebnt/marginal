@@ -154,6 +154,15 @@ export function EditorScreen() {
             {/* § 04's own two. Ops/s is measured over a rolling window of
                 real acks, not a decorative number. */}
             <Readout k="OPS/S" v={opsPerSecond} />
+            {/* Measured on this connection — the time from sending an op to
+                the server acking it, p99 over the last 100. Dimmed with an
+                em dash before the first ack rather than showing 0, which
+                would be a latency claim nobody made. */}
+            <Readout
+              k="ACK P99"
+              v={collab.ackP99 === null ? "—" : `${Math.round(collab.ackP99)} ms`}
+              tone={collab.ackP99 === null ? undefined : collab.ackP99 < 50 ? "#3FCFA8" : "#E0A34E"}
+            />
             <Readout
               k="LINK"
               v={collab.state === "open" ? "live" : collab.state}

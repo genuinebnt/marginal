@@ -77,6 +77,14 @@ message Page {
   // reports rather than a gap), and any number of free-form tags.
   optional Topic topic          = 11;
   repeated string tags          = 12;
+  // v2.8.0. How much document the page holds, over the docs.blocks
+  // projection. Carried on Page because a reading estimate is drawn wherever
+  // a page title is — the rail, the dashboard, the reader, search — and four
+  // client-side word counts over four differently-shaped payloads is four
+  // numbers that disagree. Both are 0 when the projection has no rows for
+  // the page yet, which an empty page and a lagging projection share.
+  int32 block_count             = 13;
+  int32 word_count              = 14;
 }
 
 // A topic is singular per page and carries a colour KEY, never a hex value

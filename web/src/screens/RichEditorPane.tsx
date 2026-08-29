@@ -826,7 +826,7 @@ function PageTitle({ title, onRename }: { title: string; onRename: (title: strin
   return (
     <h1
       ref={ref}
-      className="editable page-title"
+      className="h1 editable page-title"
       contentEditable
       suppressContentEditableWarning
       onInput={handleInput}

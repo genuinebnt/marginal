@@ -267,6 +267,10 @@ func (s *Server) ListPages(ctx context.Context, req *documentv1.ListPagesRequest
 	if err != nil {
 		return nil, toStatus(err)
 	}
+	stats, err := s.repo.StatsFor(ctx, ids)
+	if err != nil {
+		return nil, toStatus(err)
+	}
 	for i, p := range pagesList {
 		out := toProto(p)
 		if t, ok := topics[p.ID]; ok {
@@ -276,6 +280,9 @@ func (s *Server) ListPages(ctx context.Context, req *documentv1.ListPagesRequest
 			out.Tags = g
 		} else {
 			out.Tags = []string{}
+		}
+		if st, ok := stats[p.ID]; ok {
+			out.BlockCount, out.WordCount = st.Blocks, st.Words
 		}
 		resp.Pages[i] = out
 	}

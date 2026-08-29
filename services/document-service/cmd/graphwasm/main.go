@@ -181,11 +181,42 @@ func hulls(this js.Value, args []js.Value) any {
 	return result(data, err)
 }
 
+// spatialRequest votes a label over the Delaunay dual — § 07's SPACE lens.
+// The labels are the caller's (a page's topic comes from /pages), so this
+// bridge does the vote only.
+type spatialRequest struct {
+	Adjacent []graphalgo.DelaunayPair    `json:"adjacent"`
+	Label    map[graphalgo.NodeID]string `json:"label"`
+}
+
+type spatialResponse struct {
+	Majority map[graphalgo.NodeID]string `json:"majority"`
+}
+
+// graphSpatialMajority colours a node by what its spatial NEIGHBOURS are
+// about rather than by what it declares. Client-side with the other two
+// because it consumes the Delaunay dual, which is recomputed from live
+// positions here and never leaves the browser.
+func spatialMajority(this js.Value, args []js.Value) any {
+	if err := requireArgs("graphSpatialMajority", args, 1); err != nil {
+		return result(nil, err)
+	}
+	var req spatialRequest
+	if err := json.Unmarshal(jsonArg(args, 0), &req); err != nil {
+		return result(nil, err)
+	}
+	data, err := json.Marshal(spatialResponse{
+		Majority: graphalgo.NeighbourMajority(req.Adjacent, req.Label),
+	})
+	return result(data, err)
+}
+
 func main() {
 	js.Global().Set("graphSeedPositions", js.FuncOf(seedPositions))
 	js.Global().Set("graphLayoutTick", js.FuncOf(layoutTick))
 	js.Global().Set("graphTerritory", js.FuncOf(territory))
 	js.Global().Set("graphHulls", js.FuncOf(hulls))
+	js.Global().Set("graphSpatialMajority", js.FuncOf(spatialMajority))
 
 	select {}
 }

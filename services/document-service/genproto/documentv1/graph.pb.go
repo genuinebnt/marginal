@@ -301,8 +301,33 @@ type GraphAnalysis struct {
 	// modularity_by_component is Q for the connected components — the
 	// emergent partition, and the honest baseline to read the above against.
 	ModularityByComponent float64 `protobuf:"fixed64,8,opt,name=modularity_by_component,json=modularityByComponent,proto3" json:"modularity_by_component,omitempty"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
+	// strongly_connected maps every page to its strongly connected component
+	// (graphalgo.StronglyConnected, Tarjan, over the DIRECTED graph).
+	//
+	// A different question from component_of, which is why both are here:
+	// component_of asks "can I walk between these two pages ignoring
+	// direction"; this asks "can I walk there AND back following links as
+	// written". A component of size > 1 is a citation loop.
+	StronglyConnected map[string]int32 `protobuf:"bytes,9,rep,name=strongly_connected,json=stronglyConnected,proto3" json:"strongly_connected,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
+	// scc_sizes are those components' sizes, largest first. All ones means no
+	// citation loops anywhere — the healthy default, worth being able to state.
+	SccSizes []int32 `protobuf:"varint,10,rep,packed,name=scc_sizes,json=sccSizes,proto3" json:"scc_sizes,omitempty"`
+	// topological_order is a reading order in which no page comes before one it
+	// links to (graphalgo.TopologicalSort, Kahn, ties broken on page id so the
+	// order is stable across requests).
+	//
+	// PARTIAL when is_dag is false: it holds every page that could be placed
+	// before the algorithm ran out of prerequisite-free nodes, and `unplaced`
+	// holds the rest. That partial result is the useful half of a failure.
+	TopologicalOrder []string `protobuf:"bytes,11,rep,name=topological_order,json=topologicalOrder,proto3" json:"topological_order,omitempty"`
+	IsDag            bool     `protobuf:"varint,12,opt,name=is_dag,json=isDag,proto3" json:"is_dag,omitempty"`
+	Unplaced         []string `protobuf:"bytes,13,rep,name=unplaced,proto3" json:"unplaced,omitempty"`
+	// layers groups topological_order into dependency LEVELS — everything in
+	// one level can be read in any order, or by two people at once. The number
+	// of layers is the longest dependency chain in the workspace.
+	Layers        []*GraphLayer `protobuf:"bytes,14,rep,name=layers,proto3" json:"layers,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GraphAnalysis) Reset() {
@@ -391,6 +416,93 @@ func (x *GraphAnalysis) GetModularityByComponent() float64 {
 	return 0
 }
 
+func (x *GraphAnalysis) GetStronglyConnected() map[string]int32 {
+	if x != nil {
+		return x.StronglyConnected
+	}
+	return nil
+}
+
+func (x *GraphAnalysis) GetSccSizes() []int32 {
+	if x != nil {
+		return x.SccSizes
+	}
+	return nil
+}
+
+func (x *GraphAnalysis) GetTopologicalOrder() []string {
+	if x != nil {
+		return x.TopologicalOrder
+	}
+	return nil
+}
+
+func (x *GraphAnalysis) GetIsDag() bool {
+	if x != nil {
+		return x.IsDag
+	}
+	return false
+}
+
+func (x *GraphAnalysis) GetUnplaced() []string {
+	if x != nil {
+		return x.Unplaced
+	}
+	return nil
+}
+
+func (x *GraphAnalysis) GetLayers() []*GraphLayer {
+	if x != nil {
+		return x.Layers
+	}
+	return nil
+}
+
+// GraphLayer exists only because proto3 has no repeated-of-repeated.
+type GraphLayer struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	PageIds       []string               `protobuf:"bytes,1,rep,name=page_ids,json=pageIds,proto3" json:"page_ids,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GraphLayer) Reset() {
+	*x = GraphLayer{}
+	mi := &file_graph_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GraphLayer) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GraphLayer) ProtoMessage() {}
+
+func (x *GraphLayer) ProtoReflect() protoreflect.Message {
+	mi := &file_graph_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GraphLayer.ProtoReflect.Descriptor instead.
+func (*GraphLayer) Descriptor() ([]byte, []int) {
+	return file_graph_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *GraphLayer) GetPageIds() []string {
+	if x != nil {
+		return x.PageIds
+	}
+	return nil
+}
+
 type BettiNumbers struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	B0            int32                  `protobuf:"varint,1,opt,name=b0,proto3" json:"b0,omitempty"`                             // components
@@ -406,7 +518,7 @@ type BettiNumbers struct {
 
 func (x *BettiNumbers) Reset() {
 	*x = BettiNumbers{}
-	mi := &file_graph_proto_msgTypes[6]
+	mi := &file_graph_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -418,7 +530,7 @@ func (x *BettiNumbers) String() string {
 func (*BettiNumbers) ProtoMessage() {}
 
 func (x *BettiNumbers) ProtoReflect() protoreflect.Message {
-	mi := &file_graph_proto_msgTypes[6]
+	mi := &file_graph_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -431,7 +543,7 @@ func (x *BettiNumbers) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BettiNumbers.ProtoReflect.Descriptor instead.
 func (*BettiNumbers) Descriptor() ([]byte, []int) {
-	return file_graph_proto_rawDescGZIP(), []int{6}
+	return file_graph_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *BettiNumbers) GetB0() int32 {
@@ -492,7 +604,7 @@ type GraphNeighborhoodRequest struct {
 
 func (x *GraphNeighborhoodRequest) Reset() {
 	*x = GraphNeighborhoodRequest{}
-	mi := &file_graph_proto_msgTypes[7]
+	mi := &file_graph_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -504,7 +616,7 @@ func (x *GraphNeighborhoodRequest) String() string {
 func (*GraphNeighborhoodRequest) ProtoMessage() {}
 
 func (x *GraphNeighborhoodRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_graph_proto_msgTypes[7]
+	mi := &file_graph_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -517,7 +629,7 @@ func (x *GraphNeighborhoodRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GraphNeighborhoodRequest.ProtoReflect.Descriptor instead.
 func (*GraphNeighborhoodRequest) Descriptor() ([]byte, []int) {
-	return file_graph_proto_rawDescGZIP(), []int{7}
+	return file_graph_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *GraphNeighborhoodRequest) GetSourcePageId() string {
@@ -537,13 +649,25 @@ type GraphNeighborhoodResponse struct {
 	// only — the blast radius a cascading delete starting there would take
 	// with it.
 	ForwardReachable map[string]int32 `protobuf:"bytes,2,rep,name=forward_reachable,json=forwardReachable,proto3" json:"forward_reachable,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// nearest is the ranked ring around source_page_id — nearest first by hop
+	// distance, ties broken on page id (graphalgo.NearestNeighbours).
+	//
+	// Near BY LINKS, deliberately not near by meaning: /discover answers that
+	// one with cosine distance over embeddings, and the gap between the two
+	// answers is the finding — a page about the same thing you have never cited
+	// is near by meaning and far by links.
+	Nearest []*GraphNeighbour `protobuf:"bytes,3,rep,name=nearest,proto3" json:"nearest,omitempty"`
+	// ring_sizes[d] is how many pages sit exactly d hops away, starting at
+	// d = 0 (the source itself). The shape is the argument: a frontier that
+	// stops growing is a graph that stops connecting.
+	RingSizes     []int32 `protobuf:"varint,4,rep,packed,name=ring_sizes,json=ringSizes,proto3" json:"ring_sizes,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GraphNeighborhoodResponse) Reset() {
 	*x = GraphNeighborhoodResponse{}
-	mi := &file_graph_proto_msgTypes[8]
+	mi := &file_graph_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -555,7 +679,7 @@ func (x *GraphNeighborhoodResponse) String() string {
 func (*GraphNeighborhoodResponse) ProtoMessage() {}
 
 func (x *GraphNeighborhoodResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_graph_proto_msgTypes[8]
+	mi := &file_graph_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -568,7 +692,7 @@ func (x *GraphNeighborhoodResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GraphNeighborhoodResponse.ProtoReflect.Descriptor instead.
 func (*GraphNeighborhoodResponse) Descriptor() ([]byte, []int) {
-	return file_graph_proto_rawDescGZIP(), []int{8}
+	return file_graph_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *GraphNeighborhoodResponse) GetUndirectedDistance() map[string]int32 {
@@ -583,6 +707,80 @@ func (x *GraphNeighborhoodResponse) GetForwardReachable() map[string]int32 {
 		return x.ForwardReachable
 	}
 	return nil
+}
+
+func (x *GraphNeighborhoodResponse) GetNearest() []*GraphNeighbour {
+	if x != nil {
+		return x.Nearest
+	}
+	return nil
+}
+
+func (x *GraphNeighborhoodResponse) GetRingSizes() []int32 {
+	if x != nil {
+		return x.RingSizes
+	}
+	return nil
+}
+
+type GraphNeighbour struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	PageId        string                 `protobuf:"bytes,1,opt,name=page_id,json=pageId,proto3" json:"page_id,omitempty"`
+	Title         string                 `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
+	Hops          int32                  `protobuf:"varint,3,opt,name=hops,proto3" json:"hops,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GraphNeighbour) Reset() {
+	*x = GraphNeighbour{}
+	mi := &file_graph_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GraphNeighbour) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GraphNeighbour) ProtoMessage() {}
+
+func (x *GraphNeighbour) ProtoReflect() protoreflect.Message {
+	mi := &file_graph_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GraphNeighbour.ProtoReflect.Descriptor instead.
+func (*GraphNeighbour) Descriptor() ([]byte, []int) {
+	return file_graph_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *GraphNeighbour) GetPageId() string {
+	if x != nil {
+		return x.PageId
+	}
+	return ""
+}
+
+func (x *GraphNeighbour) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *GraphNeighbour) GetHops() int32 {
+	if x != nil {
+		return x.Hops
+	}
+	return 0
 }
 
 var File_graph_proto protoreflect.FileDescriptor
@@ -601,7 +799,7 @@ const file_graph_proto_rawDesc = "" +
 	"\tGraphEdge\x12\x1b\n" +
 	"\tfrom_page\x18\x01 \x01(\tR\bfromPage\x12\x17\n" +
 	"\ato_page\x18\x02 \x01(\tR\x06toPage\"\x15\n" +
-	"\x13AnalyzeGraphRequest\"\xc1\x04\n" +
+	"\x13AnalyzeGraphRequest\"\xa9\a\n" +
 	"\rGraphAnalysis\x12W\n" +
 	"\fcomponent_of\x18\x01 \x03(\v24.marginal.document.v1.GraphAnalysis.ComponentOfEntryR\vcomponentOf\x12+\n" +
 	"\x11orphan_components\x18\x02 \x03(\x05R\x10orphanComponents\x12\x14\n" +
@@ -610,13 +808,26 @@ const file_graph_proto_rawDesc = "" +
 	"\x05betti\x18\x05 \x01(\v2\".marginal.document.v1.BettiNumbersR\x05betti\x12V\n" +
 	"\vbetweenness\x18\x06 \x03(\v24.marginal.document.v1.GraphAnalysis.BetweennessEntryR\vbetweenness\x12.\n" +
 	"\x13modularity_by_topic\x18\a \x01(\x01R\x11modularityByTopic\x126\n" +
-	"\x17modularity_by_component\x18\b \x01(\x01R\x15modularityByComponent\x1a>\n" +
+	"\x17modularity_by_component\x18\b \x01(\x01R\x15modularityByComponent\x12i\n" +
+	"\x12strongly_connected\x18\t \x03(\v2:.marginal.document.v1.GraphAnalysis.StronglyConnectedEntryR\x11stronglyConnected\x12\x1b\n" +
+	"\tscc_sizes\x18\n" +
+	" \x03(\x05R\bsccSizes\x12+\n" +
+	"\x11topological_order\x18\v \x03(\tR\x10topologicalOrder\x12\x15\n" +
+	"\x06is_dag\x18\f \x01(\bR\x05isDag\x12\x1a\n" +
+	"\bunplaced\x18\r \x03(\tR\bunplaced\x128\n" +
+	"\x06layers\x18\x0e \x03(\v2 .marginal.document.v1.GraphLayerR\x06layers\x1a>\n" +
 	"\x10ComponentOfEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\x05R\x05value:\x028\x01\x1a>\n" +
 	"\x10BetweennessEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\x01R\x05value:\x028\x01\"\xa1\x01\n" +
+	"\x05value\x18\x02 \x01(\x01R\x05value:\x028\x01\x1aD\n" +
+	"\x16StronglyConnectedEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\x05R\x05value:\x028\x01\"'\n" +
+	"\n" +
+	"GraphLayer\x12\x19\n" +
+	"\bpage_ids\x18\x01 \x03(\tR\apageIds\"\xa1\x01\n" +
 	"\fBettiNumbers\x12\x0e\n" +
 	"\x02b0\x18\x01 \x01(\x05R\x02b0\x12\x0e\n" +
 	"\x02b1\x18\x02 \x01(\x05R\x02b1\x12\x1b\n" +
@@ -626,16 +837,23 @@ const file_graph_proto_rawDesc = "" +
 	"\ttriangles\x18\x06 \x01(\x05R\ttriangles\x12\x14\n" +
 	"\x05rank2\x18\a \x01(\x05R\x05rank2\"@\n" +
 	"\x18GraphNeighborhoodRequest\x12$\n" +
-	"\x0esource_page_id\x18\x01 \x01(\tR\fsourcePageId\"\x95\x03\n" +
+	"\x0esource_page_id\x18\x01 \x01(\tR\fsourcePageId\"\xf4\x03\n" +
 	"\x19GraphNeighborhoodResponse\x12x\n" +
 	"\x13undirected_distance\x18\x01 \x03(\v2G.marginal.document.v1.GraphNeighborhoodResponse.UndirectedDistanceEntryR\x12undirectedDistance\x12r\n" +
-	"\x11forward_reachable\x18\x02 \x03(\v2E.marginal.document.v1.GraphNeighborhoodResponse.ForwardReachableEntryR\x10forwardReachable\x1aE\n" +
+	"\x11forward_reachable\x18\x02 \x03(\v2E.marginal.document.v1.GraphNeighborhoodResponse.ForwardReachableEntryR\x10forwardReachable\x12>\n" +
+	"\anearest\x18\x03 \x03(\v2$.marginal.document.v1.GraphNeighbourR\anearest\x12\x1d\n" +
+	"\n" +
+	"ring_sizes\x18\x04 \x03(\x05R\tringSizes\x1aE\n" +
 	"\x17UndirectedDistanceEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\x05R\x05value:\x028\x01\x1aC\n" +
 	"\x15ForwardReachableEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\x05R\x05value:\x028\x012\xc0\x02\n" +
+	"\x05value\x18\x02 \x01(\x05R\x05value:\x028\x01\"S\n" +
+	"\x0eGraphNeighbour\x12\x17\n" +
+	"\apage_id\x18\x01 \x01(\tR\x06pageId\x12\x14\n" +
+	"\x05title\x18\x02 \x01(\tR\x05title\x12\x12\n" +
+	"\x04hops\x18\x03 \x01(\x05R\x04hops2\xc0\x02\n" +
 	"\fGraphService\x12Z\n" +
 	"\fGetLinkGraph\x12).marginal.document.v1.GetLinkGraphRequest\x1a\x1f.marginal.document.v1.LinkGraph\x12^\n" +
 	"\fAnalyzeGraph\x12).marginal.document.v1.AnalyzeGraphRequest\x1a#.marginal.document.v1.GraphAnalysis\x12t\n" +
@@ -653,7 +871,7 @@ func file_graph_proto_rawDescGZIP() []byte {
 	return file_graph_proto_rawDescData
 }
 
-var file_graph_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_graph_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_graph_proto_goTypes = []any{
 	(*GetLinkGraphRequest)(nil),       // 0: marginal.document.v1.GetLinkGraphRequest
 	(*LinkGraph)(nil),                 // 1: marginal.document.v1.LinkGraph
@@ -661,33 +879,39 @@ var file_graph_proto_goTypes = []any{
 	(*GraphEdge)(nil),                 // 3: marginal.document.v1.GraphEdge
 	(*AnalyzeGraphRequest)(nil),       // 4: marginal.document.v1.AnalyzeGraphRequest
 	(*GraphAnalysis)(nil),             // 5: marginal.document.v1.GraphAnalysis
-	(*BettiNumbers)(nil),              // 6: marginal.document.v1.BettiNumbers
-	(*GraphNeighborhoodRequest)(nil),  // 7: marginal.document.v1.GraphNeighborhoodRequest
-	(*GraphNeighborhoodResponse)(nil), // 8: marginal.document.v1.GraphNeighborhoodResponse
-	nil,                               // 9: marginal.document.v1.GraphAnalysis.ComponentOfEntry
-	nil,                               // 10: marginal.document.v1.GraphAnalysis.BetweennessEntry
-	nil,                               // 11: marginal.document.v1.GraphNeighborhoodResponse.UndirectedDistanceEntry
-	nil,                               // 12: marginal.document.v1.GraphNeighborhoodResponse.ForwardReachableEntry
+	(*GraphLayer)(nil),                // 6: marginal.document.v1.GraphLayer
+	(*BettiNumbers)(nil),              // 7: marginal.document.v1.BettiNumbers
+	(*GraphNeighborhoodRequest)(nil),  // 8: marginal.document.v1.GraphNeighborhoodRequest
+	(*GraphNeighborhoodResponse)(nil), // 9: marginal.document.v1.GraphNeighborhoodResponse
+	(*GraphNeighbour)(nil),            // 10: marginal.document.v1.GraphNeighbour
+	nil,                               // 11: marginal.document.v1.GraphAnalysis.ComponentOfEntry
+	nil,                               // 12: marginal.document.v1.GraphAnalysis.BetweennessEntry
+	nil,                               // 13: marginal.document.v1.GraphAnalysis.StronglyConnectedEntry
+	nil,                               // 14: marginal.document.v1.GraphNeighborhoodResponse.UndirectedDistanceEntry
+	nil,                               // 15: marginal.document.v1.GraphNeighborhoodResponse.ForwardReachableEntry
 }
 var file_graph_proto_depIdxs = []int32{
 	2,  // 0: marginal.document.v1.LinkGraph.nodes:type_name -> marginal.document.v1.GraphNode
 	3,  // 1: marginal.document.v1.LinkGraph.edges:type_name -> marginal.document.v1.GraphEdge
-	9,  // 2: marginal.document.v1.GraphAnalysis.component_of:type_name -> marginal.document.v1.GraphAnalysis.ComponentOfEntry
-	6,  // 3: marginal.document.v1.GraphAnalysis.betti:type_name -> marginal.document.v1.BettiNumbers
-	10, // 4: marginal.document.v1.GraphAnalysis.betweenness:type_name -> marginal.document.v1.GraphAnalysis.BetweennessEntry
-	11, // 5: marginal.document.v1.GraphNeighborhoodResponse.undirected_distance:type_name -> marginal.document.v1.GraphNeighborhoodResponse.UndirectedDistanceEntry
-	12, // 6: marginal.document.v1.GraphNeighborhoodResponse.forward_reachable:type_name -> marginal.document.v1.GraphNeighborhoodResponse.ForwardReachableEntry
-	0,  // 7: marginal.document.v1.GraphService.GetLinkGraph:input_type -> marginal.document.v1.GetLinkGraphRequest
-	4,  // 8: marginal.document.v1.GraphService.AnalyzeGraph:input_type -> marginal.document.v1.AnalyzeGraphRequest
-	7,  // 9: marginal.document.v1.GraphService.GraphNeighborhood:input_type -> marginal.document.v1.GraphNeighborhoodRequest
-	1,  // 10: marginal.document.v1.GraphService.GetLinkGraph:output_type -> marginal.document.v1.LinkGraph
-	5,  // 11: marginal.document.v1.GraphService.AnalyzeGraph:output_type -> marginal.document.v1.GraphAnalysis
-	8,  // 12: marginal.document.v1.GraphService.GraphNeighborhood:output_type -> marginal.document.v1.GraphNeighborhoodResponse
-	10, // [10:13] is the sub-list for method output_type
-	7,  // [7:10] is the sub-list for method input_type
-	7,  // [7:7] is the sub-list for extension type_name
-	7,  // [7:7] is the sub-list for extension extendee
-	0,  // [0:7] is the sub-list for field type_name
+	11, // 2: marginal.document.v1.GraphAnalysis.component_of:type_name -> marginal.document.v1.GraphAnalysis.ComponentOfEntry
+	7,  // 3: marginal.document.v1.GraphAnalysis.betti:type_name -> marginal.document.v1.BettiNumbers
+	12, // 4: marginal.document.v1.GraphAnalysis.betweenness:type_name -> marginal.document.v1.GraphAnalysis.BetweennessEntry
+	13, // 5: marginal.document.v1.GraphAnalysis.strongly_connected:type_name -> marginal.document.v1.GraphAnalysis.StronglyConnectedEntry
+	6,  // 6: marginal.document.v1.GraphAnalysis.layers:type_name -> marginal.document.v1.GraphLayer
+	14, // 7: marginal.document.v1.GraphNeighborhoodResponse.undirected_distance:type_name -> marginal.document.v1.GraphNeighborhoodResponse.UndirectedDistanceEntry
+	15, // 8: marginal.document.v1.GraphNeighborhoodResponse.forward_reachable:type_name -> marginal.document.v1.GraphNeighborhoodResponse.ForwardReachableEntry
+	10, // 9: marginal.document.v1.GraphNeighborhoodResponse.nearest:type_name -> marginal.document.v1.GraphNeighbour
+	0,  // 10: marginal.document.v1.GraphService.GetLinkGraph:input_type -> marginal.document.v1.GetLinkGraphRequest
+	4,  // 11: marginal.document.v1.GraphService.AnalyzeGraph:input_type -> marginal.document.v1.AnalyzeGraphRequest
+	8,  // 12: marginal.document.v1.GraphService.GraphNeighborhood:input_type -> marginal.document.v1.GraphNeighborhoodRequest
+	1,  // 13: marginal.document.v1.GraphService.GetLinkGraph:output_type -> marginal.document.v1.LinkGraph
+	5,  // 14: marginal.document.v1.GraphService.AnalyzeGraph:output_type -> marginal.document.v1.GraphAnalysis
+	9,  // 15: marginal.document.v1.GraphService.GraphNeighborhood:output_type -> marginal.document.v1.GraphNeighborhoodResponse
+	13, // [13:16] is the sub-list for method output_type
+	10, // [10:13] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_graph_proto_init() }
@@ -701,7 +925,7 @@ func file_graph_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_graph_proto_rawDesc), len(file_graph_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   13,
+			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

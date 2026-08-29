@@ -31,6 +31,12 @@ type pageJSON struct {
 	// has to special-case absence before iterating.
 	Topic *topicJSON `json:"topic"`
 	Tags  []string   `json:"tags"`
+	// v2.8.0. Always present, 0 rather than omitted: an empty page and a page
+	// whose block projection has not caught up both genuinely hold zero
+	// blocks right now, and omitting the field would make the client guess
+	// which of the two it is looking at from the shape of the JSON.
+	BlockCount int32 `json:"block_count"`
+	WordCount  int32 `json:"word_count"`
 }
 
 type topicJSON struct {
@@ -73,6 +79,8 @@ func toPageJSON(p *documentv1.Page) pageJSON {
 	if out.Tags == nil {
 		out.Tags = []string{}
 	}
+	out.BlockCount = p.GetBlockCount()
+	out.WordCount = p.GetWordCount()
 	return out
 }
 

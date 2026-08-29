@@ -76,7 +76,11 @@ export function DocumentOutline({
       <div style={{ display: "flex", flexDirection: "column", gap: 1, padding: "0 6px", maxHeight: 260, overflowY: "auto" }}>
         {title !== undefined && (
           <div
-            className={`oi oi-h1${activeId == null ? " oi-on" : ""}`}
+            // `=== null` on purpose, not `== null`: undefined means the
+            // screen does not track a position at all (the editor), where
+            // null means it does and you are above the first landmark (the
+            // reader, at the top). Only the second is "the title is active".
+            className={`oi oi-h1${activeId === null ? " oi-on" : ""}`}
             onClick={() => onJumpTop?.()}
             title={title}
           >

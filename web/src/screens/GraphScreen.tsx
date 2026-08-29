@@ -26,7 +26,10 @@ import { getTopics, type Topic } from "../api/topics";
 import { listPages } from "../api/pages";
 import { useAuth } from "../auth/AuthContext";
 import { useForceLayout } from "../graph-core/useForceLayout";
-import { territory as computeTerritory } from "../graph-core/wasm";
+import {
+  hulls as computeHulls, spatialMajority, territory as computeTerritory,
+  type Hull,
+} from "../graph-core/wasm";
 import type { DelaunayPair, VoronoiCell } from "../graph-core/types";
 import {
   Body, Inspector, Label, Readout, Rule, Screen, StatusBar, SubBar, SubItem,
@@ -66,6 +69,20 @@ export function GraphScreen() {
   // simulation is a shape nobody can read.
   const [cells, setCells] = useState<VoronoiCell[]>([]);
   const [delaunay, setDelaunay] = useState<DelaunayPair[]>([]);
+  // One convex hull per topic over the settled positions — § 07's own
+  // background polygons, which are what FORCE draws behind the link graph.
+  // Deliberately NOT the Voronoi cells: cells tile the whole plane, so under
+  // FORCE they hand empty ground to whichever page happens to border it and
+  // compete with the edges for the eye. A hull covers only where a topic's
+  // pages actually are, and two overlapping hulls are two interleaved
+  // topics — which is a finding rather than an artefact.
+  const [hulls, setHulls] = useState<Hull[]>([]);
+  // SPACE's vote: what each node's spatial neighbours are about. Computed in
+  // Go over the Delaunay dual (graphalgo.NeighbourMajority), never here.
+  const [spaceOf, setSpaceOf] = useState<Map<string, string>>(new Map());
+  /** Which of § 07's three colourings is applied. They exist because they
+   *  disagree: declared, emergent-by-citation, emergent-by-position. */
+  const [colourBy, setColourBy] = useState<"topic" | "cluster" | "space">("topic");
   // Which lens the sub-bar has selected. FORCE draws the link graph;
   // TERRITORY draws Voronoi cells; DELAUNAY draws the dual of those cells,
   // which is a DIFFERENT graph from the link graph — adjacency in space
@@ -185,10 +202,62 @@ export function GraphScreen() {
     }));
     let cancelled = false;
     computeTerritory(sites, { min_x: 0, min_y: 0, max_x: W, max_y: H })
-      .then((r) => { if (!cancelled) { setCells(r.cells); setDelaunay(r.delaunay); } })
-      .catch(() => { setCells([]); setDelaunay([]); });
+      .then(async (r) => {
+        if (cancelled) return;
+        setCells(r.cells);
+        setDelaunay(r.delaunay);
+        // The SPACE vote reads the dual this call just produced, so it is
+        // chained here rather than run from its own effect — two effects over
+        // one geometry is two chances to vote on a stale one.
+        const label: Record<string, string> = {};
+        sites.forEach((st) => { label[st.id] = topicOf.get(st.id) ?? ""; });
+        const majority = await spatialMajority(r.delaunay, label).catch(() => ({}));
+        if (!cancelled) setSpaceOf(new Map(Object.entries(majority)));
+      })
+      .catch(() => { setCells([]); setDelaunay([]); setSpaceOf(new Map()); });
+
+    // Hulls are per TOPIC, so an untopiced page contributes to no polygon —
+    // it sits on open ground, which is what being untopiced looks like.
+    const points = sites
+      .filter((st) => (topicOf.get(st.id) ?? "") !== "")
+      .map((st) => ({ group: topicOf.get(st.id)!, x: st.x, y: st.y }));
+    computeHulls(points)
+      .then((h) => { if (!cancelled) setHulls(h); })
+      .catch(() => setHulls([]));
+
     return () => { cancelled = true; };
   }, [nodes, topicOf, fit]);
+
+  /**
+   * The hue a node takes under the current colouring.
+   *
+   * TOPIC is the page's own column. CLUSTER indexes the connected component
+   * graphalgo found over citations. SPACE is the majority topic of the cells
+   * bordering this one. Component colours deliberately do NOT reuse the topic
+   * ramp — a shared hue would imply a page's component says what it is about.
+   */
+  const hueOf = useCallback((id: string): string => {
+    if (colourBy === "cluster") {
+      const c = analysis?.component_of[id];
+      return c === undefined ? "#6E6A63" : COMPONENT_HUES[c % COMPONENT_HUES.length];
+    }
+    if (colourBy === "space") {
+      const key = spaceOf.get(id);
+      return key ? TOPIC_HEX[key] ?? "#6E6A63" : "#6E6A63";
+    }
+    return TOPIC_HEX[topicOf.get(id) ?? ""] ?? "#6E6A63";
+  }, [colourBy, analysis, spaceOf, topicOf]);
+
+  /** Nodes whose declared topic and spatial neighbourhood disagree — the
+   *  finding the three lenses exist to make visible, counted. */
+  const disputed = useMemo(() => {
+    let n = 0;
+    spaceOf.forEach((key, id) => {
+      const own = topicOf.get(id) ?? "";
+      if (own !== "" && key !== own) n++;
+    });
+    return n;
+  }, [spaceOf, topicOf]);
 
   /** The selected node's neighbours, grouped by topic — declared against
    *  emergent, which is the disagreement this panel exists to surface. */
@@ -294,21 +363,40 @@ export function GraphScreen() {
                 read as "whose ground is this" and adjacent same-topic cells
                 merge visually into one territory without being merged in the
                 geometry. */}
-            <g>
-              {cells.map((c) => {
-                if (c.poly.length < 3) return null;
-                const hex = TOPIC_HEX[topicOf.get(c.site.id) ?? ""] ?? "#6E6A63";
-                const d = c.poly.map((p, i) => `${i === 0 ? "M" : "L"}${p.x} ${p.y}`).join(" ") + " Z";
-                // Cells are only painted in the two lenses that are about
-                // space. Under FORCE they would compete with the edges.
-                const on = lens !== "force";
-                return (
-                  <path key={c.site.id} d={d}
-                        fill={on ? `${hex}14` : `${hex}08`}
-                        stroke={on ? `${hex}40` : `${hex}18`} strokeWidth="1" />
-                );
-              })}
-            </g>
+            {/* FORCE draws the topic HULLS — § 07's own background polygons.
+                Voronoi is not drawn at all here: it tiles the whole plane, so
+                every pixel gets an owner and the cell borders compete with the
+                edges you came to read. Turning the lens off has to actually
+                turn it off. */}
+            {lens === "force" && (
+              <g>
+                {hulls.map((h) => {
+                  if (h.points.length < 3) return null;
+                  const hex = TOPIC_HEX[h.group] ?? "#6E6A63";
+                  const d = h.points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x} ${p.y}`).join(" ") + " Z";
+                  return (
+                    <path key={h.group} d={d} fill={`${hex}0B`} stroke={`${hex}2B`} strokeWidth="1" />
+                  );
+                })}
+              </g>
+            )}
+
+            {/* The exact Voronoi partition, in the two lenses that are ABOUT
+                space. Each cell takes its SITE's hue, so adjacent same-hue
+                cells merge visually into one territory without being merged
+                in the geometry. */}
+            {lens !== "force" && (
+              <g>
+                {cells.map((c) => {
+                  if (c.poly.length < 3) return null;
+                  const hex = hueOf(c.site.id);
+                  const d = c.poly.map((p, i) => `${i === 0 ? "M" : "L"}${p.x} ${p.y}`).join(" ") + " Z";
+                  return (
+                    <path key={c.site.id} d={d} fill={`${hex}14`} stroke={`${hex}40`} strokeWidth="1" />
+                  );
+                })}
+              </g>
+            )}
 
             {/* Edges under nodes, at the mockup's own alpha. */}
             <g stroke="rgba(255,255,255,.09)" strokeWidth="1">
@@ -359,8 +447,7 @@ export function GraphScreen() {
                 // Not a fallback colour: "no topic" is a real state, and
                 // giving it one of the five would make it indistinguishable
                 // from a page that genuinely is that topic.
-                const key = topicOf.get(n.id) ?? "";
-                const hex = TOPIC_HEX[key] ?? "#6E6A63";
+                const hex = hueOf(n.id);
                 return (
                   <g key={n.id} onMouseDown={() => { setSelected(n.id); draggingRef.current = n.id; startDrag(n.id); }}
                      style={{ cursor: "pointer" }}>
@@ -406,9 +493,21 @@ export function GraphScreen() {
               </span>
             </div>
             <div style={{ display: "flex", gap: 0 }}>
-              <span className="tb tb-on" style={{ padding: "4px 9px", fontSize: 10 }}>TOPIC</span>
-              <span className="tb" style={{ padding: "4px 9px", fontSize: 10 }}>CLUSTER</span>
-              <span className="tb" style={{ padding: "4px 9px", fontSize: 10 }}>SPACE</span>
+              {(["topic", "cluster", "space"] as const).map((c) => (
+                <span
+                  key={c}
+                  className={`tb${colourBy === c ? " tb-on" : ""}`}
+                  style={{ padding: "4px 9px", fontSize: 10, cursor: "pointer" }}
+                  onClick={() => setColourBy(c)}
+                  title={
+                    c === "topic" ? "What the page declares — a column"
+                      : c === "cluster" ? "Which connected component, over citations"
+                        : "What its Voronoi-adjacent neighbours are about"
+                  }
+                >
+                  {c.toUpperCase()}
+                </span>
+              ))}
             </div>
             <Rule />
             <Label>TOPICS · {topics.length}</Label>
@@ -459,6 +558,11 @@ export function GraphScreen() {
             <span><span style={{ color: "#E8873C" }}>━</span> neighbourhood</span>
             <span>drag reheats · settles again</span>
             <span className="mono" style={{ color: "#585550" }}>60fps only while moving</span>
+            {/* The whole reason three colourings exist: they can disagree,
+                and the disagreement is the only thing here worth acting on. */}
+            <span className="mono" style={{ color: disputed > 0 ? "#E0A34E" : "#585550" }}>
+              {num(disputed)} sit in another topic's territory
+            </span>
           </div>
         </div>
 
