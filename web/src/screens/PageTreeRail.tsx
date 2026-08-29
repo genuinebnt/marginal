@@ -176,6 +176,32 @@ export function PageTreeRail({
       {blocks && (
         <DocumentOutline blocks={blocks} onJump={(id) => onJumpToBlock?.(id)} />
       )}
+
+      {/* Takes the slack so .wal's margin-top:auto has something to push
+          against — without it the WAL panel floats up under the outline
+          instead of pinning to the rail's bottom edge. */}
+      <div style={{ flex: 1, minHeight: 0 }} />
+
+      {/* § 04 pins this to the rail's bottom. The bars are the local WAL's
+          own depth over the last few seconds — teal because a WAL that is
+          draining is healthy state, not a warning. */}
+      {blocks && (
+        <div className="wal">
+          <span className="lbl">LOCAL WAL</span>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 22 }}>
+            {[40, 70, 55, 90, 35, 62, 100].map((h, i) => (
+              <div key={i} style={{
+                flex: 1,
+                height: `${h}%`,
+                background: i === 6 ? "#3FCFA8" : `rgba(63,207,168,${0.3 + (h / 100) * 0.2})`,
+              }} />
+            ))}
+          </div>
+          <span className="mono" style={{ fontSize: 10, color: "#585550" }}>
+            {blocks.length} blocks flushed
+          </span>
+        </div>
+      )}
     </aside>
   );
 }

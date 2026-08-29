@@ -26,11 +26,17 @@ import { getTopics, type Topic } from "../api/topics";
 import { listPages } from "../api/pages";
 import { useAuth } from "../auth/AuthContext";
 import { useForceLayout } from "../graph-core/useForceLayout";
-import { hulls as computeHulls, type Hull } from "../graph-core/wasm";
+import { territory as computeTerritory } from "../graph-core/wasm";
+import type { DelaunayPair, VoronoiCell } from "../graph-core/types";
 import {
   Body, Inspector, Label, Readout, Rule, Screen, StatusBar, SubBar, SubItem,
   TopBar, TopicChip, TOPIC_HEX, num,
 } from "../shell/Chrome";
+
+/** Component colours index a partition, so they deliberately do NOT reuse
+ *  the topic ramp — a shared hue would imply a component says what a page is
+ *  about. Same set the Graph Algorithms screen uses. */
+const COMPONENT_HUES = ["#3FCFA8", "#7D9EC9", "#A98CE8", "#585550", "#D6A660", "#D07C8A"];
 
 const W = 1104;
 const H = 754;
@@ -58,7 +64,14 @@ export function GraphScreen() {
   // positions, computed in Go (graphalgo.Territories) via wasm. Recomputed
   // when the layout changes, not per frame: a hull over a still-moving
   // simulation is a shape nobody can read.
-  const [territories, setTerritories] = useState<Hull[]>([]);
+  const [cells, setCells] = useState<VoronoiCell[]>([]);
+  const [delaunay, setDelaunay] = useState<DelaunayPair[]>([]);
+  // Which lens the sub-bar has selected. FORCE draws the link graph;
+  // TERRITORY draws Voronoi cells; DELAUNAY draws the dual of those cells,
+  // which is a DIFFERENT graph from the link graph — adjacency in space
+  // rather than adjacency by citation, and the contrast is the point.
+  const [lens, setLens] = useState<"force" | "territory" | "delaunay">("force");
+  const [inspTab, setInspTab] = useState<"selected" | "topics" | "clusters">("selected");
 
   useEffect(() => {
     if (!actorId) return;
@@ -118,6 +131,14 @@ export function GraphScreen() {
     return false;
   }, [degree, minDegree, tagFilter, tagsOf]);
 
+  /** Component sizes, largest first — the CLUSTERS tab's own list. */
+  const componentSizes = useMemo(() => {
+    if (!analysis) return [] as Array<[number, number]>;
+    const m = new Map<number, number>();
+    Object.values(analysis.component_of).forEach((c) => m.set(c, (m.get(c) ?? 0) + 1));
+    return [...m].sort((a, b) => b[1] - a[1]);
+  }, [analysis]);
+
   const sel = selected ?? nodes[0]?.id ?? null;
   const selTitle = sel ? byId.get(sel)?.title ?? "—" : "—";
   const selDeg = sel ? degree.get(sel) : undefined;
@@ -152,14 +173,16 @@ export function GraphScreen() {
   }, [nodes]);
 
   useEffect(() => {
-    if (nodes.length === 0 || topicOf.size === 0) { setTerritories([]); return; }
-    const pts = nodes.map((n) => ({
-      group: topicOf.get(n.id) ?? "",
+    if (nodes.length === 0) { setCells([]); return; }
+    const sites = nodes.map((n) => ({
+      id: n.id,
       x: n.x * fit.s + fit.dx,
       y: n.y * fit.s + fit.dy,
     }));
     let cancelled = false;
-    computeHulls(pts).then((h) => { if (!cancelled) setTerritories(h); }).catch(() => setTerritories([]));
+    computeTerritory(sites, { min_x: 0, min_y: 0, max_x: W, max_y: H })
+      .then((r) => { if (!cancelled) { setCells(r.cells); setDelaunay(r.delaunay); } })
+      .catch(() => { setCells([]); setDelaunay([]); });
     return () => { cancelled = true; };
   }, [nodes, topicOf, fit]);
 
@@ -188,15 +211,22 @@ export function GraphScreen() {
    * the panel is asking is how much ground the thing it belongs to holds.
    */
   const territoryShare = useMemo(() => {
-    const hull = territories.find((h) => h.group === selKey);
-    if (!hull || hull.points.length < 3) return null;
-    let a = 0;
-    for (let i = 0; i < hull.points.length; i++) {
-      const p = hull.points[i], q = hull.points[(i + 1) % hull.points.length];
-      a += p.x * q.y - q.x * p.y;
+    // Sum the Voronoi cells whose SITE carries the selected topic. Cells
+    // tile the plane, so this is a true share of it — where summing convex
+    // hulls would double-count wherever two topics overlap.
+    const mine = cells.filter((c) => (topicOf.get(c.site.id) ?? "") === selKey);
+    if (mine.length === 0) return null;
+    let total = 0;
+    for (const c of mine) {
+      let a = 0;
+      for (let i = 0; i < c.poly.length; i++) {
+        const p = c.poly[i], q = c.poly[(i + 1) % c.poly.length];
+        a += p.x * q.y - q.x * p.y;
+      }
+      total += Math.abs(a) / 2;
     }
-    return (Math.abs(a) / 2 / (W * H)) * 100;
-  }, [territories, selKey]);
+    return (total / (W * H)) * 100;
+  }, [cells, topicOf, selKey]);
 
   const pos = (id: string) => {
     const n = nodes.find((v) => v.id === id);
@@ -225,9 +255,9 @@ export function GraphScreen() {
       />
 
       <SubBar>
-        <SubItem on>FORCE</SubItem>
-        <SubItem>TERRITORY · VORONOI</SubItem>
-        <SubItem>DELAUNAY DUAL</SubItem>
+        <SubItem on={lens === "force"} onClick={() => setLens("force")}>FORCE</SubItem>
+        <SubItem on={lens === "territory"} onClick={() => setLens("territory")}>TERRITORY · VORONOI</SubItem>
+        <SubItem on={lens === "delaunay"} onClick={() => setLens("delaunay")}>DELAUNAY DUAL</SubItem>
         <div style={{ flex: 1 }} />
         <SubItem tone={cooled ? "#3FCFA8" : "#E0A34E"}>
           {cooled ? "SIMULATION COOLED" : "SIMULATION RUNNING"}
@@ -244,26 +274,50 @@ export function GraphScreen() {
             onMouseUp={endDrag}
             onMouseLeave={endDrag}
           >
-            {/* Territories behind everything. Colour is the topic's own, at
-                the wash alpha the design system uses for coloured regions —
-                a fill any stronger competes with the nodes it contains. */}
+            {/* Territory behind everything — exact Voronoi, which is what
+                § 07 draws: its paths tile the plane rather than wrapping each
+                cluster. Each cell takes its SITE's topic hue, so the regions
+                read as "whose ground is this" and adjacent same-topic cells
+                merge visually into one territory without being merged in the
+                geometry. */}
             <g>
-              {territories.map((h) => {
-                if (h.points.length < 3) return null;
-                const hex = TOPIC_HEX[h.group] ?? "#6E6A63";
-                const d = h.points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x} ${p.y}`).join(" ") + " Z";
-                return <path key={h.group} d={d} fill={`${hex}0A`} stroke={`${hex}2E`} strokeWidth="1" />;
+              {cells.map((c) => {
+                if (c.poly.length < 3) return null;
+                const hex = TOPIC_HEX[topicOf.get(c.site.id) ?? ""] ?? "#6E6A63";
+                const d = c.poly.map((p, i) => `${i === 0 ? "M" : "L"}${p.x} ${p.y}`).join(" ") + " Z";
+                // Cells are only painted in the two lenses that are about
+                // space. Under FORCE they would compete with the edges.
+                const on = lens !== "force";
+                return (
+                  <path key={c.site.id} d={d}
+                        fill={on ? `${hex}14` : `${hex}08`}
+                        stroke={on ? `${hex}40` : `${hex}18`} strokeWidth="1" />
+                );
               })}
             </g>
 
             {/* Edges under nodes, at the mockup's own alpha. */}
             <g stroke="rgba(255,255,255,.09)" strokeWidth="1">
-              {edges.map((e, i) => {
+              {lens !== "delaunay" && edges.map((e, i) => {
                 const a = pos(e.from), b = pos(e.to);
                 if (!a || !b) return null;
                 return <line key={i} x1={a.x} y1={a.y} x2={b.x} y2={b.y} />;
               })}
             </g>
+
+            {/* The Delaunay dual: which cells SHARE A BORDER. A different
+                graph from the link graph — adjacency in space rather than by
+                citation — so it is drawn instead of the links, not over
+                them, or the two would read as one. */}
+            {lens === "delaunay" && (
+              <g stroke="rgba(90,200,180,.42)" strokeWidth="1">
+                {delaunay.map((d, i) => {
+                  const a = pos(d.a), b = pos(d.b);
+                  if (!a || !b) return null;
+                  return <line key={i} x1={a.x} y1={a.y} x2={b.x} y2={b.y} />;
+                })}
+              </g>
+            )}
 
             {/* The selected node's own edges, ember — "neighbourhood" in the
                 legend below. Drawn as a second pass so they sit above the
@@ -395,9 +449,68 @@ export function GraphScreen() {
         </div>
 
         <Inspector
-          tabs={[{ id: "sel", label: "SELECTED" }, { id: "topics", label: "TOPICS" }, { id: "clusters", label: "CLUSTERS" }]}
-          active="sel"
+          tabs={[{ id: "selected", label: "SELECTED" }, { id: "topics", label: "TOPICS" }, { id: "clusters", label: "CLUSTERS" }]}
+          active={inspTab}
+          onSelect={(id) => setInspTab(id as typeof inspTab)}
         >
+          {inspTab === "topics" && (
+            <>
+              <Label>PAGES PER TOPIC</Label>
+              {topics.map((t) => {
+                const n = nodeIds.filter((id) => topicOf.get(id) === t.color_key).length;
+                const max = Math.max(...topics.map((x) => nodeIds.filter((id) => topicOf.get(id) === x.color_key).length), 1);
+                return (
+                  <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                    <span style={{ width: 6, height: 6, background: TOPIC_HEX[t.color_key], flex: "none" }} />
+                    <span style={{ flex: 1, fontSize: 12, color: "#D2CFC8" }}>{t.name}</span>
+                    <div style={{ width: 70, height: 4, background: "rgba(255,255,255,.06)" }}>
+                      <div style={{ width: `${(n / max) * 100}%`, height: "100%", background: TOPIC_HEX[t.color_key] }} />
+                    </div>
+                    <span className="mono" style={{ fontSize: 9.5, color: "#8C8880", width: 22, textAlign: "right" }}>{n}</span>
+                  </div>
+                );
+              })}
+              <Rule />
+              <Label>MODULARITY BY TOPIC</Label>
+              <div className="mono" style={{ fontSize: 15, color: (analysis?.modularity_by_topic ?? 0) > 0.3 ? "#3FCFA8" : "#E0A34E" }}>
+                {(analysis?.modularity_by_topic ?? 0).toFixed(3)}
+              </div>
+              <div style={{ fontSize: 11, lineHeight: 1.6, color: "#585550" }}>
+                Newman's Q for the partition pages declare. Below about 0.3 the topics are not
+                explaining how the pages actually link — which is a finding about the topics,
+                not a fault in the graph.
+              </div>
+            </>
+          )}
+
+          {inspTab === "clusters" && (
+            <>
+              <Label>CONNECTED COMPONENTS</Label>
+              {componentSizes.length === 0 && (
+                <span style={{ fontSize: 11.5, color: "#585550" }}>No analysis yet.</span>
+              )}
+              {componentSizes.map(([c, n], i) => (
+                <div key={c} style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                  <span style={{ width: 6, height: 6, flex: "none", background: COMPONENT_HUES[c % COMPONENT_HUES.length] }} />
+                  <span style={{ flex: 1, fontSize: 12, color: "#D2CFC8" }}>
+                    component {c}{i === 0 ? " · largest" : ""}
+                  </span>
+                  <span className="mono" style={{ fontSize: 9.5, color: "#8C8880" }}>{n}</span>
+                </div>
+              ))}
+              <Rule />
+              <Label>MODULARITY BY COMPONENT</Label>
+              <div className="mono" style={{ fontSize: 15, color: "#E4E2DC" }}>
+                {(analysis?.modularity_by_component ?? 0).toFixed(3)}
+              </div>
+              <div style={{ fontSize: 11, lineHeight: 1.6, color: "#585550" }}>
+                The same measure against the partition the wiring implies. Read the two together:
+                the gap between them is how far the declared topics sit from the emergent ones.
+              </div>
+            </>
+          )}
+
+          {inspTab === "selected" && (<>
           <div style={{ fontFamily: "Spectral,serif", fontSize: 16, color: "#EFEDE7" }}>{selTitle}</div>
           <div className="tgrow">
             {selKey ? (
@@ -479,6 +592,7 @@ export function GraphScreen() {
             modularity&nbsp;{(analysis?.modularity_by_topic ?? 0).toFixed(2)} <span style={{ color: "#585550" }}>by topic</span><br />
             &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{(analysis?.modularity_by_component ?? 0).toFixed(2)} <span style={{ color: "#585550" }}>by component</span>
           </div>
+          </>)}
         </Inspector>
       </Body>
 

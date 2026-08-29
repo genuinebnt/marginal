@@ -9,17 +9,19 @@
  * the screen is nearly empty, and that is the correct state rather than a
  * failure to fill it.
  *
- * Real: the page tree, page counts, topic counts, untopiced count, and
- * page creation. Placeholder: caret positions (resume needs per-user view
- * state stored server-side, which has no endpoint), the change feed (needs
- * a read over collab.ops since last session), and the "needs you" queue
- * (needs notifications + the facts DAG).
+ * Real: the page tree, page counts, topic counts, untopiced count, page
+ * creation, and resume — actual stored caret positions per user (v2.8.0),
+ * not the most-recently-updated pages wearing the word.
+ *
+ * Still placeholder: the change feed (needs a read over collab.ops since
+ * last session) and LIVE NOW (needs presence across pages, not one).
  */
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { createPage, listPages, type Page } from "../api/pages";
 import { getTopics, type TopicList } from "../api/topics";
+import { getResume, type ReadingPosition } from "../api/resume";
 import {
   Body, Label, Readout, Screen, StatusBar, TopBar, TopicChip, num,
 } from "../shell/Chrome";
@@ -39,6 +41,7 @@ export function DashboardScreen() {
 
   const [pages, setPages] = useState<Page[]>([]);
   const [topics, setTopics] = useState<TopicList | null>(null);
+  const [resume, setResume] = useState<ReadingPosition[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -46,6 +49,7 @@ export function DashboardScreen() {
     if (!actorId) return;
     listPages(actorId).then((r) => setPages(r.pages)).catch((e) => setErr(String(e)));
     getTopics(actorId).then(setTopics).catch(() => {});
+    getResume(actorId, 2).then((r) => setResume(r.positions)).catch(() => {});
   }, [actorId]);
 
   useEffect(load, [load]);
@@ -65,12 +69,6 @@ export function DashboardScreen() {
     }
   }
 
-  // "Resume" is drawn from the two most recently updated pages. The caret
-  // is the part that is still placeholder — updated_at is a real signal,
-  // a stored caret position is not one we have.
-  const resume = [...pages]
-    .sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1))
-    .slice(0, 2);
 
   const untopiced = topics?.untopiced_pages ?? 0;
   const now = new Date();
@@ -145,10 +143,18 @@ export function DashboardScreen() {
           {/* Resume, not "recent". The distinction is the caret. */}
           <Label style={{ display: "block", marginBottom: 12 }}>RESUME</Label>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 11, marginBottom: 28 }}>
+            {resume.length === 0 && (
+              <div style={{
+                gridColumn: "1 / -1", fontSize: 12.5, color: "#585550", lineHeight: 1.7,
+              }}>
+                Nothing to resume yet. Open a page and your caret position is remembered per
+                user, server-side — so it survives the device you left it on.
+              </div>
+            )}
             {resume.map((p, i) => (
               <div
-                key={p.id}
-                onClick={() => navigate(`/pages/${p.id}`)}
+                key={p.page_id}
+                onClick={() => navigate(`/pages/${p.page_id}`)}
                 style={{
                   border: i === 0 ? "1px solid rgba(232,135,60,.35)" : "1px solid rgba(255,255,255,.09)",
                   background: i === 0 ? "rgba(232,135,60,.04)" : undefined,
@@ -157,7 +163,7 @@ export function DashboardScreen() {
               >
                 <div style={{ display: "flex", alignItems: "baseline", gap: 9, marginBottom: 7 }}>
                   <span style={{ fontFamily: "Spectral,serif", fontSize: 16, color: "#EFEDE7" }}>
-                    {p.title}
+                    {p.page_title}
                   </span>
                   <div style={{ flex: 1 }} />
                 </div>
@@ -165,10 +171,11 @@ export function DashboardScreen() {
                   {p.topic
                     ? <TopicChip name={p.topic.name} colorKey={p.topic.color_key} />
                     : <span className="chip">UNTOPICED</span>}
-                  {(p.tags ?? []).slice(0, 2).map((t) => <span key={t} className="tg">{t}</span>)}
+
                 </div>
                 <div className="mono" style={{ fontSize: 10.5, color: "#585550" }}>
-                  {ph("caret at block —")} · {new Date(p.updated_at).toLocaleString("en-GB", {
+                  {p.block_id ? `caret at block ${p.block_id.slice(0, 4)}` : "no block yet"} ·{" "}
+                  {new Date(p.updated_at).toLocaleString("en-GB", {
                     day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit",
                   })}
                 </div>

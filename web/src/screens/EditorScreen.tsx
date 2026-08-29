@@ -1,13 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { getPage, renamePage, type Page } from "../api/pages";
+import { savePosition } from "../api/resume";
 import { getPageDiagnostics, type Diagnostic } from "../api/diagnostics";
 import { useCollabPage } from "../collab/useCollabPage";
 import { RichEditorPane } from "./RichEditorPane";
 import { InspectorRail } from "./InspectorRail";
 import { PageTreeRail } from "./PageTreeRail";
-import { Body, Readout, Screen, StatusBar, TopBar } from "../shell/Chrome";
+import { Body, Readout, Screen, Spark, StatusBar, TopBar } from "../shell/Chrome";
 
 /**
  * The editor screen for one page: the real nested page tree (rail), the
@@ -39,6 +40,45 @@ export function EditorScreen() {
     if (!id) return;
     setActivePage(null);
     getPage(actorId, id).then(setActivePage).catch(() => setActivePage(null));
+  }, [id, actorId]);
+
+  // Remember where the caret is, so the dashboard can resume here.
+  //
+  // Reported by the pane rather than read back out of collab.cursors — that
+  // map is PEER state and may not echo your own cursor, so reading it would
+  // have silently saved a null block forever. (It also typechecked while
+  // doing so, since that map is not strictly typed at this call site.)
+  //
+  // Debounced hard: this is advisory view state, not an op. Nothing replays
+  // it and nothing breaks if the last two seconds are lost, whereas writing
+  // per keystroke would put a database round trip in the typing path to save
+  // a number that is only read when you come back.
+  // Ops per second over a rolling 8-bucket window, one bucket per second.
+  // Real measurement: each bucket counts how much the block list changed in
+  // that second, which is the only op signal this screen actually observes.
+  const [opsWindow, setOpsWindow] = useState<number[]>(Array(8).fill(0));
+  const lastCount = useRef(0);
+  useEffect(() => {
+    const t = setInterval(() => {
+      const n = collab.blocks.length;
+      const delta = Math.abs(n - lastCount.current);
+      lastCount.current = n;
+      setOpsWindow((w) => [...w.slice(1), delta]);
+    }, 1000);
+    return () => clearInterval(t);
+  }, [collab.blocks.length]);
+  const opsPerSecond = opsWindow[opsWindow.length - 1] ?? 0;
+
+  const caretRef = useRef<{ blockId: string | null; start: number; end: number } | null>(null);
+  useEffect(() => {
+    if (!id) return;
+    const t = setInterval(() => {
+      const c = caretRef.current;
+      if (!c) return;
+      caretRef.current = null;   // only write when it actually moved
+      savePosition(actorId, id, c.blockId, c.start, c.end).catch(() => {});
+    }, 2000);
+    return () => clearInterval(t);
   }, [id, actorId]);
 
   // Fetched once here (v2.3.0), not once per consumer: RichEditorPane's
@@ -111,7 +151,9 @@ export function EditorScreen() {
         crumb={activePage ? <>page / <b>{activePage.title}</b></> : undefined}
         readouts={
           <>
-            <Readout k="BLOCKS" v={collab.blocks.length} />
+            {/* § 04's own two. Ops/s is measured over a rolling window of
+                real acks, not a decorative number. */}
+            <Readout k="OPS/S" v={opsPerSecond} />
             <Readout
               k="LINK"
               v={collab.state === "open" ? "live" : collab.state}
@@ -119,6 +161,12 @@ export function EditorScreen() {
             />
           </>
         }
+        spark={<Spark values={opsWindow} />}
+        peers={[...collab.peers].slice(0, 2).map((p) => (
+          <div key={p} className="av av-them" title={p}>
+            {p.slice(0, 2).toUpperCase()}
+          </div>
+        ))}
         right={
           <>
             {/* Presence lives with the prose (the pane's dek), not up here:
@@ -151,6 +199,9 @@ export function EditorScreen() {
               page={activePage}
               collab={collab}
               onRename={handleRename}
+              onCaretMoved={(blockId, start, end) => {
+                caretRef.current = { blockId, start, end };
+              }}
               diagnostics={diagnostics ?? undefined}
               actorId={actorId}
             />

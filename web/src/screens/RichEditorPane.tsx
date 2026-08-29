@@ -105,12 +105,17 @@ export function RichEditorPane({
   page,
   collab,
   onRename,
+  onCaretMoved,
   diagnostics = [],
   actorId,
 }: {
   page: Page;
   collab: CollabPage;
   onRename: (title: string) => void;
+  /** Where the caret is now, for resume. Reported from here rather than read
+   *  back out of collab.cursors: that map is PEER state and may not echo your
+   *  own, so this is the only authoritative source for your own caret. */
+  onCaretMoved?: (blockId: string | null, start: number, end: number) => void;
   /** RFC-003 §2's own diagnostics for this page (v2.3.0), keyed to a
    * block by `block_id` — rendered as editor.html's own LEFT GUTTER
    * marker (dotted amber, never a red squiggle), never re-derived here.
@@ -374,7 +379,11 @@ export function RichEditorPane({
             onLinkQuery={(el, value) => handleLinkQuery(b.id, el, value)}
             onInsertTrigger={(el) => handleInsertTrigger(b.id, el)}
             onHandleClick={(el) => handleHandleClick(b.id, el)}
-            onCursorChange={(start, end) => (start === -1 ? setCursor(null, 0, 0) : setCursor(b.id, start, end))}
+            onCursorChange={(start, end) => {
+              if (start === -1) { setCursor(null, 0, 0); onCaretMoved?.(null, 0, 0); return; }
+              setCursor(b.id, start, end);
+              onCaretMoved?.(b.id, start, end);
+            }}
             dragging={dragId === b.id}
             dropZone={dropTarget?.id === b.id ? dropTarget.zone : null}
             onDragStart={() => setDragId(b.id)}

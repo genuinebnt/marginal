@@ -77,9 +77,11 @@
      if it is a value, it is mono; if it is prose, it is serif; everything
      else is sans. A count beside a label is mono. A person's name in a list
      is sans. A page title is serif — including inside a search result. */
-  --sans:  'Archivo', ui-sans-serif, system-ui, sans-serif;
+  /* Stack matches the mockup's exactly. A different fallback order is a
+     different rendered font the moment Archivo fails to load. */
+  --sans:  Archivo, system-ui, sans-serif;
   --mono:  'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-  --serif: 'Spectral', Georgia, 'Times New Roman', serif;
+  --serif: Spectral, serif;
 
   /* ─── geometry (§4) ───
      Zero, everywhere. The three pill exceptions set their own 999px
@@ -116,8 +118,9 @@ body {
   background: var(--ground);
   color: var(--ink-2);
   font-family: var(--sans);
-  font-size: 12px;
-  line-height: 1.5;
+  /* No font-size or line-height: the mockup's body sets neither, so every
+     element that does not size itself inherits the browser default. Setting
+     them here silently re-sized everything that relies on inheritance. */
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   font-synthesis: none;

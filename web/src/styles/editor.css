@@ -48,7 +48,7 @@
      on top of .block-row's 16px and made every list row an island. Spacing is
      .block-row's job alone. */
   margin: 0;
-  font-family: 'Spectral', Georgia, serif;
+  font-family: Spectral, serif;
   font-size: 17px;
   line-height: 1.68;
   color: #D2CFC8;
@@ -64,7 +64,7 @@
    AFTER that rule — equal specificity, and the later one wins. Bumping
    specificity instead would work and read worse. */
 .page-title {
-  font-family: 'Spectral', Georgia, serif;
+  font-family: Spectral, serif;
   font-weight: 500;
   font-size: 36px;
   line-height: 1.14;
@@ -75,7 +75,7 @@
 
 .block-row { position: relative; margin: 0 0 16px; }
 .block-row h1, .block-row h2, .block-row h3 {
-  font-family: 'Spectral', Georgia, serif;
+  font-family: Spectral, serif;
   font-weight: 500;
   letter-spacing: -.015em;
   color: #EFEDE7;
@@ -96,6 +96,16 @@
   border: 0;
   border-top: 1px solid rgba(255,255,255,.09);
   margin: 22px 0;
+}
+
+/* § 04's <pre>. Without this a code block inherits the browser's default
+   monospace at 13px — the diff caught it as "IBM Plex Mono -> monospace",
+   which is invisible at a glance and wrong on every code block. */
+.block-row pre, pre {
+  margin: 0;
+  padding: 12px 13px;
+  font: 400 12px/1.65 'IBM Plex Mono', monospace;
+  color: #B3AFA7;
 }
 
 /* § 04's code block, exactly. */
@@ -288,17 +298,7 @@
 
 /* ── inspector internals ────────────────────────────────────────────────── */
 
-/* Seven candidate tabs is already more than 296px fits, so the strip
-   scrolls horizontally rather than clipping the last one — a tab cut in
-   half reads as a rendering bug, and the panel width is fixed by §1.2. */
-.tabs {
-  display: flex;
-  gap: 2px;
-  padding: 11px 12px 0;
-  border-bottom: 1px solid rgba(255,255,255,.07);
-  overflow-x: auto;
-  flex: none;
-}
+.insp-tabs .it,
 .tab {
   padding: 6px 6px 8px;
   font: 600 9.5px 'IBM Plex Mono', monospace;
@@ -309,7 +309,7 @@
   border: 0;
   cursor: pointer;
 }
-.tab[aria-selected="true"] { color: #E4E2DC; border-bottom: 2px solid #E8873C; margin-bottom: -1px; }
+.insp-tabs .it[aria-selected="true"], .tab[aria-selected="true"] { color: #E4E2DC; border-bottom: 2px solid #E8873C; margin-bottom: -1px; }
 
 .tabpanel, .panel-body {
   padding: 14px;

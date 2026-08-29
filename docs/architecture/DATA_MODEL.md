@@ -316,6 +316,51 @@ it (`docs/api/search.md` §1). Not shown above alongside the original
 columns since it postdates them by three migrations; see that file for
 the exact `ALTER TABLE`.
 
+### Reading positions — resume, and where view state lives
+
+The dashboard's "resume" is not a recent-files list. A recent-files list is
+derivable from `updated_at` and says only *that* a page changed; resume says
+**where you were in it**, which nothing in the tree records.
+
+That position is **view state**, and RFC-001 §1's rule about view state —
+toggle collapse never enters the block tree — applies here for a sharper
+reason: if the caret were model state, moving your cursor would be a
+collaborative edit that moved everyone else's. So it is stored per user,
+beside the document rather than in it (`v2.8.0`, migration
+`00007_reading_positions.sql`):
+
+```sql
+CREATE TABLE docs.reading_positions (
+    user_id    UUID NOT NULL,          -- auth.users(id), no FK: cross-schema
+    page_id    UUID NOT NULL REFERENCES docs.pages(id) ON DELETE CASCADE,
+    -- Where the caret was. block_id rather than an offset into the page:
+    -- an offset is invalidated by any concurrent edit before it, which is
+    -- the same argument RFC-002 §2 makes for anchors over offsets, applied
+    -- one level up.
+    block_id   UUID,
+    -- Offsets WITHIN that block. Tolerable here where a page-level offset
+    -- would not be: a block is small, a stale offset lands a few characters
+    -- off, and resume is advisory — it is not an op and nothing replays it.
+    caret_start INT NOT NULL DEFAULT 0,
+    caret_end   INT NOT NULL DEFAULT 0,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, page_id)
+);
+-- "Where was I?" — one user's most recent positions, newest first.
+CREATE INDEX ON docs.reading_positions (user_id, updated_at DESC);
+```
+
+**Why document-service owns it.** A reading position is *about a page*, and
+`document-service` owns pages — the `ON DELETE CASCADE` above is the whole
+argument: a position in a page that no longer exists is not a position. Put
+it in `auth-service` and that cascade becomes a cross-service saga to delete
+a row nobody would miss.
+
+**One row per (user, page), overwritten.** History of where you have been is
+a different feature with a different retention story; this answers exactly
+one question and is upserted rather than appended, so it cannot grow without
+bound.
+
 ### Page deletions — the saga's own state
 
 `lifecycle_state` above says *what* a page is; it cannot say *how far a

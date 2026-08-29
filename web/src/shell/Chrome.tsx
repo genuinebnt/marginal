@@ -30,6 +30,29 @@ const TABS: Array<{ label: string; to: string }> = [
  * `tone` colours the value only; the key stays --ink-8 so a row of readouts
  * still scans as one group.
  */
+/**
+ * § 04's op-rate sparkline. Bars are drawn from an array, never authored —
+ * the design system's own rule for charts (§6.7) — and the endpoint is
+ * emphasised because it is the only value anyone reads off a sparkline.
+ */
+export function Spark({ values }: { values: number[] }) {
+  const max = Math.max(...values, 1);
+  return (
+    <div className="spark">
+      {values.map((v, i) => (
+        <div
+          key={i}
+          style={{
+            width: 3,
+            height: Math.max(Math.round((v / max) * 15), 2),
+            background: i === values.length - 1 ? "#E8873C" : `rgba(232,135,60,${0.35 + (v / max) * 0.15})`,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
 export function Readout({ k, v, tone }: { k: string; v: ReactNode; tone?: string }) {
   return (
     <div className="rd">
@@ -57,7 +80,7 @@ export function num(n: number): string {
  * in-app screen. Pre-auth and meta screens deliberately omit it — a stranger
  * has no session to show — which is why it is opt-in via TopBar's `bare`.
  */
-function Utility({ now, unread }: { now: Date; unread: number }) {
+function Utility({ now, unread, peers }: { now: Date; unread: number; peers?: ReactNode }) {
   const time = now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
   const date = now
     .toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short" })
@@ -75,6 +98,7 @@ function Utility({ now, unread }: { now: Date; unread: number }) {
       </Link>
       <Link to="/admin" className="icb" style={{ textDecoration: "none" }}>⚙</Link>
       <div className="av av-you">GN</div>
+      {peers}
     </>
   );
 }
@@ -86,6 +110,8 @@ export function TopBar({
   unread = 0,
   bare = false,
   right,
+  spark,
+  peers,
 }: {
   crumb?: ReactNode;
   readouts?: ReactNode;
@@ -97,6 +123,10 @@ export function TopBar({
    *  A prop rather than an overlay: .bar carries z-index 7, so anything
    *  positioned over it from outside loses. */
   right?: ReactNode;
+  /** § 04's sparkline, between the readouts and the divider. */
+  spark?: ReactNode;
+  /** Presence avatars, which sit AFTER your own in the cluster. */
+  peers?: ReactNode;
 }) {
   const { pathname } = useLocation();
   return (
@@ -121,11 +151,12 @@ export function TopBar({
       {crumb && <span className="crumb">{crumb}</span>}
       <div style={{ flex: 1 }} />
       {readouts}
+      {spark}
       {right}
       {!bare && (
         <>
           <VRule />
-          <Utility now={now} unread={unread} />
+          <Utility now={now} unread={unread} peers={peers} />
         </>
       )}
     </div>

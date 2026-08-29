@@ -11,6 +11,7 @@ import { HistoryScreen } from "./screens/HistoryScreen";
 import { TraceScreen } from "./screens/TraceScreen";
 import { DiffScreen } from "./screens/DiffScreen";
 import { TopicsScreen } from "./screens/TopicsScreen";
+import { LabScreen } from "./screens/LabScreen";
 import { SearchScreen } from "./screens/SearchScreen";
 
 function RequireAuth({ children }: { children: ReactElement }) {
@@ -103,6 +104,12 @@ function App() {
           </RequireAuth>
         }
       />
+      <Route path="/lab" element={<RequireAuth><LabScreen /></RequireAuth>} />
+      {/* The lab screens are per page; without an id they render their own
+          page picker rather than 404ing, so these are real destinations. */}
+      <Route path="/history" element={<RequireAuth><HistoryScreen /></RequireAuth>} />
+      <Route path="/lab/trace" element={<RequireAuth><TraceScreen /></RequireAuth>} />
+      <Route path="/lab/diff" element={<RequireAuth><DiffScreen /></RequireAuth>} />
       <Route path="*" element={<Navigate to="/pages" replace />} />
     </Routes>
   );
