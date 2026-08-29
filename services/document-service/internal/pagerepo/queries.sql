@@ -273,3 +273,28 @@ WHERE p.id = ANY(@page_ids::uuid[]);
 SELECT page_id, tag FROM docs.page_tags
 WHERE page_id = ANY(@page_ids::uuid[])
 ORDER BY page_id, tag;
+
+-- name: SaveReadingPosition :exec
+-- Upsert: one row per (user, page). Writing a position for a page the user
+-- cannot see is impossible here only because every page is visible at this
+-- repo's scope — when RBAC lands (v3.1.0) this needs the same can_apply
+-- check every other write goes through.
+INSERT INTO docs.reading_positions (user_id, page_id, block_id, caret_start, caret_end, updated_at)
+VALUES (@user_id, @page_id, @block_id, @caret_start, @caret_end, NOW())
+ON CONFLICT (user_id, page_id) DO UPDATE
+SET block_id    = EXCLUDED.block_id,
+    caret_start = EXCLUDED.caret_start,
+    caret_end   = EXCLUDED.caret_end,
+    updated_at  = NOW();
+
+-- name: ListReadingPositions :many
+-- The resume list. Joins the page so a caller gets somewhere to go, not just
+-- an id, and drops positions whose page is in the trash — resuming into a
+-- page mid-delete is not a thing to offer.
+SELECT r.page_id, r.block_id, r.caret_start, r.caret_end, r.updated_at,
+       p.title, p.topic_id
+FROM docs.reading_positions r
+JOIN docs.pages p ON p.id = r.page_id AND p.deleted_at IS NULL
+WHERE r.user_id = $1
+ORDER BY r.updated_at DESC
+LIMIT $2;

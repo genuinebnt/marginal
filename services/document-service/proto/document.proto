@@ -49,6 +49,10 @@ service PageService {
   rpc AddPageTag    (AddPageTagRequest)    returns (Page);
   rpc RemovePageTag (RemovePageTagRequest) returns (Page);
   rpc ListTagFacets (ListTagFacetsRequest) returns (ListTagFacetsResponse);
+
+  // v2.8.0 — resume. Where the caret was, per user per page.
+  rpc SaveReadingPosition (SaveReadingPositionRequest) returns (google.protobuf.Empty);
+  rpc ListReadingPositions(ListReadingPositionsRequest) returns (ListReadingPositionsResponse);
 }
 
 enum LifecycleState {
@@ -193,4 +197,31 @@ message TagFacet {
   // lives in three topics is doing real work — it names a technique, not a
   // subject."
   int32  topics_spanned = 3;
+}
+
+
+// ---------------------------------------------------------------- v2.8.0
+
+message SaveReadingPositionRequest {
+  string page_id = 1;
+  // Absent means "this page, but no particular block" — a page opened and
+  // scrolled but never clicked into. Still worth resuming to.
+  optional string block_id = 2;
+  int32  caret_start = 3;
+  int32  caret_end   = 4;
+}
+
+message ListReadingPositionsRequest { int32 limit = 1; }
+message ListReadingPositionsResponse { repeated ReadingPosition positions = 1; }
+
+message ReadingPosition {
+  string page_id     = 1;
+  string page_title  = 2;
+  optional string block_id = 3;
+  int32  caret_start = 4;
+  int32  caret_end   = 5;
+  google.protobuf.Timestamp updated_at = 6;
+  // The page's topic, so the resume card can draw its chip without a second
+  // round trip per card.
+  optional Topic topic = 7;
 }

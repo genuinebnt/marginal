@@ -43,6 +43,11 @@ func (h *Handler) Mount(r chi.Router) {
 	r.Put("/pages/{id}/topic", h.setTopic)
 	r.Post("/pages/{id}/tags", h.addTag)
 	r.Delete("/pages/{id}/tags/{tag}", h.removeTag)
+
+	// v2.8.0 resume. /resume is top-level because it is a cross-page read
+	// scoped to the CALLER, not to any one page.
+	r.Get("/resume", h.listResume)
+	r.Put("/pages/{id}/position", h.savePosition)
 }
 
 type createPageRequest struct {
@@ -263,4 +268,55 @@ func (h *Handler) tagFacets(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	apierror.WriteJSON(w, http.StatusOK, map[string]any{"facets": facets})
+}
+
+
+// --- v2.8.0 resume -------------------------------------------------------
+
+type savePositionRequest struct {
+	// Pointer so an absent block is expressible: a page opened and scrolled
+	// but never clicked into still has a position worth resuming to.
+	BlockID    *string `json:"block_id"`
+	CaretStart int32   `json:"caret_start"`
+	CaretEnd   int32   `json:"caret_end"`
+}
+
+func (h *Handler) savePosition(w http.ResponseWriter, r *http.Request) {
+	var body savePositionRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		apierror.WriteBadRequest(w, "invalid JSON body")
+		return
+	}
+	if _, err := h.client.SaveReadingPosition(actorctx.FromRequest(r), &documentv1.SaveReadingPositionRequest{
+		PageId: chi.URLParam(r, "id"), BlockId: body.BlockID,
+		CaretStart: body.CaretStart, CaretEnd: body.CaretEnd,
+	}); err != nil {
+		apierror.WriteGRPCStatus(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) listResume(w http.ResponseWriter, r *http.Request) {
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	resp, err := h.client.ListReadingPositions(actorctx.FromRequest(r), &documentv1.ListReadingPositionsRequest{
+		Limit: int32(limit),
+	})
+	if err != nil {
+		apierror.WriteGRPCStatus(w, err)
+		return
+	}
+	out := make([]map[string]any, 0, len(resp.GetPositions()))
+	for _, p := range resp.GetPositions() {
+		out = append(out, map[string]any{
+			"page_id":     p.GetPageId(),
+			"page_title":  p.GetPageTitle(),
+			"block_id":    p.BlockId,
+			"caret_start": p.GetCaretStart(),
+			"caret_end":   p.GetCaretEnd(),
+			"updated_at":  formatTimestamp(p.GetUpdatedAt()),
+			"topic":       toTopicJSON(p.GetTopic()),
+		})
+	}
+	apierror.WriteJSON(w, http.StatusOK, map[string]any{"positions": out})
 }

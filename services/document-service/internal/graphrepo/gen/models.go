@@ -68,6 +68,15 @@ type DocsPageTag struct {
 	Tag    string
 }
 
+type DocsReadingPosition struct {
+	UserID     pgtype.UUID
+	PageID     pgtype.UUID
+	BlockID    pgtype.UUID
+	CaretStart int32
+	CaretEnd   int32
+	UpdatedAt  pgtype.Timestamptz
+}
+
 type DocsTopic struct {
 	ID        pgtype.UUID
 	Name      string

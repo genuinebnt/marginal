@@ -30,22 +30,24 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	PageService_CreatePage_FullMethodName    = "/marginal.document.v1.PageService/CreatePage"
-	PageService_GetPage_FullMethodName       = "/marginal.document.v1.PageService/GetPage"
-	PageService_ListPages_FullMethodName     = "/marginal.document.v1.PageService/ListPages"
-	PageService_RenamePage_FullMethodName    = "/marginal.document.v1.PageService/RenamePage"
-	PageService_ReparentPage_FullMethodName  = "/marginal.document.v1.PageService/ReparentPage"
-	PageService_DeletePage_FullMethodName    = "/marginal.document.v1.PageService/DeletePage"
-	PageService_ListBacklinks_FullMethodName = "/marginal.document.v1.PageService/ListBacklinks"
-	PageService_ListBlocks_FullMethodName    = "/marginal.document.v1.PageService/ListBlocks"
-	PageService_PreviewDelete_FullMethodName = "/marginal.document.v1.PageService/PreviewDelete"
-	PageService_ListTrash_FullMethodName     = "/marginal.document.v1.PageService/ListTrash"
-	PageService_RestorePage_FullMethodName   = "/marginal.document.v1.PageService/RestorePage"
-	PageService_ListTopics_FullMethodName    = "/marginal.document.v1.PageService/ListTopics"
-	PageService_SetPageTopic_FullMethodName  = "/marginal.document.v1.PageService/SetPageTopic"
-	PageService_AddPageTag_FullMethodName    = "/marginal.document.v1.PageService/AddPageTag"
-	PageService_RemovePageTag_FullMethodName = "/marginal.document.v1.PageService/RemovePageTag"
-	PageService_ListTagFacets_FullMethodName = "/marginal.document.v1.PageService/ListTagFacets"
+	PageService_CreatePage_FullMethodName           = "/marginal.document.v1.PageService/CreatePage"
+	PageService_GetPage_FullMethodName              = "/marginal.document.v1.PageService/GetPage"
+	PageService_ListPages_FullMethodName            = "/marginal.document.v1.PageService/ListPages"
+	PageService_RenamePage_FullMethodName           = "/marginal.document.v1.PageService/RenamePage"
+	PageService_ReparentPage_FullMethodName         = "/marginal.document.v1.PageService/ReparentPage"
+	PageService_DeletePage_FullMethodName           = "/marginal.document.v1.PageService/DeletePage"
+	PageService_ListBacklinks_FullMethodName        = "/marginal.document.v1.PageService/ListBacklinks"
+	PageService_ListBlocks_FullMethodName           = "/marginal.document.v1.PageService/ListBlocks"
+	PageService_PreviewDelete_FullMethodName        = "/marginal.document.v1.PageService/PreviewDelete"
+	PageService_ListTrash_FullMethodName            = "/marginal.document.v1.PageService/ListTrash"
+	PageService_RestorePage_FullMethodName          = "/marginal.document.v1.PageService/RestorePage"
+	PageService_ListTopics_FullMethodName           = "/marginal.document.v1.PageService/ListTopics"
+	PageService_SetPageTopic_FullMethodName         = "/marginal.document.v1.PageService/SetPageTopic"
+	PageService_AddPageTag_FullMethodName           = "/marginal.document.v1.PageService/AddPageTag"
+	PageService_RemovePageTag_FullMethodName        = "/marginal.document.v1.PageService/RemovePageTag"
+	PageService_ListTagFacets_FullMethodName        = "/marginal.document.v1.PageService/ListTagFacets"
+	PageService_SaveReadingPosition_FullMethodName  = "/marginal.document.v1.PageService/SaveReadingPosition"
+	PageService_ListReadingPositions_FullMethodName = "/marginal.document.v1.PageService/ListReadingPositions"
 )
 
 // PageServiceClient is the client API for PageService service.
@@ -82,6 +84,9 @@ type PageServiceClient interface {
 	AddPageTag(ctx context.Context, in *AddPageTagRequest, opts ...grpc.CallOption) (*Page, error)
 	RemovePageTag(ctx context.Context, in *RemovePageTagRequest, opts ...grpc.CallOption) (*Page, error)
 	ListTagFacets(ctx context.Context, in *ListTagFacetsRequest, opts ...grpc.CallOption) (*ListTagFacetsResponse, error)
+	// v2.8.0 — resume. Where the caret was, per user per page.
+	SaveReadingPosition(ctx context.Context, in *SaveReadingPositionRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	ListReadingPositions(ctx context.Context, in *ListReadingPositionsRequest, opts ...grpc.CallOption) (*ListReadingPositionsResponse, error)
 }
 
 type pageServiceClient struct {
@@ -252,6 +257,26 @@ func (c *pageServiceClient) ListTagFacets(ctx context.Context, in *ListTagFacets
 	return out, nil
 }
 
+func (c *pageServiceClient) SaveReadingPosition(ctx context.Context, in *SaveReadingPositionRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, PageService_SaveReadingPosition_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *pageServiceClient) ListReadingPositions(ctx context.Context, in *ListReadingPositionsRequest, opts ...grpc.CallOption) (*ListReadingPositionsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListReadingPositionsResponse)
+	err := c.cc.Invoke(ctx, PageService_ListReadingPositions_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // PageServiceServer is the server API for PageService service.
 // All implementations must embed UnimplementedPageServiceServer
 // for forward compatibility.
@@ -286,6 +311,9 @@ type PageServiceServer interface {
 	AddPageTag(context.Context, *AddPageTagRequest) (*Page, error)
 	RemovePageTag(context.Context, *RemovePageTagRequest) (*Page, error)
 	ListTagFacets(context.Context, *ListTagFacetsRequest) (*ListTagFacetsResponse, error)
+	// v2.8.0 — resume. Where the caret was, per user per page.
+	SaveReadingPosition(context.Context, *SaveReadingPositionRequest) (*emptypb.Empty, error)
+	ListReadingPositions(context.Context, *ListReadingPositionsRequest) (*ListReadingPositionsResponse, error)
 	mustEmbedUnimplementedPageServiceServer()
 }
 
@@ -343,6 +371,12 @@ func (UnimplementedPageServiceServer) RemovePageTag(context.Context, *RemovePage
 }
 func (UnimplementedPageServiceServer) ListTagFacets(context.Context, *ListTagFacetsRequest) (*ListTagFacetsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListTagFacets not implemented")
+}
+func (UnimplementedPageServiceServer) SaveReadingPosition(context.Context, *SaveReadingPositionRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method SaveReadingPosition not implemented")
+}
+func (UnimplementedPageServiceServer) ListReadingPositions(context.Context, *ListReadingPositionsRequest) (*ListReadingPositionsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListReadingPositions not implemented")
 }
 func (UnimplementedPageServiceServer) mustEmbedUnimplementedPageServiceServer() {}
 func (UnimplementedPageServiceServer) testEmbeddedByValue()                     {}
@@ -653,6 +687,42 @@ func _PageService_ListTagFacets_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
+func _PageService_SaveReadingPosition_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SaveReadingPositionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PageServiceServer).SaveReadingPosition(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PageService_SaveReadingPosition_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PageServiceServer).SaveReadingPosition(ctx, req.(*SaveReadingPositionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _PageService_ListReadingPositions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListReadingPositionsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PageServiceServer).ListReadingPositions(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PageService_ListReadingPositions_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PageServiceServer).ListReadingPositions(ctx, req.(*ListReadingPositionsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // PageService_ServiceDesc is the grpc.ServiceDesc for PageService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -723,6 +793,14 @@ var PageService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListTagFacets",
 			Handler:    _PageService_ListTagFacets_Handler,
+		},
+		{
+			MethodName: "SaveReadingPosition",
+			Handler:    _PageService_SaveReadingPosition_Handler,
+		},
+		{
+			MethodName: "ListReadingPositions",
+			Handler:    _PageService_ListReadingPositions_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

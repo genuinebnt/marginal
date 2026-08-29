@@ -1763,6 +1763,258 @@ func (x *TagFacet) GetTopicsSpanned() int32 {
 	return 0
 }
 
+type SaveReadingPositionRequest struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	PageId string                 `protobuf:"bytes,1,opt,name=page_id,json=pageId,proto3" json:"page_id,omitempty"`
+	// Absent means "this page, but no particular block" — a page opened and
+	// scrolled but never clicked into. Still worth resuming to.
+	BlockId       *string `protobuf:"bytes,2,opt,name=block_id,json=blockId,proto3,oneof" json:"block_id,omitempty"`
+	CaretStart    int32   `protobuf:"varint,3,opt,name=caret_start,json=caretStart,proto3" json:"caret_start,omitempty"`
+	CaretEnd      int32   `protobuf:"varint,4,opt,name=caret_end,json=caretEnd,proto3" json:"caret_end,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SaveReadingPositionRequest) Reset() {
+	*x = SaveReadingPositionRequest{}
+	mi := &file_document_proto_msgTypes[30]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SaveReadingPositionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SaveReadingPositionRequest) ProtoMessage() {}
+
+func (x *SaveReadingPositionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_document_proto_msgTypes[30]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SaveReadingPositionRequest.ProtoReflect.Descriptor instead.
+func (*SaveReadingPositionRequest) Descriptor() ([]byte, []int) {
+	return file_document_proto_rawDescGZIP(), []int{30}
+}
+
+func (x *SaveReadingPositionRequest) GetPageId() string {
+	if x != nil {
+		return x.PageId
+	}
+	return ""
+}
+
+func (x *SaveReadingPositionRequest) GetBlockId() string {
+	if x != nil && x.BlockId != nil {
+		return *x.BlockId
+	}
+	return ""
+}
+
+func (x *SaveReadingPositionRequest) GetCaretStart() int32 {
+	if x != nil {
+		return x.CaretStart
+	}
+	return 0
+}
+
+func (x *SaveReadingPositionRequest) GetCaretEnd() int32 {
+	if x != nil {
+		return x.CaretEnd
+	}
+	return 0
+}
+
+type ListReadingPositionsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Limit         int32                  `protobuf:"varint,1,opt,name=limit,proto3" json:"limit,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListReadingPositionsRequest) Reset() {
+	*x = ListReadingPositionsRequest{}
+	mi := &file_document_proto_msgTypes[31]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListReadingPositionsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListReadingPositionsRequest) ProtoMessage() {}
+
+func (x *ListReadingPositionsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_document_proto_msgTypes[31]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListReadingPositionsRequest.ProtoReflect.Descriptor instead.
+func (*ListReadingPositionsRequest) Descriptor() ([]byte, []int) {
+	return file_document_proto_rawDescGZIP(), []int{31}
+}
+
+func (x *ListReadingPositionsRequest) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+type ListReadingPositionsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Positions     []*ReadingPosition     `protobuf:"bytes,1,rep,name=positions,proto3" json:"positions,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListReadingPositionsResponse) Reset() {
+	*x = ListReadingPositionsResponse{}
+	mi := &file_document_proto_msgTypes[32]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListReadingPositionsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListReadingPositionsResponse) ProtoMessage() {}
+
+func (x *ListReadingPositionsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_document_proto_msgTypes[32]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListReadingPositionsResponse.ProtoReflect.Descriptor instead.
+func (*ListReadingPositionsResponse) Descriptor() ([]byte, []int) {
+	return file_document_proto_rawDescGZIP(), []int{32}
+}
+
+func (x *ListReadingPositionsResponse) GetPositions() []*ReadingPosition {
+	if x != nil {
+		return x.Positions
+	}
+	return nil
+}
+
+type ReadingPosition struct {
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	PageId     string                 `protobuf:"bytes,1,opt,name=page_id,json=pageId,proto3" json:"page_id,omitempty"`
+	PageTitle  string                 `protobuf:"bytes,2,opt,name=page_title,json=pageTitle,proto3" json:"page_title,omitempty"`
+	BlockId    *string                `protobuf:"bytes,3,opt,name=block_id,json=blockId,proto3,oneof" json:"block_id,omitempty"`
+	CaretStart int32                  `protobuf:"varint,4,opt,name=caret_start,json=caretStart,proto3" json:"caret_start,omitempty"`
+	CaretEnd   int32                  `protobuf:"varint,5,opt,name=caret_end,json=caretEnd,proto3" json:"caret_end,omitempty"`
+	UpdatedAt  *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	// The page's topic, so the resume card can draw its chip without a second
+	// round trip per card.
+	Topic         *Topic `protobuf:"bytes,7,opt,name=topic,proto3,oneof" json:"topic,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReadingPosition) Reset() {
+	*x = ReadingPosition{}
+	mi := &file_document_proto_msgTypes[33]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReadingPosition) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReadingPosition) ProtoMessage() {}
+
+func (x *ReadingPosition) ProtoReflect() protoreflect.Message {
+	mi := &file_document_proto_msgTypes[33]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReadingPosition.ProtoReflect.Descriptor instead.
+func (*ReadingPosition) Descriptor() ([]byte, []int) {
+	return file_document_proto_rawDescGZIP(), []int{33}
+}
+
+func (x *ReadingPosition) GetPageId() string {
+	if x != nil {
+		return x.PageId
+	}
+	return ""
+}
+
+func (x *ReadingPosition) GetPageTitle() string {
+	if x != nil {
+		return x.PageTitle
+	}
+	return ""
+}
+
+func (x *ReadingPosition) GetBlockId() string {
+	if x != nil && x.BlockId != nil {
+		return *x.BlockId
+	}
+	return ""
+}
+
+func (x *ReadingPosition) GetCaretStart() int32 {
+	if x != nil {
+		return x.CaretStart
+	}
+	return 0
+}
+
+func (x *ReadingPosition) GetCaretEnd() int32 {
+	if x != nil {
+		return x.CaretEnd
+	}
+	return 0
+}
+
+func (x *ReadingPosition) GetUpdatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return nil
+}
+
+func (x *ReadingPosition) GetTopic() *Topic {
+	if x != nil {
+		return x.Topic
+	}
+	return nil
+}
+
 var File_document_proto protoreflect.FileDescriptor
 
 const file_document_proto_rawDesc = "" +
@@ -1903,12 +2155,36 @@ const file_document_proto_rawDesc = "" +
 	"\x03tag\x18\x01 \x01(\tR\x03tag\x12\x1d\n" +
 	"\n" +
 	"page_count\x18\x02 \x01(\x05R\tpageCount\x12%\n" +
-	"\x0etopics_spanned\x18\x03 \x01(\x05R\rtopicsSpanned*\x88\x01\n" +
+	"\x0etopics_spanned\x18\x03 \x01(\x05R\rtopicsSpanned\"\xa0\x01\n" +
+	"\x1aSaveReadingPositionRequest\x12\x17\n" +
+	"\apage_id\x18\x01 \x01(\tR\x06pageId\x12\x1e\n" +
+	"\bblock_id\x18\x02 \x01(\tH\x00R\ablockId\x88\x01\x01\x12\x1f\n" +
+	"\vcaret_start\x18\x03 \x01(\x05R\n" +
+	"caretStart\x12\x1b\n" +
+	"\tcaret_end\x18\x04 \x01(\x05R\bcaretEndB\v\n" +
+	"\t_block_id\"3\n" +
+	"\x1bListReadingPositionsRequest\x12\x14\n" +
+	"\x05limit\x18\x01 \x01(\x05R\x05limit\"c\n" +
+	"\x1cListReadingPositionsResponse\x12C\n" +
+	"\tpositions\x18\x01 \x03(\v2%.marginal.document.v1.ReadingPositionR\tpositions\"\xb1\x02\n" +
+	"\x0fReadingPosition\x12\x17\n" +
+	"\apage_id\x18\x01 \x01(\tR\x06pageId\x12\x1d\n" +
+	"\n" +
+	"page_title\x18\x02 \x01(\tR\tpageTitle\x12\x1e\n" +
+	"\bblock_id\x18\x03 \x01(\tH\x00R\ablockId\x88\x01\x01\x12\x1f\n" +
+	"\vcaret_start\x18\x04 \x01(\x05R\n" +
+	"caretStart\x12\x1b\n" +
+	"\tcaret_end\x18\x05 \x01(\x05R\bcaretEnd\x129\n" +
+	"\n" +
+	"updated_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x126\n" +
+	"\x05topic\x18\a \x01(\v2\x1b.marginal.document.v1.TopicH\x01R\x05topic\x88\x01\x01B\v\n" +
+	"\t_block_idB\b\n" +
+	"\x06_topic*\x88\x01\n" +
 	"\x0eLifecycleState\x12\x1f\n" +
 	"\x1bLIFECYCLE_STATE_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16LIFECYCLE_STATE_ACTIVE\x10\x01\x12\x1c\n" +
 	"\x18LIFECYCLE_STATE_DELETING\x10\x02\x12\x1b\n" +
-	"\x17LIFECYCLE_STATE_DELETED\x10\x032\xba\v\n" +
+	"\x17LIFECYCLE_STATE_DELETED\x10\x032\x9a\r\n" +
 	"\vPageService\x12Q\n" +
 	"\n" +
 	"CreatePage\x12'.marginal.document.v1.CreatePageRequest\x1a\x1a.marginal.document.v1.Page\x12K\n" +
@@ -1931,7 +2207,9 @@ const file_document_proto_rawDesc = "" +
 	"\n" +
 	"AddPageTag\x12'.marginal.document.v1.AddPageTagRequest\x1a\x1a.marginal.document.v1.Page\x12W\n" +
 	"\rRemovePageTag\x12*.marginal.document.v1.RemovePageTagRequest\x1a\x1a.marginal.document.v1.Page\x12h\n" +
-	"\rListTagFacets\x12*.marginal.document.v1.ListTagFacetsRequest\x1a+.marginal.document.v1.ListTagFacetsResponseB/Z-marginal/document-service/genproto/documentv1b\x06proto3"
+	"\rListTagFacets\x12*.marginal.document.v1.ListTagFacetsRequest\x1a+.marginal.document.v1.ListTagFacetsResponse\x12_\n" +
+	"\x13SaveReadingPosition\x120.marginal.document.v1.SaveReadingPositionRequest\x1a\x16.google.protobuf.Empty\x12}\n" +
+	"\x14ListReadingPositions\x121.marginal.document.v1.ListReadingPositionsRequest\x1a2.marginal.document.v1.ListReadingPositionsResponseB/Z-marginal/document-service/genproto/documentv1b\x06proto3"
 
 var (
 	file_document_proto_rawDescOnce sync.Once
@@ -1946,47 +2224,51 @@ func file_document_proto_rawDescGZIP() []byte {
 }
 
 var file_document_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_document_proto_msgTypes = make([]protoimpl.MessageInfo, 30)
+var file_document_proto_msgTypes = make([]protoimpl.MessageInfo, 34)
 var file_document_proto_goTypes = []any{
-	(LifecycleState)(0),           // 0: marginal.document.v1.LifecycleState
-	(*Page)(nil),                  // 1: marginal.document.v1.Page
-	(*Topic)(nil),                 // 2: marginal.document.v1.Topic
-	(*CreatePageRequest)(nil),     // 3: marginal.document.v1.CreatePageRequest
-	(*GetPageRequest)(nil),        // 4: marginal.document.v1.GetPageRequest
-	(*ListPagesRequest)(nil),      // 5: marginal.document.v1.ListPagesRequest
-	(*ListPagesResponse)(nil),     // 6: marginal.document.v1.ListPagesResponse
-	(*RenamePageRequest)(nil),     // 7: marginal.document.v1.RenamePageRequest
-	(*ReparentPageRequest)(nil),   // 8: marginal.document.v1.ReparentPageRequest
-	(*DeletePageRequest)(nil),     // 9: marginal.document.v1.DeletePageRequest
-	(*ListBacklinksRequest)(nil),  // 10: marginal.document.v1.ListBacklinksRequest
-	(*ListBacklinksResponse)(nil), // 11: marginal.document.v1.ListBacklinksResponse
-	(*Backlink)(nil),              // 12: marginal.document.v1.Backlink
-	(*ListBlocksRequest)(nil),     // 13: marginal.document.v1.ListBlocksRequest
-	(*ListBlocksResponse)(nil),    // 14: marginal.document.v1.ListBlocksResponse
-	(*Block)(nil),                 // 15: marginal.document.v1.Block
-	(*PreviewDeleteRequest)(nil),  // 16: marginal.document.v1.PreviewDeleteRequest
-	(*PreviewDeleteResponse)(nil), // 17: marginal.document.v1.PreviewDeleteResponse
-	(*ListTrashRequest)(nil),      // 18: marginal.document.v1.ListTrashRequest
-	(*ListTrashResponse)(nil),     // 19: marginal.document.v1.ListTrashResponse
-	(*TrashEntry)(nil),            // 20: marginal.document.v1.TrashEntry
-	(*SagaProgress)(nil),          // 21: marginal.document.v1.SagaProgress
-	(*RestorePageRequest)(nil),    // 22: marginal.document.v1.RestorePageRequest
-	(*ListTopicsRequest)(nil),     // 23: marginal.document.v1.ListTopicsRequest
-	(*ListTopicsResponse)(nil),    // 24: marginal.document.v1.ListTopicsResponse
-	(*SetPageTopicRequest)(nil),   // 25: marginal.document.v1.SetPageTopicRequest
-	(*AddPageTagRequest)(nil),     // 26: marginal.document.v1.AddPageTagRequest
-	(*RemovePageTagRequest)(nil),  // 27: marginal.document.v1.RemovePageTagRequest
-	(*ListTagFacetsRequest)(nil),  // 28: marginal.document.v1.ListTagFacetsRequest
-	(*ListTagFacetsResponse)(nil), // 29: marginal.document.v1.ListTagFacetsResponse
-	(*TagFacet)(nil),              // 30: marginal.document.v1.TagFacet
-	(*timestamppb.Timestamp)(nil), // 31: google.protobuf.Timestamp
-	(*emptypb.Empty)(nil),         // 32: google.protobuf.Empty
+	(LifecycleState)(0),                  // 0: marginal.document.v1.LifecycleState
+	(*Page)(nil),                         // 1: marginal.document.v1.Page
+	(*Topic)(nil),                        // 2: marginal.document.v1.Topic
+	(*CreatePageRequest)(nil),            // 3: marginal.document.v1.CreatePageRequest
+	(*GetPageRequest)(nil),               // 4: marginal.document.v1.GetPageRequest
+	(*ListPagesRequest)(nil),             // 5: marginal.document.v1.ListPagesRequest
+	(*ListPagesResponse)(nil),            // 6: marginal.document.v1.ListPagesResponse
+	(*RenamePageRequest)(nil),            // 7: marginal.document.v1.RenamePageRequest
+	(*ReparentPageRequest)(nil),          // 8: marginal.document.v1.ReparentPageRequest
+	(*DeletePageRequest)(nil),            // 9: marginal.document.v1.DeletePageRequest
+	(*ListBacklinksRequest)(nil),         // 10: marginal.document.v1.ListBacklinksRequest
+	(*ListBacklinksResponse)(nil),        // 11: marginal.document.v1.ListBacklinksResponse
+	(*Backlink)(nil),                     // 12: marginal.document.v1.Backlink
+	(*ListBlocksRequest)(nil),            // 13: marginal.document.v1.ListBlocksRequest
+	(*ListBlocksResponse)(nil),           // 14: marginal.document.v1.ListBlocksResponse
+	(*Block)(nil),                        // 15: marginal.document.v1.Block
+	(*PreviewDeleteRequest)(nil),         // 16: marginal.document.v1.PreviewDeleteRequest
+	(*PreviewDeleteResponse)(nil),        // 17: marginal.document.v1.PreviewDeleteResponse
+	(*ListTrashRequest)(nil),             // 18: marginal.document.v1.ListTrashRequest
+	(*ListTrashResponse)(nil),            // 19: marginal.document.v1.ListTrashResponse
+	(*TrashEntry)(nil),                   // 20: marginal.document.v1.TrashEntry
+	(*SagaProgress)(nil),                 // 21: marginal.document.v1.SagaProgress
+	(*RestorePageRequest)(nil),           // 22: marginal.document.v1.RestorePageRequest
+	(*ListTopicsRequest)(nil),            // 23: marginal.document.v1.ListTopicsRequest
+	(*ListTopicsResponse)(nil),           // 24: marginal.document.v1.ListTopicsResponse
+	(*SetPageTopicRequest)(nil),          // 25: marginal.document.v1.SetPageTopicRequest
+	(*AddPageTagRequest)(nil),            // 26: marginal.document.v1.AddPageTagRequest
+	(*RemovePageTagRequest)(nil),         // 27: marginal.document.v1.RemovePageTagRequest
+	(*ListTagFacetsRequest)(nil),         // 28: marginal.document.v1.ListTagFacetsRequest
+	(*ListTagFacetsResponse)(nil),        // 29: marginal.document.v1.ListTagFacetsResponse
+	(*TagFacet)(nil),                     // 30: marginal.document.v1.TagFacet
+	(*SaveReadingPositionRequest)(nil),   // 31: marginal.document.v1.SaveReadingPositionRequest
+	(*ListReadingPositionsRequest)(nil),  // 32: marginal.document.v1.ListReadingPositionsRequest
+	(*ListReadingPositionsResponse)(nil), // 33: marginal.document.v1.ListReadingPositionsResponse
+	(*ReadingPosition)(nil),              // 34: marginal.document.v1.ReadingPosition
+	(*timestamppb.Timestamp)(nil),        // 35: google.protobuf.Timestamp
+	(*emptypb.Empty)(nil),                // 36: google.protobuf.Empty
 }
 var file_document_proto_depIdxs = []int32{
 	0,  // 0: marginal.document.v1.Page.lifecycle_state:type_name -> marginal.document.v1.LifecycleState
-	31, // 1: marginal.document.v1.Page.created_at:type_name -> google.protobuf.Timestamp
-	31, // 2: marginal.document.v1.Page.updated_at:type_name -> google.protobuf.Timestamp
-	31, // 3: marginal.document.v1.Page.deleted_at:type_name -> google.protobuf.Timestamp
+	35, // 1: marginal.document.v1.Page.created_at:type_name -> google.protobuf.Timestamp
+	35, // 2: marginal.document.v1.Page.updated_at:type_name -> google.protobuf.Timestamp
+	35, // 3: marginal.document.v1.Page.deleted_at:type_name -> google.protobuf.Timestamp
 	2,  // 4: marginal.document.v1.Page.topic:type_name -> marginal.document.v1.Topic
 	1,  // 5: marginal.document.v1.ListPagesResponse.pages:type_name -> marginal.document.v1.Page
 	12, // 6: marginal.document.v1.ListBacklinksResponse.backlinks:type_name -> marginal.document.v1.Backlink
@@ -1995,47 +2277,54 @@ var file_document_proto_depIdxs = []int32{
 	1,  // 9: marginal.document.v1.PreviewDeleteResponse.referrers:type_name -> marginal.document.v1.Page
 	20, // 10: marginal.document.v1.ListTrashResponse.entries:type_name -> marginal.document.v1.TrashEntry
 	1,  // 11: marginal.document.v1.TrashEntry.page:type_name -> marginal.document.v1.Page
-	31, // 12: marginal.document.v1.TrashEntry.purge_at:type_name -> google.protobuf.Timestamp
+	35, // 12: marginal.document.v1.TrashEntry.purge_at:type_name -> google.protobuf.Timestamp
 	21, // 13: marginal.document.v1.TrashEntry.progress:type_name -> marginal.document.v1.SagaProgress
 	2,  // 14: marginal.document.v1.ListTopicsResponse.topics:type_name -> marginal.document.v1.Topic
 	30, // 15: marginal.document.v1.ListTagFacetsResponse.facets:type_name -> marginal.document.v1.TagFacet
-	3,  // 16: marginal.document.v1.PageService.CreatePage:input_type -> marginal.document.v1.CreatePageRequest
-	4,  // 17: marginal.document.v1.PageService.GetPage:input_type -> marginal.document.v1.GetPageRequest
-	5,  // 18: marginal.document.v1.PageService.ListPages:input_type -> marginal.document.v1.ListPagesRequest
-	7,  // 19: marginal.document.v1.PageService.RenamePage:input_type -> marginal.document.v1.RenamePageRequest
-	8,  // 20: marginal.document.v1.PageService.ReparentPage:input_type -> marginal.document.v1.ReparentPageRequest
-	9,  // 21: marginal.document.v1.PageService.DeletePage:input_type -> marginal.document.v1.DeletePageRequest
-	10, // 22: marginal.document.v1.PageService.ListBacklinks:input_type -> marginal.document.v1.ListBacklinksRequest
-	13, // 23: marginal.document.v1.PageService.ListBlocks:input_type -> marginal.document.v1.ListBlocksRequest
-	16, // 24: marginal.document.v1.PageService.PreviewDelete:input_type -> marginal.document.v1.PreviewDeleteRequest
-	18, // 25: marginal.document.v1.PageService.ListTrash:input_type -> marginal.document.v1.ListTrashRequest
-	22, // 26: marginal.document.v1.PageService.RestorePage:input_type -> marginal.document.v1.RestorePageRequest
-	23, // 27: marginal.document.v1.PageService.ListTopics:input_type -> marginal.document.v1.ListTopicsRequest
-	25, // 28: marginal.document.v1.PageService.SetPageTopic:input_type -> marginal.document.v1.SetPageTopicRequest
-	26, // 29: marginal.document.v1.PageService.AddPageTag:input_type -> marginal.document.v1.AddPageTagRequest
-	27, // 30: marginal.document.v1.PageService.RemovePageTag:input_type -> marginal.document.v1.RemovePageTagRequest
-	28, // 31: marginal.document.v1.PageService.ListTagFacets:input_type -> marginal.document.v1.ListTagFacetsRequest
-	1,  // 32: marginal.document.v1.PageService.CreatePage:output_type -> marginal.document.v1.Page
-	1,  // 33: marginal.document.v1.PageService.GetPage:output_type -> marginal.document.v1.Page
-	6,  // 34: marginal.document.v1.PageService.ListPages:output_type -> marginal.document.v1.ListPagesResponse
-	1,  // 35: marginal.document.v1.PageService.RenamePage:output_type -> marginal.document.v1.Page
-	1,  // 36: marginal.document.v1.PageService.ReparentPage:output_type -> marginal.document.v1.Page
-	32, // 37: marginal.document.v1.PageService.DeletePage:output_type -> google.protobuf.Empty
-	11, // 38: marginal.document.v1.PageService.ListBacklinks:output_type -> marginal.document.v1.ListBacklinksResponse
-	14, // 39: marginal.document.v1.PageService.ListBlocks:output_type -> marginal.document.v1.ListBlocksResponse
-	17, // 40: marginal.document.v1.PageService.PreviewDelete:output_type -> marginal.document.v1.PreviewDeleteResponse
-	19, // 41: marginal.document.v1.PageService.ListTrash:output_type -> marginal.document.v1.ListTrashResponse
-	1,  // 42: marginal.document.v1.PageService.RestorePage:output_type -> marginal.document.v1.Page
-	24, // 43: marginal.document.v1.PageService.ListTopics:output_type -> marginal.document.v1.ListTopicsResponse
-	1,  // 44: marginal.document.v1.PageService.SetPageTopic:output_type -> marginal.document.v1.Page
-	1,  // 45: marginal.document.v1.PageService.AddPageTag:output_type -> marginal.document.v1.Page
-	1,  // 46: marginal.document.v1.PageService.RemovePageTag:output_type -> marginal.document.v1.Page
-	29, // 47: marginal.document.v1.PageService.ListTagFacets:output_type -> marginal.document.v1.ListTagFacetsResponse
-	32, // [32:48] is the sub-list for method output_type
-	16, // [16:32] is the sub-list for method input_type
-	16, // [16:16] is the sub-list for extension type_name
-	16, // [16:16] is the sub-list for extension extendee
-	0,  // [0:16] is the sub-list for field type_name
+	34, // 16: marginal.document.v1.ListReadingPositionsResponse.positions:type_name -> marginal.document.v1.ReadingPosition
+	35, // 17: marginal.document.v1.ReadingPosition.updated_at:type_name -> google.protobuf.Timestamp
+	2,  // 18: marginal.document.v1.ReadingPosition.topic:type_name -> marginal.document.v1.Topic
+	3,  // 19: marginal.document.v1.PageService.CreatePage:input_type -> marginal.document.v1.CreatePageRequest
+	4,  // 20: marginal.document.v1.PageService.GetPage:input_type -> marginal.document.v1.GetPageRequest
+	5,  // 21: marginal.document.v1.PageService.ListPages:input_type -> marginal.document.v1.ListPagesRequest
+	7,  // 22: marginal.document.v1.PageService.RenamePage:input_type -> marginal.document.v1.RenamePageRequest
+	8,  // 23: marginal.document.v1.PageService.ReparentPage:input_type -> marginal.document.v1.ReparentPageRequest
+	9,  // 24: marginal.document.v1.PageService.DeletePage:input_type -> marginal.document.v1.DeletePageRequest
+	10, // 25: marginal.document.v1.PageService.ListBacklinks:input_type -> marginal.document.v1.ListBacklinksRequest
+	13, // 26: marginal.document.v1.PageService.ListBlocks:input_type -> marginal.document.v1.ListBlocksRequest
+	16, // 27: marginal.document.v1.PageService.PreviewDelete:input_type -> marginal.document.v1.PreviewDeleteRequest
+	18, // 28: marginal.document.v1.PageService.ListTrash:input_type -> marginal.document.v1.ListTrashRequest
+	22, // 29: marginal.document.v1.PageService.RestorePage:input_type -> marginal.document.v1.RestorePageRequest
+	23, // 30: marginal.document.v1.PageService.ListTopics:input_type -> marginal.document.v1.ListTopicsRequest
+	25, // 31: marginal.document.v1.PageService.SetPageTopic:input_type -> marginal.document.v1.SetPageTopicRequest
+	26, // 32: marginal.document.v1.PageService.AddPageTag:input_type -> marginal.document.v1.AddPageTagRequest
+	27, // 33: marginal.document.v1.PageService.RemovePageTag:input_type -> marginal.document.v1.RemovePageTagRequest
+	28, // 34: marginal.document.v1.PageService.ListTagFacets:input_type -> marginal.document.v1.ListTagFacetsRequest
+	31, // 35: marginal.document.v1.PageService.SaveReadingPosition:input_type -> marginal.document.v1.SaveReadingPositionRequest
+	32, // 36: marginal.document.v1.PageService.ListReadingPositions:input_type -> marginal.document.v1.ListReadingPositionsRequest
+	1,  // 37: marginal.document.v1.PageService.CreatePage:output_type -> marginal.document.v1.Page
+	1,  // 38: marginal.document.v1.PageService.GetPage:output_type -> marginal.document.v1.Page
+	6,  // 39: marginal.document.v1.PageService.ListPages:output_type -> marginal.document.v1.ListPagesResponse
+	1,  // 40: marginal.document.v1.PageService.RenamePage:output_type -> marginal.document.v1.Page
+	1,  // 41: marginal.document.v1.PageService.ReparentPage:output_type -> marginal.document.v1.Page
+	36, // 42: marginal.document.v1.PageService.DeletePage:output_type -> google.protobuf.Empty
+	11, // 43: marginal.document.v1.PageService.ListBacklinks:output_type -> marginal.document.v1.ListBacklinksResponse
+	14, // 44: marginal.document.v1.PageService.ListBlocks:output_type -> marginal.document.v1.ListBlocksResponse
+	17, // 45: marginal.document.v1.PageService.PreviewDelete:output_type -> marginal.document.v1.PreviewDeleteResponse
+	19, // 46: marginal.document.v1.PageService.ListTrash:output_type -> marginal.document.v1.ListTrashResponse
+	1,  // 47: marginal.document.v1.PageService.RestorePage:output_type -> marginal.document.v1.Page
+	24, // 48: marginal.document.v1.PageService.ListTopics:output_type -> marginal.document.v1.ListTopicsResponse
+	1,  // 49: marginal.document.v1.PageService.SetPageTopic:output_type -> marginal.document.v1.Page
+	1,  // 50: marginal.document.v1.PageService.AddPageTag:output_type -> marginal.document.v1.Page
+	1,  // 51: marginal.document.v1.PageService.RemovePageTag:output_type -> marginal.document.v1.Page
+	29, // 52: marginal.document.v1.PageService.ListTagFacets:output_type -> marginal.document.v1.ListTagFacetsResponse
+	36, // 53: marginal.document.v1.PageService.SaveReadingPosition:output_type -> google.protobuf.Empty
+	33, // 54: marginal.document.v1.PageService.ListReadingPositions:output_type -> marginal.document.v1.ListReadingPositionsResponse
+	37, // [37:55] is the sub-list for method output_type
+	19, // [19:37] is the sub-list for method input_type
+	19, // [19:19] is the sub-list for extension type_name
+	19, // [19:19] is the sub-list for extension extendee
+	0,  // [0:19] is the sub-list for field type_name
 }
 
 func init() { file_document_proto_init() }
@@ -2052,13 +2341,15 @@ func file_document_proto_init() {
 	file_document_proto_msgTypes[19].OneofWrappers = []any{}
 	file_document_proto_msgTypes[20].OneofWrappers = []any{}
 	file_document_proto_msgTypes[24].OneofWrappers = []any{}
+	file_document_proto_msgTypes[30].OneofWrappers = []any{}
+	file_document_proto_msgTypes[33].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_document_proto_rawDesc), len(file_document_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   30,
+			NumMessages:   34,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

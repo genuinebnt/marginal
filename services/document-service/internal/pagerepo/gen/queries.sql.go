@@ -416,6 +416,62 @@ func (q *Queries) ListPagesByTopic(ctx context.Context, topicID pgtype.UUID) ([]
 	return items, nil
 }
 
+const listReadingPositions = `-- name: ListReadingPositions :many
+SELECT r.page_id, r.block_id, r.caret_start, r.caret_end, r.updated_at,
+       p.title, p.topic_id
+FROM docs.reading_positions r
+JOIN docs.pages p ON p.id = r.page_id AND p.deleted_at IS NULL
+WHERE r.user_id = $1
+ORDER BY r.updated_at DESC
+LIMIT $2
+`
+
+type ListReadingPositionsParams struct {
+	UserID pgtype.UUID
+	Limit  int32
+}
+
+type ListReadingPositionsRow struct {
+	PageID     pgtype.UUID
+	BlockID    pgtype.UUID
+	CaretStart int32
+	CaretEnd   int32
+	UpdatedAt  pgtype.Timestamptz
+	Title      string
+	TopicID    pgtype.UUID
+}
+
+// The resume list. Joins the page so a caller gets somewhere to go, not just
+// an id, and drops positions whose page is in the trash — resuming into a
+// page mid-delete is not a thing to offer.
+func (q *Queries) ListReadingPositions(ctx context.Context, arg ListReadingPositionsParams) ([]ListReadingPositionsRow, error) {
+	rows, err := q.db.Query(ctx, listReadingPositions, arg.UserID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListReadingPositionsRow
+	for rows.Next() {
+		var i ListReadingPositionsRow
+		if err := rows.Scan(
+			&i.PageID,
+			&i.BlockID,
+			&i.CaretStart,
+			&i.CaretEnd,
+			&i.UpdatedAt,
+			&i.Title,
+			&i.TopicID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTagFacets = `-- name: ListTagFacets :many
 SELECT pt.tag,
        COUNT(*) AS page_count,
@@ -814,6 +870,39 @@ func (q *Queries) RewriteDescendantPaths(ctx context.Context, arg RewriteDescend
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const saveReadingPosition = `-- name: SaveReadingPosition :exec
+INSERT INTO docs.reading_positions (user_id, page_id, block_id, caret_start, caret_end, updated_at)
+VALUES ($1, $2, $3, $4, $5, NOW())
+ON CONFLICT (user_id, page_id) DO UPDATE
+SET block_id    = EXCLUDED.block_id,
+    caret_start = EXCLUDED.caret_start,
+    caret_end   = EXCLUDED.caret_end,
+    updated_at  = NOW()
+`
+
+type SaveReadingPositionParams struct {
+	UserID     pgtype.UUID
+	PageID     pgtype.UUID
+	BlockID    pgtype.UUID
+	CaretStart int32
+	CaretEnd   int32
+}
+
+// Upsert: one row per (user, page). Writing a position for a page the user
+// cannot see is impossible here only because every page is visible at this
+// repo's scope — when RBAC lands (v3.1.0) this needs the same can_apply
+// check every other write goes through.
+func (q *Queries) SaveReadingPosition(ctx context.Context, arg SaveReadingPositionParams) error {
+	_, err := q.db.Exec(ctx, saveReadingPosition,
+		arg.UserID,
+		arg.PageID,
+		arg.BlockID,
+		arg.CaretStart,
+		arg.CaretEnd,
+	)
+	return err
 }
 
 const setPageTopic = `-- name: SetPageTopic :execrows
