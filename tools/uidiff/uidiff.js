@@ -47,6 +47,21 @@ const PROPS = [
  * chrome the guidelines actually fix — bar height, rail and inspector width —
  * which are constants, not consequences of content. */
 
+/**
+ * Utility classes: they set ONE property and carry no role.
+ *
+ * `.mono` says "monospace" and nothing about what the element is, so it is
+ * applied to dozens of unrelated nodes that each add their own inline size
+ * and colour. Pairing the 8th `.mono` in the mockup against the 8th in the
+ * app compares a topic count against a status hint and calls the difference
+ * a defect — it accounted for nearly every property diff on § 10b.
+ *
+ * They are still checked for PRESENCE (a missing `.mono` is a missing
+ * element); only their properties are skipped, because those belong to
+ * whatever role class or inline style sits alongside.
+ */
+const UTILITY = new Set(['mono', 'lbl', 'tgrow', 'row', 'dot']);
+
 /** Chrome text worth comparing — short, uppercase-ish, structural. */
 const CHROME_SELECTORS = '.lbl,.rd-k,.tb,.sb,.it,.chip,.btn,.kbd,.tpc,.wm';
 
@@ -218,6 +233,8 @@ async function main() {
     if (!hit) { missing.push(sig); continue; }
     // Rule 2: pair up occurrence-by-occurrence, and only as far as both
     // sides go. A count difference is content, not design.
+    const cls = sig.split('.').slice(1);
+    if (cls.length === 1 && UTILITY.has(cls[0])) continue;   // presence only
     const n = Math.min(els.length, hit.length);
     for (let i = 0; i < n; i++) {
       const me = els[i], ae = hit[i];

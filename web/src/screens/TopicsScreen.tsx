@@ -29,6 +29,20 @@ import {
   TopBar, TopicChip, TOPIC_HEX, num,
 } from "../shell/Chrome";
 
+/**
+ * § 10b's own tag-cloud tiers, in rank order. Discrete rather than
+ * interpolated: five legible sizes read as a ranking; a smooth ramp reads as
+ * noise, and every chip lands between two of the mockup's steps.
+ */
+const TAG_TIERS = [
+  { size: 14,   pad: "4px 11px", color: "#E4E2DC", border: "rgba(255,255,255,.2)", opacity: 1 },
+  { size: 12.5, pad: "3px 10px", color: "#D2CFC8", border: undefined, opacity: 1 },
+  { size: 12,   pad: "3px 9px",  color: "#C3BFB7", border: undefined, opacity: 1 },
+  { size: 11.5, pad: "2px 7px",  color: undefined, border: undefined, opacity: 1 },
+  { size: 11,   pad: "2px 7px",  color: undefined, border: undefined, opacity: 0.75 },
+  { size: 11,   pad: "2px 7px",  color: undefined, border: undefined, opacity: 0.55 },
+] as const;
+
 /** The untopiced pseudo-topic. A real, selectable state — not a filter. */
 const NONE = "__none__";
 
@@ -247,19 +261,25 @@ export function TopicsScreen() {
                 No tags here yet — a topic with no tags is a subject nobody has described a technique for.
               </span>
             )}
-            {tagsInTopic.map(([tag, n]) => {
-              // Size and opacity track frequency, the mockup's own encoding.
-              const r = n / maxTag;
+            {tagsInTopic.map(([tag, n], idx) => {
+              // § 10b sizes the cloud in DISCRETE tiers, not on a continuous
+              // ramp. Interpolating landed every chip between two of the
+              // mockup's steps — and tiers are the better design anyway: five
+              // legible sizes read as a ranking, where a smooth ramp just
+              // reads as noise.
+              const t = TAG_TIERS[Math.min(idx, TAG_TIERS.length - 1)];
               return (
                 <span
                   key={tag}
                   className="tg"
                   style={{
-                    fontSize: 9.5 + r * 4.5,
-                    padding: r > 0.7 ? "4px 11px" : "3px 9px",
-                    color: r > 0.7 ? "#E4E2DC" : r > 0.4 ? "#D2CFC8" : undefined,
-                    borderColor: r > 0.7 ? "rgba(255,255,255,.2)" : undefined,
-                    opacity: r < 0.2 ? 0.55 : 1,
+                    fontSize: t.size,
+                    padding: t.pad,
+                    color: t.color,
+                    borderColor: t.border,
+                    opacity: t.opacity,
+                    // A tag used once is drawn dashed — provisional rather
+                    // than small, since one use is a note, not a facet.
                     borderStyle: n === 1 ? "dashed" : undefined,
                   }}
                 >
