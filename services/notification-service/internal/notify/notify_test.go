@@ -39,6 +39,18 @@ func (f *fakeRepo) ListForUser(context.Context, uuid.UUID, int32) ([]notify.Noti
 	panic("not used by these tests")
 }
 
+func (f *fakeRepo) MarkRead(context.Context, uuid.UUID, uuid.UUID) (int64, error) {
+	panic("not used by these tests")
+}
+
+func (f *fakeRepo) MarkAllRead(context.Context, uuid.UUID) (int64, error) {
+	panic("not used by these tests")
+}
+
+func (f *fakeRepo) CountUnread(context.Context, uuid.UUID) (int64, error) {
+	panic("not used by these tests")
+}
+
 func TestHandleUserRegisteredCreatesAWelcomeNotification(t *testing.T) {
 	repo := newFakeRepo()
 	userID := uuid.Must(uuid.NewV7())

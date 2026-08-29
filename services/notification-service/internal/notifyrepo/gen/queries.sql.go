@@ -11,6 +11,20 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countUnreadForUser = `-- name: CountUnreadForUser :one
+SELECT COUNT(*) FROM notify.notifications
+WHERE user_id = $1 AND read_at IS NULL
+`
+
+// The bell's badge. A COUNT rather than a length over ListForUser: the badge
+// is drawn on every screen and must not depend on a list limit.
+func (q *Queries) CountUnreadForUser(ctx context.Context, userID pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countUnreadForUser, userID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const insertNotification = `-- name: InsertNotification :one
 INSERT INTO notify.notifications (id, user_id, source_event_id, kind, message)
 VALUES ($1, $2, $3, $4, $5)
@@ -88,4 +102,42 @@ func (q *Queries) ListNotificationsForUser(ctx context.Context, arg ListNotifica
 		return nil, err
 	}
 	return items, nil
+}
+
+const markAllNotificationsRead = `-- name: MarkAllNotificationsRead :execrows
+UPDATE notify.notifications
+SET read_at = NOW()
+WHERE user_id = $1 AND read_at IS NULL
+`
+
+// "Clear the inbox" — the one bulk action § 20 offers. Returns how many rows
+// it actually cleared so the UI can say what happened instead of assuming.
+func (q *Queries) MarkAllNotificationsRead(ctx context.Context, userID pgtype.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, markAllNotificationsRead, userID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const markNotificationRead = `-- name: MarkNotificationRead :execrows
+UPDATE notify.notifications
+SET read_at = NOW()
+WHERE id = $1 AND user_id = $2 AND read_at IS NULL
+`
+
+type MarkNotificationReadParams struct {
+	ID     pgtype.UUID
+	UserID pgtype.UUID
+}
+
+// Scoped by user_id as well as id: the id alone is a bearer token for
+// someone else's inbox row, and "already read" must stay idempotent rather
+// than move the timestamp forward on a second click.
+func (q *Queries) MarkNotificationRead(ctx context.Context, arg MarkNotificationReadParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markNotificationRead, arg.ID, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

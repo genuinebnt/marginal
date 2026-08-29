@@ -47,20 +47,43 @@ export function outlineOf(blocks: BlockView[]): Entry[] {
 }
 
 export function DocumentOutline({
-  blocks, activeId, onJump,
+  blocks, activeId, onJump, first = false, title, onJumpTop,
 }: {
   blocks: BlockView[];
   activeId?: string | null;
   onJump: (blockId: string) => void;
+  /** The page's own title, drawn as the outline's H1 row — § 04 and § 05
+   *  both lead with it. It is the document's top level even though it is not
+   *  a block: an outline that starts at the first H2 is an outline missing
+   *  its root. */
+  title?: string;
+  onJumpTop?: () => void;
+  /** True when this is the rail's FIRST section (the reader, § 05), where it
+   *  keeps a normal section header and needs no rule above it. In the editor
+   *  it follows the page tree, so it is separated from it and its header sits
+   *  tight against that rule. */
+  first?: boolean;
 }) {
   const entries = outlineOf(blocks);
 
   return (
-    <div style={{ margin: "14px 0 0", padding: "12px 0 0", borderTop: "1px solid rgba(255,255,255,.07)" }}>
-      <div className="rail-h" style={{ paddingTop: 0 }}>
-        IN THIS PAGE<div /><span style={{ color: "#585550" }}>{entries.length}</span>
+    <div style={first
+      ? undefined
+      : { margin: "14px 0 0", padding: "12px 0 0", borderTop: "1px solid rgba(255,255,255,.07)" }}>
+      <div className="rail-h" style={first ? undefined : { paddingTop: 0 }}>
+        IN THIS PAGE<div /><span style={{ color: "#585550" }}>{entries.length + (title ? 1 : 0)}</span>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 1, padding: "0 6px", maxHeight: 260, overflowY: "auto" }}>
+        {title !== undefined && (
+          <div
+            className={`oi oi-h1${activeId == null ? " oi-on" : ""}`}
+            onClick={() => onJumpTop?.()}
+            title={title}
+          >
+            <span className="oi-m">H1</span>
+            <span className="oi-t">{title || <span style={{ color: "#4B4842" }}>(untitled)</span>}</span>
+          </div>
+        )}
         {entries.length === 0 && (
           <div style={{ padding: "4px 9px", fontSize: 11, color: "#585550", lineHeight: 1.55 }}>
             No headings or landmarks yet — a flat page has no structure to show,

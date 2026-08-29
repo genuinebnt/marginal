@@ -37,6 +37,11 @@ a{color:#E8873C}a:hover{color:#F2A264}
 .brk-tl{position:absolute;top:-1px;left:-1px;width:5px;height:5px;border-top:1px solid #E8873C;border-left:1px solid #E8873C}
 .brk-br{position:absolute;bottom:-1px;right:-1px;width:5px;height:5px;border-bottom:1px solid #E8873C;border-right:1px solid #E8873C}
 .prog{position:absolute;left:0;right:0;top:0;height:2px;background:rgba(255,255,255,.05);z-index:8}
+/* The reading rule as a BAR rather than an overlay: it sits between the top
+   bar and the section strip, full width, and reflows nothing. §05 uses this;
+   the editor keeps the overlay .prog because its canvas scrolls under chrome. */
+.rprog{position:relative;height:2px;flex:none;background:rgba(255,255,255,.06);z-index:7}
+.rprog i{display:block;height:100%;background:#E8873C;font-style:normal}
 .prog i{display:block;height:100%;background:#E8873C;font-style:normal}
 .sub{position:relative;height:34px;flex:none;display:flex;align-items:center;gap:0;padding:0 16px;background:#0F1012;border-bottom:1px solid rgba(255,255,255,.07);z-index:7}
 .sb{padding:0 12px;height:34px;display:flex;align-items:center;font:400 10.5px 'IBM Plex Mono',monospace;letter-spacing:.06em;color:#6E6A63}
@@ -941,16 +946,23 @@ a{color:#E8873C}a:hover{color:#F2A264}
     <div class="vr"></div>
     <div class="clk"><b>14:06</b><span>THU 12 MAR</span></div><span class="kbd">⌘K</span><div class="icb">◎<div class="bdg">6</div></div><div class="icb">⚙</div><div class="av av-you">GN</div>
   </div>
-  <div style="height:2px;flex:none;background:rgba(255,255,255,.06);position:relative;z-index:7"><div style="width:58%;height:100%;background:#E8873C"></div></div>
+  <div class="rprog"><i style="width:58%"></i></div>
   <div class="body">
     <div class="rail">
-      <div class="rail-h">OUTLINE<div></div></div>
-      <div style="display:flex;flex-direction:column">
-        <div class="tr tr-on" style="padding-left:24px"><i></i>Sync protocol notes</div>
-        <div class="tr" style="padding-left:34px">The block id</div>
-        <div class="tr" style="padding-left:34px;color:#E4E2DC">Why not a rope</div>
-        <div class="tr" style="padding-left:34px">Convergence</div>
-        <div class="tr" style="padding-left:34px;color:#585550">Open questions</div>
+      <!-- The same IN THIS PAGE section §04 carries, and deliberately the same
+           component: reading and writing ask the identical question of the
+           document ("where am I in it"), and answering it with two different
+           lists is how the two drift. Landmarks — a code fence, a callout —
+           are listed beside headings because they are places you navigate to
+           even though they have no title. -->
+      <div class="rail-h">IN THIS PAGE<div></div><span style="color:#585550">6</span></div>
+      <div style="display:flex;flex-direction:column;gap:1px;padding:0 6px">
+        <div class="oi oi-h1"><span class="oi-m">H1</span><span class="oi-t">Sync protocol notes</span></div>
+        <div class="oi oi-h2"><span class="oi-m">H2</span><span class="oi-t">The block id</span></div>
+        <div class="oi oi-h2 oi-on"><span class="oi-m">H2</span><span class="oi-t">Why not a rope</span></div>
+        <div class="oi oi-callout" style="padding-left:20px"><span class="oi-k">◌</span><span class="oi-t">Convergence latency budget…</span></div>
+        <div class="oi oi-h2"><span class="oi-m">H2</span><span class="oi-t">Convergence</span></div>
+        <div class="oi oi-h3"><span class="oi-m">H3</span><span class="oi-t">Open questions</span></div>
       </div>
       <div class="wal">
         <span class="lbl">READING</span>

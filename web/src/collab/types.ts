@@ -136,4 +136,9 @@ export type ClientMessage =
   // wire from an ordinary "ack"/"broadcast" — see useCollabPage, which
   // needs no special-case handling for them at all.
   | { type: "undo" }
-  | { type: "redo" };
+  | { type: "redo" }
+  // Restore the live document to a past point in its own confirmed op log
+  // (docs/api/collaboration.md §2.2). Repeated undo rather than a
+  // restore-from-backup: the server acks one frame per reverted step, all
+  // of them one new undo group for the requester.
+  | { type: "restore"; to_step: number };

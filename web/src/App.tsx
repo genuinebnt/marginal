@@ -14,6 +14,7 @@ import { TopicsScreen } from "./screens/TopicsScreen";
 import { LabScreen } from "./screens/LabScreen";
 import { ReaderScreen } from "./screens/ReaderScreen";
 import { SearchScreen } from "./screens/SearchScreen";
+import { NotificationsScreen } from "./screens/NotificationsScreen";
 
 function RequireAuth({ children }: { children: ReactElement }) {
   const { session } = useAuth();
@@ -105,6 +106,7 @@ function App() {
           </RequireAuth>
         }
       />
+      <Route path="/notifications" element={<RequireAuth><NotificationsScreen /></RequireAuth>} />
       <Route path="/lab" element={<RequireAuth><LabScreen /></RequireAuth>} />
       <Route path="/read" element={<RequireAuth><ReaderScreen /></RequireAuth>} />
       <Route path="/read/:id" element={<RequireAuth><ReaderScreen /></RequireAuth>} />

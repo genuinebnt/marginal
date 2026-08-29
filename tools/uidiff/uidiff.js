@@ -14,6 +14,11 @@
  *
  *   node tools/uidiff/uidiff.js <mockupScreenNumber> <appPath> [pageTitle]
  *   node tools/uidiff/uidiff.js 04 /pages "Sync protocol notes"
+ *   node tools/uidiff/uidiff.js 05 "/read/{id}" "Sync protocol notes"
+ *
+ * appPath may carry a {id} placeholder for screens whose route is not under
+ * /pages. Requires the stack up (docker compose up) and the dev server
+ * running, plus `npm install` in tools/ for playwright-core.
  */
 const { chromium } = require('playwright-core');
 
@@ -62,6 +67,29 @@ const PROPS = [
  */
 const UTILITY = new Set(['mono', 'lbl', 'tgrow', 'row', 'dot']);
 
+/**
+ * The three deliberate departures web/src/styles/mockup.css documents, and
+ * one consequence of them.
+ *
+ * `.scan` is a scanline overlay with no product meaning and `.tag` is the
+ * design doc's own caption strip, so neither ships. `.sc` is a fixed 1440x860
+ * artboard in the mockup and a viewport in the app, which is where its
+ * margin-bottom goes.
+ *
+ * Reported every run, these are three lines of known noise on every screen —
+ * and a report with known noise in it is a report that stops being read. They
+ * are suppressed HERE, once, with the reason, rather than mentally skipped
+ * forty times.
+ */
+const IGNORED_MISSING = new Set(['div.scan', 'div.tag']);
+const IGNORED_PROPS = {
+  'div.sc': new Set(['marginBottom']),
+  // .wal is pinned by margin-top:auto, so its computed margin is the slack
+  // left over by the content above it — a measurement of the corpus, not of
+  // the design.
+  'div.wal': new Set(['marginTop']),
+};
+
 /** Chrome text worth comparing — short, uppercase-ish, structural. */
 const CHROME_SELECTORS = '.lbl,.rd-k,.tb,.sb,.it,.chip,.btn,.kbd,.tpc,.wm';
 
@@ -94,6 +122,11 @@ const SEED = {
     if (await n.count()) await n.click({ force: true });
     await p.waitForTimeout(1200);
   },
+  '05': async (p) => {                       // READER — mid-document, as § 05 draws it
+    const c = p.locator('main.canvas');
+    if (await c.count()) await c.evaluate((el) => { el.scrollTop = el.scrollHeight * 0.4; });
+    await p.waitForTimeout(600);
+  },
   '10': async (p) => {                       // FACTS — a definition is selected
     const d = p.locator('.tr').first();
     if (await d.count()) await d.click();
@@ -101,6 +134,11 @@ const SEED = {
   },
   '17': async (p) => {                       // HISTORY — a block with characters
     await p.waitForTimeout(1500);
+  },
+  '24c': async (p) => {                      // NOTIFICATIONS PANEL — the bell, opened
+    const bell = p.locator('.icb').first();
+    if (await bell.count()) await bell.click();
+    await p.waitForTimeout(500);
   },
 };
 
@@ -154,11 +192,14 @@ async function main() {
   const pair = await r.json();
   const sub = JSON.parse(Buffer.from(pair.access_token.split('.')[1], 'base64url')).sub;
 
+  // A path may name where the id goes ("/read/{id}"); without a placeholder
+  // the id is assumed to be a page under /pages, which is where most of the
+  // per-page screens live.
   let route = appPath;
   if (pageTitle) {
     const pages = await (await fetch(`${GW}/pages`, { headers: { 'X-Actor-Id': sub } })).json();
     const p = pages.pages.find(x => x.title === pageTitle);
-    if (p) route = `/pages/${p.id}`;
+    if (p) route = appPath.includes('{id}') ? appPath.replace('{id}', p.id) : `/pages/${p.id}`;
   }
 
   const a = await b.newPage({ viewport: { width: 1440, height: 900 } });
@@ -229,6 +270,7 @@ async function main() {
 
   let missing = [], propDiffs = [], textDiffs = [];
   for (const [sig, els] of M) {
+    if (IGNORED_MISSING.has(sig)) continue;
     const hit = Anorm.get(norm(sig));
     if (!hit) { missing.push(sig); continue; }
     // Rule 2: pair up occurrence-by-occurrence, and only as far as both
@@ -238,7 +280,9 @@ async function main() {
     const n = Math.min(els.length, hit.length);
     for (let i = 0; i < n; i++) {
       const me = els[i], ae = hit[i];
+      const skip = IGNORED_PROPS[norm(sig)] || IGNORED_PROPS[sig];
       for (const p of PROPS) {
+        if (skip && skip.has(p)) continue;
         if (me.style[p] !== ae.style[p]) {
           propDiffs.push(`${sig}[${i}]  ${p}: ${me.style[p]}  ->  ${ae.style[p]}`);
         }

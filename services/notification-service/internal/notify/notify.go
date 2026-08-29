@@ -66,6 +66,16 @@ type Repo interface {
 	// (false, nil) on a duplicate, not an error.
 	Create(ctx context.Context, userID, sourceEventID uuid.UUID, kind, message string) (created bool, err error)
 	ListForUser(ctx context.Context, userID uuid.UUID, limit int32) ([]Notification, error)
+	// MarkRead clears one row. Scoped by user as well as id — an id alone
+	// would be a bearer token for someone else's inbox. Reports how many
+	// rows it changed, so "already read" is 0 rather than an error.
+	MarkRead(ctx context.Context, userID, id uuid.UUID) (int64, error)
+	// MarkAllRead is § 20's one bulk action. An inbox is cleared by acting
+	// on it, and "acknowledge everything" is itself an act.
+	MarkAllRead(ctx context.Context, userID uuid.UUID) (int64, error)
+	// CountUnread backs the bell's badge, which is drawn on every screen and
+	// so must not be a length over a limited list.
+	CountUnread(ctx context.Context, userID uuid.UUID) (int64, error)
 }
 
 type PostgresRepo struct {
@@ -113,6 +123,33 @@ func (r *PostgresRepo) ListForUser(ctx context.Context, userID uuid.UUID, limit 
 		out[i] = notificationFromRow(row)
 	}
 	return out, nil
+}
+
+func (r *PostgresRepo) MarkRead(ctx context.Context, userID, id uuid.UUID) (int64, error) {
+	n, err := r.q.MarkNotificationRead(ctx, notifyrepo.MarkNotificationReadParams{
+		ID:     pgtype.UUID{Bytes: id, Valid: true},
+		UserID: pgtype.UUID{Bytes: userID, Valid: true},
+	})
+	if err != nil {
+		return 0, fmt.Errorf("notify: mark read: %w", err)
+	}
+	return n, nil
+}
+
+func (r *PostgresRepo) MarkAllRead(ctx context.Context, userID uuid.UUID) (int64, error) {
+	n, err := r.q.MarkAllNotificationsRead(ctx, pgtype.UUID{Bytes: userID, Valid: true})
+	if err != nil {
+		return 0, fmt.Errorf("notify: mark all read: %w", err)
+	}
+	return n, nil
+}
+
+func (r *PostgresRepo) CountUnread(ctx context.Context, userID uuid.UUID) (int64, error) {
+	n, err := r.q.CountUnreadForUser(ctx, pgtype.UUID{Bytes: userID, Valid: true})
+	if err != nil {
+		return 0, fmt.Errorf("notify: count unread: %w", err)
+	}
+	return n, nil
 }
 
 func notificationFromRow(row notifyrepo.NotifyNotification) Notification {

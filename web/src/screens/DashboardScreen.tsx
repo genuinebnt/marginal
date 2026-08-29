@@ -60,7 +60,7 @@ export function DashboardScreen() {
     try {
       // Created empty and untitled, exactly as the rail's own note says —
       // naming it later is normal, because the id was never the name.
-      const p = await createPage(actorId, { title: "Untitled" });
+      const p = await createPage(actorId, "Untitled");
       navigate(`/pages/${p.id}`);
     } catch (e) {
       setErr(String(e));

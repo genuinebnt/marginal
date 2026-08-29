@@ -92,6 +92,10 @@ export function GraphScreen() {
     [graph],
   );
   const { nodes, startDrag, dragTo, endDrag, alpha, ticks, cooled } = useForceLayout(nodeIds, edges, W, H);
+  // Which node the pointer is carrying. A ref rather than state: it is read
+  // inside mousemove, and re-rendering the whole svg on every frame just to
+  // remember an id would cost more than the simulation tick it feeds.
+  const draggingRef = useRef<string | null>(null);
 
   const byId = useMemo(() => {
     const m = new Map<string, { title: string }>();
@@ -242,6 +246,11 @@ export function GraphScreen() {
     return { x: (vx - fit.dx) / fit.s, y: (vy - fit.dy) / fit.s };
   }
 
+  function stopDrag() {
+    draggingRef.current = null;
+    endDrag();
+  }
+
   return (
     <Screen>
       <TopBar
@@ -270,9 +279,14 @@ export function GraphScreen() {
             ref={svgRef}
             viewBox={`0 0 ${W} ${H}`}
             style={{ width: "100%", height: "100%", display: "block" }}
-            onMouseMove={(e) => dragTo(svgPoint(e).x, svgPoint(e).y)}
-            onMouseUp={endDrag}
-            onMouseLeave={endDrag}
+            onMouseMove={(e) => {
+              const id = draggingRef.current;
+              if (!id) return;
+              const p = svgPoint(e);
+              dragTo(id, p.x, p.y);
+            }}
+            onMouseUp={stopDrag}
+            onMouseLeave={stopDrag}
           >
             {/* Territory behind everything — exact Voronoi, which is what
                 § 07 draws: its paths tile the plane rather than wrapping each
@@ -348,7 +362,7 @@ export function GraphScreen() {
                 const key = topicOf.get(n.id) ?? "";
                 const hex = TOPIC_HEX[key] ?? "#6E6A63";
                 return (
-                  <g key={n.id} onMouseDown={() => { setSelected(n.id); startDrag(n.id); }}
+                  <g key={n.id} onMouseDown={() => { setSelected(n.id); draggingRef.current = n.id; startDrag(n.id); }}
                      style={{ cursor: "pointer" }}>
                     {isSel && (
                       <>

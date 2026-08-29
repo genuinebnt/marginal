@@ -18,14 +18,6 @@ const LIST_KEYS: Partial<Record<BlockKindKey, "bulleted" | "numbered" | "todo">>
   todo_list: "todo",
 };
 
-const CALLOUT_TONE_COLOR: Record<string, string> = {
-  note: "var(--blue, #3b82f6)",
-  info: "var(--blue, #3b82f6)",
-  tip: "var(--green, #22c55e)",
-  warn: "var(--warn, #d97706)",
-  danger: "var(--red, #dc2626)",
-  success: "var(--green, #22c55e)",
-};
 
 /** One glyph per kind, in the mono cell every menu row carries. Text rather
  *  than icons — this design has no icon set, and inventing one for a menu
@@ -325,13 +317,6 @@ export function RichEditorPane({
     if (!parent || parent.kind.tag !== "list") return null;
     const siblings = blocks.filter((x) => x.parent === b.parent);
     return { kind: parent.kind.list_kind, index: siblings.findIndex((x) => x.id === b.id) + 1 };
-  }
-
-  const visibleBlocks = blocks.filter((b) => b.kind.tag !== "list" && !isHiddenByCollapsedToggle(b.id));
-
-  /** Direct children of id, in the flat array's own depth-first order. */
-  function childrenOf(id: string | null): BlockView[] {
-    return blocks.filter((b) => b.parent === id);
   }
 
   /** Container tags render their children INSIDE themselves. Everything else
@@ -1074,7 +1059,6 @@ function BlockRow({
           onBackspaceEmpty={onBackspaceEmpty}
           onSlashTrigger={onSlashTrigger}
           onDirectiveTrigger={onDirectiveTrigger}
-        onDirectiveTrigger={onDirectiveTrigger}
           onLinkQuery={onLinkQuery}
         />
         {childrenNodes}
@@ -1099,7 +1083,6 @@ function BlockRow({
           onBackspaceEmpty={onBackspaceEmpty}
           onSlashTrigger={onSlashTrigger}
           onDirectiveTrigger={onDirectiveTrigger}
-        onDirectiveTrigger={onDirectiveTrigger}
           onLinkQuery={onLinkQuery}
         />
       </div>
@@ -1190,6 +1173,7 @@ function EditableTextBlock({
   onEnter,
   onBackspaceEmpty,
   onSlashTrigger,
+  onDirectiveTrigger,
   onLinkQuery,
 }: {
   blockId: string;

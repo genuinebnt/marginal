@@ -1,0 +1,13 @@
+{
+  "name": "marginal-tools",
+  "private": true,
+  "description": "Dev tooling that runs against the running stack \u2014 uidiff (DOM diff vs docs/ui-mockups/v2), navcheck, seed. Not shipped, not part of web/.",
+  "scripts": {
+    "uidiff": "node uidiff/uidiff.js",
+    "navcheck": "node uidiff/navcheck.js",
+    "seed": "node seed/seed.js"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.56.0"
+  }
+}

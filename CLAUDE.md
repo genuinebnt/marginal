@@ -253,9 +253,32 @@ open indefinitely (no idle-eviction), matching this repo's demo scale.
 
 | When | Run |
 |---|---|
+| **Finishing work on any screen, BEFORE committing** | `node tools/uidiff/uidiff.js <§> <route> [pageTitle]` — **mandatory** |
 | After implementing a feature | `/code-review` or `/project:simplify` (idiom + simplicity) |
 | Before merging any PR | `/code-review` |
 | Any auth / paste / op-authorization boundary touched | `/security-review` |
+
+### The uidiff gate (non-negotiable)
+
+**A screen is not done until its own uidiff run is re-read and its `missing`
+count is zero** — not "looks right", not "the change I made is in". Run it
+against the mockup section the screen ports, on the route it lives at, and
+read the whole report: `MISSING`, `CHROME TEXT`, and `PROPERTIES` all count.
+Add a `SEED` entry in `tools/uidiff/uidiff.js` when the mockup depicts a
+state a fresh load does not reach (a selected node, a typed query), or the
+diff reports "not yet shown" as "not built".
+
+This exists because eyeballing a screen has repeatedly missed whole regions:
+a rail section that never rendered, an inspector that was absent, a control
+drawn but inert. Screenshots and "it looks fine" are not evidence. The diff
+is.
+
+**A control that renders but does nothing is a miss, and uidiff cannot see
+it** — it compares markup and computed style, not behaviour. So the gate has
+a second half: **click every control the screen draws** (each sub-bar lens,
+each chip in a segmented group, each inspector tab) and confirm it changes
+something. A segmented control with one live option and two decorative ones
+is the exact defect this catches.
 
 ---
 

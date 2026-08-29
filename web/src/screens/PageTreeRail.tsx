@@ -174,7 +174,11 @@ export function PageTreeRail({
       {/* Hierarchy of the CONTENT, below the hierarchy of the workspace.
           Only on screens that actually have a document open. */}
       {blocks && (
-        <DocumentOutline blocks={blocks} onJump={(id) => onJumpToBlock?.(id)} />
+        <DocumentOutline
+          blocks={blocks}
+          title={activePageId ? tree.nodes[activePageId]?.title ?? "" : undefined}
+          onJump={(id) => onJumpToBlock?.(id)}
+        />
       )}
 
       {/* Takes the slack so .wal's margin-top:auto has something to push
@@ -280,7 +284,6 @@ function PageRow({
   const isDropTarget = dropTarget?.id === page.id;
   const isBeingDragged = dragId === page.id;
 
-  const depthClass = depth === 1 ? "depth-1" : depth >= 2 ? "depth-2" : "";
   const style = depth >= 2 ? { paddingLeft: depthPadding(depth) } : undefined;
 
   return (

@@ -35,3 +35,26 @@ export function ReadingProgress({ target }: { target: RefObject<HTMLElement | nu
     </div>
   );
 }
+
+/**
+ * The same measurement as a full-width BAR between the top bar and the
+ * section strip (§ 05's own markup), rather than an overlay pinned inside a
+ * scroll container.
+ *
+ * Two forms rather than one because they answer to different layouts: the
+ * editor's canvas scrolls *under* its chrome, so its rule has to be sticky
+ * inside that container; the reader's chrome is a flex column, so the bar can
+ * simply be a row in it — which is stabler, since nothing about it depends on
+ * the scroll container's padding.
+ *
+ * `pct` is passed in rather than measured here: the reader already reads the
+ * same number for "58% · ~3 min left", and two measurements of one scroll
+ * position is two numbers that can disagree on screen.
+ */
+export function ReadingBar({ pct }: { pct: number }) {
+  return (
+    <div className="rprog" aria-hidden>
+      <i style={{ width: `${Math.max(0, Math.min(100, pct))}%` }} />
+    </div>
+  );
+}

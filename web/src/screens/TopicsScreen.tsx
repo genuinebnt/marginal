@@ -122,7 +122,6 @@ export function TopicsScreen() {
       }));
   }, [pages, sel, tagsInTopic, topics]);
 
-  const maxTag = tagsInTopic[0]?.[1] ?? 1;
   const onceOnly = useMemo(() => facets.filter((f) => f.page_count === 1), [facets]);
 
   /**

@@ -14,6 +14,8 @@
  */
 import { Link, useLocation } from "react-router-dom";
 import type { ReactNode } from "react";
+import { useInbox } from "../notifications/NotificationsContext";
+import { NotificationsPanel } from "../notifications/NotificationsPanel";
 
 /** The six primary destinations, in the mockup's own order. */
 const TABS: Array<{ label: string; to: string }> = [
@@ -90,12 +92,17 @@ export function num(n: number): string {
  * in-app screen. Pre-auth and meta screens deliberately omit it — a stranger
  * has no session to show — which is why it is opt-in via TopBar's `bare`.
  */
-function Utility({ now, unread, peers }: { now: Date; unread: number; peers?: ReactNode }) {
+function Utility({ now, peers }: { now: Date; peers?: ReactNode }) {
   const time = now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
   const date = now
     .toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short" })
     .toUpperCase()
     .replace(",", "");
+  // The badge is the shared inbox's own unread COUNT, not a length over a
+  // limited list — see NotificationsContext. The bell OPENS A PANEL rather
+  // than navigating (§ 24c: "triage without leaving the page"); /notifications
+  // is the same inbox full-screen, reached from the panel's own footer.
+  const inbox = useInbox();
   return (
     <>
       <div className="clk">
@@ -103,9 +110,14 @@ function Utility({ now, unread, peers }: { now: Date; unread: number; peers?: Re
         <span>{date}</span>
       </div>
       <span className="kbd">⌘K</span>
-      <Link to="/notifications" className="icb" style={{ textDecoration: "none" }}>
-        ◎{unread > 0 && <div className="bdg">{unread}</div>}
-      </Link>
+      <span
+        className={`icb${inbox.panelOpen ? " icb-on" : ""}`}
+        style={{ cursor: "pointer" }}
+        title="Inbox"
+        onClick={inbox.togglePanel}
+      >
+        ◎{inbox.unread > 0 && <div className="bdg">{inbox.unread}</div>}
+      </span>
       <Link to="/admin" className="icb" style={{ textDecoration: "none" }}>⚙</Link>
       <div className="av av-you">GN</div>
       {peers}
@@ -117,7 +129,6 @@ export function TopBar({
   crumb,
   readouts,
   now = new Date(),
-  unread = 0,
   bare = false,
   right,
   spark,
@@ -126,7 +137,6 @@ export function TopBar({
   crumb?: ReactNode;
   readouts?: ReactNode;
   now?: Date;
-  unread?: number;
   bare?: boolean;
   /** Trailing content for screens whose bar ends in something other than
    *  the utility cluster — the pre-auth screens' register/log-in switch.
@@ -166,7 +176,7 @@ export function TopBar({
       {!bare && (
         <>
           <VRule />
-          <Utility now={now} unread={unread} peers={peers} />
+          <Utility now={now} peers={peers} />
         </>
       )}
     </div>
@@ -218,7 +228,15 @@ export function StatusBar({
 
 /** The screen frame. `.sc` is the viewport here, not the mockup's artboard. */
 export function Screen({ children }: { children: ReactNode }) {
-  return <div className="sc">{children}</div>;
+  const inbox = useInbox();
+  return (
+    <div className="sc">
+      {children}
+      {/* § 24c anchors to the screen and sits after the body. Rendered here
+          rather than by the bell so that stays true on every route. */}
+      {inbox.panelOpen && <NotificationsPanel onClose={inbox.closePanel} />}
+    </div>
+  );
 }
 
 /** §1.1 — min-height:0 is load-bearing; without it flex children refuse to shrink. */

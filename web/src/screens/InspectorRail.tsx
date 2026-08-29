@@ -173,11 +173,14 @@ export function InspectorRail({
             )}
             {backlinks.map((b) => (
               <div
-                key={b.source_page_id}
-                style={{ fontSize: 12.5, color: "#D2CFC8", cursor: "pointer" }}
-                onClick={() => navigate(`/pages/${b.source_page_id}`)}
+                key={b.from_page}
+                style={{ fontSize: 12.5, color: b.from_page_deleted ? "#585550" : "#D2CFC8", cursor: "pointer" }}
+                onClick={() => navigate(`/pages/${b.from_page}`)}
               >
-                {b.source_title}
+                {b.from_page_title}
+                {b.from_page_deleted && (
+                  <span className="mono" style={{ fontSize: 9, color: "#E0A34E", marginLeft: 6 }}>DELETING</span>
+                )}
               </div>
             ))}
           </>
