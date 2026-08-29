@@ -7,7 +7,8 @@
     "navcheck": "node uidiff/navcheck.js",
     "seed": "node seed/seed.js",
     "seed:handbook": "node seed/seed.js handbook --append",
-    "seed:all": "node seed/seed.js all"
+    "seed:all": "node seed/seed.js all",
+    "verify": "node uidiff/verify.js"
   },
   "devDependencies": {
     "playwright-core": "^1.56.0",

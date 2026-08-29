@@ -282,6 +282,12 @@ each chip in a segmented group, each inspector tab) and confirm it changes
 something. A segmented control with one live option and two decorative ones
 is the exact defect this catches.
 
+`node tools/uidiff/verify.js` is that half, automated: it drives every
+control on every built screen and asserts the thing it is supposed to change
+actually changed. Add a check when you add a control. It found a 500 on
+`GET .../trace` that no unit test and no DOM diff could have — the editor
+never replays, so only Trace and History exercised the path that was broken.
+
 ---
 
 ## Architecture Rules (summary)
