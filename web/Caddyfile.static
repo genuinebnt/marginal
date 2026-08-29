@@ -9,6 +9,19 @@
 	@immutable path /assets/*
 	header @immutable Cache-Control "public, max-age=31536000, immutable"
 
+	# The wasm modules are served from public/, so Vite does not hash their
+	# names and they carried no Cache-Control at all — six modules, about 6 MB
+	# gzipped, re-fetched from this box on every single visit.
+	#
+	# They cannot take the immutable treatment above precisely because the names
+	# are stable: a rebuild changes the bytes behind the same URL, and a browser
+	# holding a year-old copy would run stale wasm against a freshly hashed JS
+	# bundle. Five minutes is short enough that a deploy cannot mismatch for
+	# long, and with an ETag on every response the revalidations are 304s.
+	# The lasting fix is to hash these names too — see web/Dockerfile.
+	@wasm path *.wasm
+	header @wasm Cache-Control "public, max-age=300"
+
 	# Client-side routing: unknown paths are SPA routes, not 404s.
 	try_files {path} /index.html
 	file_server
