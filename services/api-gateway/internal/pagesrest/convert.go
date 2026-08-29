@@ -235,3 +235,86 @@ func toListSeriesJSON(r *documentv1.ListSeriesResponse) listSeriesJSON {
 	}
 	return out
 }
+
+// --- trash (v2.6.0's saga, made visible) -----------------------------------
+
+type sagaProgressJSON struct {
+	StepsDone []string `json:"steps_done"`
+	StepsLeft []string `json:"steps_left"`
+	// > 1 means the saga resumed after a crash. Reported because that is the
+	// difference between a slow delete and an unstable one.
+	Attempts  int32   `json:"attempts"`
+	LastError *string `json:"last_error,omitempty"`
+	// Steps with no backing store at this repo's scope. Sent so the UI can
+	// render them as "no store yet" rather than as work performed.
+	NotApplicable []string `json:"not_applicable"`
+}
+
+type trashEntryJSON struct {
+	Page    pageJSON `json:"page"`
+	PurgeAt string   `json:"purge_at"`
+	// Absent once the saga finishes: a finished saga has no progress to
+	// report, so absence is how a caller tells 'deleted, restorable' from
+	// 'deleting, mid-saga' without re-reading lifecycle_state.
+	Progress *sagaProgressJSON `json:"progress,omitempty"`
+}
+
+type listTrashJSON struct {
+	Entries []trashEntryJSON `json:"entries"`
+	Total   int32            `json:"total"`
+}
+
+type deletePreviewJSON struct {
+	Descendants []pageJSON `json:"descendants"`
+	// Pages OUTSIDE the subtree whose [[links]] point into it. Those links do
+	// not break — they DANGLE, which is a state the graph and the diagnostics
+	// engine both already model.
+	Referrers  []pageJSON `json:"referrers"`
+	BlockCount int32      `json:"block_count"`
+}
+
+func toListTrashJSON(r *documentv1.ListTrashResponse) listTrashJSON {
+	out := listTrashJSON{Total: r.GetTotal(), Entries: make([]trashEntryJSON, 0, len(r.GetEntries()))}
+	for _, e := range r.GetEntries() {
+		entry := trashEntryJSON{Page: toPageJSON(e.GetPage()), PurgeAt: formatTimestamp(e.GetPurgeAt())}
+		if p := e.GetProgress(); p != nil {
+			prog := &sagaProgressJSON{
+				StepsDone:     emptyStrings(p.GetStepsDone()),
+				StepsLeft:     emptyStrings(p.GetStepsLeft()),
+				Attempts:      p.GetAttempts(),
+				NotApplicable: emptyStrings(p.GetNotApplicable()),
+			}
+			if p.LastError != nil {
+				msg := p.GetLastError()
+				prog.LastError = &msg
+			}
+			entry.Progress = prog
+		}
+		out.Entries = append(out.Entries, entry)
+	}
+	return out
+}
+
+func toDeletePreviewJSON(r *documentv1.PreviewDeleteResponse) deletePreviewJSON {
+	out := deletePreviewJSON{
+		BlockCount:  r.GetBlockCount(),
+		Descendants: make([]pageJSON, 0, len(r.GetDescendants())),
+		Referrers:   make([]pageJSON, 0, len(r.GetReferrers())),
+	}
+	for _, p := range r.GetDescendants() {
+		out.Descendants = append(out.Descendants, toPageJSON(p))
+	}
+	for _, p := range r.GetReferrers() {
+		out.Referrers = append(out.Referrers, toPageJSON(p))
+	}
+	return out
+}
+
+// emptyStrings ships `[]` rather than `null` — a client iterating a step list
+// should not need a guard for "the saga had none".
+func emptyStrings(in []string) []string {
+	if in == nil {
+		return []string{}
+	}
+	return in
+}

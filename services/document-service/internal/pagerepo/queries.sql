@@ -173,7 +173,7 @@ WHERE source_page_id IN (
 -- pending purge without a backfill (DATA_MODEL.md § Page deletions).
 SELECT p.id, p.created_by, p.title, p.parent_id, p.path::text AS path, p.sort_key,
        p.lifecycle_state, p.deleted_at, p.created_at, p.updated_at,
-       p.deleted_at + @purge_window::interval AS purge_at,
+       (p.deleted_at + @purge_window::interval)::timestamptz AS purge_at,
        d.steps_done, d.attempts, d.last_error, d.completed_at
 FROM docs.pages p
 LEFT JOIN docs.page_deletions d ON d.page_id = p.id
@@ -350,3 +350,42 @@ JOIN (
 ) c ON c.parent_id = p.id
 WHERE p.deleted_at IS NULL
 ORDER BY c.part_count DESC, p.title ASC;
+
+-- name: ListDescendants :many
+-- The subtree a delete would cascade to, excluding the page itself. LTREE
+-- containment (<@) rather than a recursive CTE: the path is already
+-- materialised, and this is the query the delete preview has to be fast at.
+SELECT id, created_by, title, parent_id, path::text AS path, sort_key,
+       lifecycle_state, deleted_at, created_at, updated_at
+FROM docs.pages
+WHERE deleted_at IS NULL
+  AND path <@ (SELECT root.path FROM docs.pages root WHERE root.id = $1)
+  AND id != $1
+ORDER BY path;
+
+-- name: ListReferrers :many
+-- Pages whose [[links]] point INTO the subtree being deleted — the links
+-- that would dangle. Distinct by source: a page linking three times is one
+-- page to warn about, not three.
+SELECT DISTINCT p.id, p.created_by, p.title, p.parent_id, p.path::text AS path,
+       p.sort_key, p.lifecycle_state, p.deleted_at, p.created_at, p.updated_at
+FROM docs.page_links l
+JOIN docs.pages p ON p.id = l.from_page
+WHERE p.deleted_at IS NULL
+  AND l.target_page IN (
+    SELECT sub.id FROM docs.pages sub
+    WHERE sub.deleted_at IS NULL
+      AND sub.path <@ (SELECT root.path FROM docs.pages root WHERE root.id = $1)
+  )
+  AND NOT (p.path <@ (SELECT root.path FROM docs.pages root WHERE root.id = $1))
+ORDER BY p.title;
+
+-- name: CountBlocksInSubtree :one
+-- How much content the delete takes with it. Over the projection, so it is
+-- the number a person would see, not the op count behind it.
+SELECT COUNT(*)::int FROM docs.blocks b
+WHERE b.page_id IN (
+  SELECT sub.id FROM docs.pages sub
+  WHERE sub.deleted_at IS NULL
+    AND sub.path <@ (SELECT root.path FROM docs.pages root WHERE root.id = $1)
+);

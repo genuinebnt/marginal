@@ -107,6 +107,24 @@ func (q *Queries) CompletePageDeletion(ctx context.Context, pageID pgtype.UUID) 
 	return err
 }
 
+const countBlocksInSubtree = `-- name: CountBlocksInSubtree :one
+SELECT COUNT(*)::int FROM docs.blocks b
+WHERE b.page_id IN (
+  SELECT sub.id FROM docs.pages sub
+  WHERE sub.deleted_at IS NULL
+    AND sub.path <@ (SELECT root.path FROM docs.pages root WHERE root.id = $1)
+)
+`
+
+// How much content the delete takes with it. Over the projection, so it is
+// the number a person would see, not the op count behind it.
+func (q *Queries) CountBlocksInSubtree(ctx context.Context, id pgtype.UUID) (int32, error) {
+	row := q.db.QueryRow(ctx, countBlocksInSubtree, id)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const countTrash = `-- name: CountTrash :one
 SELECT COUNT(*) FROM docs.pages WHERE deleted_at IS NOT NULL
 `
@@ -302,6 +320,63 @@ func (q *Queries) ListChildrenOrdered(ctx context.Context, parentID pgtype.UUID)
 	for rows.Next() {
 		var i ListChildrenOrderedRow
 		if err := rows.Scan(&i.ID, &i.Title, &i.SortKey); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDescendants = `-- name: ListDescendants :many
+SELECT id, created_by, title, parent_id, path::text AS path, sort_key,
+       lifecycle_state, deleted_at, created_at, updated_at
+FROM docs.pages
+WHERE deleted_at IS NULL
+  AND path <@ (SELECT root.path FROM docs.pages root WHERE root.id = $1)
+  AND id != $1
+ORDER BY path
+`
+
+type ListDescendantsRow struct {
+	ID             pgtype.UUID
+	CreatedBy      pgtype.UUID
+	Title          string
+	ParentID       pgtype.UUID
+	Path           string
+	SortKey        string
+	LifecycleState string
+	DeletedAt      pgtype.Timestamptz
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+}
+
+// The subtree a delete would cascade to, excluding the page itself. LTREE
+// containment (<@) rather than a recursive CTE: the path is already
+// materialised, and this is the query the delete preview has to be fast at.
+func (q *Queries) ListDescendants(ctx context.Context, id pgtype.UUID) ([]ListDescendantsRow, error) {
+	rows, err := q.db.Query(ctx, listDescendants, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListDescendantsRow
+	for rows.Next() {
+		var i ListDescendantsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.CreatedBy,
+			&i.Title,
+			&i.ParentID,
+			&i.Path,
+			&i.SortKey,
+			&i.LifecycleState,
+			&i.DeletedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -509,6 +584,68 @@ func (q *Queries) ListReadingPositions(ctx context.Context, arg ListReadingPosit
 	return items, nil
 }
 
+const listReferrers = `-- name: ListReferrers :many
+SELECT DISTINCT p.id, p.created_by, p.title, p.parent_id, p.path::text AS path,
+       p.sort_key, p.lifecycle_state, p.deleted_at, p.created_at, p.updated_at
+FROM docs.page_links l
+JOIN docs.pages p ON p.id = l.from_page
+WHERE p.deleted_at IS NULL
+  AND l.target_page IN (
+    SELECT sub.id FROM docs.pages sub
+    WHERE sub.deleted_at IS NULL
+      AND sub.path <@ (SELECT root.path FROM docs.pages root WHERE root.id = $1)
+  )
+  AND NOT (p.path <@ (SELECT root.path FROM docs.pages root WHERE root.id = $1))
+ORDER BY p.title
+`
+
+type ListReferrersRow struct {
+	ID             pgtype.UUID
+	CreatedBy      pgtype.UUID
+	Title          string
+	ParentID       pgtype.UUID
+	Path           string
+	SortKey        string
+	LifecycleState string
+	DeletedAt      pgtype.Timestamptz
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+}
+
+// Pages whose [[links]] point INTO the subtree being deleted — the links
+// that would dangle. Distinct by source: a page linking three times is one
+// page to warn about, not three.
+func (q *Queries) ListReferrers(ctx context.Context, id pgtype.UUID) ([]ListReferrersRow, error) {
+	rows, err := q.db.Query(ctx, listReferrers, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListReferrersRow
+	for rows.Next() {
+		var i ListReferrersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.CreatedBy,
+			&i.Title,
+			&i.ParentID,
+			&i.Path,
+			&i.SortKey,
+			&i.LifecycleState,
+			&i.DeletedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSeriesRoots = `-- name: ListSeriesRoots :many
 SELECT p.id, p.title, c.part_count
 FROM docs.pages p
@@ -642,7 +779,7 @@ func (q *Queries) ListTopics(ctx context.Context) ([]ListTopicsRow, error) {
 const listTrash = `-- name: ListTrash :many
 SELECT p.id, p.created_by, p.title, p.parent_id, p.path::text AS path, p.sort_key,
        p.lifecycle_state, p.deleted_at, p.created_at, p.updated_at,
-       p.deleted_at + $3::interval AS purge_at,
+       (p.deleted_at + $3::interval)::timestamptz AS purge_at,
        d.steps_done, d.attempts, d.last_error, d.completed_at
 FROM docs.pages p
 LEFT JOIN docs.page_deletions d ON d.page_id = p.id
@@ -668,7 +805,7 @@ type ListTrashRow struct {
 	DeletedAt      pgtype.Timestamptz
 	CreatedAt      pgtype.Timestamptz
 	UpdatedAt      pgtype.Timestamptz
-	PurgeAt        int32
+	PurgeAt        pgtype.Timestamptz
 	StepsDone      []string
 	Attempts       *int32
 	LastError      *string

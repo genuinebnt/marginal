@@ -162,6 +162,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       ["Go to series", "/series", "◫"],
       ["Go to discover", "/discover", "✧"],
       ["Go to the inbox", "/notifications", "◎"],
+      ["Go to the trash", "/trash", "⌫"],
     ] as const) {
       if (!words || label.toLowerCase().includes(lower)) {
         actions.push({ id: to, icon, label, meta: to, run: () => { navigate(to); onClose(); } });

@@ -259,3 +259,8 @@ a{color:#E8873C}a:hover{color:#F2A264}
    the two surfaces answer "what is this about" the same way. */
 .changed-row{display:flex;align-items:center;gap:10px;padding:9px 6px;cursor:pointer;transition:background .14s ease}
 .changed-row:hover{background:#161819}
+
+/* A trash row. Same left-edge pair as everywhere else; the amber tick is the
+   saga still running. */
+.trash-row{display:flex;align-items:center;gap:12px;padding:11px 0;cursor:pointer;transition:background .14s ease}
+.trash-row:hover{background:#161819}

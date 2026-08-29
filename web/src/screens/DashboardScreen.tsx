@@ -22,10 +22,11 @@ import { useAuth } from "../auth/AuthContext";
 import { createPage, listPages, type Page } from "../api/pages";
 import { getTopics, type TopicList } from "../api/topics";
 import { getResume, type ReadingPosition } from "../api/resume";
+import { listTrash } from "../api/trash";
 import {
   Body, Label, Readout, Screen, StatusBar, TopBar, num,
 } from "../shell/Chrome";
-import { ph, undrawn } from "../shell/placeholder";
+import { undrawn } from "../shell/placeholder";
 import { PageTreeRail } from "./PageTreeRail";
 import { PageCard, RowBars } from "../ui";
 
@@ -74,6 +75,14 @@ export function DashboardScreen() {
 
   const untopiced = topics?.untopiced_pages ?? 0;
   const now = new Date();
+  // The trash count was the last placeholder on this screen. ListTrash is
+  // implemented now, so it is a number rather than an em dash.
+  const [trashTotal, setTrashTotal] = useState(0);
+  useEffect(() => {
+    if (!actorId) return;
+    listTrash(actorId).then((r) => setTrashTotal(r.total)).catch(() => setTrashTotal(0));
+  }, [actorId]);
+
   const totalWords = useMemo(() => pages.reduce((n, p) => n + (p.word_count ?? 0), 0), [pages]);
 
   /**
@@ -259,11 +268,16 @@ export function DashboardScreen() {
                     { k: "Pages", v: num(pages.length), tone: "#E4E2DC" },
                     { k: "Topics", v: num(topics?.topics.length ?? 0), tone: "#E4E2DC" },
                     { k: "Untopiced", v: num(untopiced), tone: untopiced > 0 ? "#E0A34E" : "#8C8880" },
-                    { k: "In trash", v: ph("—"), tone: "#8C8880" },
+                    { k: "In trash", v: num(trashTotal), tone: trashTotal > 0 ? "#E0A34E" : "#8C8880", to: "/trash" },
                   ].map((r) => (
-                    <div key={r.k} style={{
-                      display: "flex", alignItems: "baseline", gap: 8, fontSize: 11.5, color: "#9B968D",
-                    }}>
+                    <div
+                      key={r.k}
+                      onClick={() => r.to && navigate(r.to)}
+                      style={{
+                        display: "flex", alignItems: "baseline", gap: 8, fontSize: 11.5,
+                        color: "#9B968D", cursor: r.to ? "pointer" : undefined,
+                      }}
+                    >
                       <span style={{ flex: 1 }}>{r.k}</span>
                       <span className="mono" style={{ fontSize: 11, color: r.tone }}>{r.v}</span>
                     </div>

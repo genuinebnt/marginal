@@ -50,6 +50,12 @@ func (h *Handler) Mount(r chi.Router) {
 
 	// v2.9.0 — series. A series IS a page with children, so these read the
 	// tree rather than a table of their own.
+	// v2.6.0's delete saga, made visible (§ 23c). GET /trash lists it,
+	// POST .../restore reverses the one step that is reversible.
+	r.Get("/trash", h.listTrash)
+	r.Get("/pages/{id}/delete-preview", h.previewDelete)
+	r.Post("/pages/{id}/restore", h.restorePage)
+
 	r.Get("/series", h.listSeries)
 	r.Get("/pages/{id}/series", h.pageSeries)
 	r.Put("/pages/{id}/position", h.savePosition)
@@ -342,4 +348,33 @@ func (h *Handler) pageSeries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	apierror.WriteJSON(w, http.StatusOK, toPageSeriesJSON(resp))
+}
+
+func (h *Handler) listTrash(w http.ResponseWriter, r *http.Request) {
+	resp, err := h.client.ListTrash(actorctx.FromRequest(r), &documentv1.ListTrashRequest{})
+	if err != nil {
+		apierror.WriteGRPCStatus(w, err)
+		return
+	}
+	apierror.WriteJSON(w, http.StatusOK, toListTrashJSON(resp))
+}
+
+func (h *Handler) previewDelete(w http.ResponseWriter, r *http.Request) {
+	resp, err := h.client.PreviewDelete(actorctx.FromRequest(r),
+		&documentv1.PreviewDeleteRequest{Id: chi.URLParam(r, "id")})
+	if err != nil {
+		apierror.WriteGRPCStatus(w, err)
+		return
+	}
+	apierror.WriteJSON(w, http.StatusOK, toDeletePreviewJSON(resp))
+}
+
+func (h *Handler) restorePage(w http.ResponseWriter, r *http.Request) {
+	resp, err := h.client.RestorePage(actorctx.FromRequest(r),
+		&documentv1.RestorePageRequest{Id: chi.URLParam(r, "id")})
+	if err != nil {
+		apierror.WriteGRPCStatus(w, err)
+		return
+	}
+	apierror.WriteJSON(w, http.StatusOK, toPageJSON(resp))
 }

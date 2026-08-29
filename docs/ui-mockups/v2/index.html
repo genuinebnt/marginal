@@ -3853,7 +3853,11 @@ enum Op { InsertText }
     <div class="vr"></div>
     <div class="clk"><b>14:06</b><span>THU 12 MAR</span></div><span class="kbd">⌘K</span><div class="icb">◎<div class="bdg">6</div></div><div class="icb">⚙</div><div class="av av-you">GN</div>
   </div>
-  <div class="sub"><span class="sb sb-on">IN TRASH · 24</span><span class="sb">PURGED · 108</span><span class="sb">ORPHANED BLOBS · 3</span><div style="flex:1"></div><span class="sb" style="color:#E0A34E">1 saga resuming after restart</span></div>
+  <!-- PURGED and ORPHANED BLOBS name numbers nothing produces: a purge keeps
+       no counter (the row is gone, which is the point), and there is no object
+       store until v4.2.0. They stay on the strip, dimmed and saying so, rather
+       than being dropped — § 9.4's rule that what is missing is marked. -->
+  <div class="sub"><span class="sb sb-on">IN TRASH · 24</span><span class="sb" style="color:#585550">PURGED · not counted</span><span class="sb" style="color:#585550">ORPHANED BLOBS · no object store yet</span><div style="flex:1"></div><span class="sb" style="color:#E0A34E">1 saga resuming after restart</span></div>
   <div class="body">
     <div style="flex:1;min-width:0;padding:26px 32px;overflow:hidden;display:flex;flex-direction:column">
       <!-- The saga in progress, drawn as the state machine it is. This is the
@@ -3865,7 +3869,12 @@ enum Op { InsertText }
           <span style="font-family:Spectral,serif;font-size:17px;color:#EFEDE7">Old rope notes</span>
           <span class="mono" style="font-size:10.5px;color:#8C8880">+ 4 descendants · started 2 min ago · resumed once</span>
           <div style="flex:1"></div>
-          <span class="chip" style="border-color:rgba(255,255,255,.16)">CANCEL</span>
+          <!-- No CANCEL. The saga is forward-only by design: an ack that
+               never arrives times out into PROCEEDING rather than failing, so
+               a silent collaboration-service delays a purge instead of
+               blocking one. A cancel button would have to invent a compensating
+               path that does not exist, and the honest control is RESTORE,
+               which is offered once the saga finishes. -->
         </div>
         <div style="display:flex;align-items:center;gap:0">
           <div style="flex:1;display:flex;flex-direction:column;gap:6px"><div style="height:4px;background:#3FCFA8"></div><span class="mono" style="font-size:9px;color:#3FCFA8">✓ tree detached</span></div>
