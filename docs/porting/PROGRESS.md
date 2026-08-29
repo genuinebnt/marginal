@@ -3807,3 +3807,131 @@ its `DESIGN_GUIDELINES.md`. The existing frontend is V1 throughout —
 ground `#FAFAF8` vs `#0E0F10`, no ember token against 257 uses, three
 different type families, `6px` radius vs `0` — so a re-skin would fight
 every one of those.
+
+---
+
+## 2026-08-29 — `v2.9.0`: the UI sweep, and the six bugs a bigger corpus exposed
+
+Driven entirely by the user using the app and reporting what was wrong.
+Twelve separate reports over one session; every one turned out to be a
+real defect rather than a preference, and four of them were only
+*visible* because the corpus got big enough and nested enough to show
+them.
+
+### The corpus is the instrument
+
+`docs/porting/RUST_PORTING_HANDBOOK.md` — 19 parts, module by module, in
+`.agents/agents.md` §2's scaffold format (types, signatures, numbered
+invariants, pseudocode, test lists, prerequisite chapters). No finished
+Rust anywhere: the port is the exercise.
+
+`tools/seed/handbook.js` **parses** that file into the seed's block
+shorthand rather than restating it — two copies of a 2,000-line document
+diverge inside a week and the one on screen would be the stale one. The
+conversion is lossy where it has to be and says so on the page: a
+markdown table becomes a bulleted list with an aside explaining that
+RFC-001 has no `Table` block kind and that it is gated on an ADR.
+
+Corpus: 18 flat pages → **38 nested, 114 edges, 9 dependency layers, 2
+HNSW layers**. That is what made the following four bugs visible.
+
+### The four the nesting exposed
+
+1. **The graph coloured half of itself grey.** `/graph` returns every
+   live page; `ListPages` returns the direct children of ONE parent.
+   Three screens joined the second against the first to get topics and
+   tags. Flat corpus: looks right. Nested corpus: every nested page
+   untopiced, and the tag filter matching nothing on them.
+   `GraphNode` now carries `topic_name`, `topic_color_key` and `tags`,
+   which the graph query had already loaded and only failed to put on
+   the wire.
+2. **Every `[[link]]` into a nested page looked dangling**, for the same
+   reason — link resolution joined `ListPages`. It resolves against
+   `GetLinkGraph` now.
+3. **`uidiff` was silently diffing the wrong route**, also for the same
+   reason: it resolved `pageTitle` against `/pages`.
+4. **The reader dropped every container's text.** It rendered
+   `b.text` for blocks with no parent, and quote/callout/aside/toggle
+   keep their prose in CHILD blocks — so on the handbook, which is mostly
+   callouts, most of the argument was simply absent. It looked short
+   rather than broken. `ReadBlocks` renders the tree recursively through
+   the same `renderMarkedHTML` the editor uses, which also means read
+   mode has marks at all for the first time.
+
+### The two `tsc` found
+
+`tsc --noEmit` had never been run on this branch. Eight errors, three
+live:
+
+- `RichEditorPane` passed `onDirectiveTrigger` twice and never
+  destructured it, so the `::` container picker called an undefined
+  binding.
+- Backlinks read `source_page_id`/`source_title`; the gateway sends
+  `from_page`/`from_page_title`. Every backlink row rendered blank and
+  navigated to `/pages/undefined`.
+- `/graph` called `dragTo(x, y)` without the node id, so dragging did
+  nothing.
+
+Plus `usePageTree` fetching **inside a state updater** — an updater must
+be pure and React calls it twice under StrictMode, so the fetch fired
+twice or not at all. That is what left a branch marked expanded whose
+children never arrived. Expanding is a state change; one effect turns
+that state into the fetch it implies.
+
+### What shipped
+
+**New algorithms, all Go, all tested:**
+
+- `graphalgo`: `StronglyConnected` (Tarjan), `TopologicalSort` (Kahn) +
+  `Layers` + `Unplaced`, `NearestNeighbours` + `RingSizes`,
+  `NeighbourMajority` (§ 07's SPACE lens), `ReadingPath`.
+- `marginal/semantic` (new module): hashed IDF-weighted TF vectors +
+  a real HNSW with heuristic pruning, filter-during-descent, and recall
+  measured against a brute-force scan on every query.
+- `marginal/syntax` (new module): a code-block lexer, nine languages,
+  compiled to wasm. The invariant that matters is
+  `concat(tokens) == source`, not "colours correctly".
+
+**New screens:** § 09 Discover, § 10d Series (new mockup section), § 20
+Notifications, § 24b Command palette, § 24c Notifications panel, § 23c
+Trash & restore, § 24e Not found.
+
+**Backend:** `Page.block_count`/`word_count`; `GetPageSeries`/
+`ListSeries` (a series IS a page with children — no table, no second
+ordering, so dragging in the rail reorders the series); notification
+read-state; `PreviewDelete`/`ListTrash`/`RestorePage`, which had been
+declared with queries written and no handlers since v2.6.0.
+
+**The rail, redesigned**: status/topic bar pair (genuine-folio's
+`ContentRowBars`), depth guides, part counts known before expanding
+(one `ListSeries` call for the whole rail), ordinals, reading estimates,
+filter match highlighting, a drop LINE rather than a border, staggered
+child reveal, reduced-motion honoured.
+
+### Three places the mockup was wrong, corrected there first
+
+- § 09 said "384-d embeddings". There is no model in this repo; the
+  vectors are 256-d hashed TF-IDF and the screen now says so. The first
+  uncheckable claim on a screen whose whole posture is that its figures
+  can be checked would have been about what it is measuring.
+- § 23c's `PURGED · 108` and `ORPHANED BLOBS · 3` name numbers nothing
+  produces. Dimmed, and saying so.
+- § 23c's `CANCEL` on a running saga. The saga is forward-only by
+  design — an ack that never arrives times out into *proceeding* — so a
+  cancel would have to invent a compensating path that does not exist.
+
+### Known-open, stated rather than implied
+
+- **`comparisons` exceeds `exact_comparisons` on `/discover`.** At 38
+  pages the HNSW tower is 2 layers and the index is buying nothing. Both
+  figures are printed side by side rather than only the flattering one: a
+  structure has to justify itself at the size it is actually running at.
+- **"Changed since you last looked" is by `updated_at`, not by op.** A
+  page edited and reverted still appears. The note under the list says
+  so; the fix is a read over `collab.ops` since the last session.
+- **§ 24 Offline has no local op queue yet**, so that screen is not
+  built. `useCollabPage` drops ops while the socket is down.
+- Still unbuilt from the mockup set: 02 Home, 05b Published page, 11
+  Compiler, 12 Analytics, 14 Netcode, 16 Perf, 18/18b/18c Admin, 19
+  Settings, 21 Media, 22 Plugins, 23/23b/23d Spaces, Profile,
+  Import-export, 24 Offline, 24d Assistant.
