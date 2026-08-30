@@ -199,6 +199,27 @@ func (s *Service) GetUser(ctx context.Context, id domain.UserID) (users.User, er
 	return users.FindByID(ctx, authrepo.New(s.pool), id)
 }
 
+// ListPeople is § 18 ADMIN's PEOPLE panel and its SESSIONS
+// readout, in one call because the screen shows them together
+// and two round trips would let them disagree on screen.
+//
+// No authorization check, and that is a gap rather than a
+// design: RBAC is v3.1.0, so until it exists any authenticated
+// actor can read this. The screen says so out loud rather than
+// implying an admin surface that is actually open.
+func (s *Service) ListPeople(ctx context.Context) ([]users.User, int64, error) {
+	q := authrepo.New(s.pool)
+	people, err := users.List(ctx, q)
+	if err != nil {
+		return nil, 0, err
+	}
+	sessions, err := users.CountActiveSessions(ctx, q)
+	if err != nil {
+		return nil, 0, err
+	}
+	return people, sessions, nil
+}
+
 // Refresh runs the rotation state machine (internal/sessions.Rotate) in
 // one transaction. Reuse detection still commits — the family revocation
 // it performed is real and must persist — but returns ErrSessionExpired

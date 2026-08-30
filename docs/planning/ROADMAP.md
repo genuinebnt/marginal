@@ -1274,7 +1274,7 @@ Discover's related pages (Phase 21) and the assistant's retrieval. Write RFC-006
 | Cosine vs dot product | Why normalisation changes which one is correct |
 | **Blocks are already the chunks** | Generic RAG spends its first week on chunking strategy. RFC-001's block tree is a semantic segmentation that already exists — embed per block, not per arbitrary window |
 | **Op-driven re-embedding** | An `InsertText` dirties one block. Re-embed on flush, debounced — never per keystroke, or the embedding cost dominates the edit path |
-| **Local embeddings** | `fastembed` or `candle` keeps the self-hosted build working without an API key, and is more interesting Rust than the index |
+| **Local embeddings** | ~~`fastembed` or `candle` keeps the self-hosted build working without an API key~~ — **superseded 2026-08-30**: the assistant is RAG with an LLM API key (`RELEASES.md` `v4.4.0`, `OPEN_QUESTIONS.md`). Local embeddings may still be how *retrieval* works — `marginal/semantic` already does it with no model at all — but they no longer make the assistant key-free, so they stop being the argument they were here |
 | Streaming responses under back-pressure | Tokens arriving faster than the editor applies them |
 | **Degradable by construction** | The assistant is never on the editing path; if it dies, editing is unaffected |
 

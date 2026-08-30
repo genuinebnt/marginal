@@ -51,3 +51,22 @@ func formatTimestamp(ts *timestamppb.Timestamp) string {
 	}
 	return ts.AsTime().UTC().Format(time.RFC3339Nano)
 }
+
+type peopleJSON struct {
+	People []userJSON `json:"people"`
+	// Refresh tokens neither revoked nor expired — "signed in
+	// somewhere", not live WebSocket connections. Two different
+	// numbers, and § 18 labels which one this is.
+	ActiveSessions int64 `json:"active_sessions"`
+}
+
+func toPeopleJSON(resp *authv1.ListPeopleResponse) peopleJSON {
+	out := peopleJSON{
+		People:         make([]userJSON, 0, len(resp.GetUsers())),
+		ActiveSessions: resp.GetActiveSessions(),
+	}
+	for _, u := range resp.GetUsers() {
+		out.People = append(out.People, toUserJSON(u))
+	}
+	return out
+}

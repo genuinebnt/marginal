@@ -151,6 +151,42 @@ inherited here, not restated.
 | `POST` | `/auth/refresh` | `Refresh` |
 | `POST` | `/auth/revoke` | `Revoke` |
 | `POST` | `/auth/revoke-all` | `RevokeAll` |
+| `GET` | `/admin/people` | `ListPeople` |
+
+`/admin/people` is under `/admin` rather than `/auth` because it
+is a workspace view, not an authentication operation — § 18
+ADMIN's PEOPLE panel and its SIGNED IN readout, which arrive in
+one response because the screen shows them together and two
+round trips would let them disagree on screen.
+
+```json
+{
+  "people": [
+    { "id": "01a048f4-…", "email": "ui-demo@example.com",
+      "display_name": "Genuine", "cursor_color": "#1971C2",
+      "created_at": "2026-08-28T15:19:35.278136Z" }
+  ],
+  "active_sessions": 324
+}
+```
+
+`active_sessions` counts refresh tokens that are neither revoked
+nor expired — "signed in somewhere". It is deliberately **not** a
+count of live WebSocket connections, which is
+`collaboration-service`'s number, nor of pages with a live rope,
+which is a third. "Sessions" means three things in this system;
+every surface that shows one says which.
+
+Unpaginated and unfiltered: a self-hosted instance's people list
+is short by construction, and a cursor API nobody can exercise is
+worse than none. No `password_hash` is selected — a column that
+never leaves the repository layer cannot leak from a screen.
+
+**Not authorization-gated, and that is a gap rather than a
+design.** RBAC is `v3.1.0` (`RELEASES.md`), so until it exists
+every authenticated actor can read this list. § 18 states that on
+screen rather than implying an admin surface that is actually
+open.
 
 `/auth/revoke-all`'s actor identity comes from the same `X-Actor-Id` header
 stand-in `pages.md`'s gateway shim reads (§ Actor identity above) — there

@@ -81,6 +81,24 @@ func (m *Manager) Get(ctx context.Context, pageID uuid.UUID) (*Session, error) {
 	return s, nil
 }
 
+// OpenSessions counts the pages currently held in memory — § 18
+// ADMIN's SESSIONS readout, from this service's side.
+//
+// This is pages with a live rope, not people: one page with four
+// editors is one session here. It is also not a count of people
+// signed in, which is auth-service's number and a different one
+// again. Three plausible meanings of the word, so the screen
+// labels which it is showing.
+//
+// Note that Manager never evicts (CLAUDE.md's stated demo-scale
+// limitation), so this only grows until restart. A rising number
+// on an idle instance is that, not load.
+func (m *Manager) OpenSessions() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.sessions)
+}
+
 // CloseAll closes every open session — graceful shutdown's job, so
 // buffered flush data drains instead of relying solely on what's already
 // in each session's WAL segment.

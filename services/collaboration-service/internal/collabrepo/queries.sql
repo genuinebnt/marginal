@@ -97,3 +97,30 @@ SELECT
     COALESCE(EXTRACT(EPOCH FROM (NOW() - MAX(created_at))), 0)::float8 AS lag_seconds,
     COUNT(DISTINCT page_id) AS pages
 FROM collab.ops;
+
+-- name: OpsPerHour :many
+-- § 18 ADMIN's sparkline: accepted ops per hour for the last
+-- 14 hours, oldest first, with empty hours present as zero.
+--
+-- generate_series rather than GROUP BY alone, because a quiet
+-- hour has no rows and a sparkline that silently omits it draws
+-- a busy day where there was a gap. The zero is the point.
+WITH hours AS (
+    SELECT generate_series(
+        date_trunc('hour', NOW()) - INTERVAL '13 hours',
+        date_trunc('hour', NOW()),
+        INTERVAL '1 hour'
+    ) AS hour
+)
+SELECT h.hour::timestamptz AS hour, COUNT(o.id) AS ops
+FROM hours h
+LEFT JOIN collab.ops o
+  ON date_trunc('hour', o.created_at) = h.hour
+GROUP BY h.hour
+ORDER BY h.hour ASC;
+
+-- name: DatabaseSize :one
+-- What this service's own database costs on disk. Per service,
+-- because the architecture is database-per-service — a single
+-- "DB SIZE" for the instance would be a number no one owns.
+SELECT pg_database_size(current_database())::bigint AS bytes;

@@ -9,6 +9,7 @@ open.
 |---|---|---|
 | Soft or hard delete for pages | Blocks the page-delete step of the MVP (auth/collaboration don't need it yet). Still open. | Open |
 | Anchor representation (`RFC-001` §9) | Needed once character-granular ops (Phase 3 / collaboration-service) land — block-granular Phase 1 ops don't touch it. Still open. | Open |
+| Does an LLM API key belong in a "self-hosted" product? | Settled that the assistant IS RAG — a vector index for retrieval, an LLM API key for generation (`rig.rs` in the Rust port; the Go equivalent here). `v4.4.0`, `RELEASES.md`. What is **not** settled is what that does to the self-hosting claim: page content leaves the machine on every augmented call, and `ROADMAP.md`'s "local embeddings, no required API key" said the opposite. Needs an ADR before any of it is built — the answer is probably "opt-in, off by default, and the product does not degrade without a key", but that is a decision, not a default. | Open — **ADR first** |
 
 ## Resolved by fiat (not re-litigated)
 

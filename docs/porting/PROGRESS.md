@@ -4269,3 +4269,90 @@ result says whether it stopped on samples or on seconds.
 the in-flight run to finish — a diff taken mid-run compares a
 screen whose RUN AGAIN chip correctly reads RUNNING…, which is
 a false positive, not a defect.
+
+---
+
+## 2026-08-30 — § 18 ADMIN: three sources, and the screen says which
+
+The first admin surface, and the first screen whose whole job is
+to report on the instance rather than on a document.
+
+**Every number is fetched, from three different places, on
+purpose:**
+
+- `GET /admin/health` — **new**, and the one thing `api-gateway`
+  does that is not a REST↔gRPC shim. It probes every service's
+  HTTP health endpoint concurrently (six sequential 2 s timeouts
+  is twelve seconds of a screen doing nothing) and reports
+  `up`/`down`/`timeout` with latency. Three statuses rather than
+  a boolean because they need three different next actions:
+  nothing, read the logs, look at the network. It belongs in the
+  gateway because the gateway is the only process that already
+  knows where every other one lives — there is no registry to
+  ask, which is also why the panel says **"a probe, not a
+  report"**: `up` means this gateway asked and got an answer in
+  time, and nothing about whether that service can reach its own
+  database. Claiming more would be borrowing the word "healthy".
+- `GET /admin/people` — **new** `ListPeople` RPC on
+  `auth-service`. Unpaginated (a self-hosted instance's list is
+  short by construction; a cursor API nobody can exercise is
+  worse than none) and it never selects `password_hash` — a
+  column that does not leave the repository layer cannot leak
+  from a screen.
+- `GET /collab/stats` — extended with `open_sessions`,
+  `database_bytes`, and `ops_per_hour`.
+
+**"Sessions" means three different things in this system**, so
+no readout is labelled just SESSIONS. Refresh tokens neither
+revoked nor expired is **SIGNED IN**; pages with a live rope in
+memory is **OPEN PAGES**; editors connected is a third the screen
+does not currently show. Every surface that shows one says which.
+
+**Two honesty details the data forced:**
+
+- The hourly sparkline is built with `generate_series`, not
+  `GROUP BY` alone, so a quiet hour is a **zero rather than an
+  absent row**. Without it a fourteen-hour window with two busy
+  hours draws as a busy day. On this instance every hour was
+  zero — the last op was 1.1 days ago — and the caption says so
+  instead of drawing a flat line and letting it read as calm.
+- Op-log lag is **not coloured amber**. On an idle instance it is
+  large and perfectly healthy, and a UI that turns red because
+  nobody is typing teaches its reader to ignore red. The mockup
+  had it amber; that was corrected there first.
+
+**Stated on screen, not implied shut:** `/admin/people` has no
+authorization check, because RBAC is `v3.1.0` and there is
+nothing to gate on yet. Every authenticated actor can read it,
+and the panel says so.
+
+**Mockup corrections, in the mockup first.** The SERVICES panel
+listed `sequencer`, `index-worker` and `object-store` — none of
+which exist in this repo — and "4 instances", which this
+deployment cannot honestly say since it runs one of each. PEOPLE
+had an `Assistant` row, and there is no assistant actor
+(`v4.4.0`). The rail marked `Audit log` and `API keys` as
+reachable when they are unbuilt, and dimmed `Services`/`Queues`/
+`People`/`Sessions` when those are panels on this very page. One
+readout became four, for the "sessions" reason above.
+
+**One uidiff lesson worth recording**, because it cost real time:
+a rail row rendered as `<a class="tr">` while its neighbours were
+`<div class="tr">` put the two into different signature groups
+and produced a **phantom index shift** — two rows reported as
+having each other's opacity, on lists that were provably
+identical when dumped side by side. The anchor also differed from
+its neighbours only by an underline the stylesheet then had to
+unset, which is a distinction with no meaning. One element type
+per row now, on both sides.
+
+**Gate:** `node tools/uidiff/uidiff.js 18 /admin` → **missing 0 ·
+property diffs 0 · chrome text diffs 0**. Twelve § 18 checks in
+`verify.js`, including that the one rail row which goes somewhere
+actually goes there.
+
+**Also corrected while here:** `docs/api/README.md`'s endpoint
+index still listed Diagnostics, History and Search as "not in
+Track 1 scope" — all three shipped in `v2.3.0`/`v2.4.0`/`v2.5.0`
+once `ADR-012` reversed those deferrals. A contract index that
+disagrees with the contracts is worse than no index.

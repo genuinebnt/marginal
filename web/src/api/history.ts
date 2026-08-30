@@ -82,6 +82,17 @@ export interface CollabStats {
   /** Time since the newest op. On an idle instance this is large
    *  and fine — the screen labels it rather than colouring it. */
   lag_seconds: number;
+  /** Pages with a live rope in memory. NOT people signed in
+   *  (auth-service's number) and not editors connected. Three
+   *  meanings of "sessions"; each surface says which it shows. */
+  open_sessions: number;
+  /** This service's own database. Database-per-service means an
+   *  instance-wide "DB size" is a number nobody owns. */
+  database_bytes: number;
+  /** Last 14 hours, oldest first, quiet hours present as zero —
+   *  a sparkline that omits them draws a busy day where there
+   *  was a gap. Always an array, never null. */
+  ops_per_hour: number[];
 }
 
 export function getCollabStats(): Promise<CollabStats> {

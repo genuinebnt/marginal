@@ -332,6 +332,33 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
   await settled();
   check('§16 RUN AGAIN re-measures', (await percentiles()) !== beforeRerun);
 
+  // ── § 18 ADMIN: every number fetched, from three sources ──
+  await go('/admin', 6000);
+  check('§18 the gear reaches it at all',
+        (await p.evaluate(() => location.pathname)) === '/admin');
+  check('§18 every service was probed and answered',
+        /SERVICES · (\d+) of \1/.test(await txt()), (await txt()).match(/SERVICES · \d+ of \d+/)?.[0]);
+  check('§18 a probe reports a latency, not a guess', /\d+ ms/.test(await txt()));
+  check('§18 it refuses to overclaim what "up" means',
+        /A probe, not a report/.test(await txt()));
+  check('§18 people come from auth-service', /PEOPLE · [1-9]/.test(await txt()));
+  check('§18 and it names the actor reading it', /\byou\b/.test(await txt()));
+  check('§18 the open admin surface is stated, not implied shut',
+        /readable by any signed-in actor/.test(await txt()));
+  check('§18 queue numbers come from collaboration-service',
+        /OUTBOX DEPTH/.test(await txt()) && /DB SIZE/.test(await txt()));
+  check('§18 "sessions" is disambiguated rather than guessed at',
+        /SIGNED IN/.test(await txt()) && /OPEN PAGES/.test(await txt()));
+  check('§18 a quiet sparkline says it is quiet rather than drawing a flat line',
+        /accepted ops per hour/.test(await txt()));
+  check('§18 backups say there are none', /no backup system exists/.test(await txt()));
+
+  // The one rail row that goes somewhere has to go there.
+  await p.locator('.tr', { hasText: 'Jobs & sagas' }).first().click();
+  await p.waitForTimeout(1500);
+  check('§18 Jobs & sagas reaches the saga screen',
+        (await p.evaluate(() => location.pathname)) === '/trash');
+
   // ── § 24e NOT FOUND ───────────────────────────────────────────────────
   await go('/p/the-documnt-block-modl', 4000);
   check('§24e a wrong URL is not a redirect', (await p.evaluate(()=>location.pathname)) === '/p/the-documnt-block-modl');

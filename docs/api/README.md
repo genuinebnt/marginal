@@ -65,6 +65,9 @@ Written here per feature as it is built — request/response shapes, status code
 | Files (presigned upload) | ⬜ not in Track 1 scope (`ADR-011`) |
 | Auth | ✅ implemented — see `auth.md` |
 | Collaboration (WebSocket) | ✅ implemented — see `collaboration.md` |
-| Diagnostics | ⬜ not in Track 1 scope (`ADR-011`) |
-| History | ⬜ not in Track 1 scope (`ADR-011`) |
-| Search & backlinks | ⬜ not in Track 1 scope (`ADR-011`) |
+| Diagnostics | ✅ implemented (`v2.3.0`) — see `diagnostics.md` |
+| History, trace & diff | ✅ implemented (`v2.4.0`) — `collaboration.md` §§5–7, served by `collaboration-service` directly |
+| Search & backlinks | ✅ implemented (`v2.5.0`) — see `search.md`; backlinks in `pages.md` |
+| Graph | ✅ implemented (`v2.2.0`) — see `graph.md` |
+| Series & trash | ✅ implemented — see `pages.md` |
+| Admin | ✅ implemented — `GET /admin/health` (the gateway's own probe of every service) and `GET /admin/people` (`auth.md`); the queue numbers beside them are `collaboration.md` §8, reached directly |

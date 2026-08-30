@@ -29,6 +29,7 @@ import (
 	diagnosticsv1 "marginal/diagnostics-service/genproto/diagnosticsv1"
 	documentv1 "marginal/document-service/genproto/documentv1"
 
+	"marginal/api-gateway/internal/adminrest"
 	"marginal/api-gateway/internal/authrest"
 	"marginal/api-gateway/internal/diagnosticsrest"
 	"marginal/api-gateway/internal/discoverrest"
@@ -99,6 +100,20 @@ func run() error {
 	diagnosticsHandler := diagnosticsrest.NewHandler(diagnosticsv1.NewDiagnosticsServiceClient(diagnosticsConn))
 	auth := authrest.NewHandler(authv1.NewAuthServiceClient(authConn))
 
+	// § 18 ADMIN's SERVICES panel. HTTP health endpoints, not the
+	// gRPC ones: the question is "is the process answering", and
+	// every service in this repo exposes exactly one plain probe
+	// for that. Addresses come from the environment so the list
+	// follows the deployment rather than a constant compiled in
+	// here.
+	admin := adminrest.NewHandler(map[string]string{
+		"document-service":      envconfig.EnvOr("DOCUMENT_SERVICE_HEALTH_URL", "http://localhost:8001/health"),
+		"auth-service":          envconfig.EnvOr("AUTH_SERVICE_HEALTH_URL", "http://localhost:8006/health"),
+		"collaboration-service": envconfig.EnvOr("COLLABORATION_SERVICE_HEALTH_URL", "http://localhost:8002/health"),
+		"notification-service":  envconfig.EnvOr("NOTIFICATION_SERVICE_HEALTH_URL", "http://localhost:8007/health"),
+		"diagnostics-service":   envconfig.EnvOr("DIAGNOSTICS_SERVICE_HEALTH_URL", "http://localhost:8008/health"),
+	})
+
 	r := chi.NewRouter()
 	r.Use(middleware.Timeout(requestTimeout))
 	r.Use(limitRequestBody)
@@ -132,6 +147,7 @@ func run() error {
 	discoverHandler.Mount(r)
 	diagnosticsHandler.Mount(r)
 	auth.Mount(r)
+	admin.Mount(r)
 
 	addr := envconfig.EnvOr("API_GATEWAY_HTTP_ADDR", ":8000")
 	slog.Info("api-gateway listening", "addr", addr, "document_service", documentAddr, "auth_service", authAddr, "diagnostics_service", diagnosticsAddr)

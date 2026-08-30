@@ -83,6 +83,21 @@ func (s *Server) GetUser(ctx context.Context, req *authv1.GetUserRequest) (*auth
 	return toProtoUser(user), nil
 }
 
+func (s *Server) ListPeople(ctx context.Context, _ *authv1.ListPeopleRequest) (*authv1.ListPeopleResponse, error) {
+	people, sessions, err := s.Service.ListPeople(ctx)
+	if err != nil {
+		return nil, toStatus(err)
+	}
+	out := &authv1.ListPeopleResponse{
+		Users:          make([]*authv1.User, 0, len(people)),
+		ActiveSessions: sessions,
+	}
+	for _, u := range people {
+		out.Users = append(out.Users, toProtoUser(u))
+	}
+	return out, nil
+}
+
 func (s *Server) Refresh(ctx context.Context, req *authv1.RefreshRequest) (*authv1.TokenPair, error) {
 	pair, err := s.Service.Refresh(ctx, req.GetRefreshToken())
 	if err != nil {

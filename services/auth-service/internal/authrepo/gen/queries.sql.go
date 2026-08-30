@@ -50,6 +50,22 @@ func (q *Queries) ClaimUnpublishedOutboxEvents(ctx context.Context, limit int32)
 	return items, nil
 }
 
+const countActiveSessions = `-- name: CountActiveSessions :one
+SELECT COUNT(*) FROM auth.refresh_tokens
+WHERE revoked_at IS NULL AND expires_at > NOW()
+`
+
+// Refresh tokens that are neither revoked nor expired — the
+// honest definition of "signed in somewhere". Not WebSocket
+// connections, which is what § 18's SESSIONS readout could be
+// mistaken for; the screen says which it means.
+func (q *Queries) CountActiveSessions(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countActiveSessions)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const findRefreshTokenByHash = `-- name: FindRefreshTokenByHash :one
 SELECT id, user_id, token_hash, parent_id, expires_at, revoked_at, created_at
 FROM auth.refresh_tokens
@@ -230,6 +246,53 @@ func (q *Queries) InsertUser(ctx context.Context, arg InsertUserParams) (AuthUse
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const listUsers = `-- name: ListUsers :many
+SELECT id, email, display_name, cursor_color, created_at
+FROM auth.users
+ORDER BY created_at DESC
+`
+
+type ListUsersRow struct {
+	ID          pgtype.UUID
+	Email       string
+	DisplayName string
+	CursorColor string
+	CreatedAt   pgtype.Timestamptz
+}
+
+// § 18 ADMIN's PEOPLE panel. Newest first, and password_hash is
+// NOT selected — an admin list has no reason to carry it, and a
+// column that never leaves the repo cannot leak from a screen.
+//
+// Unpaginated on purpose: this is a self-hosted instance whose
+// whole point is that the people list is short. A LIMIT here
+// would be a cursor API nobody can exercise.
+func (q *Queries) ListUsers(ctx context.Context) ([]ListUsersRow, error) {
+	rows, err := q.db.Query(ctx, listUsers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListUsersRow
+	for rows.Next() {
+		var i ListUsersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Email,
+			&i.DisplayName,
+			&i.CursorColor,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const markOutboxEventsPublished = `-- name: MarkOutboxEventsPublished :exec

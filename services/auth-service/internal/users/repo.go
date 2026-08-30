@@ -84,3 +84,44 @@ func toPgUUID(id domain.UserID) pgtype.UUID {
 }
 
 func fromPgUUID(id pgtype.UUID) uuid.UUID { return uuid.UUID(id.Bytes) }
+
+// List returns every user, newest first — § 18 ADMIN's PEOPLE
+// panel.
+//
+// Unpaginated, matching the query's own reasoning: a self-hosted
+// instance's people list is short by construction, and a cursor
+// API nobody can exercise is worse than none. The row carries no
+// password hash, so the User values returned here have an empty
+// PasswordHash — which is correct, not a gap: an admin listing
+// has no use for it.
+func List(ctx context.Context, q *authrepo.Queries) ([]User, error) {
+	rows, err := q.ListUsers(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("users: list: %w", err)
+	}
+	out := make([]User, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, User{
+			ID:          domain.UserID(fromPgUUID(row.ID)),
+			Email:       domain.EmailFromStored(row.Email),
+			DisplayName: domain.DisplayNameFromStored(row.DisplayName),
+			CursorColor: domain.CursorColorFromStored(row.CursorColor),
+			CreatedAt:   row.CreatedAt.Time,
+		})
+	}
+	return out, nil
+}
+
+// CountActiveSessions counts refresh tokens that are neither
+// revoked nor expired — "signed in somewhere".
+//
+// Deliberately not a count of live WebSocket connections, which
+// is the other thing "sessions" could mean and is
+// collaboration-service's number. § 18 says which it means.
+func CountActiveSessions(ctx context.Context, q *authrepo.Queries) (int64, error) {
+	n, err := q.CountActiveSessions(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("users: count active sessions: %w", err)
+	}
+	return n, nil
+}

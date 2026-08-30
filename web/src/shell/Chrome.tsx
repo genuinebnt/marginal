@@ -149,6 +149,7 @@ export function TopBar({
   readouts,
   now = new Date(),
   bare = false,
+  noTabs = false,
   right,
   spark,
   peers,
@@ -157,6 +158,10 @@ export function TopBar({
   readouts?: ReactNode;
   now?: Date;
   bare?: boolean;
+  /** Hide the nav tabs but keep the utility cluster — § 18 ADMIN,
+   *  which sits outside the five-tab set rather than inside it.
+   *  `bare` drops both, which is the pre-auth case. */
+  noTabs?: boolean;
   /** Trailing content for screens whose bar ends in something other than
    *  the utility cluster — the pre-auth screens' register/log-in switch.
    *  A prop rather than an overlay: .bar carries z-index 7, so anything
@@ -173,7 +178,7 @@ export function TopBar({
       <span className="wm">
         m<span style={{ color: "#E8873C" }}>/</span>arginal
       </span>
-      {!bare && (
+      {!bare && !noTabs && (
         <div className="tabs">
           {TABS.map((t) => (
             <Link

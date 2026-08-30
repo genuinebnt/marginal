@@ -51,6 +51,20 @@ func (q *Queries) ClaimUnpublishedOutboxEvents(ctx context.Context, limit int32)
 	return items, nil
 }
 
+const databaseSize = `-- name: DatabaseSize :one
+SELECT pg_database_size(current_database())::bigint AS bytes
+`
+
+// What this service's own database costs on disk. Per service,
+// because the architecture is database-per-service — a single
+// "DB SIZE" for the instance would be a number no one owns.
+func (q *Queries) DatabaseSize(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, databaseSize)
+	var bytes int64
+	err := row.Scan(&bytes)
+	return bytes, err
+}
+
 const insertOp = `-- name: InsertOp :one
 INSERT INTO collab.ops (
     id, page_id, actor_id, actor_kind, undo_group,
@@ -220,6 +234,53 @@ func (q *Queries) OpLogStats(ctx context.Context) (OpLogStatsRow, error) {
 	var i OpLogStatsRow
 	err := row.Scan(&i.Ops, &i.LagSeconds, &i.Pages)
 	return i, err
+}
+
+const opsPerHour = `-- name: OpsPerHour :many
+WITH hours AS (
+    SELECT generate_series(
+        date_trunc('hour', NOW()) - INTERVAL '13 hours',
+        date_trunc('hour', NOW()),
+        INTERVAL '1 hour'
+    ) AS hour
+)
+SELECT h.hour::timestamptz AS hour, COUNT(o.id) AS ops
+FROM hours h
+LEFT JOIN collab.ops o
+  ON date_trunc('hour', o.created_at) = h.hour
+GROUP BY h.hour
+ORDER BY h.hour ASC
+`
+
+type OpsPerHourRow struct {
+	Hour pgtype.Timestamptz
+	Ops  int64
+}
+
+// § 18 ADMIN's sparkline: accepted ops per hour for the last
+// 14 hours, oldest first, with empty hours present as zero.
+//
+// generate_series rather than GROUP BY alone, because a quiet
+// hour has no rows and a sparkline that silently omits it draws
+// a busy day where there was a gap. The zero is the point.
+func (q *Queries) OpsPerHour(ctx context.Context) ([]OpsPerHourRow, error) {
+	rows, err := q.db.Query(ctx, opsPerHour)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OpsPerHourRow
+	for rows.Next() {
+		var i OpsPerHourRow
+		if err := rows.Scan(&i.Hour, &i.Ops); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const outboxDepth = `-- name: OutboxDepth :one

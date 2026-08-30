@@ -563,9 +563,30 @@ is a resource.
   "outbox_oldest_seconds": 0,
   "ops": 2422,
   "pages": 140,
-  "lag_seconds": 17553.75
+  "lag_seconds": 17553.75,
+  "open_sessions": 0,
+  "database_bytes": 12900031,
+  "ops_per_hour": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 }
 ```
+
+`open_sessions` is pages with a live rope in memory — **not**
+people signed in (`auth-service`'s number, `auth.md`
+`/admin/people`) and not editors connected. Three meanings of
+"sessions"; every surface that shows one says which. Note also
+that `Manager` never evicts (`CLAUDE.md`'s stated demo-scale
+limitation), so this only grows until restart: a rising number on
+an idle instance is that, not load.
+
+`database_bytes` is **this service's own** database.
+Database-per-service means an instance-wide "DB size" is a number
+nobody owns, so each service reports its own or none at all.
+
+`ops_per_hour` is the last 14 hours, oldest first, with quiet
+hours present as **zero rather than absent** — a sparkline that
+omits them draws a busy day where there was a gap. It is built
+with `generate_series`, not `GROUP BY` alone, for exactly that
+reason. Always an array, never `null`.
 
 **Two numbers per queue, not one.** `outbox_depth` alone
 cannot tell a healthy burst from a stopped poller: 400 events
@@ -580,8 +601,8 @@ screen labels it rather than colouring it — a UI that turns
 red because nobody is typing teaches its reader to ignore
 red.
 
-Two aggregate queries, no session state touched, safe to
-poll while people are editing — which is the only way it is
+Four aggregate queries plus one in-memory count, no session
+state mutated, safe to poll while people are editing — which is the only way it is
 useful. It is deliberately **not** authenticated, for the
 same reason and with the same caveat as §§5–7: these are
 local debug surfaces, and the RS256 verification `ADR-011`

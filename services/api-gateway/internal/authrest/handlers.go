@@ -28,6 +28,11 @@ func (h *Handler) Mount(r chi.Router) {
 	r.Post("/auth/refresh", h.refresh)
 	r.Post("/auth/revoke", h.revoke)
 	r.Post("/auth/revoke-all", h.revokeAll)
+	// § 18 ADMIN. Under /admin rather than /auth because it is a
+	// workspace view, not an authentication operation — and it is
+	// NOT authorization-gated, because RBAC is v3.1.0 and there is
+	// nothing to gate on yet. The screen says so.
+	r.Get("/admin/people", h.listPeople)
 }
 
 type registerRequest struct {
@@ -85,6 +90,15 @@ func (h *Handler) getUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	apierror.WriteJSON(w, http.StatusOK, toUserJSON(user))
+}
+
+func (h *Handler) listPeople(w http.ResponseWriter, r *http.Request) {
+	resp, err := h.client.ListPeople(actorctx.FromRequest(r), &authv1.ListPeopleRequest{})
+	if err != nil {
+		apierror.WriteGRPCStatus(w, err)
+		return
+	}
+	apierror.WriteJSON(w, http.StatusOK, toPeopleJSON(resp))
 }
 
 type refreshRequest struct {

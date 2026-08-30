@@ -181,6 +181,15 @@ services:
       DOCUMENT_SERVICE_GRPC_ADDR: document-service:9001
       AUTH_SERVICE_GRPC_ADDR: auth-service:9006
       DIAGNOSTICS_SERVICE_GRPC_ADDR: diagnostics-service:9008
+      # § 18 ADMIN's SERVICES panel probes these. Service names,
+      # not localhost: inside the compose network each service is
+      # its own host, and localhost would be the gateway probing
+      # itself five times and calling everything down.
+      DOCUMENT_SERVICE_HEALTH_URL: http://document-service:8001/health
+      AUTH_SERVICE_HEALTH_URL: http://auth-service:8006/health
+      COLLABORATION_SERVICE_HEALTH_URL: http://collaboration-service:8002/health
+      NOTIFICATION_SERVICE_HEALTH_URL: http://notification-service:8007/health
+      DIAGNOSTICS_SERVICE_HEALTH_URL: http://diagnostics-service:8008/health
     ports:
       - "8000:8000" # the browser's entry point for REST
     depends_on:

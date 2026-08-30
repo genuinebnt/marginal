@@ -86,3 +86,23 @@ FOR UPDATE SKIP LOCKED;
 -- name: MarkOutboxEventsPublished :exec
 UPDATE auth.outbox SET published_at = NOW()
 WHERE id = ANY(sqlc.arg(ids)::uuid[]);
+
+-- name: ListUsers :many
+-- § 18 ADMIN's PEOPLE panel. Newest first, and password_hash is
+-- NOT selected — an admin list has no reason to carry it, and a
+-- column that never leaves the repo cannot leak from a screen.
+--
+-- Unpaginated on purpose: this is a self-hosted instance whose
+-- whole point is that the people list is short. A LIMIT here
+-- would be a cursor API nobody can exercise.
+SELECT id, email, display_name, cursor_color, created_at
+FROM auth.users
+ORDER BY created_at DESC;
+
+-- name: CountActiveSessions :one
+-- Refresh tokens that are neither revoked nor expired — the
+-- honest definition of "signed in somewhere". Not WebSocket
+-- connections, which is what § 18's SESSIONS readout could be
+-- mistaken for; the screen says which it means.
+SELECT COUNT(*) FROM auth.refresh_tokens
+WHERE revoked_at IS NULL AND expires_at > NOW();

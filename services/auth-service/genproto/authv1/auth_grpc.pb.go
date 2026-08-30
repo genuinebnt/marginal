@@ -30,6 +30,7 @@ const (
 	AuthService_Refresh_FullMethodName      = "/marginal.auth.v1.AuthService/Refresh"
 	AuthService_Revoke_FullMethodName       = "/marginal.auth.v1.AuthService/Revoke"
 	AuthService_RevokeAll_FullMethodName    = "/marginal.auth.v1.AuthService/RevokeAll"
+	AuthService_ListPeople_FullMethodName   = "/marginal.auth.v1.AuthService/ListPeople"
 )
 
 // AuthServiceClient is the client API for AuthService service.
@@ -42,6 +43,19 @@ type AuthServiceClient interface {
 	Refresh(ctx context.Context, in *RefreshRequest, opts ...grpc.CallOption) (*TokenPair, error)
 	Revoke(ctx context.Context, in *RevokeRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	RevokeAll(ctx context.Context, in *RevokeAllRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	// § 18 ADMIN's PEOPLE panel and its SESSIONS readout.
+	//
+	// Unpaginated and unfiltered: a self-hosted instance's whole
+	// point is that this list is short, and a cursor API nobody
+	// can exercise is worse than none. It carries no
+	// password_hash — a column that never leaves the repo cannot
+	// leak from a screen.
+	//
+	// NOT authorization-gated, and that is a gap rather than a
+	// design: RBAC is v3.1.0, and until it exists every
+	// authenticated actor can call this. Stated here so the ADMIN
+	// screen can state it too.
+	ListPeople(ctx context.Context, in *ListPeopleRequest, opts ...grpc.CallOption) (*ListPeopleResponse, error)
 }
 
 type authServiceClient struct {
@@ -112,6 +126,16 @@ func (c *authServiceClient) RevokeAll(ctx context.Context, in *RevokeAllRequest,
 	return out, nil
 }
 
+func (c *authServiceClient) ListPeople(ctx context.Context, in *ListPeopleRequest, opts ...grpc.CallOption) (*ListPeopleResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListPeopleResponse)
+	err := c.cc.Invoke(ctx, AuthService_ListPeople_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AuthServiceServer is the server API for AuthService service.
 // All implementations must embed UnimplementedAuthServiceServer
 // for forward compatibility.
@@ -122,6 +146,19 @@ type AuthServiceServer interface {
 	Refresh(context.Context, *RefreshRequest) (*TokenPair, error)
 	Revoke(context.Context, *RevokeRequest) (*emptypb.Empty, error)
 	RevokeAll(context.Context, *RevokeAllRequest) (*emptypb.Empty, error)
+	// § 18 ADMIN's PEOPLE panel and its SESSIONS readout.
+	//
+	// Unpaginated and unfiltered: a self-hosted instance's whole
+	// point is that this list is short, and a cursor API nobody
+	// can exercise is worse than none. It carries no
+	// password_hash — a column that never leaves the repo cannot
+	// leak from a screen.
+	//
+	// NOT authorization-gated, and that is a gap rather than a
+	// design: RBAC is v3.1.0, and until it exists every
+	// authenticated actor can call this. Stated here so the ADMIN
+	// screen can state it too.
+	ListPeople(context.Context, *ListPeopleRequest) (*ListPeopleResponse, error)
 	mustEmbedUnimplementedAuthServiceServer()
 }
 
@@ -149,6 +186,9 @@ func (UnimplementedAuthServiceServer) Revoke(context.Context, *RevokeRequest) (*
 }
 func (UnimplementedAuthServiceServer) RevokeAll(context.Context, *RevokeAllRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method RevokeAll not implemented")
+}
+func (UnimplementedAuthServiceServer) ListPeople(context.Context, *ListPeopleRequest) (*ListPeopleResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListPeople not implemented")
 }
 func (UnimplementedAuthServiceServer) mustEmbedUnimplementedAuthServiceServer() {}
 func (UnimplementedAuthServiceServer) testEmbeddedByValue()                     {}
@@ -279,6 +319,24 @@ func _AuthService_RevokeAll_Handler(srv interface{}, ctx context.Context, dec fu
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AuthService_ListPeople_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListPeopleRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).ListPeople(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_ListPeople_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).ListPeople(ctx, req.(*ListPeopleRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AuthService_ServiceDesc is the grpc.ServiceDesc for AuthService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -309,6 +367,10 @@ var AuthService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RevokeAll",
 			Handler:    _AuthService_RevokeAll_Handler,
+		},
+		{
+			MethodName: "ListPeople",
+			Handler:    _AuthService_ListPeople_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
