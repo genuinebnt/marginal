@@ -1,3 +1,4 @@
+import { wasmExecURL, wasmURL } from "../wasm-url";
 // Loads the Go/WASM diffwasm module and exposes a typed call — the same
 // loader shape as ../graph-core/wasm.ts (this repo's third wasm module,
 // not a third bridge design). No diff algorithm lives here: the LCS
@@ -67,7 +68,7 @@ async function loadGoRuntime(): Promise<void> {
     ? await (
         await import("node:fs/promises")
       ).readFile(new URL("../../public/wasm_exec.js", import.meta.url), "utf-8")
-    : await (await fetch("/wasm_exec.js")).text();
+    : await (await fetch(wasmExecURL())).text();
 
   // wasm_exec.js is a classic (non-module) script that assigns
   // `globalThis.Go = class {...}` — running it via `new Function` executes
@@ -81,7 +82,7 @@ async function fetchWasmBytes(): Promise<ArrayBuffer> {
     const buf = await readFile(new URL("../../public/diff.wasm", import.meta.url));
     return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
   }
-  const res = await fetch("/diff.wasm");
+  const res = await fetch(wasmURL("diff"));
   return res.arrayBuffer();
 }
 

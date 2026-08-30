@@ -10,17 +10,19 @@
 	header @immutable Cache-Control "public, max-age=31536000, immutable"
 
 	# The wasm modules are served from public/, so Vite does not hash their
-	# names and they carried no Cache-Control at all — six modules, about 6 MB
-	# gzipped, re-fetched from this box on every single visit.
+	# names — a rebuild changes the bytes behind a stable URL. That forced a
+	# five-minute max-age, which meant every visitor re-downloaded about a
+	# megabyte per module every five minutes, on every screen that used one.
+	# Nine modules. That is what "the app is very slow" turned out to be:
+	# not the server, which sits at 0% CPU, but the cache expiring constantly.
 	#
-	# They cannot take the immutable treatment above precisely because the names
-	# are stable: a rebuild changes the bytes behind the same URL, and a browser
-	# holding a year-old copy would run stale wasm against a freshly hashed JS
-	# bundle. Five minutes is short enough that a deploy cannot mismatch for
-	# long, and with an ETag on every response the revalidations are 304s.
-	# The lasting fix is to hash these names too — see web/Dockerfile.
+	# The lasting fix, now applied: the loaders append ?v=<build id>, so each
+	# deploy asks for a URL nothing has ever cached — which is exactly the
+	# condition `immutable` requires. Same trick Vite applies to /assets/* by
+	# hashing filenames; this is the query-string version, for files it does
+	# not own. See web/src/wasm-url.ts.
 	@wasm path *.wasm
-	header @wasm Cache-Control "public, max-age=300"
+	header @wasm Cache-Control "public, max-age=31536000, immutable"
 
 	# index.html must NEVER be cached, and this is not a tuning knob.
 	#

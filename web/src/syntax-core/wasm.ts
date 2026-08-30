@@ -1,3 +1,4 @@
+import { wasmExecURL, wasmURL } from "../wasm-url";
 // Loads cmd/syntaxwasm and exposes the code-block highlighter — the same
 // JSON-bridge shape as document-core/, graph-core/, diff-core/ and trie-core/.
 //
@@ -53,7 +54,7 @@ async function loadGoRuntime(): Promise<void> {
   const source = isNode
     ? await (await import("node:fs/promises")).readFile(
         new URL("../../public/wasm_exec.js", import.meta.url), "utf-8")
-    : await (await fetch("/wasm_exec.js")).text();
+    : await (await fetch(wasmExecURL())).text();
   new Function(source)();
 }
 
@@ -63,7 +64,7 @@ async function fetchWasmBytes(): Promise<ArrayBuffer> {
     const buf = await readFile(new URL("../../public/syntax.wasm", import.meta.url));
     return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
   }
-  const res = await fetch("/syntax.wasm");
+  const res = await fetch(wasmURL("syntax"));
   return res.arrayBuffer();
 }
 

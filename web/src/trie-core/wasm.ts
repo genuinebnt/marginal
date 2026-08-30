@@ -1,3 +1,4 @@
+import { wasmExecURL, wasmURL } from "../wasm-url";
 // Loads the Go/WASM triewasm module and exposes a typed call — the same
 // loader shape as ../graph-core/wasm.ts and ../diff-core/wasm.ts (this
 // repo's fourth wasm module, not a fourth bridge design). No prefix-
@@ -42,7 +43,7 @@ async function loadGoRuntime(): Promise<void> {
     ? await (
         await import("node:fs/promises")
       ).readFile(new URL("../../public/wasm_exec.js", import.meta.url), "utf-8")
-    : await (await fetch("/wasm_exec.js")).text();
+    : await (await fetch(wasmExecURL())).text();
 
   // wasm_exec.js is a classic (non-module) script that assigns
   // `globalThis.Go = class {...}` — running it via `new Function` executes
@@ -56,7 +57,7 @@ async function fetchWasmBytes(): Promise<ArrayBuffer> {
     const buf = await readFile(new URL("../../public/trie.wasm", import.meta.url));
     return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
   }
-  const res = await fetch("/trie.wasm");
+  const res = await fetch(wasmURL("trie"));
   return res.arrayBuffer();
 }
 

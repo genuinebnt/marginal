@@ -253,6 +253,10 @@ services:
         VITE_GATEWAY_URL: ${PUBLIC_ORIGIN}/api
         VITE_COLLAB_URL: ${PUBLIC_ORIGIN}/ws
         VITE_NOTIFICATIONS_URL: ${PUBLIC_ORIGIN}/notify
+        # Makes each build's wasm URLs unique so they can be cached
+        # immutably. Defaults to the date if unset, which degrades to a
+        # daily cache rather than a stale-forever one.
+        VITE_BUILD_ID: ${BUILD_ID:-}
     networks:
       - edge
     mem_limit: 64m

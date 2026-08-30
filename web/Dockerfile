@@ -42,6 +42,10 @@ RUN set -eux; \
     cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" /out/wasm_exec.js
 
 FROM node:22-alpine AS build
+# Distinguishes one build's wasm from another's. The loaders append it to
+# every .wasm URL so those can be cached immutably — see web/src/wasm-url.ts.
+# Any value that changes per build works; the default is the date, so a
+# forgotten build arg degrades to daily rather than to a stale-forever cache.
 WORKDIR /app
 COPY web/package.json web/package-lock.json ./
 RUN npm ci
@@ -58,8 +62,15 @@ COPY --from=wasm /out/ ./public/
 ARG VITE_GATEWAY_URL=https://marginal.genuinebasil.dev/api
 ARG VITE_COLLAB_URL=https://marginal.genuinebasil.dev/ws
 ARG VITE_NOTIFICATIONS_URL=https://marginal.genuinebasil.dev/notify
-RUN printf 'VITE_GATEWAY_URL=%s\nVITE_COLLAB_URL=%s\nVITE_NOTIFICATIONS_URL=%s\n' \
+# Distinguishes one build's wasm from another's: the loaders append it to
+# every .wasm URL, which is what lets those be cached immutably
+# (web/src/wasm-url.ts, and the @wasm rule in Caddyfile.static). Empty
+# falls back to the build date — degrading to a daily cache rather than to
+# a stale-forever one, which is the failure that matters.
+ARG VITE_BUILD_ID=
+RUN printf 'VITE_GATEWAY_URL=%s\nVITE_COLLAB_URL=%s\nVITE_NOTIFICATIONS_URL=%s\nVITE_BUILD_ID=%s\n' \
         "$VITE_GATEWAY_URL" "$VITE_COLLAB_URL" "$VITE_NOTIFICATIONS_URL" \
+        "${VITE_BUILD_ID:-$(date +%Y%m%d%H%M%S)}" \
         > .env.production \
     && npm run build
 

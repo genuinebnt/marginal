@@ -1,3 +1,4 @@
+import { wasmExecURL, wasmURL } from "../wasm-url";
 // Loads cmd/sketchwasm and exposes § 12's three sketches — the same
 // JSON-bridge shape as every other wasm module here.
 //
@@ -91,7 +92,7 @@ async function loadGoRuntime(): Promise<void> {
   const source = isNode
     ? await (await import("node:fs/promises")).readFile(
         new URL("../../public/wasm_exec.js", import.meta.url), "utf-8")
-    : await (await fetch("/wasm_exec.js")).text();
+    : await (await fetch(wasmExecURL())).text();
   new Function(source)();
 }
 
@@ -101,7 +102,7 @@ async function fetchWasmBytes(): Promise<ArrayBuffer> {
     const buf = await readFile(new URL("../../public/sketch.wasm", import.meta.url));
     return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
   }
-  const res = await fetch("/sketch.wasm");
+  const res = await fetch(wasmURL("sketch"));
   return res.arrayBuffer();
 }
 
