@@ -2,7 +2,6 @@ package netsim
 
 import (
 	"fmt"
-	"math"
 	"sort"
 )
 
@@ -288,11 +287,11 @@ func Run(s Scenario) Report {
 		}
 	}
 
-	// Drain anything still in the air after the horizon, so the report
+	// Drain what is still in the air after the horizon, so the report
 	// describes a settled system rather than a snapshot mid-flight.
-	for _, f := range append(append([]inFlight{}, toServer...), toClients...) {
-		_ = f
-	}
+	// Several passes because a confirmation can only be applied once
+	// the client's `seen` has caught up to its base, and the ones
+	// still queued may be out of order.
 	for pass := 0; pass < 4; pass++ {
 		for _, f := range toClients {
 			for _, c := range clients {
@@ -385,14 +384,12 @@ func applyConfirmed(c *client, op Op, transform bool) {
 	}
 	// Somebody else's. Undo what is pending, take theirs, redo ours on
 	// top — transformed, so our intent survives their edit.
-	before := c.text
 	for i := len(c.pending) - 1; i >= 0; i-- {
 		c.text = c.pending[i].Invert(c.text).Apply(c.text)
 	}
 	if len(c.pending) > 0 {
 		c.rolled++
 	}
-	_ = before
 	c.text = op.Apply(c.text)
 	for i := range c.pending {
 		if transform {
@@ -470,12 +467,4 @@ func checkIntent(s Scenario, got Report) ([]Violation, string) {
 		})
 	}
 	return out, want.ServerText
-}
-
-// Percent is a small helper the screen uses for its bars.
-func Percent(part, whole int) float64 {
-	if whole == 0 {
-		return 0
-	}
-	return math.Round(float64(part)/float64(whole)*1000) / 10
 }

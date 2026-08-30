@@ -4245,6 +4245,20 @@ port:**
   is itself information, and printing it in the same ink as a
   real one would be the lie.
 
+**One check that cannot be written, and why.** The RUN AGAIN
+chip does read `RUNNING…` mid-run — and no automated check can
+see it. The run holds the page's own thread, so `evaluate`
+cannot return until it is over; the intermediate state is real
+and unobservable from outside. `verify.js` says so in a comment
+and checks the claim that actually matters (the click
+re-measured) instead of asserting something it cannot
+distinguish from a lie. **The freeze itself is a real defect**,
+not a subtlety: for the length of a run the tab stops painting.
+Bounded at 2 s and stated in the status bar; the proper fix is a
+Web Worker, which is a change to the shared wasm bridge every
+one of the eight modules uses, so it is recorded here rather
+than half-done.
+
 Also: the run is bounded by wall clock (2 s), because wasm
 holds the page's own thread — a benchmark that overruns does
 not take longer, it freezes the tab it is drawing into. The

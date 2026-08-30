@@ -405,7 +405,11 @@ export function LabPerfScreen() {
 
       <StatusBar
         route="/lab/perf"
-        mechanism={`benchmark ran locally · ${num(result?.ran ?? 0)} samples`}
+        // The freeze is real and stated rather than hidden: wasm
+        // runs on this page's own thread, so the tab stops
+        // painting for the length of a run. Bounded at two
+        // seconds, which is why it is bounded at all.
+        mechanism={`benchmark ran locally · ${num(result?.ran ?? 0)} samples · the tab stops painting while it runs`}
         state={result
           ? `p99.9 ${dur(result.p999_ns)} — measured here, not quoted`
           : "running…"}
