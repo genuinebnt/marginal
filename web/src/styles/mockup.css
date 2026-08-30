@@ -29,7 +29,7 @@
 a{color:#E8873C}a:hover{color:#F2A264}
 .sc{position:relative;width:100%;height:100vh;background:#0E0F10;color:#E4E2DC;display:flex;flex-direction:column;overflow:hidden}
 .bar{position:relative;height:54px;flex:none;display:flex;align-items:center;gap:14px;padding:0 16px;background:#111214;border-bottom:1px solid rgba(255,255,255,.07);z-index:7}
-.wm{font:600 12.5px 'IBM Plex Mono',monospace;letter-spacing:-.01em;color:#E4E2DC}
+.wm{font:600 12.5px 'IBM Plex Mono',monospace;letter-spacing:-.01em;color:#E4E2DC;text-decoration:none;cursor:pointer}
 .tabs{display:flex}
 .tb{padding:6px 11px;font-size:11.5px;border:1px solid rgba(255,255,255,.13);border-right:0;color:#7C7870;white-space:nowrap}
 .tb:last-child{border-right:1px solid rgba(255,255,255,.13)}

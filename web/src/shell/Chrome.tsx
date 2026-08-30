@@ -182,9 +182,9 @@ export function TopBar({
   const { pathname } = useLocation();
   return (
     <div className="bar">
-      <span className="wm">
+      <Link to="/" className="wm">
         m<span style={{ color: "#E8873C" }}>/</span>arginal
-      </span>
+      </Link>
       {!bare && !noTabs && (
         <div className="tabs">
           {TABS.map((t) => (

@@ -91,7 +91,7 @@ export function HomeScreen() {
     <div className="sc">
       <div className="scan" />
       <div className="bar">
-        <span className="wm">m<span style={{ color: "#E8873C" }}>/</span>arginal</span>
+        <Link to="/" className="wm">m<span style={{ color: "#E8873C" }}>/</span>arginal</Link>
         <div style={{ flex: 1 }} />
         {/* Only links that go somewhere. The mockup's Docs and
             Pricing had nowhere to point, and a nav item that

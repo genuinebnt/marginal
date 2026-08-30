@@ -251,8 +251,20 @@ async function main() {
     // nothing and the diff silently ran against the wrong route.
     const graph = await (await fetch(`${GW}/graph`, { headers: { 'X-Actor-Id': sub } })).json();
     const p = graph.nodes.find(x => x.title === pageTitle);
-    if (!p) console.error(`no page titled "${pageTitle}" — diffing ${appPath} as given`);
-    if (p) route = appPath.includes('{id}') ? appPath.replace('{id}', p.id) : `/pages/${p.id}`;
+    if (!p) {
+      const near = graph.nodes
+        .map(x => x.title)
+        .filter(t => t.toLowerCase().includes(pageTitle.toLowerCase().split(' ')[0]))
+        .slice(0, 5);
+      console.error(`no page titled "${pageTitle}".`);
+      console.error(`Diffing ${appPath} instead would compare the wrong screen and report`);
+      console.error(`every element of the real one as missing, so this is fatal rather than a warning.`);
+      if (near.length) console.error(`\nDid you mean:\n  ${near.join('\n  ')}`);
+      else console.error(`\nNothing similar in the ${graph.nodes.length}-page corpus.`);
+      await b.close();
+      process.exit(2);
+    }
+    route = appPath.includes('{id}') ? appPath.replace('{id}', p.id) : `/pages/${p.id}`;
   }
 
   const a = await b.newPage({ viewport: { width: 1440, height: 900 } });
