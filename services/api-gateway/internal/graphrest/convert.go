@@ -155,6 +155,13 @@ type neighborhoodJSON struct {
 	// "Read these, in this order" — everything that reaches this page by
 	// following links forward, layered, ending at the page itself.
 	ReadingPath []pathStepJSON `json:"reading_path"`
+	// source → target, one entry per hop, in order, when ?to= named a
+	// target. Undirected, matching undirected_distance: "how are these
+	// two connected" does not care which way a link points.
+	ShortestPath []pathStepJSON `json:"shortest_path"`
+	// Empty shortest_path means two different things — nobody asked, or
+	// there is no route — and this is what tells them apart.
+	PathExists bool `json:"path_exists"`
 }
 
 type pathStepJSON struct {
@@ -182,12 +189,21 @@ func toNeighborhoodJSON(n *documentv1.GraphNeighborhoodResponse) neighborhoodJSO
 			Depth: s.GetDepth(), Destination: s.GetDestination(),
 		})
 	}
+	shortest := make([]pathStepJSON, 0, len(n.GetShortestPath()))
+	for _, s := range n.GetShortestPath() {
+		shortest = append(shortest, pathStepJSON{
+			PageID: s.GetPageId(), Title: s.GetTitle(),
+			Depth: s.GetDepth(), Destination: s.GetDestination(),
+		})
+	}
 	return neighborhoodJSON{
 		ReadingPath:        path,
 		UndirectedDistance: n.GetUndirectedDistance(),
 		ForwardReachable:   n.GetForwardReachable(),
 		Nearest:            nearest,
 		RingSizes:          rings,
+		ShortestPath:       shortest,
+		PathExists:         n.GetPathExists(),
 	}
 }
 

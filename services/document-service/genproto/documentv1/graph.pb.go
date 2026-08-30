@@ -631,8 +631,12 @@ func (x *BettiNumbers) GetRank2() int32 {
 }
 
 type GraphNeighborhoodRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	SourcePageId  string                 `protobuf:"bytes,1,opt,name=source_page_id,json=sourcePageId,proto3" json:"source_page_id,omitempty"`
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	SourcePageId string                 `protobuf:"bytes,1,opt,name=source_page_id,json=sourcePageId,proto3" json:"source_page_id,omitempty"`
+	// target_page_id turns "how far is everything from here" into "how are
+	// these two connected". Optional: absent means no path is computed, which
+	// is the state a screen is in before somebody has picked a second node.
+	TargetPageId  string `protobuf:"bytes,2,opt,name=target_page_id,json=targetPageId,proto3" json:"target_page_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -674,6 +678,13 @@ func (x *GraphNeighborhoodRequest) GetSourcePageId() string {
 	return ""
 }
 
+func (x *GraphNeighborhoodRequest) GetTargetPageId() string {
+	if x != nil {
+		return x.TargetPageId
+	}
+	return ""
+}
+
 type GraphNeighborhoodResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// undirected_distance: link-distance BFS from source_page_id — the
@@ -708,7 +719,20 @@ type GraphNeighborhoodResponse struct {
 	//
 	// A page nothing links to has a path of ONE step: itself. That is what
 	// "start here" looks like, and it is a real answer rather than an empty one.
-	ReadingPath   []*PathStep `protobuf:"bytes,5,rep,name=reading_path,json=readingPath,proto3" json:"reading_path,omitempty"`
+	ReadingPath []*PathStep `protobuf:"bytes,5,rep,name=reading_path,json=readingPath,proto3" json:"reading_path,omitempty"`
+	// shortest_path is source → target, one entry per hop, in order, when a
+	// target was named (graphalgo.ShortestPath over the same BFS the distance
+	// map came from — one traversal answers both).
+	//
+	// Undirected, matching undirected_distance: "how are these two connected"
+	// does not care which way a link points, and a reader following a citation
+	// backwards is following it.
+	//
+	// Empty when no target was named, and ALSO empty when the two are in
+	// different components — `path_exists` is what tells those apart, because
+	// an empty list alone reads as "not asked" and "no route" identically.
+	ShortestPath  []*PathStep `protobuf:"bytes,6,rep,name=shortest_path,json=shortestPath,proto3" json:"shortest_path,omitempty"`
+	PathExists    bool        `protobuf:"varint,7,opt,name=path_exists,json=pathExists,proto3" json:"path_exists,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -776,6 +800,20 @@ func (x *GraphNeighborhoodResponse) GetReadingPath() []*PathStep {
 		return x.ReadingPath
 	}
 	return nil
+}
+
+func (x *GraphNeighborhoodResponse) GetShortestPath() []*PathStep {
+	if x != nil {
+		return x.ShortestPath
+	}
+	return nil
+}
+
+func (x *GraphNeighborhoodResponse) GetPathExists() bool {
+	if x != nil {
+		return x.PathExists
+	}
+	return false
 }
 
 type GraphNeighbour struct {
@@ -968,16 +1006,20 @@ const file_graph_proto_rawDesc = "" +
 	"\x02b2\x18\x04 \x01(\x05R\x02b2\x12\x10\n" +
 	"\x03chi\x18\x05 \x01(\x05R\x03chi\x12\x1c\n" +
 	"\ttriangles\x18\x06 \x01(\x05R\ttriangles\x12\x14\n" +
-	"\x05rank2\x18\a \x01(\x05R\x05rank2\"@\n" +
+	"\x05rank2\x18\a \x01(\x05R\x05rank2\"f\n" +
 	"\x18GraphNeighborhoodRequest\x12$\n" +
-	"\x0esource_page_id\x18\x01 \x01(\tR\fsourcePageId\"\xb7\x04\n" +
+	"\x0esource_page_id\x18\x01 \x01(\tR\fsourcePageId\x12$\n" +
+	"\x0etarget_page_id\x18\x02 \x01(\tR\ftargetPageId\"\x9d\x05\n" +
 	"\x19GraphNeighborhoodResponse\x12x\n" +
 	"\x13undirected_distance\x18\x01 \x03(\v2G.marginal.document.v1.GraphNeighborhoodResponse.UndirectedDistanceEntryR\x12undirectedDistance\x12r\n" +
 	"\x11forward_reachable\x18\x02 \x03(\v2E.marginal.document.v1.GraphNeighborhoodResponse.ForwardReachableEntryR\x10forwardReachable\x12>\n" +
 	"\anearest\x18\x03 \x03(\v2$.marginal.document.v1.GraphNeighbourR\anearest\x12\x1d\n" +
 	"\n" +
 	"ring_sizes\x18\x04 \x03(\x05R\tringSizes\x12A\n" +
-	"\freading_path\x18\x05 \x03(\v2\x1e.marginal.document.v1.PathStepR\vreadingPath\x1aE\n" +
+	"\freading_path\x18\x05 \x03(\v2\x1e.marginal.document.v1.PathStepR\vreadingPath\x12C\n" +
+	"\rshortest_path\x18\x06 \x03(\v2\x1e.marginal.document.v1.PathStepR\fshortestPath\x12\x1f\n" +
+	"\vpath_exists\x18\a \x01(\bR\n" +
+	"pathExists\x1aE\n" +
 	"\x17UndirectedDistanceEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\x05R\x05value:\x028\x01\x1aC\n" +
@@ -1042,17 +1084,18 @@ var file_graph_proto_depIdxs = []int32{
 	16, // 8: marginal.document.v1.GraphNeighborhoodResponse.forward_reachable:type_name -> marginal.document.v1.GraphNeighborhoodResponse.ForwardReachableEntry
 	10, // 9: marginal.document.v1.GraphNeighborhoodResponse.nearest:type_name -> marginal.document.v1.GraphNeighbour
 	11, // 10: marginal.document.v1.GraphNeighborhoodResponse.reading_path:type_name -> marginal.document.v1.PathStep
-	0,  // 11: marginal.document.v1.GraphService.GetLinkGraph:input_type -> marginal.document.v1.GetLinkGraphRequest
-	4,  // 12: marginal.document.v1.GraphService.AnalyzeGraph:input_type -> marginal.document.v1.AnalyzeGraphRequest
-	8,  // 13: marginal.document.v1.GraphService.GraphNeighborhood:input_type -> marginal.document.v1.GraphNeighborhoodRequest
-	1,  // 14: marginal.document.v1.GraphService.GetLinkGraph:output_type -> marginal.document.v1.LinkGraph
-	5,  // 15: marginal.document.v1.GraphService.AnalyzeGraph:output_type -> marginal.document.v1.GraphAnalysis
-	9,  // 16: marginal.document.v1.GraphService.GraphNeighborhood:output_type -> marginal.document.v1.GraphNeighborhoodResponse
-	14, // [14:17] is the sub-list for method output_type
-	11, // [11:14] is the sub-list for method input_type
-	11, // [11:11] is the sub-list for extension type_name
-	11, // [11:11] is the sub-list for extension extendee
-	0,  // [0:11] is the sub-list for field type_name
+	11, // 11: marginal.document.v1.GraphNeighborhoodResponse.shortest_path:type_name -> marginal.document.v1.PathStep
+	0,  // 12: marginal.document.v1.GraphService.GetLinkGraph:input_type -> marginal.document.v1.GetLinkGraphRequest
+	4,  // 13: marginal.document.v1.GraphService.AnalyzeGraph:input_type -> marginal.document.v1.AnalyzeGraphRequest
+	8,  // 14: marginal.document.v1.GraphService.GraphNeighborhood:input_type -> marginal.document.v1.GraphNeighborhoodRequest
+	1,  // 15: marginal.document.v1.GraphService.GetLinkGraph:output_type -> marginal.document.v1.LinkGraph
+	5,  // 16: marginal.document.v1.GraphService.AnalyzeGraph:output_type -> marginal.document.v1.GraphAnalysis
+	9,  // 17: marginal.document.v1.GraphService.GraphNeighborhood:output_type -> marginal.document.v1.GraphNeighborhoodResponse
+	15, // [15:18] is the sub-list for method output_type
+	12, // [12:15] is the sub-list for method input_type
+	12, // [12:12] is the sub-list for extension type_name
+	12, // [12:12] is the sub-list for extension extendee
+	0,  // [0:12] is the sub-list for field type_name
 }
 
 func init() { file_graph_proto_init() }

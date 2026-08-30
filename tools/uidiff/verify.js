@@ -69,6 +69,42 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
   for (const l of lenses) { await p.getByText(l,{exact:true}).first().click(); await p.waitForTimeout(400); seen.add(await hue()); }
   check('§08 nine lenses produce distinct paints', seen.size >= 6, `${seen.size} distinct`);
 
+  // Each lens must also STAGE its answer differently, not just paint a
+  // different still. The unrevealed grey is the animation's own colour, so
+  // counting it mid-reveal says whether anything is actually moving.
+  const pendingNodes = () => p.evaluate(() =>
+    [...document.querySelectorAll('svg circle')].filter((c) => c.getAttribute('fill') === '#3A3833').length);
+  const staged = [];
+  for (const name of ['NEAREST', 'COMPONENTS', 'TOPO SORT · KAHN']) {
+    await p.locator('.sb').filter({ hasText: name }).first().click();
+    await p.waitForTimeout(250);
+    const early = await pendingNodes();
+    await p.waitForTimeout(3500);
+    staged.push(`${name.split(' ')[0]} ${early}→${await pendingNodes()}`);
+  }
+  check('§08 lenses reveal their answer over time rather than all at once',
+        staged.every((s) => { const [a, b] = s.split(' ')[1].split('→').map(Number); return a > b; }),
+        staged.join(' · '));
+
+  // The two-node lens: click a start, click a destination, watch the route
+  // draw. This is the gesture the whole lens exists for.
+  await p.locator('.sb').filter({ hasText: 'SHORTEST PATH' }).first().click();
+  await p.waitForTimeout(1500);
+  const gesture = () => p.evaluate(() => {
+    const m = document.body.innerText.match(/(PICK A START|PICK A DESTINATION|ROUTE)\n[^\n]*\n([^\n]*)/);
+    return m ? `${m[1]} :: ${m[2]}` : null;
+  });
+  check('§08 the path lens asks for a destination, not just a source',
+        /PICK A DESTINATION/.test(await gesture() ?? ''), await gesture());
+  const graphNodes = p.locator('svg g[font-family="Archivo"] > g');
+  await graphNodes.nth(9).click({ force: true });
+  await p.waitForTimeout(2500);
+  const routed = await gesture();
+  check('§08 a second click produces a real route', /ROUTE ::/.test(routed ?? ''), routed);
+  check('§08 and the route is drawn, hop by hop',
+        (await p.evaluate(() => [...document.querySelectorAll('svg line')]
+          .filter((l) => l.getAttribute('stroke') === '#E8873C').length)) >= 1);
+
   // ── § 09 DISCOVER ─────────────────────────────────────────────────────
   await go('/discover', 7000);
   check('§09 recall is reported', /RECALL@5/.test(await txt()));

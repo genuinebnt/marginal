@@ -144,7 +144,13 @@ message BettiNumbers {
   int32 rank2 = 7;      // rank(∂2) over GF(2) — exactly the loops triangles killed
 }
 
-message GraphNeighborhoodRequest { string source_page_id = 1; }
+message GraphNeighborhoodRequest {
+  string source_page_id = 1;
+  // target_page_id turns "how far is everything from here" into "how are
+  // these two connected". Optional: absent means no path is computed, which
+  // is the state a screen is in before somebody has picked a second node.
+  string target_page_id = 2;
+}
 
 message GraphNeighborhoodResponse {
   // undirected_distance: link-distance BFS from source_page_id — the
@@ -182,6 +188,20 @@ message GraphNeighborhoodResponse {
   // A page nothing links to has a path of ONE step: itself. That is what
   // "start here" looks like, and it is a real answer rather than an empty one.
   repeated PathStep reading_path = 5;
+
+  // shortest_path is source → target, one entry per hop, in order, when a
+  // target was named (graphalgo.ShortestPath over the same BFS the distance
+  // map came from — one traversal answers both).
+  //
+  // Undirected, matching undirected_distance: "how are these two connected"
+  // does not care which way a link points, and a reader following a citation
+  // backwards is following it.
+  //
+  // Empty when no target was named, and ALSO empty when the two are in
+  // different components — `path_exists` is what tells those apart, because
+  // an empty list alone reads as "not asked" and "no route" identically.
+  repeated PathStep shortest_path = 6;
+  bool path_exists = 7;
 }
 
 message GraphNeighbour {

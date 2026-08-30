@@ -114,6 +114,13 @@ export interface GraphNeighborhood {
    *  own comes first, ending at the page itself. A page nothing links to has
    *  a path of one step: itself, which is what "start here" looks like. */
   reading_path: PathStep[];
+  /** source → target, one entry per hop, in order — present only when a
+   *  target was asked for. Undirected, matching undirected_distance:
+   *  "how are these two connected" does not care which way a link points. */
+  shortest_path?: PathStep[];
+  /** An empty shortest_path means two different things — nobody asked, or
+   *  there is no route between them — and this is what tells them apart. */
+  path_exists?: boolean;
 }
 
 export function getLinkGraph(actorId: string): Promise<LinkGraph> {
@@ -124,6 +131,12 @@ export function analyzeGraph(actorId: string): Promise<GraphAnalysis> {
   return apiFetch<GraphAnalysis>(`${GATEWAY_URL}/graph/analysis`, { actorId });
 }
 
-export function graphNeighborhood(actorId: string, sourcePageId: string): Promise<GraphNeighborhood> {
-  return apiFetch<GraphNeighborhood>(`${GATEWAY_URL}/graph/neighborhood/${sourcePageId}`, { actorId });
+export function graphNeighborhood(
+  actorId: string,
+  sourcePageId: string,
+  targetPageId?: string,
+): Promise<GraphNeighborhood> {
+  const url = new URL(`${GATEWAY_URL}/graph/neighborhood/${sourcePageId}`);
+  if (targetPageId) url.searchParams.set("to", targetPageId);
+  return apiFetch<GraphNeighborhood>(url.toString(), { actorId });
 }

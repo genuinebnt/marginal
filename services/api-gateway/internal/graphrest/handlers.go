@@ -48,7 +48,10 @@ func (h *Handler) analyze(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) neighborhood(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	resp, err := h.client.GraphNeighborhood(actorctx.FromRequest(r), &documentv1.GraphNeighborhoodRequest{SourcePageId: id})
+	resp, err := h.client.GraphNeighborhood(actorctx.FromRequest(r), &documentv1.GraphNeighborhoodRequest{
+		SourcePageId: id,
+		TargetPageId: r.URL.Query().Get("to"),
+	})
 	if err != nil {
 		apierror.WriteGRPCStatus(w, err)
 		return

@@ -132,6 +132,7 @@ over the whole graph:
 | `GET` | `/graph` | `GetLinkGraph` |
 | `GET` | `/graph/analysis` | `AnalyzeGraph` |
 | `GET` | `/graph/neighborhood/{id}` | `GraphNeighborhood` |
+| `GET` | `/graph/neighborhood/{id}?to={id}` | `GraphNeighborhood` with a target |
 
 ```json
 // GET /graph
@@ -160,12 +161,41 @@ over the whole graph:
   "undirected_distance": { "<page-id>": 0, "<page-id>": 1 },
   "forward_reachable": { "<page-id>": 0 },
   "nearest": [{ "page_id": "...", "title": "Anchors vs offsets", "hops": 1 }],
-  "ring_sizes": [1, 3, 7]
+  "ring_sizes": [1, 3, 7],
+  "reading_path": [{ "page_id": "...", "title": "...", "depth": 0, "destination": false }],
+  "shortest_path": [],
+  "path_exists": false
+}
+
+// GET /graph/neighborhood/{id}?to={other-id}
+{
+  "shortest_path": [
+    { "page_id": "...", "title": "Anchors, and why offsets die", "depth": 0, "destination": false },
+    { "page_id": "...", "title": "Collaboration service", "depth": 1, "destination": true }
+  ],
+  "path_exists": true
 }
 ```
 
+`?to=` turns "how far is everything from here" into "how are these two
+connected". It costs nothing extra: `shortest_path` is a traceback over
+the `prev` map of the **same BFS** the distance map already came from
+(`graphalgo.ShortestPath`), so one traversal answers both questions.
+
+**Undirected**, matching `undirected_distance` — "how are these two
+connected" does not care which way a link points, and a reader following
+a citation backwards is following it.
+
+`path_exists` exists because an empty `shortest_path` means two different
+things: nobody asked for a path, or there is no route between the two.
+A screen that renders those identically teaches the wrong thing.
+
+A `to` naming a page that is not live is `NOT_FOUND`, **not** an empty
+path — "you asked about a page that does not exist" and "those two are
+not connected" are different answers.
+
 `cycle`/`orphan_components`/`scc_sizes`/`topological_order`/`unplaced`/
-`layers`/`nearest`/`ring_sizes` are always `[]`, never `null`, when
+`layers`/`nearest`/`ring_sizes`/`reading_path`/`shortest_path` are always `[]`, never `null`, when
 there's nothing to report — a client that only ever checks `.length`
 shouldn't also need a null guard. `strongly_connected` is likewise `{}`
 rather than `null`.

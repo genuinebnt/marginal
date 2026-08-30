@@ -18,6 +18,7 @@ import {
   type GraphAnalysis, type GraphNeighborhood, type LinkGraph,
 } from "../api/graph";
 import { useForceLayout } from "../graph-core/useForceLayout";
+import { useStagedReveal } from "../graph-core/useStagedReveal";
 import {
   Body, Inspector, Label, Readout, Rule, Screen, StatusBar, SubBar, SubItem, TopBar, num,
 } from "../shell/Chrome";
@@ -57,6 +58,54 @@ const LENSES: Array<{ id: Lens; label: string }> = [
 
 /** Component colours. Not the topic ramp — these index a partition, and
  *  reusing topic hues would imply a page's component says what it is about. */
+/** Ids ordered by hop distance, nearest first, ties on id so the reveal
+ *  is the same every time — a wavefront that shuffles between runs is a
+ *  wavefront nobody can read. */
+function byDistance(dist: Record<string, number> | undefined): string[] {
+  if (!dist) return [];
+  return Object.entries(dist)
+    .sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0]))
+    .map(([id]) => id);
+}
+
+/**
+ * What each lens's reveal is actually showing, in one line.
+ *
+ * Per-lens rather than shared: the whole complaint these animations answer
+ * is that every lens looked the same, and a caption that says "N reached"
+ * under all nine is the same defect in words.
+ */
+interface GestureCtx {
+  source: string | null;
+  target: string | null;
+  hood: GraphNeighborhood | null;
+  reveal: number;
+  total: number;
+  visited: number;
+}
+
+const LENS_GESTURE: Record<Lens, (c: GestureCtx) => string> = {
+  path: (c) => {
+    if (!c.source) return "click a node to start";
+    if (!c.target) return "click a second node — the route between them draws itself";
+    if (c.hood && !c.hood.path_exists) return "no route — these two are in different components";
+    const hops = Math.max(0, (c.hood?.shortest_path?.length ?? 1) - 1);
+    return `${hops} hop${hops === 1 ? "" : "s"} · BFS, undirected`;
+  },
+  nearest: (c) => `${c.reveal} of ${c.total} revealed · ranked outward by hops`,
+  components: (c) => `${c.reveal} of ${c.total} filled · flood fill, one component at a time`,
+  scc: (c) => c.total === 0
+    ? "no multi-page loops — every component is a singleton"
+    : `${c.reveal} of ${c.total} · Tarjan, only the real citation loops`,
+  cycles: (c) => c.total === 0
+    ? "no cycle — the link graph is acyclic"
+    : `${c.reveal} of ${c.total} · the walk returns to where it began`,
+  topo: (c) => `${c.reveal} of ${c.total} placed · Kahn peels a layer at a time`,
+  reach: (c) => `${c.reveal} of ${c.total} downstream · directed, outbound links only`,
+  blast: (c) => `${c.reveal} of ${c.total} would go with it · forward reachability`,
+  topology: () => "Betti numbers are a property of the whole graph — nothing to walk",
+};
+
 const COMPONENT_HUES = ["#3FCFA8", "#7D9EC9", "#A98CE8", "#585550", "#D6A660", "#D07C8A"];
 
 export function GraphAlgorithmsScreen() {
@@ -66,6 +115,10 @@ export function GraphAlgorithmsScreen() {
   const [graph, setGraph] = useState<LinkGraph | null>(null);
   const [analysis, setAnalysis] = useState<GraphAnalysis | null>(null);
   const [source, setSource] = useState<string | null>(null);
+  /** The second click, on the lenses that connect two nodes. Null on
+   *  every other lens — "how far is everything" needs one node, "how are
+   *  these two connected" needs two, and the strip says which you are on. */
+  const [target, setTarget] = useState<string | null>(null);
   const [hood, setHood] = useState<GraphNeighborhood | null>(null);
   const [lens, setLens] = useState<Lens>("path");
   const [err, setErr] = useState<string | null>(null);
@@ -78,8 +131,14 @@ export function GraphAlgorithmsScreen() {
 
   useEffect(() => {
     if (!actorId || !source) { setHood(null); return; }
-    graphNeighborhood(actorId, source).then(setHood).catch(() => setHood(null));
-  }, [actorId, source]);
+    graphNeighborhood(actorId, source, target ?? undefined)
+      .then(setHood).catch(() => setHood(null));
+  }, [actorId, source, target]);
+
+  // A target only means something on the path lens, and carrying a stale
+  // one across a lens change would leave the previous question's answer
+  // half-painted under a different heading.
+  useEffect(() => { setTarget(null); }, [lens]);
 
   /**
    * Land on the most-connected page rather than on nothing.
@@ -176,8 +235,93 @@ export function GraphAlgorithmsScreen() {
   const visited = hood ? Object.keys(hood.undirected_distance).length : 0;
   const total = graph?.nodes.length ?? 0;
 
-  /** Which hue a node takes under the current lens. */
+  /**
+   * The order this lens reveals its answer in.
+   *
+   * Nothing here computes: every id below came from Go. What differs per
+   * lens is the SEQUENCE, and the sequence is the algorithm's shape —
+   * a BFS grows a ring at a time, Kahn peels a layer at a time, a flood
+   * fill spreads from seeds, a cycle walks round and returns to itself.
+   * Painting all of them as one still image is why they looked alike.
+   */
+  const steps = useMemo<string[]>(() => {
+    switch (lens) {
+      case "path": {
+        // Two-node lens: the route itself, hop by hop. Before a target is
+        // picked there is no route to draw, so it falls back to the
+        // wavefront — the same BFS, seen as "everything at distance d".
+        if (hood?.shortest_path?.length) return hood.shortest_path!.map((p) => p.page_id);
+        return byDistance(hood?.undirected_distance);
+      }
+      // Ring by ring outward: the wavefront, in the order BFS found it.
+      case "nearest":
+        return (hood?.nearest ?? []).map((n) => n.page_id);
+      case "reach":
+      case "blast":
+        // Directed, so it spreads DOWNSTREAM only — visibly narrower than
+        // the undirected wave on the same source, which is the point.
+        return byDistance(hood?.forward_reachable);
+      case "components": {
+        // Flood fill: each component filled in turn, so you see the
+        // partition happen rather than arrive.
+        if (!analysis) return [];
+        const order = [...Object.entries(analysis.component_of)]
+          .sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0]));
+        return order.map(([id]) => id);
+      }
+      case "scc": {
+        // Only the real loops. Singletons are the normal case and revealing
+        // eighteen of them one at a time would spend the animation saying
+        // "nothing here".
+        if (!analysis) return [];
+        return Object.entries(analysis.strongly_connected)
+          .filter(([, c]) => (sccSize.get(c) ?? 1) > 1)
+          .sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0]))
+          .map(([id]) => id);
+      }
+      case "cycles":
+        // Walks the loop and closes it — the one sequence that ends where
+        // it started, which is what a cycle IS.
+        return analysis?.cycle ?? [];
+      case "topo":
+        // Layer by layer, which is exactly Kahn's peel: everything with no
+        // remaining prerequisite, then everything that unblocked.
+        return (analysis?.layers ?? []).flat();
+      case "topology":
+        // No traversal to stage — Betti numbers are a property of the whole
+        // graph, not a walk over it. Revealed at once, on purpose.
+        return [];
+      default:
+        return [];
+    }
+  }, [lens, hood, analysis, sccSize]);
+
+  // Slower for the short sequences, faster for the long ones, so a
+  // four-hop path and a forty-node flood take a comparable time to watch.
+  const stepMs = steps.length > 24 ? 70 : steps.length > 10 ? 130 : 260;
+  const reveal = useStagedReveal(steps.length, stepMs, `${lens}:${source}:${target}`);
+
+  /** How far through the sequence a given node is, or -1 if it is not in it. */
+  const stepIndex = useMemo(() => {
+    const m = new Map<string, number>();
+    steps.forEach((id, i) => { if (!m.has(id)) m.set(id, i); });
+    return m;
+  }, [steps]);
+
+  /** Has this node been revealed yet? Nodes outside the sequence are always
+   *  visible — they are the graph the answer sits in. */
+  const revealed = (id: string) => {
+    const i = stepIndex.get(id);
+    return i === undefined ? null : i < reveal.shown;
+  };
+
+  /** Which hue a node takes under the current lens.
+   *
+   *  A node the sequence has not reached yet keeps the unvisited grey —
+   *  that is the whole animation: the colour IS the algorithm's progress,
+   *  not a decoration playing beside it. */
   function hueOf(id: string): { fill: string; opacity: number } {
+    if (revealed(id) === false) return { fill: "#3A3833", opacity: 0.3 };
     if (lens === "components" && analysis) {
       const c = analysis.component_of[id];
       const orphan = analysis.orphan_components.includes(c);
@@ -292,15 +436,103 @@ export function GraphAlgorithmsScreen() {
               </g>
             )}
 
+            {/* The route, drawn one hop at a time. This is the lens's
+                whole answer: not "these nodes are near" but "this is how
+                you get from here to there", which only reads as an answer
+                if you can see it form. */}
+            {lens === "path" && (hood?.shortest_path?.length ?? 0) > 1 && (
+              <g fill="none" strokeLinecap="round">
+                {hood!.shortest_path!.slice(0, -1).map((step, i) => {
+                  const a = at(step.page_id);
+                  const z = at(hood!.shortest_path![i + 1].page_id);
+                  if (!a || !z) return null;
+                  // Hop i is drawn once the reveal has passed node i+1 —
+                  // the edge arrives with the node it lands on.
+                  const on = reveal.shown > i + 1;
+                  return (
+                    <line
+                      key={step.page_id}
+                      x1={a.x} y1={a.y} x2={z.x} y2={z.y}
+                      stroke="#E8873C"
+                      strokeWidth={on ? 2.5 : 0}
+                      opacity={on ? 1 : 0}
+                      style={{ transition: "stroke-width .18s ease, opacity .18s ease" }}
+                    />
+                  );
+                })}
+                {/* A pulse travelling the finished route, so a path that
+                    has already formed still reads as directional. */}
+                {!reveal.running && (
+                  <circle r="4" fill="#E8873C">
+                    <animateMotion
+                      dur={`${Math.max(1.2, hood!.shortest_path!.length * 0.45)}s`}
+                      repeatCount="indefinite"
+                      path={hood!.shortest_path!
+                        .map((st, i) => {
+                          const q = at(st.page_id);
+                          return q ? `${i === 0 ? "M" : "L"}${q.x},${q.y}` : "";
+                        })
+                        .join(" ")}
+                    />
+                  </circle>
+                )}
+              </g>
+            )}
+
+            {/* Kahn's peel: a bar per layer, lighting in order. The
+                sequence IS the sort — everything with no remaining
+                prerequisite, then everything that unblocked. */}
+            {lens === "topo" && (analysis?.layers.length ?? 0) > 0 && (
+              <g>
+                {(analysis?.layers ?? []).map((level, i) => {
+                  const done = level.every((id) => revealed(id) !== false);
+                  const xs = level.map((id) => at(id)).filter(Boolean) as Array<{x: number; y: number}>;
+                  if (xs.length === 0) return null;
+                  const minX = Math.min(...xs.map((q) => q.x)) - 18;
+                  const maxX = Math.max(...xs.map((q) => q.x)) + 18;
+                  const minY = Math.min(...xs.map((q) => q.y)) - 14;
+                  const maxY = Math.max(...xs.map((q) => q.y)) + 14;
+                  return (
+                    <rect
+                      key={i}
+                      x={minX} y={minY} width={maxX - minX} height={maxY - minY}
+                      fill="none"
+                      stroke={done ? "rgba(63,207,168,.35)" : "rgba(255,255,255,.05)"}
+                      strokeWidth="1"
+                      strokeDasharray="3 4"
+                      style={{ transition: "stroke .3s ease" }}
+                    />
+                  );
+                })}
+              </g>
+            )}
+
             <g fontFamily="Archivo" fontSize="11.5" fill="#8C8880">
               {nodes.map((raw) => {
                 const p = at(raw.id)!;
                 const { fill, opacity } = hueOf(raw.id);
                 const isSource = raw.id === source;
                 return (
-                  <g key={raw.id} style={{ cursor: "pointer" }} onClick={() => setSource(raw.id)}>
+                  <g
+                    key={raw.id}
+                    style={{ cursor: "pointer" }}
+                    onClick={() => {
+                      // On the two-node lens the first click is where you
+                      // are and the second is where you want to get to; a
+                      // third starts over, so the gesture never dead-ends.
+                      if (lens !== "path") { setSource(raw.id); return; }
+                      if (raw.id === source) return;
+                      if (!target) setTarget(raw.id);
+                      else { setSource(raw.id); setTarget(null); }
+                    }}
+                  >
                     {isSource && <circle cx={p.x} cy={p.y} r="15" fill="#E8873C" opacity=".2" />}
-                    <circle cx={p.x} cy={p.y} r={isSource ? 7 : 5} fill={fill} opacity={opacity} />
+                    {raw.id === target && (
+                      <circle cx={p.x} cy={p.y} r="15" fill="#E8873C" opacity=".2">
+                        <animate attributeName="r" values="12;18;12" dur="1.6s" repeatCount="indefinite" />
+                      </circle>
+                    )}
+                    <circle cx={p.x} cy={p.y} r={isSource || raw.id === target ? 7 : 5} fill={fill} opacity={opacity} />
                     <text x={p.x + 12} y={p.y + 4} fill={opacity > 0.6 ? "#8C8880" : "#4B4842"}>
                       {titleOf.get(raw.id)}
                     </text>
@@ -315,15 +547,38 @@ export function GraphAlgorithmsScreen() {
             background: "#111214", border: "1px solid rgba(255,255,255,.1)",
             display: "flex", flexDirection: "column", gap: 7, maxWidth: 260,
           }}>
-            <Label>{source ? "FROM HERE" : "PICK A SOURCE"}</Label>
+            <Label>
+              {lens === "path"
+                ? (target ? "ROUTE" : source ? "PICK A DESTINATION" : "PICK A START")
+                : source ? "FROM HERE" : "PICK A SOURCE"}
+            </Label>
             <div className="mono" style={{ fontSize: 11, color: "#E4E2DC", lineHeight: 1.6 }}>
-              {source ? titleOf.get(source) : "click any node"}
+              {lens === "path" && target
+                ? `${titleOf.get(source!)} → ${titleOf.get(target)}`
+                : source ? titleOf.get(source) : "click any node"}
             </div>
             <span className="mono" style={{ fontSize: 10, color: "#585550" }}>
-              {source
-                ? `${visited} reached · BFS from one source`
-                : "every metric below is over the whole graph"}
+              {LENS_GESTURE[lens](
+                { source, target, hood, reveal: reveal.shown, total: steps.length, visited },
+              )}
             </span>
+            {reveal.running && steps.length > 0 && (
+              <div style={{ height: 2, background: "rgba(255,255,255,.08)" }}>
+                <div style={{
+                  width: `${(reveal.shown / steps.length) * 100}%`, height: "100%",
+                  background: "#E8873C", transition: "width .1s linear",
+                }} />
+              </div>
+            )}
+            {!reveal.running && steps.length > 0 && (
+              <span
+                className="chip"
+                style={{ cursor: "pointer", alignSelf: "flex-start" }}
+                onClick={reveal.replay}
+              >
+                REPLAY
+              </span>
+            )}
           </div>
         </div>
 

@@ -170,7 +170,7 @@ func (s *Server) GraphNeighborhood(ctx context.Context, req *documentv1.GraphNei
 		return nil, status.Error(codes.NotFound, "graph: source_page_id is not a live page")
 	}
 
-	dist, _ := graphalgo.BFS(g.Graph, source)
+	dist, prev := graphalgo.BFS(g.Graph, source)
 	undirected := make(map[string]int32, len(dist))
 	for id, d := range dist {
 		undirected[string(id)] = int32(d)
@@ -212,11 +212,42 @@ func (s *Server) GraphNeighborhood(ctx context.Context, req *documentv1.GraphNei
 		})
 	}
 
+	// source → target, when a target was named. Falls out of the BFS
+	// already run above: one traversal answers both questions.
+	//
+	// A target naming a page that is not live is INVALID_ARGUMENT rather
+	// than an empty path — "you asked about a page that does not exist"
+	// and "those two are not connected" are different answers, and a
+	// screen that renders them identically teaches the wrong thing.
+	shortest := make([]*documentv1.PathStep, 0)
+	pathExists := false
+	if req.TargetPageId != "" {
+		if _, err := uuid.Parse(req.TargetPageId); err != nil {
+			return nil, status.Error(codes.InvalidArgument, "graph: invalid target_page_id")
+		}
+		target := graphalgo.NodeID(req.TargetPageId)
+		if _, ok := g.Nodes[target]; !ok {
+			return nil, status.Error(codes.NotFound, "graph: target_page_id is not a live page")
+		}
+		hops, ok := graphalgo.ShortestPath(dist, prev, source, target)
+		pathExists = ok
+		for i, id := range hops {
+			shortest = append(shortest, &documentv1.PathStep{
+				PageId:      string(id),
+				Title:       g.Nodes[id].Title,
+				Depth:       int32(i),
+				Destination: i == len(hops)-1,
+			})
+		}
+	}
+
 	return &documentv1.GraphNeighborhoodResponse{
 		ReadingPath:        path,
 		UndirectedDistance: undirected,
 		ForwardReachable:   forwardOut,
 		Nearest:            nearest,
 		RingSizes:          ringSizes,
+		ShortestPath:       shortest,
+		PathExists:         pathExists,
 	}, nil
 }

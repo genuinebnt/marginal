@@ -4523,3 +4523,74 @@ mockup's two `div.btn` became anchors (they navigate; the same
 one-element-type-per-role fix § 18's rail needed). Seven § 02
 checks in `verify.js`, run **signed out**, since that is who
 sees this page — it clears the session and restores it after.
+
+---
+
+## 2026-08-30 — the graph lenses stop looking alike
+
+Reported directly: *"right now all the graph pages look alike"*,
+with a concrete ask — click a node, click a second, watch the
+shortest path form between them.
+
+The diagnosis is worth stating because it generalises: every
+lens on § 08 painted its **result** and hid its **process**, and
+the process is the only thing that distinguishes one algorithm
+from another. Nine correct answers, rendered as nine still
+images of coloured dots, are indistinguishable by construction.
+
+**`useStagedReveal`** reveals an already-computed answer one
+step at a time. It computes nothing — every id it stages came
+from Go, and an animation that recomputed as it played would be
+a second implementation of the algorithm, drawn. What each lens
+supplies is an **order**, and the order is the algorithm's
+shape:
+
+| Lens | Its sequence |
+|---|---|
+| BFS shortest path | the route, hop by hop, ending at the destination |
+| Nearest | ring by ring outward, the order BFS found them |
+| Components | flood fill, one component filled at a time |
+| SCC · Tarjan | only the real loops — singletons are the normal case, and staging eighteen of them would spend the animation saying "nothing here" |
+| Cycles | the walk that returns to where it began, which is what a cycle *is* |
+| Topo · Kahn | layer by layer, which is exactly the peel |
+| Reach / blast | downstream only — visibly narrower than the undirected wave on the same source, which is the point |
+| Topology | nothing. Betti numbers are a property of the whole graph, not a walk over it, and the caption says so rather than inventing motion |
+
+The unrevealed grey is the animation's own colour: a node the
+sequence has not reached keeps it, so the paint *is* the
+progress rather than a decoration playing beside it.
+
+**The two-node gesture needed a backend change.**
+`graphalgo.ShortestPath` has existed since `v2.2.0` and was
+never exposed — `GraphNeighborhood` returned distances but not
+the route. It now takes an optional `target_page_id`
+(`?to=` at the gateway) and returns `shortest_path` plus
+`path_exists`. It costs nothing extra: the traceback runs over
+the `prev` map of the **same BFS** the distance map already came
+from, which was being discarded with `_`. One traversal, both
+questions.
+
+`path_exists` is a separate field because an empty path means
+two different things — nobody asked, or there is no route — and
+a screen rendering those identically teaches the wrong thing. A
+`to` naming a page that is not live is `NOT_FOUND` rather than
+an empty path, for the same reason.
+
+**Each lens now captions its own gesture.** A screen where nine
+lenses share the caption "N reached" has the original defect in
+words.
+
+**One client-side lesson:** `hood?.shortest_path.length` guards
+a missing *object* but not a missing *field*, and a server one
+deploy behind sends exactly that — the screen white-screened
+against the running container before it was rebuilt. The wire
+types are optional now, because a client that only works
+against a freshly-built server is a client that breaks every
+deploy window.
+
+**Gate:** `node tools/uidiff/uidiff.js 08 /graph/algorithms` →
+**missing 0 · property diffs 0 · chrome text diffs 0**. Five new
+§ 08 checks, including one that counts unrevealed nodes
+mid-animation across three lenses and asserts the count actually
+falls — a lens that renders instantly would pass a "does it
+paint" check and fail this one.
