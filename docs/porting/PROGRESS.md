@@ -4459,3 +4459,67 @@ on a screen that worked. It clicks a TIME cell now — a thing
 only rows have. Worth noting because it is the second time a
 check has been wrong about its own screen in this sweep, and
 both times the failure looked like a product bug.
+
+---
+
+## 2026-08-30 — § 02 HOME: the front door, and it demonstrates rather than claims
+
+The public route. Until now `/` fell through to the catch-all,
+which is behind `RequireAuth`, so the front door of a deployed
+instance was the login form.
+
+**Two things on it are real rather than drawn**, because the
+page's central claim — "two people editing one tree, converging"
+— is one this codebase can actually demonstrate:
+
+- **LIVE SESSION runs `marginal/netsim` in wasm.** Two replicas,
+  a 180 ms wire, genuinely concurrent edits, and the transform
+  that makes them converge; the panel replays the confirmed log
+  forward so you watch it happen rather than being shown the
+  answer. It is a *simulation* and the status bar says so. A
+  landing page claiming a live multiplayer session while playing
+  a canned animation is precisely the thing this page argues
+  against.
+- **The counters come from `GET /collab/stats`** on the running
+  instance — unauthenticated, which that endpoint already was.
+  `ACK P99 4 ms` and `OPS/SEC 1 412` were replaced by ops
+  accepted and pages, because neither of the originals is
+  measurable from a page nobody has a session on, and a landing
+  page that invents traffic is the first thing a reader stops
+  believing.
+
+**The pricing row was the real decision, and it went to the
+user rather than being made silently.** The mockup quoted
+`$8 / person / month` and `Talk to us`. This instance is
+publicly deployed and reseeded nightly, so that is a price on a
+public page for something nobody can buy — an offer, not a
+design element.
+
+Offered three ways to resolve it (state what is true / restore
+the prices / drop the band), **the user chose to drop it
+entirely.** The three-column commercial band is gone from both
+the screen and the mockup, replaced by one line saying the only
+commercially true thing: there is no paid tier, no cloud plan
+and no enterprise edition — not as a pricing strategy, but
+because none of them exist.
+
+Nav links follow the same rule: `Docs` and `Pricing` had nowhere
+to point, so they are gone; `Source` and `Self-hosting` go to
+the repository. A nav item that does nothing is the defect the
+verification pass exists to catch.
+
+**A flaky check found and fixed while here**, the third
+verification-pass bug in this sweep and the first that was
+intermittent: § 18's "every service was probed" asserted against
+the page text before the health fan-out had landed, so it passed
+twice and failed once on a screen that was working. It waits for
+the counts now. A check that fails at random is worse than no
+check — it teaches you to re-run instead of to look.
+
+**Gate:** `node tools/uidiff/uidiff.js 02 /` → **missing 0 ·
+property diffs 0 · chrome text diffs 0 · extra 0** — the first
+section in the sweep to match on all four axes, once the
+mockup's two `div.btn` became anchors (they navigate; the same
+one-element-type-per-role fix § 18's rail needed). Seven § 02
+checks in `verify.js`, run **signed out**, since that is who
+sees this page — it clears the session and restores it after.

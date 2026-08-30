@@ -46,6 +46,11 @@ a{color:#E8873C}a:hover{color:#F2A264}
 .av-them{background:rgba(169,140,232,.16);border:1px solid #A98CE8;color:#A98CE8}
 .av-ai{background:rgba(125,158,201,.14);border:1px solid rgba(125,158,201,.6);color:#7D9EC9}
 .btn{position:relative;padding:6px 14px;border:1px solid rgba(255,255,255,.18);font:600 10px 'IBM Plex Mono',monospace;letter-spacing:.13em;color:#E4E2DC}
+/* § 02 HOME's top-bar links. The mockup drew them as bare spans
+   at 12px/#9B968D; they are anchors here because they navigate,
+   so the underline has to go. */
+.home-nav{font-size:12px;color:#9B968D;text-decoration:none;transition:color .14s ease}
+.home-nav:hover{color:#E4E2DC}
 .brk-tl{position:absolute;top:-1px;left:-1px;width:5px;height:5px;border-top:1px solid #E8873C;border-left:1px solid #E8873C}
 .brk-br{position:absolute;bottom:-1px;right:-1px;width:5px;height:5px;border-bottom:1px solid #E8873C;border-right:1px solid #E8873C}
 .prog{position:absolute;left:0;right:0;top:0;height:2px;background:rgba(255,255,255,.05);z-index:8}

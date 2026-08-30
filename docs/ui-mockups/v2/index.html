@@ -34,6 +34,11 @@ a{color:#E8873C}a:hover{color:#F2A264}
 .av-them{background:rgba(169,140,232,.16);border:1px solid #A98CE8;color:#A98CE8}
 .av-ai{background:rgba(125,158,201,.14);border:1px solid rgba(125,158,201,.6);color:#7D9EC9}
 .btn{position:relative;padding:6px 14px;border:1px solid rgba(255,255,255,.18);font:600 10px 'IBM Plex Mono',monospace;letter-spacing:.13em;color:#E4E2DC}
+/* § 02 HOME's top-bar links. The mockup drew them as bare spans
+   at 12px/#9B968D; they are anchors here because they navigate,
+   so the underline has to go. */
+.home-nav{font-size:12px;color:#9B968D;text-decoration:none;transition:color .14s ease}
+.home-nav:hover{color:#E4E2DC}
 .brk-tl{position:absolute;top:-1px;left:-1px;width:5px;height:5px;border-top:1px solid #E8873C;border-left:1px solid #E8873C}
 .brk-br{position:absolute;bottom:-1px;right:-1px;width:5px;height:5px;border-bottom:1px solid #E8873C;border-right:1px solid #E8873C}
 .prog{position:absolute;left:0;right:0;top:0;height:2px;background:rgba(255,255,255,.05);z-index:8}
@@ -535,10 +540,10 @@ a{color:#E8873C}a:hover{color:#F2A264}
   <div class="bar">
     <span class="wm">m<span style="color:#E8873C">/</span>arginal</span>
     <div style="flex:1"></div>
-    <span style="font-size:12px;color:#9B968D">Docs</span><span style="font-size:12px;color:#9B968D">Self-hosting</span><span style="font-size:12px;color:#9B968D">Pricing</span>
+    <a class="home-nav" href="#">Source</a><a class="home-nav" href="#">Self-hosting</a>
     <div class="vr"></div>
-    <span style="font-size:12px;color:#9B968D">Sign in</span>
-    <div class="btn">START<div class="brk-tl"></div><div class="brk-br"></div></div>
+    <a class="home-nav" href="#">Sign in</a>
+    <a class="btn" href="#" style="text-decoration:none">START<div class="brk-tl"></div><div class="brk-br"></div></a>
   </div>
   <div class="body" style="flex-direction:column;overflow:hidden">
     <div style="padding:76px 90px 0;display:flex;gap:70px">
@@ -548,11 +553,11 @@ a{color:#E8873C}a:hover{color:#F2A264}
         <p style="font-size:16.5px;line-height:1.7;color:#9B968D;max-width:540px;margin:0 0 30px">Every edit is an operation addressed by anchor, not offset. Every operation is invertible. There is no conflict dialog, because there is nothing to resolve — and no compile step, so nothing in your notebook is ever "broken".</p>
         <div style="display:flex;gap:12px;align-items:center">
           <div style="padding:11px 22px;background:#E8873C;color:#12100D;font:600 12px 'IBM Plex Mono',monospace;letter-spacing:.1em">CREATE A WORKSPACE</div>
-          <div class="btn" style="padding:11px 20px">RUN IT YOURSELF<div class="brk-tl"></div><div class="brk-br"></div></div>
+          <a class="btn" href="#" style="padding:11px 20px;text-decoration:none">RUN IT YOURSELF<div class="brk-tl"></div><div class="brk-br"></div></a>
         </div>
         <div style="display:flex;gap:34px;margin-top:52px">
-          <div class="rd"><span class="rd-k">ACK P99</span><span class="rd-v" style="font-size:17px;color:#3FCFA8">4 ms</span></div>
-          <div class="rd"><span class="rd-k">OPS / SEC</span><span class="rd-v" style="font-size:17px">1 412</span></div>
+          <div class="rd"><span class="rd-k">OPS ACCEPTED</span><span class="rd-v" style="font-size:17px;color:#3FCFA8">2 422</span></div>
+          <div class="rd"><span class="rd-k">PAGES</span><span class="rd-v" style="font-size:17px">140</span></div>
           <div class="rd"><span class="rd-k">CONFLICT DIALOGS</span><span class="rd-v" style="font-size:17px">0</span></div>
         </div>
       </div>
@@ -566,31 +571,20 @@ a{color:#E8873C}a:hover{color:#F2A264}
           A rope is the wrong primitive here. What we want is a tree of addressable nodes, each one a unit of intent<span style="display:inline-block;width:2px;height:1.05em;background:#A98CE8;vertical-align:-.16em;margin:0 1px"></span><span style="font:600 8px Archivo,sans-serif;color:#0E0F10;background:#A98CE8;padding:1px 4px;vertical-align:.5em;margin-left:2px">ADA</span>
         </div>
         <div style="border-top:1px solid rgba(255,255,255,.07);padding:9px 12px;display:flex;align-items:center;gap:12px">
-          <span class="mono" style="font-size:9.5px;color:#585550">InsertText 7f3a @e21+14</span>
+          <span class="mono" style="font-size:9.5px;color:#585550">InsertText o2 @26</span>
           <div style="flex:1"></div>
           <span class="mono" style="font-size:9.5px;color:#3FCFA8">converged</span>
         </div>
       </div>
     </div>
     <div style="margin-top:auto;display:flex;border-top:1px solid rgba(255,255,255,.07)">
-      <div style="flex:1;padding:26px 30px;border-right:1px solid rgba(255,255,255,.07)">
-        <div class="lbl" style="margin-bottom:10px">SELF-HOSTED</div>
-        <div style="font-family:Spectral,serif;font-size:19px;color:#EFEDE7;margin-bottom:8px">Free · feature-identical</div>
-        <div style="font-size:12px;color:#8C8880;line-height:1.6">Not a cut-down build. One binary, Postgres, your machine.</div>
-      </div>
-      <div style="flex:1;padding:26px 30px;border-right:1px solid rgba(255,255,255,.07);background:rgba(232,135,60,.05)">
-        <div class="lbl" style="margin-bottom:10px;color:#E8873C">CLOUD</div>
-        <div style="font-family:Spectral,serif;font-size:19px;color:#EFEDE7;margin-bottom:8px">$8 / person / month</div>
-        <div style="font-size:12px;color:#8C8880;line-height:1.6">Managed sequencer, backups, op-log retention.</div>
-      </div>
       <div style="flex:1;padding:26px 30px">
-        <div class="lbl" style="margin-bottom:10px">ENTERPRISE</div>
-        <div style="font-family:Spectral,serif;font-size:19px;color:#EFEDE7;margin-bottom:8px">Talk to us</div>
-        <div style="font-size:12px;color:#8C8880;line-height:1.6">Dedicated routing, SSO, audit of every op.</div>
+        <div class="lbl" style="margin-bottom:10px;color:#E8873C">SELF-HOSTED, AND THAT IS THE WHOLE OFFER</div>
+        <div style="font-size:12.5px;color:#8C8880;line-height:1.7;max-width:760px">There is no paid tier, no cloud plan and no enterprise edition — not as a pricing strategy, but because none of them exist. What exists is this: compose, Postgres, your machine, every feature. <span style="color:#9B968D">ADR-001 · self-hosting is feature-identical.</span></div>
       </div>
     </div>
   </div>
-  <div class="status"><span>marginal.dev</span><div style="flex:1"></div><span>ADR-001 · self-hosting is feature-identical</span></div>
+  <div class="status"><span>marginal</span><span>the panel above runs the real transform, in wasm — not an animation</span><div style="flex:1"></div><span>ADR-001 · self-hosting is feature-identical</span></div>
 </div>
 <div class="tag"><b>03</b> REGISTER <i>create an account — no instance step</i></div>
 <div class="sc">

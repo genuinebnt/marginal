@@ -336,8 +336,11 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
   await go('/admin', 6000);
   check('§18 the gear reaches it at all',
         (await p.evaluate(() => location.pathname)) === '/admin');
+  await p.waitForFunction(() => /SERVICES · \d+ of \d+/.test(document.body.innerText),
+    null, { timeout: 15000 }).catch(() => {});
+  const services = (await txt()).match(/SERVICES · (\d+) of (\d+)/);
   check('§18 every service was probed and answered',
-        /SERVICES · (\d+) of \1/.test(await txt()), (await txt()).match(/SERVICES · \d+ of \d+/)?.[0]);
+        services != null && services[1] === services[2], services?.[0]);
   check('§18 a probe reports a latency, not a guess', /\d+ ms/.test(await txt()));
   check('§18 it refuses to overclaim what "up" means',
         /A probe, not a report/.test(await txt()));
@@ -404,6 +407,55 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
         /TAMPER EVIDENCE/.test(await txt()) && /prev_hash/.test(await txt()));
   check('§18b and names what is not recorded at all',
         /Failed sign-ins/.test(await txt()));
+
+  // ── § 02 HOME: the only public route, and its panel is real ──
+  //
+  // Checked SIGNED OUT, because that is who sees it. Everything
+  // else in this file runs with a session in localStorage; this
+  // block clears it and puts it back.
+  const saved = await p.evaluate(() => {
+    const s = localStorage.getItem('marginal.session');
+    localStorage.removeItem('marginal.session');
+    return s;
+  });
+  await go('/', 6000);
+  check('§02 the front door needs no session',
+        (await p.evaluate(() => location.pathname)) === '/');
+  check('§02 it makes the pitch', /one tree, converging/.test(await txt()));
+
+  // The panel runs netsim in wasm and plays the log forward, so
+  // the text has to actually change and then converge.
+  const paneText = () => p.evaluate(() =>
+    document.querySelector('[style*="Spectral"]')?.textContent ?? '');
+  const first = await paneText();
+  await p.waitForTimeout(3000);
+  const later = await paneText();
+  check('§02 the live panel actually runs', first !== later, `${first.length} → ${later.length}`);
+  await p.waitForFunction(() => /converged/.test(document.body.innerText),
+    null, { timeout: 20000 }).catch(() => {});
+  check('§02 and it converges', /converged/.test(await txt()));
+  check('§02 it says the panel is the real transform, not an animation',
+        /runs the real transform, in wasm/.test(await txt()));
+
+  // Counters come from the instance. Inventing traffic on a
+  // landing page is the first thing a reader stops believing.
+  check('§02 the counters are read off this instance',
+        /OPS ACCEPTED/.test(await txt()) && !/1 412/.test(await txt()));
+
+  // A price on a public page is an offer, and there is nothing
+  // to buy. The whole commercial band was removed rather than
+  // rewritten.
+  check('§02 it quotes no price at all',
+        !/\$\d/.test(await txt()) && !/per month/i.test(await txt()));
+  check('§02 and says why there is nothing to price',
+        /none of them exist/.test(await txt()));
+
+  await p.getByText('CREATE A WORKSPACE').first().click();
+  await p.waitForTimeout(1200);
+  check('§02 the call to action reaches sign-in',
+        (await p.evaluate(() => location.pathname)) === '/login');
+
+  await p.evaluate((s) => { if (s) localStorage.setItem('marginal.session', s); }, saved);
 
   // ── § 24e NOT FOUND ───────────────────────────────────────────────────
   await go('/p/the-documnt-block-modl', 4000);

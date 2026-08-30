@@ -25,6 +25,7 @@ import { LabNetcodeScreen } from "./screens/LabNetcodeScreen";
 import { LabPerfScreen } from "./screens/LabPerfScreen";
 import { AdminScreen } from "./screens/AdminScreen";
 import { AuditScreen } from "./screens/AuditScreen";
+import { HomeScreen } from "./screens/HomeScreen";
 
 function RequireAuth({ children }: { children: ReactElement }) {
   const { session } = useAuth();
@@ -35,6 +36,8 @@ function RequireAuth({ children }: { children: ReactElement }) {
 function App() {
   return (
     <Routes>
+      {/* The two public routes. Everything else needs a session. */}
+      <Route path="/" element={<HomeScreen />} />
       <Route path="/login" element={<AuthPage />} />
       <Route
         path="/pages"
