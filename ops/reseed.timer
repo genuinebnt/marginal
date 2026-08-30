@@ -1,0 +1,13 @@
+[Unit]
+Description=Nightly reseed of the marginal showcase
+Documentation=https://github.com/genuinebnt/marginal
+
+[Timer]
+OnCalendar=*-*-* 04:30:00
+# Catch up after downtime rather than skipping a night.
+Persistent=true
+# Away from the hour, and clear of the blog's 04:00 docker prune.
+RandomizedDelaySec=20m
+
+[Install]
+WantedBy=timers.target

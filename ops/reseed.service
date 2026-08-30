@@ -1,0 +1,37 @@
+[Unit]
+Description=Reseed the marginal showcase workspace
+Documentation=https://github.com/genuinebnt/marginal
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/deploy/marginal
+EnvironmentFile=/home/deploy/marginal/.env
+
+# Why this exists: every account shares one page space (ADR-001, "not
+# multi-tenant"), and there is no authorization on destructive operations — any
+# visitor who registers can edit or delete the seeded pages. Re-seeding nightly
+# means vandalism heals itself by morning instead of needing a person.
+#
+# The seeder clears and rebuilds through the real pipeline: pages over REST,
+# every block as an op on the collaboration WebSocket. Nothing writes to a
+# database directly, so a seeding bug is a real bug.
+#
+# Run inside the compose network rather than through the public gateway: it
+# skips Cloudflare and TLS for ~40 pages of WebSocket traffic, and it keeps
+# working if the public hostname is ever down.
+ExecStart=/usr/bin/docker run --rm \
+    --network marginal_default \
+    -v /home/deploy/marginal:/repo \
+    -w /repo/tools \
+    -e SEED_GATEWAY_URL=http://marginal-api-gateway:8000 \
+    -e SEED_COLLAB_URL=ws://marginal-collaboration-service:8002 \
+    -e SEED_EMAIL=${SEED_EMAIL} \
+    -e SEED_PASSWORD=${SEED_PASSWORD} \
+    node:22-alpine \
+    sh -c "npm install --no-save --no-audit --no-fund --silent ws && node seed/seed.js all"
+
+# The seeder paces its WebSocket ops deliberately; 38 pages takes a few minutes.
+TimeoutStartSec=900
+Nice=10
