@@ -31,6 +31,16 @@ service AuthService {
   // authenticated actor can call this. Stated here so the ADMIN
   // screen can state it too.
   rpc ListPeople      (ListPeopleRequest) returns (ListPeopleResponse);
+
+  // § 18b AUDIT LOG's auth rows. Derived from state that already
+  // exists — a user row IS a registration, a refresh token row
+  // IS a sign-in, its revoked_at IS a sign-out — so none of it
+  // can disagree with what happened.
+  //
+  // Failed sign-in attempts are NOT in here, because nothing
+  // records them. The screen says so rather than letting an
+  // empty column read as "there were none".
+  rpc ListAuthEvents  (ListAuthEventsRequest) returns (ListAuthEventsResponse);
 }
 
 message User {
@@ -51,6 +61,21 @@ message ListPeopleResponse {
   // those are collaboration-service's and are a different
   // number.
   int64 active_sessions = 2;
+}
+
+message AuthEvent {
+  string id      = 1;
+  string kind    = 2; // auth.register | auth.signin | auth.signout
+  string user_id = 3;
+  google.protobuf.Timestamp at = 4;
+}
+
+message ListAuthEventsRequest {
+  int32 limit = 1; // clamped server-side
+}
+
+message ListAuthEventsResponse {
+  repeated AuthEvent events = 1;
 }
 
 message TokenPair {

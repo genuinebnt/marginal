@@ -98,6 +98,21 @@ func (s *Server) ListPeople(ctx context.Context, _ *authv1.ListPeopleRequest) (*
 	return out, nil
 }
 
+func (s *Server) ListAuthEvents(ctx context.Context, req *authv1.ListAuthEventsRequest) (*authv1.ListAuthEventsResponse, error) {
+	events, err := s.Service.ListAuthEvents(ctx, req.GetLimit())
+	if err != nil {
+		return nil, toStatus(err)
+	}
+	out := &authv1.ListAuthEventsResponse{Events: make([]*authv1.AuthEvent, 0, len(events))}
+	for _, e := range events {
+		out.Events = append(out.Events, &authv1.AuthEvent{
+			Id: e.ID, Kind: e.Kind, UserId: e.UserID,
+			At: timestamppb.New(e.At),
+		})
+	}
+	return out, nil
+}
+
 func (s *Server) Refresh(ctx context.Context, req *authv1.RefreshRequest) (*authv1.TokenPair, error) {
 	pair, err := s.Service.Refresh(ctx, req.GetRefreshToken())
 	if err != nil {

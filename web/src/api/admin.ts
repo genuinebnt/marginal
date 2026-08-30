@@ -8,7 +8,7 @@
 // the gateway maps resource contracts, and none of these is a
 // resource).
 import { apiFetch } from "./http";
-import { GATEWAY_URL } from "./config";
+import { COLLAB_URL, GATEWAY_URL } from "./config";
 
 export interface ServiceHealth {
   name: string;
@@ -57,3 +57,56 @@ export function getPeople(actorId: string | null): Promise<People> {
 // error shape, and a second copy here drifted from it within the
 // hour.
 export { getCollabStats, type CollabStats } from "./history";
+
+/** One § 18b row from the op log. No payload: an audit row says
+ *  who did what to which page, and the text somebody typed is
+ *  the document's business. */
+export interface AuditRow {
+  id: string;
+  seq: number;
+  page_id: string;
+  actor_id: string;
+  actor_kind: string;
+  kind: string;
+  /** "content" | "destructive" — what the filter chips select. */
+  class: string;
+  /** Ties a row to the one gesture that produced it, so a
+   *  keystroke that emitted three ops reads as one action. */
+  undo_group?: string;
+  created_at: string;
+}
+
+export interface AuditReport {
+  rows: AuditRow[];
+  /** Over the whole log, not the page returned — "by class"
+   *  would answer a different question otherwise. */
+  counts: Record<string, number>;
+  total: number;
+  kinds: Array<{ kind: string; class: string; n: number }>;
+}
+
+export interface AuthEvent {
+  id: string;
+  /** auth.register | auth.signin | auth.signout */
+  kind: string;
+  user_id: string;
+  at: string;
+}
+
+/** collaboration-service directly — the content half. */
+export async function getAudit(cls: string, limit = 120): Promise<AuditReport> {
+  const url = new URL(`${COLLAB_URL}/collab/audit`);
+  url.searchParams.set("limit", String(limit));
+  if (cls && cls !== "all") url.searchParams.set("class", cls);
+  const res = await fetch(url);
+  if (!res.ok) throw new Error((await res.text()).trim() || res.statusText);
+  return res.json() as Promise<AuditReport>;
+}
+
+/** auth-service through the gateway — the auth half. The two are
+ *  merged by timestamp in the client, which is where a join
+ *  across service boundaries belongs. */
+export function getAuthEvents(actorId: string | null, limit = 60): Promise<{ events: AuthEvent[] }> {
+  return apiFetch<{ events: AuthEvent[] }>(
+    `${GATEWAY_URL}/admin/auth-events?limit=${limit}`, { actorId });
+}

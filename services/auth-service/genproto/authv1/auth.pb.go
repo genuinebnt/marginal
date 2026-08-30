@@ -196,6 +196,162 @@ func (x *ListPeopleResponse) GetActiveSessions() int64 {
 	return 0
 }
 
+type AuthEvent struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Kind          string                 `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"` // auth.register | auth.signin | auth.signout
+	UserId        string                 `protobuf:"bytes,3,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	At            *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=at,proto3" json:"at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AuthEvent) Reset() {
+	*x = AuthEvent{}
+	mi := &file_auth_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AuthEvent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AuthEvent) ProtoMessage() {}
+
+func (x *AuthEvent) ProtoReflect() protoreflect.Message {
+	mi := &file_auth_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AuthEvent.ProtoReflect.Descriptor instead.
+func (*AuthEvent) Descriptor() ([]byte, []int) {
+	return file_auth_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *AuthEvent) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *AuthEvent) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *AuthEvent) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+func (x *AuthEvent) GetAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.At
+	}
+	return nil
+}
+
+type ListAuthEventsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Limit         int32                  `protobuf:"varint,1,opt,name=limit,proto3" json:"limit,omitempty"` // clamped server-side
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListAuthEventsRequest) Reset() {
+	*x = ListAuthEventsRequest{}
+	mi := &file_auth_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListAuthEventsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListAuthEventsRequest) ProtoMessage() {}
+
+func (x *ListAuthEventsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_auth_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListAuthEventsRequest.ProtoReflect.Descriptor instead.
+func (*ListAuthEventsRequest) Descriptor() ([]byte, []int) {
+	return file_auth_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *ListAuthEventsRequest) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+type ListAuthEventsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Events        []*AuthEvent           `protobuf:"bytes,1,rep,name=events,proto3" json:"events,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListAuthEventsResponse) Reset() {
+	*x = ListAuthEventsResponse{}
+	mi := &file_auth_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListAuthEventsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListAuthEventsResponse) ProtoMessage() {}
+
+func (x *ListAuthEventsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_auth_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListAuthEventsResponse.ProtoReflect.Descriptor instead.
+func (*ListAuthEventsResponse) Descriptor() ([]byte, []int) {
+	return file_auth_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *ListAuthEventsResponse) GetEvents() []*AuthEvent {
+	if x != nil {
+		return x.Events
+	}
+	return nil
+}
+
 type TokenPair struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	AccessToken   string                 `protobuf:"bytes,1,opt,name=access_token,json=accessToken,proto3" json:"access_token,omitempty"`    // RS256 JWT
@@ -207,7 +363,7 @@ type TokenPair struct {
 
 func (x *TokenPair) Reset() {
 	*x = TokenPair{}
-	mi := &file_auth_proto_msgTypes[3]
+	mi := &file_auth_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -219,7 +375,7 @@ func (x *TokenPair) String() string {
 func (*TokenPair) ProtoMessage() {}
 
 func (x *TokenPair) ProtoReflect() protoreflect.Message {
-	mi := &file_auth_proto_msgTypes[3]
+	mi := &file_auth_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -232,7 +388,7 @@ func (x *TokenPair) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TokenPair.ProtoReflect.Descriptor instead.
 func (*TokenPair) Descriptor() ([]byte, []int) {
-	return file_auth_proto_rawDescGZIP(), []int{3}
+	return file_auth_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *TokenPair) GetAccessToken() string {
@@ -267,7 +423,7 @@ type RegisterRequest struct {
 
 func (x *RegisterRequest) Reset() {
 	*x = RegisterRequest{}
-	mi := &file_auth_proto_msgTypes[4]
+	mi := &file_auth_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -279,7 +435,7 @@ func (x *RegisterRequest) String() string {
 func (*RegisterRequest) ProtoMessage() {}
 
 func (x *RegisterRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_auth_proto_msgTypes[4]
+	mi := &file_auth_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -292,7 +448,7 @@ func (x *RegisterRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterRequest.ProtoReflect.Descriptor instead.
 func (*RegisterRequest) Descriptor() ([]byte, []int) {
-	return file_auth_proto_rawDescGZIP(), []int{4}
+	return file_auth_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *RegisterRequest) GetEmail() string {
@@ -326,7 +482,7 @@ type AuthenticateRequest struct {
 
 func (x *AuthenticateRequest) Reset() {
 	*x = AuthenticateRequest{}
-	mi := &file_auth_proto_msgTypes[5]
+	mi := &file_auth_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -338,7 +494,7 @@ func (x *AuthenticateRequest) String() string {
 func (*AuthenticateRequest) ProtoMessage() {}
 
 func (x *AuthenticateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_auth_proto_msgTypes[5]
+	mi := &file_auth_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -351,7 +507,7 @@ func (x *AuthenticateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuthenticateRequest.ProtoReflect.Descriptor instead.
 func (*AuthenticateRequest) Descriptor() ([]byte, []int) {
-	return file_auth_proto_rawDescGZIP(), []int{5}
+	return file_auth_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *AuthenticateRequest) GetEmail() string {
@@ -377,7 +533,7 @@ type GetUserRequest struct {
 
 func (x *GetUserRequest) Reset() {
 	*x = GetUserRequest{}
-	mi := &file_auth_proto_msgTypes[6]
+	mi := &file_auth_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -389,7 +545,7 @@ func (x *GetUserRequest) String() string {
 func (*GetUserRequest) ProtoMessage() {}
 
 func (x *GetUserRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_auth_proto_msgTypes[6]
+	mi := &file_auth_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -402,7 +558,7 @@ func (x *GetUserRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetUserRequest.ProtoReflect.Descriptor instead.
 func (*GetUserRequest) Descriptor() ([]byte, []int) {
-	return file_auth_proto_rawDescGZIP(), []int{6}
+	return file_auth_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *GetUserRequest) GetId() string {
@@ -421,7 +577,7 @@ type RefreshRequest struct {
 
 func (x *RefreshRequest) Reset() {
 	*x = RefreshRequest{}
-	mi := &file_auth_proto_msgTypes[7]
+	mi := &file_auth_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -433,7 +589,7 @@ func (x *RefreshRequest) String() string {
 func (*RefreshRequest) ProtoMessage() {}
 
 func (x *RefreshRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_auth_proto_msgTypes[7]
+	mi := &file_auth_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -446,7 +602,7 @@ func (x *RefreshRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RefreshRequest.ProtoReflect.Descriptor instead.
 func (*RefreshRequest) Descriptor() ([]byte, []int) {
-	return file_auth_proto_rawDescGZIP(), []int{7}
+	return file_auth_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *RefreshRequest) GetRefreshToken() string {
@@ -466,7 +622,7 @@ type RevokeRequest struct {
 
 func (x *RevokeRequest) Reset() {
 	*x = RevokeRequest{}
-	mi := &file_auth_proto_msgTypes[8]
+	mi := &file_auth_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -478,7 +634,7 @@ func (x *RevokeRequest) String() string {
 func (*RevokeRequest) ProtoMessage() {}
 
 func (x *RevokeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_auth_proto_msgTypes[8]
+	mi := &file_auth_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -491,7 +647,7 @@ func (x *RevokeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokeRequest.ProtoReflect.Descriptor instead.
 func (*RevokeRequest) Descriptor() ([]byte, []int) {
-	return file_auth_proto_rawDescGZIP(), []int{8}
+	return file_auth_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *RevokeRequest) GetRefreshToken() string {
@@ -516,7 +672,7 @@ type RevokeAllRequest struct {
 
 func (x *RevokeAllRequest) Reset() {
 	*x = RevokeAllRequest{}
-	mi := &file_auth_proto_msgTypes[9]
+	mi := &file_auth_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -528,7 +684,7 @@ func (x *RevokeAllRequest) String() string {
 func (*RevokeAllRequest) ProtoMessage() {}
 
 func (x *RevokeAllRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_auth_proto_msgTypes[9]
+	mi := &file_auth_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -541,7 +697,7 @@ func (x *RevokeAllRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokeAllRequest.ProtoReflect.Descriptor instead.
 func (*RevokeAllRequest) Descriptor() ([]byte, []int) {
-	return file_auth_proto_rawDescGZIP(), []int{9}
+	return file_auth_proto_rawDescGZIP(), []int{12}
 }
 
 var File_auth_proto protoreflect.FileDescriptor
@@ -560,7 +716,16 @@ const file_auth_proto_rawDesc = "" +
 	"\x11ListPeopleRequest\"k\n" +
 	"\x12ListPeopleResponse\x12,\n" +
 	"\x05users\x18\x01 \x03(\v2\x16.marginal.auth.v1.UserR\x05users\x12'\n" +
-	"\x0factive_sessions\x18\x02 \x01(\x03R\x0eactiveSessions\"r\n" +
+	"\x0factive_sessions\x18\x02 \x01(\x03R\x0eactiveSessions\"t\n" +
+	"\tAuthEvent\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
+	"\x04kind\x18\x02 \x01(\tR\x04kind\x12\x17\n" +
+	"\auser_id\x18\x03 \x01(\tR\x06userId\x12*\n" +
+	"\x02at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\x02at\"-\n" +
+	"\x15ListAuthEventsRequest\x12\x14\n" +
+	"\x05limit\x18\x01 \x01(\x05R\x05limit\"M\n" +
+	"\x16ListAuthEventsResponse\x123\n" +
+	"\x06events\x18\x01 \x03(\v2\x1b.marginal.auth.v1.AuthEventR\x06events\"r\n" +
 	"\tTokenPair\x12!\n" +
 	"\faccess_token\x18\x01 \x01(\tR\vaccessToken\x12#\n" +
 	"\rrefresh_token\x18\x02 \x01(\tR\frefreshToken\x12\x1d\n" +
@@ -581,7 +746,7 @@ const file_auth_proto_rawDesc = "" +
 	"\rrefresh_token\x18\x01 \x01(\tR\frefreshToken\x12&\n" +
 	"\faccess_token\x18\x02 \x01(\tH\x00R\vaccessToken\x88\x01\x01B\x0f\n" +
 	"\r_access_token\"\x12\n" +
-	"\x10RevokeAllRequest2\xa1\x04\n" +
+	"\x10RevokeAllRequest2\x86\x05\n" +
 	"\vAuthService\x12J\n" +
 	"\bRegister\x12!.marginal.auth.v1.RegisterRequest\x1a\x1b.marginal.auth.v1.TokenPair\x12R\n" +
 	"\fAuthenticate\x12%.marginal.auth.v1.AuthenticateRequest\x1a\x1b.marginal.auth.v1.TokenPair\x12C\n" +
@@ -590,7 +755,8 @@ const file_auth_proto_rawDesc = "" +
 	"\x06Revoke\x12\x1f.marginal.auth.v1.RevokeRequest\x1a\x16.google.protobuf.Empty\x12G\n" +
 	"\tRevokeAll\x12\".marginal.auth.v1.RevokeAllRequest\x1a\x16.google.protobuf.Empty\x12W\n" +
 	"\n" +
-	"ListPeople\x12#.marginal.auth.v1.ListPeopleRequest\x1a$.marginal.auth.v1.ListPeopleResponseB'Z%marginal/auth-service/genproto/authv1b\x06proto3"
+	"ListPeople\x12#.marginal.auth.v1.ListPeopleRequest\x1a$.marginal.auth.v1.ListPeopleResponse\x12c\n" +
+	"\x0eListAuthEvents\x12'.marginal.auth.v1.ListAuthEventsRequest\x1a(.marginal.auth.v1.ListAuthEventsResponseB'Z%marginal/auth-service/genproto/authv1b\x06proto3"
 
 var (
 	file_auth_proto_rawDescOnce sync.Once
@@ -604,43 +770,50 @@ func file_auth_proto_rawDescGZIP() []byte {
 	return file_auth_proto_rawDescData
 }
 
-var file_auth_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_auth_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_auth_proto_goTypes = []any{
-	(*User)(nil),                  // 0: marginal.auth.v1.User
-	(*ListPeopleRequest)(nil),     // 1: marginal.auth.v1.ListPeopleRequest
-	(*ListPeopleResponse)(nil),    // 2: marginal.auth.v1.ListPeopleResponse
-	(*TokenPair)(nil),             // 3: marginal.auth.v1.TokenPair
-	(*RegisterRequest)(nil),       // 4: marginal.auth.v1.RegisterRequest
-	(*AuthenticateRequest)(nil),   // 5: marginal.auth.v1.AuthenticateRequest
-	(*GetUserRequest)(nil),        // 6: marginal.auth.v1.GetUserRequest
-	(*RefreshRequest)(nil),        // 7: marginal.auth.v1.RefreshRequest
-	(*RevokeRequest)(nil),         // 8: marginal.auth.v1.RevokeRequest
-	(*RevokeAllRequest)(nil),      // 9: marginal.auth.v1.RevokeAllRequest
-	(*timestamppb.Timestamp)(nil), // 10: google.protobuf.Timestamp
-	(*emptypb.Empty)(nil),         // 11: google.protobuf.Empty
+	(*User)(nil),                   // 0: marginal.auth.v1.User
+	(*ListPeopleRequest)(nil),      // 1: marginal.auth.v1.ListPeopleRequest
+	(*ListPeopleResponse)(nil),     // 2: marginal.auth.v1.ListPeopleResponse
+	(*AuthEvent)(nil),              // 3: marginal.auth.v1.AuthEvent
+	(*ListAuthEventsRequest)(nil),  // 4: marginal.auth.v1.ListAuthEventsRequest
+	(*ListAuthEventsResponse)(nil), // 5: marginal.auth.v1.ListAuthEventsResponse
+	(*TokenPair)(nil),              // 6: marginal.auth.v1.TokenPair
+	(*RegisterRequest)(nil),        // 7: marginal.auth.v1.RegisterRequest
+	(*AuthenticateRequest)(nil),    // 8: marginal.auth.v1.AuthenticateRequest
+	(*GetUserRequest)(nil),         // 9: marginal.auth.v1.GetUserRequest
+	(*RefreshRequest)(nil),         // 10: marginal.auth.v1.RefreshRequest
+	(*RevokeRequest)(nil),          // 11: marginal.auth.v1.RevokeRequest
+	(*RevokeAllRequest)(nil),       // 12: marginal.auth.v1.RevokeAllRequest
+	(*timestamppb.Timestamp)(nil),  // 13: google.protobuf.Timestamp
+	(*emptypb.Empty)(nil),          // 14: google.protobuf.Empty
 }
 var file_auth_proto_depIdxs = []int32{
-	10, // 0: marginal.auth.v1.User.created_at:type_name -> google.protobuf.Timestamp
+	13, // 0: marginal.auth.v1.User.created_at:type_name -> google.protobuf.Timestamp
 	0,  // 1: marginal.auth.v1.ListPeopleResponse.users:type_name -> marginal.auth.v1.User
-	4,  // 2: marginal.auth.v1.AuthService.Register:input_type -> marginal.auth.v1.RegisterRequest
-	5,  // 3: marginal.auth.v1.AuthService.Authenticate:input_type -> marginal.auth.v1.AuthenticateRequest
-	6,  // 4: marginal.auth.v1.AuthService.GetUser:input_type -> marginal.auth.v1.GetUserRequest
-	7,  // 5: marginal.auth.v1.AuthService.Refresh:input_type -> marginal.auth.v1.RefreshRequest
-	8,  // 6: marginal.auth.v1.AuthService.Revoke:input_type -> marginal.auth.v1.RevokeRequest
-	9,  // 7: marginal.auth.v1.AuthService.RevokeAll:input_type -> marginal.auth.v1.RevokeAllRequest
-	1,  // 8: marginal.auth.v1.AuthService.ListPeople:input_type -> marginal.auth.v1.ListPeopleRequest
-	3,  // 9: marginal.auth.v1.AuthService.Register:output_type -> marginal.auth.v1.TokenPair
-	3,  // 10: marginal.auth.v1.AuthService.Authenticate:output_type -> marginal.auth.v1.TokenPair
-	0,  // 11: marginal.auth.v1.AuthService.GetUser:output_type -> marginal.auth.v1.User
-	3,  // 12: marginal.auth.v1.AuthService.Refresh:output_type -> marginal.auth.v1.TokenPair
-	11, // 13: marginal.auth.v1.AuthService.Revoke:output_type -> google.protobuf.Empty
-	11, // 14: marginal.auth.v1.AuthService.RevokeAll:output_type -> google.protobuf.Empty
-	2,  // 15: marginal.auth.v1.AuthService.ListPeople:output_type -> marginal.auth.v1.ListPeopleResponse
-	9,  // [9:16] is the sub-list for method output_type
-	2,  // [2:9] is the sub-list for method input_type
-	2,  // [2:2] is the sub-list for extension type_name
-	2,  // [2:2] is the sub-list for extension extendee
-	0,  // [0:2] is the sub-list for field type_name
+	13, // 2: marginal.auth.v1.AuthEvent.at:type_name -> google.protobuf.Timestamp
+	3,  // 3: marginal.auth.v1.ListAuthEventsResponse.events:type_name -> marginal.auth.v1.AuthEvent
+	7,  // 4: marginal.auth.v1.AuthService.Register:input_type -> marginal.auth.v1.RegisterRequest
+	8,  // 5: marginal.auth.v1.AuthService.Authenticate:input_type -> marginal.auth.v1.AuthenticateRequest
+	9,  // 6: marginal.auth.v1.AuthService.GetUser:input_type -> marginal.auth.v1.GetUserRequest
+	10, // 7: marginal.auth.v1.AuthService.Refresh:input_type -> marginal.auth.v1.RefreshRequest
+	11, // 8: marginal.auth.v1.AuthService.Revoke:input_type -> marginal.auth.v1.RevokeRequest
+	12, // 9: marginal.auth.v1.AuthService.RevokeAll:input_type -> marginal.auth.v1.RevokeAllRequest
+	1,  // 10: marginal.auth.v1.AuthService.ListPeople:input_type -> marginal.auth.v1.ListPeopleRequest
+	4,  // 11: marginal.auth.v1.AuthService.ListAuthEvents:input_type -> marginal.auth.v1.ListAuthEventsRequest
+	6,  // 12: marginal.auth.v1.AuthService.Register:output_type -> marginal.auth.v1.TokenPair
+	6,  // 13: marginal.auth.v1.AuthService.Authenticate:output_type -> marginal.auth.v1.TokenPair
+	0,  // 14: marginal.auth.v1.AuthService.GetUser:output_type -> marginal.auth.v1.User
+	6,  // 15: marginal.auth.v1.AuthService.Refresh:output_type -> marginal.auth.v1.TokenPair
+	14, // 16: marginal.auth.v1.AuthService.Revoke:output_type -> google.protobuf.Empty
+	14, // 17: marginal.auth.v1.AuthService.RevokeAll:output_type -> google.protobuf.Empty
+	2,  // 18: marginal.auth.v1.AuthService.ListPeople:output_type -> marginal.auth.v1.ListPeopleResponse
+	5,  // 19: marginal.auth.v1.AuthService.ListAuthEvents:output_type -> marginal.auth.v1.ListAuthEventsResponse
+	12, // [12:20] is the sub-list for method output_type
+	4,  // [4:12] is the sub-list for method input_type
+	4,  // [4:4] is the sub-list for extension type_name
+	4,  // [4:4] is the sub-list for extension extendee
+	0,  // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_auth_proto_init() }
@@ -648,14 +821,14 @@ func file_auth_proto_init() {
 	if File_auth_proto != nil {
 		return
 	}
-	file_auth_proto_msgTypes[8].OneofWrappers = []any{}
+	file_auth_proto_msgTypes[11].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_auth_proto_rawDesc), len(file_auth_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   10,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

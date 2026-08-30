@@ -70,3 +70,25 @@ func toPeopleJSON(resp *authv1.ListPeopleResponse) peopleJSON {
 	}
 	return out
 }
+
+type authEventJSON struct {
+	ID     string `json:"id"`
+	Kind   string `json:"kind"`
+	UserID string `json:"user_id"`
+	At     string `json:"at"`
+}
+
+type authEventsJSON struct {
+	Events []authEventJSON `json:"events"`
+}
+
+func toAuthEventsJSON(resp *authv1.ListAuthEventsResponse) authEventsJSON {
+	out := authEventsJSON{Events: make([]authEventJSON, 0, len(resp.GetEvents()))}
+	for _, e := range resp.GetEvents() {
+		out.Events = append(out.Events, authEventJSON{
+			ID: e.GetId(), Kind: e.GetKind(), UserID: e.GetUserId(),
+			At: e.GetAt().AsTime().UTC().Format("2006-01-02T15:04:05.000Z"),
+		})
+	}
+	return out
+}

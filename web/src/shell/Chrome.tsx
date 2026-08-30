@@ -112,6 +112,7 @@ export function num(n: number): string {
  * has no session to show — which is why it is opt-in via TopBar's `bare`.
  */
 function Utility({ now, peers }: { now: Date; peers?: ReactNode }) {
+  const { pathname } = useLocation();
   const time = now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
   const date = now
     .toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short" })
@@ -137,7 +138,13 @@ function Utility({ now, peers }: { now: Date; peers?: ReactNode }) {
       >
         ◎{inbox.unread > 0 && <div className="bdg">{inbox.unread}</div>}
       </span>
-      <Link to="/admin" className="icb" style={{ textDecoration: "none" }}>⚙</Link>
+      <Link
+        to="/admin"
+        className={`icb${pathname.startsWith("/admin") ? " icb-on" : ""}`}
+        style={{ textDecoration: "none" }}
+      >
+        ⚙
+      </Link>
       <div className="av av-you">GN</div>
       {peers}
     </>

@@ -4356,3 +4356,106 @@ index still listed Diagnostics, History and Search as "not in
 Track 1 scope" — all three shipped in `v2.3.0`/`v2.4.0`/`v2.5.0`
 once `ADR-012` reversed those deferrals. A contract index that
 disagrees with the contracts is worse than no index.
+
+---
+
+## 2026-08-30 — § 18b AUDIT LOG: derived, so it cannot drift
+
+The section's own subtitle is the design — "derived from the op
+log rather than written beside it" — and that turned out to be a
+claim this repo could actually make good on rather than a
+sentence to port.
+
+**Both halves are projections of state that already exists.**
+Content rows come from `collab.ops` (`GET /collab/audit`, new).
+Auth rows come from `auth.users` and `auth.refresh_tokens`
+(`ListAuthEvents`, new): a user row *is* a registration, a
+refresh-token row *is* a sign-in, its `revoked_at` *is* a
+sign-out. Nothing is emitted, so nothing can disagree with what
+happened.
+
+The two come from two services and are merged **in the client**,
+by timestamp. `DATA_MODEL.md` forbids cross-schema joins, and
+the honest place for a join across a service boundary is the
+caller that wanted both. Page titles are a third call for the
+same reason.
+
+**The payload is not selected.** An audit row says who did what
+to which page; the text somebody typed is the document's
+business, and an admin surface that quietly carries it is a more
+invasive feature than the one anyone asked for.
+
+**A bug nothing failed on.** Op kinds are tier-prefixed
+(`block:InsertBlock`, `text:DeleteText` — RFC-002's two tiers)
+and the classifier matched bare names, so every delete was
+classified as ordinary content. Nothing errored: the DESTRUCTIVE
+filter simply returned an empty list, which reads as "nothing
+was deleted" rather than as a defect. Six real deletes were
+invisible. `TestDestructiveIsRecognisedThroughTheTierPrefix`
+covers it now, including that an *unknown* kind stays content —
+a new op should appear in the log as ordinary rather than vanish
+from it because nobody classified it.
+
+**Two changes that came from looking at real data, not the
+mockup:**
+
+- The `ALL` view was 300+ identical sign-ins from one account
+  and nothing else. Consecutive identical events by the same
+  actor on the same target now fold into one row with a count
+  (`auth.signin ×57 … back to 12:37:28`). A log where one
+  repeated event drowns everything is a log nobody reads, and
+  the fold loses nothing — the row still carries how many and
+  how far back. Same idea `undo_group` already applies to ops.
+- **Registrations were being crowded out by sign-ins**, which is
+  backwards: an account being created is the most audit-worthy
+  auth event there is. The limit now applies to sign-ins and
+  sign-outs only; every registration is always returned. On a
+  self-hosted instance that is a number that fits.
+
+Deleted pages are still named. The lookup reads the live graph
+*and* the trash — an audit log that cannot name a deleted page
+fails at exactly the moment naming matters most. The row shows
+`paste probe 2 (deleted)`.
+
+**Four things the mockup claimed that the system does not do,
+corrected in the mockup first:**
+
+- **A verified prev-hash chain** ("chain sha256 · prev-linked ·
+  verified ✓ to genesis · gaps 0"). There is none. Printing
+  "verified" about a chain that does not exist is the single
+  worst thing an audit screen can do, so the panel now says what
+  tamper evidence would actually take: a `prev_hash` column
+  written on the accept path, which is a migration and a
+  write-path change, not a screen.
+- **A request source** (`web`, `api`, `203.0.113.9`). The op log
+  records an actor *kind*, not where a request came from. SOURCE
+  shows the former.
+- **`auth.fail`, `space.role.grant`, `setting.change`,
+  `backup.complete`, and an Assistant actor** — failed sign-ins
+  are not recorded, there is no RBAC, no settings store, no
+  backups, and no agent writes ops. Filter chips for
+  PERMISSIONS/SETTINGS/PLUGINS went with them: a chip that
+  always returns nothing is worse than an absent one, because it
+  reads as "nothing happened".
+- **`EVENTS · 30 D`** beside a RETENTION line reading "forever".
+  `collab.ops` is append-only; the count is all-time.
+
+The gear in the utility cluster now lights up inside `/admin`,
+which it should have been doing since § 18 — without it the
+cluster is the one place on screen that cannot say where you
+are.
+
+**Gate:** `node tools/uidiff/uidiff.js 18b /admin/audit` →
+**missing 0 · property diffs 0 · chrome text diffs 0**. Ten
+§ 18b checks in `verify.js`, including that each filter chip
+actually selects (DESTRUCTIVE cut 16 rows to 4), that a selected
+row names what it was derived from, and that the screen does
+*not* claim tamper evidence it does not have.
+
+One of those checks was itself wrong first: it clicked
+`.av`, and the first avatar on the page belongs to the utility
+cluster rather than to a row, so it selected nothing and failed
+on a screen that worked. It clicks a TIME cell now — a thing
+only rows have. Worth noting because it is the second time a
+check has been wrong about its own screen in this sweep, and
+both times the failure looked like a product bug.

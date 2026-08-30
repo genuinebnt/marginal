@@ -106,3 +106,42 @@ ORDER BY created_at DESC;
 -- mistaken for; the screen says which it means.
 SELECT COUNT(*) FROM auth.refresh_tokens
 WHERE revoked_at IS NULL AND expires_at > NOW();
+
+-- name: AuditAuthEvents :many
+-- § 18b AUDIT LOG's auth rows — derived, like the content rows,
+-- rather than written beside the thing they describe.
+--
+-- Three event kinds, all read from state that already exists:
+-- a user row IS the registration, a refresh token row IS a
+-- sign-in, and its revoked_at IS a sign-out. Nothing here is an
+-- event somebody remembered to emit, which is why it cannot
+-- disagree with what happened.
+--
+-- What is deliberately absent: failed sign-in attempts. Nothing
+-- records them, and a row saying so would be an invention. The
+-- screen says the gap out loud rather than leaving the reader to
+-- assume there were none.
+(
+    SELECT id, 'auth.register'::text AS kind, id AS user_id, created_at AS at
+    FROM auth.users
+)
+UNION ALL
+(
+    SELECT * FROM (
+        (
+            SELECT id, 'auth.signin'::text AS kind, user_id, created_at AS at
+            FROM auth.refresh_tokens
+            ORDER BY created_at DESC
+            LIMIT sqlc.arg(row_limit)
+        )
+        UNION ALL
+        (
+            SELECT id, 'auth.signout'::text, user_id, revoked_at
+            FROM auth.refresh_tokens
+            WHERE revoked_at IS NOT NULL
+            ORDER BY revoked_at DESC
+            LIMIT sqlc.arg(row_limit)
+        )
+    ) recent
+)
+ORDER BY at DESC;

@@ -24,6 +24,7 @@ import { LabAnalyticsScreen } from "./screens/LabAnalyticsScreen";
 import { LabNetcodeScreen } from "./screens/LabNetcodeScreen";
 import { LabPerfScreen } from "./screens/LabPerfScreen";
 import { AdminScreen } from "./screens/AdminScreen";
+import { AuditScreen } from "./screens/AuditScreen";
 
 function RequireAuth({ children }: { children: ReactElement }) {
   const { session } = useAuth();
@@ -128,6 +129,7 @@ function App() {
           page picker rather than 404ing, so these are real destinations. */}
       <Route path="/history" element={<RequireAuth><HistoryScreen /></RequireAuth>} />
       <Route path="/lab/compiler" element={<RequireAuth><LabCompilerScreen /></RequireAuth>} />
+      <Route path="/admin/audit" element={<RequireAuth><AuditScreen /></RequireAuth>} />
       <Route path="/admin" element={<RequireAuth><AdminScreen /></RequireAuth>} />
       <Route path="/lab/perf" element={<RequireAuth><LabPerfScreen /></RequireAuth>} />
       <Route path="/lab/netcode" element={<RequireAuth><LabNetcodeScreen /></RequireAuth>} />

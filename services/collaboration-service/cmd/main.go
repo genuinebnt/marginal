@@ -125,6 +125,7 @@ func run() error {
 	mux.HandleFunc("/collab/pages/{id}/blocks/{blockId}/palimpsest", wsapi.NewPalimpsestHandler(repo, serverActor))
 	mux.HandleFunc("/collab/pages/{id}/diff", wsapi.NewDiffHandler(repo, serverActor))
 	mux.HandleFunc("/collab/stats", wsapi.NewStatsHandler(pool, manager))
+	mux.HandleFunc("/collab/audit", wsapi.NewAuditHandler(pool))
 
 	httpServer := &http.Server{Addr: httpAddr, Handler: allowCORS(mux)}
 

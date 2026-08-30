@@ -359,6 +359,52 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
   check('§18 Jobs & sagas reaches the saga screen',
         (await p.evaluate(() => location.pathname)) === '/trash');
 
+  // ── § 18b AUDIT LOG: derived, not written beside ──────────
+  await go('/admin/audit', 7000);
+  check('§18b it says what it is a projection of',
+        /a projection of collab.ops \+ auth state/.test(await txt()));
+  check('§18b rows from BOTH services are merged',
+        /auth\.signin/.test(await txt()) && /page\.(block|text)\./.test(await txt()));
+  check('§18b repeated events collapse with a count',
+        /×\d+/.test(await txt()), (await txt()).match(/auth\.signin ×\d+/)?.[0]);
+  check('§18b a deleted page is still named',
+        /\(deleted\)/.test(await txt()));
+
+  // Each filter must actually select. A chip that renders and
+  // filters nothing is the defect this pass exists for.
+  const auditRows = () => p.evaluate(() =>
+    [...document.querySelectorAll('.mono')].filter(e => /^\d\d:\d\d:\d\d$/.test(e.innerText)).length);
+  const allRows = await auditRows();
+  await p.locator('.sb', { hasText: 'DESTRUCTIVE' }).first().click();
+  await p.waitForTimeout(1200);
+  const destructive = await txt();
+  check('§18b DESTRUCTIVE selects only deletes',
+        /delete/.test(destructive) && !/insert/.test(destructive),
+        `${allRows} → ${await auditRows()}`);
+  await p.locator('.sb', { hasText: 'AUTH' }).first().click();
+  await p.waitForTimeout(1200);
+  const authOnly = await txt();
+  check('§18b AUTH selects only auth events',
+        /auth\./.test(authOnly) && !/page\.(block|text)\./.test(authOnly));
+  check('§18b registrations are not crowded out by sign-ins',
+        /auth\.register/.test(authOnly));
+  await p.locator('.sb', { hasText: 'ALL' }).first().click();
+  await p.waitForTimeout(1200);
+
+  // Selecting a row has to say where the row came from. Click a
+  // TIME cell: the first `.av` on the page belongs to the
+  // utility cluster, not to a row.
+  await p.locator('.mono').filter({ hasText: /^\d\d:\d\d:\d\d$/ }).first().click();
+  await p.waitForTimeout(600);
+  check('§18b a selected row names what it was derived from',
+        /DERIVED FROM/.test(await txt()));
+  await p.locator('.it', { hasText: 'RETENTION' }).first().click();
+  await p.waitForTimeout(500);
+  check('§18b it does not claim tamper evidence it does not have',
+        /TAMPER EVIDENCE/.test(await txt()) && /prev_hash/.test(await txt()));
+  check('§18b and names what is not recorded at all',
+        /Failed sign-ins/.test(await txt()));
+
   // ── § 24e NOT FOUND ───────────────────────────────────────────────────
   await go('/p/the-documnt-block-modl', 4000);
   check('§24e a wrong URL is not a redirect', (await p.evaluate(()=>location.pathname)) === '/p/the-documnt-block-modl');

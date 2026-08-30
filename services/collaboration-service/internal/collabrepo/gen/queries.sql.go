@@ -11,6 +11,109 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const auditCounts = `-- name: AuditCounts :many
+SELECT kind, COUNT(*) AS n
+FROM collab.ops
+GROUP BY kind
+ORDER BY n DESC
+`
+
+type AuditCountsRow struct {
+	Kind string
+	N    int64
+}
+
+// Every op kind and how many there are, for § 18b's EVENTS BY
+// CLASS panel. Classification into content/destructive happens
+// in Go, over this — the database should not know what the
+// product considers destructive.
+func (q *Queries) AuditCounts(ctx context.Context) ([]AuditCountsRow, error) {
+	rows, err := q.db.Query(ctx, auditCounts)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AuditCountsRow
+	for rows.Next() {
+		var i AuditCountsRow
+		if err := rows.Scan(&i.Kind, &i.N); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const auditOps = `-- name: AuditOps :many
+SELECT id, page_id, actor_id, actor_kind, kind, undo_group, seq, created_at
+FROM collab.ops
+WHERE ($1::text[] IS NULL OR kind = ANY($1::text[]))
+ORDER BY seq DESC
+LIMIT $2
+`
+
+type AuditOpsParams struct {
+	Kinds    []string
+	RowLimit int32
+}
+
+type AuditOpsRow struct {
+	ID        pgtype.UUID
+	PageID    pgtype.UUID
+	ActorID   pgtype.UUID
+	ActorKind string
+	Kind      string
+	UndoGroup pgtype.UUID
+	Seq       int64
+	CreatedAt pgtype.Timestamptz
+}
+
+// § 18b AUDIT LOG's content rows, read straight out of the op
+// log rather than written beside it.
+//
+// This is the whole claim the screen makes: there is no code
+// path that edits a page without producing the row that says so,
+// because the row IS the op. A second, separately-written audit
+// table could drift from what actually happened; a projection
+// cannot.
+//
+// The payload is deliberately NOT selected. An audit row says
+// who did what to which page; the text they typed is the
+// document's business, and an admin surface that quietly
+// includes it is a different, more invasive feature than the one
+// anybody asked for.
+func (q *Queries) AuditOps(ctx context.Context, arg AuditOpsParams) ([]AuditOpsRow, error) {
+	rows, err := q.db.Query(ctx, auditOps, arg.Kinds, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AuditOpsRow
+	for rows.Next() {
+		var i AuditOpsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.PageID,
+			&i.ActorID,
+			&i.ActorKind,
+			&i.Kind,
+			&i.UndoGroup,
+			&i.Seq,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const claimUnpublishedOutboxEvents = `-- name: ClaimUnpublishedOutboxEvents :many
 SELECT id, aggregate_id, event_type, payload, published_at, created_at FROM collab.outbox
 WHERE published_at IS NULL

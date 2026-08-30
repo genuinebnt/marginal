@@ -608,3 +608,69 @@ same reason and with the same caveat as §§5–7: these are
 local debug surfaces, and the RS256 verification `ADR-011`
 defers to a hardened gateway is not built in this repo yet.
 It exposes counts, never content.
+
+
+---
+
+## 9. `GET /collab/audit` — the audit log's content half
+
+Plain HTTP, read-only, no page id. Backs `docs/ui-mockups/v2/
+index.html` § 18b AUDIT LOG, whose subtitle is the whole design:
+**derived from the op log rather than written beside it.**
+
+That is the only claim worth making about an audit log. A
+separately-written audit table can drift from what actually
+happened; a projection cannot. There is no code path that edits
+a page without producing the row that says so, because the row
+*is* the op.
+
+```
+GET /collab/audit?limit=120&class=destructive
+```
+
+```json
+{
+  "rows": [
+    { "id": "01a04d86-…", "seq": 2422,
+      "page_id": "01a04d85-…", "actor_id": "01a048f4-…",
+      "actor_kind": "user", "kind": "block:InsertBlock",
+      "class": "content", "undo_group": "e6c68b88-…",
+      "created_at": "2026-08-29T12:37:07.826Z" }
+  ],
+  "counts": { "content": 2416, "destructive": 6 },
+  "total": 2422,
+  "kinds": [ { "kind": "text:DeleteText", "class": "destructive", "n": 6 } ]
+}
+```
+
+**The payload is deliberately not selected.** An audit row says
+who did what to which page; the text somebody typed is the
+document's business, and an admin surface that quietly includes
+it is a more invasive feature than the one anybody asked for.
+
+`class` is `content` or `destructive`, and the classification
+lives in Go, not in SQL — the database should not know what the
+product considers destructive. Kinds arrive tier-prefixed
+(`block:DeleteBlock`, `text:DeleteText` — RFC-002's two op
+tiers) and are matched on the part after the colon; the tier is
+not what makes something destructive. `MoveBlock` is **not**
+destructive: it carries `from` as well as `to` and inverts
+exactly (RFC-002 §3).
+
+Anything unrecognised is `content`, on purpose: a new op kind
+should appear in the log as ordinary rather than vanish from it
+because nobody remembered to classify it.
+
+`counts` and `total` are over the **whole log**, not the page
+returned — a panel headed "by class" would answer a different
+question otherwise.
+
+**Auth events are not here.** They are `auth-service`'s
+(`auth.md` `/admin/auth-events`), and the two are merged **in
+the client**, by timestamp. That is deliberate: `DATA_MODEL.md`
+forbids cross-schema joins, and the honest place for a join
+across a service boundary is the caller that wanted both.
+
+`limit` defaults to 100 and is capped at 500. Read-only over an
+append-only table, so it is safe to call while people are
+editing — and unauthenticated, with the same caveat as §§5–8.

@@ -11,6 +11,78 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const auditAuthEvents = `-- name: AuditAuthEvents :many
+(
+    SELECT id, 'auth.register'::text AS kind, id AS user_id, created_at AS at
+    FROM auth.users
+)
+UNION ALL
+(
+    SELECT id, kind, user_id, at FROM (
+        (
+            SELECT id, 'auth.signin'::text AS kind, user_id, created_at AS at
+            FROM auth.refresh_tokens
+            ORDER BY created_at DESC
+            LIMIT $1
+        )
+        UNION ALL
+        (
+            SELECT id, 'auth.signout'::text, user_id, revoked_at
+            FROM auth.refresh_tokens
+            WHERE revoked_at IS NOT NULL
+            ORDER BY revoked_at DESC
+            LIMIT $1
+        )
+    ) recent
+)
+ORDER BY at DESC
+`
+
+type AuditAuthEventsRow struct {
+	ID     pgtype.UUID
+	Kind   string
+	UserID pgtype.UUID
+	At     pgtype.Timestamptz
+}
+
+// § 18b AUDIT LOG's auth rows — derived, like the content rows,
+// rather than written beside the thing they describe.
+//
+// Three event kinds, all read from state that already exists:
+// a user row IS the registration, a refresh token row IS a
+// sign-in, and its revoked_at IS a sign-out. Nothing here is an
+// event somebody remembered to emit, which is why it cannot
+// disagree with what happened.
+//
+// What is deliberately absent: failed sign-in attempts. Nothing
+// records them, and a row saying so would be an invention. The
+// screen says the gap out loud rather than leaving the reader to
+// assume there were none.
+func (q *Queries) AuditAuthEvents(ctx context.Context, rowLimit int32) ([]AuditAuthEventsRow, error) {
+	rows, err := q.db.Query(ctx, auditAuthEvents, rowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AuditAuthEventsRow
+	for rows.Next() {
+		var i AuditAuthEventsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Kind,
+			&i.UserID,
+			&i.At,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const claimUnpublishedOutboxEvents = `-- name: ClaimUnpublishedOutboxEvents :many
 SELECT id, aggregate_id, event_type, payload, published_at, created_at FROM auth.outbox
 WHERE published_at IS NULL

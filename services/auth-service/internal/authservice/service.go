@@ -207,6 +207,51 @@ func (s *Service) GetUser(ctx context.Context, id domain.UserID) (users.User, er
 // design: RBAC is v3.1.0, so until it exists any authenticated
 // actor can read this. The screen says so out loud rather than
 // implying an admin surface that is actually open.
+// AuthEvent is one § 18b audit row from this service's side.
+type AuthEvent struct {
+	ID     string
+	Kind   string
+	UserID string
+	At     time.Time
+}
+
+// ListAuthEvents derives the auth half of § 18b's log.
+//
+// Nothing here is emitted; it is all read from state that
+// already exists. Failed sign-in attempts are absent because
+// nothing records them, and the screen states that rather than
+// letting an empty column read as "there were none".
+//
+// The limit applies to sign-ins and sign-outs only —
+// registrations are always all of them. An account being created
+// is the most audit-worthy auth event there is, and a shared
+// limit lets a few hundred routine sign-ins push every
+// registration off the end, leaving the log showing only the
+// noise. So the returned count can exceed `limit` by the number
+// of people, which on a self-hosted instance is a number that
+// fits.
+func (s *Service) ListAuthEvents(ctx context.Context, limit int32) ([]AuthEvent, error) {
+	if limit < 1 || limit > maxAuthEventLimit {
+		limit = maxAuthEventLimit
+	}
+	rows, err := authrepo.New(s.pool).AuditAuthEvents(ctx, limit)
+	if err != nil {
+		return nil, fmt.Errorf("authservice: list auth events: %w", err)
+	}
+	out := make([]AuthEvent, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, AuthEvent{
+			ID:     uuid.UUID(r.ID.Bytes).String(),
+			Kind:   r.Kind,
+			UserID: uuid.UUID(r.UserID.Bytes).String(),
+			At:     r.At.Time,
+		})
+	}
+	return out, nil
+}
+
+const maxAuthEventLimit = 200
+
 func (s *Service) ListPeople(ctx context.Context) ([]users.User, int64, error) {
 	q := authrepo.New(s.pool)
 	people, err := users.List(ctx, q)

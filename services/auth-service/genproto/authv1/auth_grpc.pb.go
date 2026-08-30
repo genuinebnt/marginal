@@ -24,13 +24,14 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	AuthService_Register_FullMethodName     = "/marginal.auth.v1.AuthService/Register"
-	AuthService_Authenticate_FullMethodName = "/marginal.auth.v1.AuthService/Authenticate"
-	AuthService_GetUser_FullMethodName      = "/marginal.auth.v1.AuthService/GetUser"
-	AuthService_Refresh_FullMethodName      = "/marginal.auth.v1.AuthService/Refresh"
-	AuthService_Revoke_FullMethodName       = "/marginal.auth.v1.AuthService/Revoke"
-	AuthService_RevokeAll_FullMethodName    = "/marginal.auth.v1.AuthService/RevokeAll"
-	AuthService_ListPeople_FullMethodName   = "/marginal.auth.v1.AuthService/ListPeople"
+	AuthService_Register_FullMethodName       = "/marginal.auth.v1.AuthService/Register"
+	AuthService_Authenticate_FullMethodName   = "/marginal.auth.v1.AuthService/Authenticate"
+	AuthService_GetUser_FullMethodName        = "/marginal.auth.v1.AuthService/GetUser"
+	AuthService_Refresh_FullMethodName        = "/marginal.auth.v1.AuthService/Refresh"
+	AuthService_Revoke_FullMethodName         = "/marginal.auth.v1.AuthService/Revoke"
+	AuthService_RevokeAll_FullMethodName      = "/marginal.auth.v1.AuthService/RevokeAll"
+	AuthService_ListPeople_FullMethodName     = "/marginal.auth.v1.AuthService/ListPeople"
+	AuthService_ListAuthEvents_FullMethodName = "/marginal.auth.v1.AuthService/ListAuthEvents"
 )
 
 // AuthServiceClient is the client API for AuthService service.
@@ -56,6 +57,15 @@ type AuthServiceClient interface {
 	// authenticated actor can call this. Stated here so the ADMIN
 	// screen can state it too.
 	ListPeople(ctx context.Context, in *ListPeopleRequest, opts ...grpc.CallOption) (*ListPeopleResponse, error)
+	// § 18b AUDIT LOG's auth rows. Derived from state that already
+	// exists — a user row IS a registration, a refresh token row
+	// IS a sign-in, its revoked_at IS a sign-out — so none of it
+	// can disagree with what happened.
+	//
+	// Failed sign-in attempts are NOT in here, because nothing
+	// records them. The screen says so rather than letting an
+	// empty column read as "there were none".
+	ListAuthEvents(ctx context.Context, in *ListAuthEventsRequest, opts ...grpc.CallOption) (*ListAuthEventsResponse, error)
 }
 
 type authServiceClient struct {
@@ -136,6 +146,16 @@ func (c *authServiceClient) ListPeople(ctx context.Context, in *ListPeopleReques
 	return out, nil
 }
 
+func (c *authServiceClient) ListAuthEvents(ctx context.Context, in *ListAuthEventsRequest, opts ...grpc.CallOption) (*ListAuthEventsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListAuthEventsResponse)
+	err := c.cc.Invoke(ctx, AuthService_ListAuthEvents_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AuthServiceServer is the server API for AuthService service.
 // All implementations must embed UnimplementedAuthServiceServer
 // for forward compatibility.
@@ -159,6 +179,15 @@ type AuthServiceServer interface {
 	// authenticated actor can call this. Stated here so the ADMIN
 	// screen can state it too.
 	ListPeople(context.Context, *ListPeopleRequest) (*ListPeopleResponse, error)
+	// § 18b AUDIT LOG's auth rows. Derived from state that already
+	// exists — a user row IS a registration, a refresh token row
+	// IS a sign-in, its revoked_at IS a sign-out — so none of it
+	// can disagree with what happened.
+	//
+	// Failed sign-in attempts are NOT in here, because nothing
+	// records them. The screen says so rather than letting an
+	// empty column read as "there were none".
+	ListAuthEvents(context.Context, *ListAuthEventsRequest) (*ListAuthEventsResponse, error)
 	mustEmbedUnimplementedAuthServiceServer()
 }
 
@@ -189,6 +218,9 @@ func (UnimplementedAuthServiceServer) RevokeAll(context.Context, *RevokeAllReque
 }
 func (UnimplementedAuthServiceServer) ListPeople(context.Context, *ListPeopleRequest) (*ListPeopleResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListPeople not implemented")
+}
+func (UnimplementedAuthServiceServer) ListAuthEvents(context.Context, *ListAuthEventsRequest) (*ListAuthEventsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListAuthEvents not implemented")
 }
 func (UnimplementedAuthServiceServer) mustEmbedUnimplementedAuthServiceServer() {}
 func (UnimplementedAuthServiceServer) testEmbeddedByValue()                     {}
@@ -337,6 +369,24 @@ func _AuthService_ListPeople_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AuthService_ListAuthEvents_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListAuthEventsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).ListAuthEvents(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_ListAuthEvents_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).ListAuthEvents(ctx, req.(*ListAuthEventsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AuthService_ServiceDesc is the grpc.ServiceDesc for AuthService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -371,6 +421,10 @@ var AuthService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListPeople",
 			Handler:    _AuthService_ListPeople_Handler,
+		},
+		{
+			MethodName: "ListAuthEvents",
+			Handler:    _AuthService_ListAuthEvents_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -152,6 +152,7 @@ inherited here, not restated.
 | `POST` | `/auth/revoke` | `Revoke` |
 | `POST` | `/auth/revoke-all` | `RevokeAll` |
 | `GET` | `/admin/people` | `ListPeople` |
+| `GET` | `/admin/auth-events` | `ListAuthEvents` |
 
 `/admin/people` is under `/admin` rather than `/auth` because it
 is a workspace view, not an authentication operation — § 18
@@ -187,6 +188,38 @@ design.** RBAC is `v3.1.0` (`RELEASES.md`), so until it exists
 every authenticated actor can read this list. § 18 states that on
 screen rather than implying an admin surface that is actually
 open.
+
+### `/admin/auth-events`
+
+§ 18b AUDIT LOG's auth half, derived the same way the content
+half is: **nothing here is emitted.** A user row *is* the
+registration, a refresh-token row *is* a sign-in, and its
+`revoked_at` *is* a sign-out. None of it can disagree with what
+happened, because none of it is a second copy of anything.
+
+```json
+{
+  "events": [
+    { "id": "7553b303-…", "kind": "auth.signin",
+      "user_id": "01a048f4-…", "at": "2026-08-30T14:20:04.247Z" }
+  ]
+}
+```
+
+**`limit` applies to sign-ins and sign-outs only — registrations
+are always all of them.** An account being created is the most
+audit-worthy auth event there is, and a shared limit lets a few
+hundred routine sign-ins push every registration off the end,
+leaving the log showing only the noise. So the returned count
+can exceed `limit` by the number of people, which on a
+self-hosted instance is a number that fits.
+
+**Failed sign-in attempts are absent because nothing records
+them.** § 18b says so on screen rather than letting an empty
+column read as "there were none". So is the request source: the
+op log records an actor *kind*, not where a request came from,
+and the SOURCE column shows the former rather than inventing the
+latter.
 
 `/auth/revoke-all`'s actor identity comes from the same `X-Actor-Id` header
 stand-in `pages.md`'s gateway shim reads (§ Actor identity above) — there

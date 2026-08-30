@@ -3,6 +3,7 @@ package authrest
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 
@@ -33,6 +34,7 @@ func (h *Handler) Mount(r chi.Router) {
 	// NOT authorization-gated, because RBAC is v3.1.0 and there is
 	// nothing to gate on yet. The screen says so.
 	r.Get("/admin/people", h.listPeople)
+	r.Get("/admin/auth-events", h.listAuthEvents)
 }
 
 type registerRequest struct {
@@ -99,6 +101,25 @@ func (h *Handler) listPeople(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	apierror.WriteJSON(w, http.StatusOK, toPeopleJSON(resp))
+}
+
+func (h *Handler) listAuthEvents(w http.ResponseWriter, r *http.Request) {
+	limit := 0
+	if v := r.URL.Query().Get("limit"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 {
+			apierror.WriteBadRequest(w, "limit must be a positive integer")
+			return
+		}
+		limit = n
+	}
+	resp, err := h.client.ListAuthEvents(actorctx.FromRequest(r),
+		&authv1.ListAuthEventsRequest{Limit: int32(limit)})
+	if err != nil {
+		apierror.WriteGRPCStatus(w, err)
+		return
+	}
+	apierror.WriteJSON(w, http.StatusOK, toAuthEventsJSON(resp))
 }
 
 type refreshRequest struct {
