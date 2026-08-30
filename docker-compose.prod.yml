@@ -220,6 +220,16 @@ services:
       DOCUMENT_SERVICE_GRPC_ADDR: document-service:9001
       AUTH_SERVICE_GRPC_ADDR: auth-service:9006
       DIAGNOSTICS_SERVICE_GRPC_ADDR: diagnostics-service:9008
+      # § 18 ADMIN's SERVICES panel probes these. Service names, not
+      # localhost: inside the compose network each service is its own
+      # host, and the localhost defaults make the gateway probe ITSELF
+      # five times and report every service down — which is exactly what
+      # production did on first deploy, correctly and uselessly.
+      DOCUMENT_SERVICE_HEALTH_URL: http://document-service:8001/health
+      AUTH_SERVICE_HEALTH_URL: http://auth-service:8006/health
+      COLLABORATION_SERVICE_HEALTH_URL: http://collaboration-service:8002/health
+      NOTIFICATION_SERVICE_HEALTH_URL: http://notification-service:8007/health
+      DIAGNOSTICS_SERVICE_HEALTH_URL: http://diagnostics-service:8008/health
       # Same-origin in production, so this could be tighter still, but the SPA
       # is served from exactly one origin and naming it beats the "*" default.
       CORS_ALLOWED_ORIGINS: ${PUBLIC_ORIGIN}
