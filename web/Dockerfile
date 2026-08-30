@@ -1,29 +1,44 @@
 # syntax=docker/dockerfile:1
 #
-# Build context is the REPO ROOT, not web/ — the SPA loads five .wasm modules
-# compiled from services/document-service, and those resolve through go.work,
-# which requires every module it lists to physically exist on disk. Build with
+# Build context is the REPO ROOT, not web/ — the SPA loads its .wasm modules
+# from services/document-service, and those resolve through go.work, which
+# requires every module it lists to physically exist on disk. Build with
 # (from the repo root):
 #   docker build -t marginal-web -f web/Dockerfile .
 #
 # The .wasm files and wasm_exec.js are gitignored build output (see
 # web/.gitignore's `public/*.wasm`), so they must be produced here rather than
-# copied from a checkout — a clone has none of them. Every cmd/*wasm entrypoint
-# needs a pair in the loop below; one that is missing does not fail the build,
-# it just leaves the SPA's try_files fallback serving index.html under a .wasm
-# URL, which is how mdc.wasm silently became an HTML page.
+# copied from a checkout — a clone has none of them.
+#
+# The entrypoint list is DISCOVERED, not written down. A missing module does
+# not fail the build: it leaves the SPA's try_files fallback serving
+# index.html under a .wasm URL, so the browser gets `<!do…` where it wanted
+# the wasm magic word. That is how mdc.wasm silently became an HTML page, and
+# then how sketch, netsim and bench did too — three at once, on a hand-kept
+# list whose own comment said "every cmd/*wasm entrypoint needs a pair below".
+# A list that must be remembered will eventually not be.
 
 FROM golang:1.25-alpine AS wasm
 WORKDIR /src
 COPY go.work go.work.sum ./
 COPY services/ services/
 WORKDIR /src/services/document-service
-# Same five builds as scripts/build-*-wasm.sh, inlined: the scripts write into
+# The same builds scripts/build-*-wasm.sh do, inlined: those scripts write into
 # ../../web/public, which does not exist in this stage.
+#
+# cmd/wasm is documentcore's, for historical reasons; every other entrypoint is
+# cmd/<name>wasm and ships as <name>.wasm. Both rules are mechanical, so the
+# loop applies them rather than a person maintaining a list.
 RUN set -eux; \
-    for pair in wasm:documentcore graphwasm:graph diffwasm:diff triewasm:trie syntaxwasm:syntax mdcwasm:mdc; do \
-        GOOS=js GOARCH=wasm go build -o "/out/${pair#*:}.wasm" "./cmd/${pair%%:*}"; \
+    built=0; \
+    for dir in ./cmd/*wasm; do \
+        entry="$(basename "$dir")"; \
+        case "$entry" in wasm) name=documentcore ;; *) name="${entry%wasm}" ;; esac; \
+        GOOS=js GOARCH=wasm go build -o "/out/${name}.wasm" "$dir"; \
+        built=$((built + 1)); \
     done; \
+    test "$built" -ge 6; \
+    ls -la /out; \
     cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" /out/wasm_exec.js
 
 FROM node:22-alpine AS build

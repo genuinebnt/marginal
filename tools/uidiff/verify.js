@@ -408,6 +408,34 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
   check('§18b and names what is not recorded at all',
         /Failed sign-ins/.test(await txt()));
 
+  // ── every wasm module the SPA loads actually IS wasm ──────
+  //
+  // A missing .wasm does not 404 in this SPA: try_files falls
+  // back to index.html, so the browser fetches `<!doctype…`
+  // and WebAssembly.instantiate fails on the magic word. It is
+  // silent until somebody opens the one screen that needs it —
+  // which is how mdc.wasm shipped as an HTML page once, and
+  // then sketch, netsim and bench did too, taking § 12, § 14
+  // and § 16 down on the deployed instance with them.
+  //
+  // Checked here rather than trusted, because the failure has
+  // now happened twice and both times the list was hand-kept.
+  const wasmModules = ['documentcore', 'graph', 'diff', 'trie',
+                       'syntax', 'mdc', 'sketch', 'netsim', 'bench'];
+  const badWasm = [];
+  for (const name of wasmModules) {
+    const head = await p.evaluate(async (n) => {
+      const r = await fetch(`/${n}.wasm`);
+      if (!r.ok) return `HTTP ${r.status}`;
+      const b = new Uint8Array(await r.arrayBuffer()).slice(0, 4);
+      return [...b].map((x) => x.toString(16).padStart(2, '0')).join(' ');
+    }, name);
+    // 00 61 73 6d — "\0asm", the wasm magic word.
+    if (head !== '00 61 73 6d') badWasm.push(`${name}: ${head}`);
+  }
+  check('wasm: every module the SPA loads is really wasm',
+        badWasm.length === 0, badWasm.join(' · ') || `${wasmModules.length} checked`);
+
   // ── § 02 HOME: the only public route, and its panel is real ──
   //
   // Checked SIGNED OUT, because that is who sees it. Everything
