@@ -307,6 +307,15 @@ a{color:#E8873C}a:hover{color:#F2A264}
    editing is a byte sequence with offsets printed beside it. */
 .labedit{width:100%;display:block;box-sizing:border-box;background:#141617;border:1px solid rgba(232,135,60,.25);color:#B3AFA7;font:400 12px/1.8 'IBM Plex Mono',monospace;padding:10px 12px;resize:none;outline:none;transition:border-color .14s ease}
 .labedit:focus{border-color:rgba(232,135,60,.5)}
+/* § 14's wire sliders. A range input with the browser's own chrome
+   would be the one control on the screen that looks like a form; the
+   track and thumb are restyled to the same 2px hairline the mockup
+   draws, so it reads as an instrument and still drags. */
+.wsl{flex:1;-webkit-appearance:none;appearance:none;height:2px;background:rgba(255,255,255,.12);outline:none;cursor:pointer;border-radius:0}
+.wsl::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:9px;height:9px;background:#E8873C;border-radius:0;cursor:pointer;transition:transform .12s ease}
+.wsl::-webkit-slider-thumb:hover{transform:scale(1.25)}
+.wsl::-moz-range-thumb{width:9px;height:9px;background:#E8873C;border:none;border-radius:0;cursor:pointer}
+.wsl::-moz-range-track{height:2px;background:rgba(255,255,255,.12)}
 /* A stage panel that just recomputed. One frame of ember, so a change you
    made has a visible consequence even when the numbers happen to match. */
 @keyframes stageflash{from{background:rgba(232,135,60,.07)}to{background:transparent}}

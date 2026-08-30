@@ -195,6 +195,136 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
   // so appending has to move them too.
   check('§12 tag momentum is populated', /crdt|rope|blocks/.test(await txt()) && /second half vs first/.test(await txt()));
 
+  // ── § 14 NETCODE: four lenses, a wire you drag, and the one
+  //    contradiction the whole section exists to show ─────────────
+  await go('/lab/netcode', 7000);
+  const replicas = () => p.evaluate(() =>
+    [...document.querySelectorAll('.body [style*="Spectral"]')].map(e => e.innerText));
+  const lens = async (name) => {
+    await p.locator('.sb', { hasText: name }).first().click();
+    await p.waitForTimeout(700);
+  };
+
+  check('§14 both replicas converge', await p.evaluate(() => {
+    const t = [...document.querySelectorAll('.body [style*="Spectral"]')].map(e => e.innerText);
+    return t.length === 2 && t[0] === t[1] && t[0].length > 0;
+  }));
+  check('§14 the transform actually moved an op',
+        /ins @26/.test(await txt()), 'Ada typed @20');
+  check('§14 replay from empty matches', /MATCHES/.test(await txt()));
+
+  // Every lens must paint something different. A tab strip whose
+  // options all render the same panel is the exact defect this pass
+  // exists to catch.
+  const lensText = {};
+  for (const name of ['TREE · MERKLE', 'CAUSALITY · DAG', 'LOG · LSM', 'PREDICTION · ROLLBACK']) {
+    await lens(name);
+    lensText[name] = await txt();
+  }
+  check('§14 four lenses paint four panels',
+        new Set(Object.values(lensText)).size >= 3,
+        `${new Set(Object.values(lensText)).size} distinct`);
+  check('§14 the DAG names a causal chain', /LONGEST CHAIN/.test(lensText['CAUSALITY · DAG']));
+  check('§14 the LSM reports write amplification', /WRITE AMP/.test(lensText['LOG · LSM']));
+
+  // Drag the wire. A slider that renders and changes nothing is a
+  // picture of a control.
+  const beforeRtt = await txt();
+  await p.locator('.wsl').first().evaluate((el) => {
+    const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+    set.call(el, '460');
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await p.waitForTimeout(1200);
+  check('§14 dragging RTT re-runs the simulation', (await txt()) !== beforeRtt);
+  check('§14 and the readout follows it', /460 ms/.test(await txt()));
+
+  // Loss must cost retransmits, never a keystroke.
+  await p.locator('.wsl').nth(1).evaluate((el) => {
+    const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+    set.call(el, '45');
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await p.waitForTimeout(1200);
+  const lossy = await txt();
+  check('§14 45% loss produces retransmits', !/RETRANSMITS\n0/.test(lossy));
+  check('§14 and still converges', !/REPLICAS DIFFER/.test(lossy));
+
+  // The page's whole argument: transform off, and the replicas still
+  // agree — on a document nobody asked for.
+  await p.locator('.chip', { hasText: 'TRANSFORM' }).first().click();
+  await p.waitForTimeout(1400);
+  const off = await txt();
+  check('§14 transform off still converges structurally', !/REPLICAS DIFFER/.test(off));
+  check('§14 but the intent ledger flags it',
+        /DISAGREE ON PURPOSE/.test(off) && /flags \d/.test(off));
+  check('§14 and it says what was meant', /meant/.test(off) && /landed as/.test(off));
+
+  // Editing the script re-runs everything.
+  const beforeScript = await txt();
+  await p.locator('.labedit').click();
+  await p.keyboard.press('Meta+a');
+  await p.keyboard.type('0, you, insert, 0, ZZZ\n5, ada, delete, 4, 3');
+  await p.waitForTimeout(1400);
+  check('§14 editing the script re-runs the simulation', (await txt()) !== beforeScript);
+  check('§14 a malformed script line is skipped, not fatal', await (async () => {
+    await p.keyboard.type('\nthis is not an edit');
+    await p.waitForTimeout(1100);
+    const t = await txt();
+    return /1 skipped/.test(t) && /REPLAY FROM EMPTY/.test(t);
+  })());
+
+  // ── § 16 PERF: a benchmark that actually runs ─────────────
+  await go('/lab/perf', 9000);
+  const settled = async () => {
+    await p.waitForFunction(() => !/RUNNING/.test(document.body.innerText),
+      null, { timeout: 90000 }).catch(() => {});
+    await p.waitForTimeout(600);
+  };
+  await settled();
+
+  check('§16 percentiles are measured, not zero',
+        !/P50\s*0 ns/.test(await txt()) && /P99\.9/.test(await txt()));
+  check('§16 it states the clock it was quantised by', /CLOCK\s*±/.test(await txt()));
+  check('§16 the flame graph names real functions',
+        /applyOp/.test(await txt()) && /instrumented spans/.test(await txt()));
+  check('§16 queue depth comes from the service',
+        /ops stored/.test(await txt()) && !/did not answer/.test(await txt()));
+
+  // Each workload must actually change the numbers. Four chips
+  // that all run the same code is the exact defect this pass
+  // exists for.
+  const percentiles = () => p.evaluate(() =>
+    [...document.querySelectorAll('.rd')]
+      .filter(e => /^P\d/.test(e.innerText))
+      .map(e => e.innerText.replace(/\n/g, '=')).join(' '));
+  const seenP = new Set();
+  for (const name of ['applyOp', 'compilePaste', 'simulate', 'embedIndex']) {
+    await p.locator('.chip', { hasText: new RegExp(`^${name}$`) }).first().click();
+    await settled();
+    seenP.add(await percentiles());
+  }
+  check('§16 four workloads produce four different profiles',
+        seenP.size >= 3, `${seenP.size} distinct`);
+
+  // The expensive one must say it clamped rather than
+  // quietly running fewer.
+  await p.locator('.chip', { hasText: /^50k$/ }).first().click();
+  await settled();
+  check('§16 an expensive workload clamps and says so',
+        /Clamped to/.test(await txt()));
+
+  await p.locator('.chip', { hasText: /^applyOp$/ }).first().click();
+  await settled();
+  const beforeRerun = await percentiles();
+  await p.locator('.chip', { hasText: /RUN AGAIN/ }).first().click();
+  await p.waitForTimeout(400);
+  check('§16 RUN AGAIN says it is running', /RUNNING/.test(await txt()));
+  await settled();
+  check('§16 and re-running measures again', (await percentiles()) !== beforeRerun);
+
   // ── § 24e NOT FOUND ───────────────────────────────────────────────────
   await go('/p/the-documnt-block-modl', 4000);
   check('§24e a wrong URL is not a redirect', (await p.evaluate(()=>location.pathname)) === '/p/the-documnt-block-modl');

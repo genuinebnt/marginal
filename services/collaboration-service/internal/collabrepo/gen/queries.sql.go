@@ -197,3 +197,55 @@ func (q *Queries) MarkOutboxEventsPublished(ctx context.Context, ids []pgtype.UU
 	_, err := q.db.Exec(ctx, markOutboxEventsPublished, ids)
 	return err
 }
+
+const opLogStats = `-- name: OpLogStats :one
+SELECT
+    COUNT(*) AS ops,
+    COALESCE(EXTRACT(EPOCH FROM (NOW() - MAX(created_at))), 0)::float8 AS lag_seconds,
+    COUNT(DISTINCT page_id) AS pages
+FROM collab.ops
+`
+
+type OpLogStatsRow struct {
+	Ops        int64
+	LagSeconds float64
+	Pages      int64
+}
+
+// Op-log size and how far behind the newest op is. `lag_seconds`
+// is time since the last accepted op, which on an idle instance is
+// large and healthy — the screen says so rather than colouring it.
+func (q *Queries) OpLogStats(ctx context.Context) (OpLogStatsRow, error) {
+	row := q.db.QueryRow(ctx, opLogStats)
+	var i OpLogStatsRow
+	err := row.Scan(&i.Ops, &i.LagSeconds, &i.Pages)
+	return i, err
+}
+
+const outboxDepth = `-- name: OutboxDepth :one
+SELECT
+    COUNT(*) AS depth,
+    COALESCE(EXTRACT(EPOCH FROM (NOW() - MIN(created_at))), 0)::float8 AS oldest_seconds
+FROM collab.outbox
+WHERE published_at IS NULL
+`
+
+type OutboxDepthRow struct {
+	Depth         int64
+	OldestSeconds float64
+}
+
+// § 16 PERF's QUEUE DEPTH, measured rather than drawn: how many
+// events are waiting, and how long the oldest one has waited.
+//
+// Two numbers rather than one because they answer different
+// questions: a depth of 400 that drains in 200 ms is a healthy
+// burst, and a depth of 3 whose oldest row is four minutes old is a
+// poller that has stopped. Reporting only the count would call the
+// second one fine.
+func (q *Queries) OutboxDepth(ctx context.Context) (OutboxDepthRow, error) {
+	row := q.db.QueryRow(ctx, outboxDepth)
+	var i OutboxDepthRow
+	err := row.Scan(&i.Depth, &i.OldestSeconds)
+	return i, err
+}

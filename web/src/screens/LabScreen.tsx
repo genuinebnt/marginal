@@ -68,14 +68,16 @@ const ENTRIES: Entry[] = [
   {
     name: "Netcode",
     route: "/lab/netcode",
-    blurb: "One editor, four lenses — prediction, rollback, transform, log. Replay from empty must match the incremental view.",
-    facts: ["NOT BUILT"],
+    to: () => "/lab/netcode",
+    blurb: "One editor, four lenses — prediction, rollback, transform, log. You control the wire: drag RTT to 400 ms, turn transform off, and watch both replicas agree on a document nobody asked for.",
+    facts: ["EDITABLE WIRE", "DETERMINISTIC"],
   },
   {
     name: "Perf",
     route: "/lab/perf",
-    blurb: "Percentiles, queue depth, bundle treemap, flame graph — measured on this machine, now, not quoted from a README.",
-    facts: ["NOT BUILT"],
+    to: () => "/lab/perf",
+    blurb: "Percentiles, queue depth, bundle treemap, flame graph — measured on this machine, now, not quoted from a README. The four workloads are real paths: the editor's op apply, the paste compile, the netcode sim, the search vector.",
+    facts: ["RUNS HERE", "REAL PATHS"],
   },
 ];
 
@@ -174,11 +176,12 @@ export function LabScreen() {
               </div>
             </div>
             <div>
-              <Label>WHAT IS NOT BUILT</Label>
+              <Label>WHAT EACH ONE LETS YOU CHANGE</Label>
               <div style={{ fontSize: 11.5, lineHeight: 1.7, color: "#585550" }}>
-                Three of six. Compiler, Netcode and Perf are dimmed above rather than omitted,
-                because a hub that lists only what exists cannot be read as a map of what the
-                section is for.
+                All seven are built. Four take an input you can edit — a markdown buffer,
+                an event stream, a wire and an edit script, a workload and a sample count —
+                because a screen claiming its figures are computed rather than quoted is
+                only checkable if you can change what it computed them from.
               </div>
             </div>
           </div>

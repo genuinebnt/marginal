@@ -120,6 +120,26 @@ const SEED = {
     await p.keyboard.type('rope');
     await p.waitForTimeout(1600);
   },
+  '14': async (p) => {                     // NETCODE — transform is OFF
+    // The section argues from the transform-off case: both replicas
+    // agree perfectly on a document nobody asked for. A fresh load
+    // starts with it ON (the safe default), so the diff has to put
+    // the screen into the state the mockup depicts.
+    await p.waitForTimeout(2000);
+    const chip = p.locator('.chip', { hasText: 'TRANSFORM' }).first();
+    if (await chip.count()) await chip.click();
+    await p.waitForTimeout(1200);
+  },
+  '16': async (p) => {                     // PERF — the run has to finish
+    // The benchmark starts on load and runs on this thread. A
+    // diff taken mid-run compares a screen whose RUN AGAIN
+    // chip currently reads RUNNING… — which is correct
+    // behaviour and a false positive.
+    await p.waitForFunction(
+      () => !/RUNNING/.test(document.body.innerText),
+      null, { timeout: 60000 }).catch(() => {});
+    await p.waitForTimeout(1200);
+  },
   '07': async (p) => {                       // GRAPH — a node is selected
     await p.waitForTimeout(2500);            // let the layout settle first
     const n = p.locator('svg circle').nth(3);

@@ -72,3 +72,28 @@ FOR UPDATE SKIP LOCKED;
 UPDATE collab.outbox SET published_at = NOW()
 WHERE id = ANY(sqlc.arg(ids)::uuid[]);
 
+
+-- name: OutboxDepth :one
+-- § 16 PERF's QUEUE DEPTH, measured rather than drawn: how many
+-- events are waiting, and how long the oldest one has waited.
+--
+-- Two numbers rather than one because they answer different
+-- questions: a depth of 400 that drains in 200 ms is a healthy
+-- burst, and a depth of 3 whose oldest row is four minutes old is a
+-- poller that has stopped. Reporting only the count would call the
+-- second one fine.
+SELECT
+    COUNT(*) AS depth,
+    COALESCE(EXTRACT(EPOCH FROM (NOW() - MIN(created_at))), 0)::float8 AS oldest_seconds
+FROM collab.outbox
+WHERE published_at IS NULL;
+
+-- name: OpLogStats :one
+-- Op-log size and how far behind the newest op is. `lag_seconds`
+-- is time since the last accepted op, which on an idle instance is
+-- large and healthy — the screen says so rather than colouring it.
+SELECT
+    COUNT(*) AS ops,
+    COALESCE(EXTRACT(EPOCH FROM (NOW() - MAX(created_at))), 0)::float8 AS lag_seconds,
+    COUNT(DISTINCT page_id) AS pages
+FROM collab.ops;

@@ -8,6 +8,8 @@ use (
 	./services/mdc
 	./services/semantic
 	./services/sketch
+	./services/netsim
+	./services/bench
 	./services/syntax
 	./services/textdiff
 	./services/api-gateway

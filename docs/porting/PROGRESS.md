@@ -4062,3 +4062,196 @@ there is no live stream to sketch — that is `v4.1.0`'s own work, and
 `RELEASES.md` now carries a "Landed early, out of order" table saying so
 for this, for Discover (`v4.4.0`), and for the notifications inbox
 (`v3.3.0`).
+
+---
+
+## 2026-08-29 — § 14 NETCODE: a wire you can drag
+
+`marginal/netsim` — the third lab screen, and the one whose input is
+not a text buffer but the network itself.
+
+**What it is.** Two replicas, one server, one op log, and a seeded
+lossy wire. Client-side prediction (the author's text moves on the
+tick they typed), rollback by running inverses (never a snapshot —
+RFC-002 §4's rule, the same one the editor's undo follows), TP1
+transform over insert/delete, and four lenses over the result:
+the two replicas, an AHU-style Merkle comparison, the causal DAG
+with its longest chain, and the log drawn as an LSM's levels.
+
+**What it is not, said on the screen:** the live engine is
+`collaboration-service` — real ropes, a real WAL, real sockets, both
+op tiers. This models the *character* tier only, which is where
+transform is legible, and reimplementing the block tier here would
+be a second implementation of the thing the screen exists to
+explain. What it adds is the one thing a live service cannot give
+you: a deterministic, re-runnable 400 ms of a 4%-loss network with
+every layer visible at once.
+
+**The argument, now checkable.** Turn transform off and the two
+replicas *still agree perfectly* — and the document is not what
+either author asked for. Structural agreement (the Merkle digest)
+and intent (the ledger) are two instruments, and the page is built
+around the case where they disagree. The intent ledger is honest
+about its own method: it re-runs the same scenario with transform on
+and reports which ops landed elsewhere. It does not know what a
+person meant; it knows what the protocol would have preserved, and
+says so.
+
+**The one genuinely lossy case in TP1, and why.** An insert whose
+anchor is concurrently deleted has to resolve the same way from both
+sides. The delete side can only swallow the inserted text or split
+into two deletes; splitting is not expressible as one op. So the
+delete swallows and the insert is **cancelled**. Collapsing the
+insert to the deletion point instead — which reads more generous —
+makes the two paths disagree and the replicas diverge. That is not
+a judgement call, it is `TestTransformConverges` failing, which it
+did, on exactly those two of its four cases before the fix. The
+real service does not have to choose: it keeps tombstones, so the
+deleted range still exists to anchor against. This module models
+offsets, which is the design RFC-002 §3 rejected, and this is
+the cost of it.
+
+**Determinism is a feature, not an implementation detail.** A
+dropped packet you cannot re-run is an anecdote; the same seed twice
+is evidence. A splitmix64 drives jitter and loss (not `math/rand` —
+its stream is not promised stable across Go versions), and
+`TestARunIsReproducible` asserts the whole log, not just the text.
+RESEED is a control, so "this run was unlucky" and "this design is
+wrong" are distinguishable.
+
+**Mockup corrections, in the mockup first.** § 14 depicted two
+contradictory states at once: the top bar said `TRANSFORM ON` while
+its own inspector caption and sub-bar both described the
+transform-OFF case. OFF is the state the section argues from, so the
+two ON-side numbers moved to match. The wire "sliders" were drawn
+bars — the caption above them says YOU CONTROL THE WIRE, so they are
+real range inputs now (`.wsl`, restyled to the same 2px hairline so
+they read as instruments, not a form). Four readouts added because
+the panels made claims nothing on screen could check: NODES COMPARED
+/ OF / LEAF (what the Merkle tree actually earned — agreement costs
+one hash, and the count beside the total is the whole argument for
+the structure) and RETRANSMITS (loss is a slider; what it costs has
+to be visible).
+
+**Gate:** `node tools/uidiff/uidiff.js 14 /lab/netcode` → **missing 0
+· property diffs 0 · chrome text diffs 0**, with a `SEED` entry that
+clicks transform off, since the mockup depicts a state a fresh load
+does not reach. Fifteen § 14 checks in `verify.js`, including the
+ones that are the screen's actual claims: dragging RTT re-runs the
+sim, 45% loss produces retransmits and *still* converges, and
+transform-off converges structurally while the intent ledger flags it.
+
+---
+
+## 2026-08-29 — § 16 PERF: measured here, not quoted
+
+`marginal/bench`, and the last of the three lab screens the
+user asked to make editable.
+
+**Real paths, not a synthetic loop.** The four workloads are
+`documentcore.Page.Apply` (the editor's own hot path),
+`mdc.Compile` (the paste handler's, § 11's whole pipeline),
+`netsim.Run` (§ 14's simulation), and `semantic.Tokenize` +
+`Corpus.Embed` (§ 09's index build). A benchmark of code
+nothing else calls measures the benchmark. The picker lets you
+choose which, and the sample count is a chip row; both re-run
+on click.
+
+**Two things the harness refuses to fake, and one it had to
+learn:**
+
+- The flame graph is walked from **instrumented spans**, not
+  sampled. There is no sampling profiler in wasm, and drawing
+  one anyway from invented stacks is exactly the dishonesty
+  this screen exists against. Every frame is a function
+  somebody named. Self time excludes children — getting that
+  backwards makes every flame graph a picture of its root.
+- Percentiles are **nearest-rank**. An interpolated p99
+  reports a duration that never happened, which is precisely
+  the number people go on to quote.
+- **The browser's clock is coarser than the work.** First run
+  on the real screen: `P50 0 ns`. Not a fast result — *no*
+  result. `performance.now()` is deliberately coarsened
+  against timing attacks, and this host reports **99.8 µs**
+  granularity. The fix is the one `testing.B` uses: probe the
+  clock, calibrate a batch whose duration the clock can
+  actually resolve (target 100× resolution), time batches, and
+  divide. `applyOp` then reads **1.6 µs** at batch ×64 — a
+  believable number for one `SetBlockContent` against a
+  60-block page. Both the resolution and the batch size are on
+  screen, with the caveat spelled out: a p99.9 over batch means
+  is not a tail latency.
+
+**And one plain bug the same run exposed:** `seedPage(60)` was
+inside the timed iteration, so "apply one op" was really
+"build a page sixty times and apply one op" — 400 µs, and
+entirely plausible-looking. `Workload` gained a `Setup` that
+runs once, untimed. `TestSetupIsNotTimed` holds it.
+
+Per-op time is a batch total divided by its size — a rational,
+so the duration fields are `float64` and `Duration` keeps two
+decimals below 10 ns. Truncating to `int64` printed "0 ns" for
+sub-nanosecond work, which reads as "not measured" rather than
+as the answer.
+
+**QUEUE DEPTH is the one panel that is not local**, so it got a
+real endpoint rather than an empty state: `GET /collab/stats`
+(`collaboration-service`, `docs/api/collaboration.md` §8),
+reached directly like every other collab debug endpoint. Two
+numbers per queue, not one — depth alone cannot tell a healthy
+burst from a stopped poller, and `outbox_oldest_seconds` is
+what distinguishes them. `lag_seconds` on an idle instance is
+large and healthy, so the screen labels it rather than
+colouring it red.
+
+**A finding the treemap surfaced, worth recording:** the
+bundle panel weighs the wasm modules this page actually
+fetched, and there are now eight of them at ~3.4 MB each —
+because every Go wasm binary embeds its own copy of the Go
+runtime. ~28 MB of runtime to ship ~50 KB of algorithms. Not
+fixed here (it is a real build-level question — one
+multiplexed entrypoint vs eight), but it is now visible on
+the screen that exists to make costs visible.
+
+**Mockup corrections, in the mockup first.** `SCAN 1.8 GB/s`
+claimed a scan benchmark this screen does not have; it is
+`WORKLOAD` now, naming the one selected. The workload and
+sample-count chip rows were added (a RUN AGAIN button with
+nothing to vary is a button, not a control). `CLOCK` and
+`BATCH` readouts were added because every percentile beside
+them is quantised by the first and averaged over the second,
+and a histogram that does not say so is making a claim it
+cannot support.
+
+**Two more things the real screen taught, after the first
+port:**
+
+- **Calibration cannot believe a single read from a coarse
+  clock.** One `Page.Apply` measured **2 ms** in the browser —
+  not because it took 2 ms, but because a ~100 µs clock
+  jumped mid-call. Believing it returned a batch of 1, whose
+  samples were then quantised to 0 or 99.8 µs, and a p50 of
+  "0.00 ns". Calibration now takes the **minimum of three
+  probes**: quantisation and scheduling noise only ever push a
+  measurement *up*.
+- **A long batch buys accuracy with samples, and that is a
+  real trade, so both halves are on screen.** At a 100-tick
+  target the run gathered **16 samples** — and a p99.9 over
+  16 samples is the maximum wearing a percentile's name.
+  The batch is capped at 1 ms (~10% quantisation of one
+  sample, stated) which buys back ~400 samples, and `Supported`
+  reports the highest quantile the count can actually carry.
+  Anything above it is **greyed, not dropped** — its absence
+  is itself information, and printing it in the same ink as a
+  real one would be the lie.
+
+Also: the run is bounded by wall clock (2 s), because wasm
+holds the page's own thread — a benchmark that overruns does
+not take longer, it freezes the tab it is drawing into. The
+result says whether it stopped on samples or on seconds.
+
+**Gate:** `uidiff 16 /lab/perf` → **missing 0 · property diffs 0
+· chrome text diffs 0**, with a `SEED` that waits for
+the in-flight run to finish — a diff taken mid-run compares a
+screen whose RUN AGAIN chip correctly reads RUNNING…, which is
+a false positive, not a defect.

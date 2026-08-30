@@ -67,6 +67,27 @@ export function getTrace(pageId: string): Promise<{ steps: TraceStep[] }> {
   return collabFetch(`${COLLAB_URL}/collab/pages/${pageId}/trace`);
 }
 
+/** GET /collab/stats — this instance's own queue depths, for
+ *  § 16's QUEUE DEPTH panel. Measured, not drawn.
+ *
+ *  Two numbers per queue on purpose: a depth of 400 draining in
+ *  200 ms and a depth of 3 whose oldest row has waited four
+ *  minutes are opposite conditions, and the count alone calls the
+ *  second one healthy. */
+export interface CollabStats {
+  outbox_depth: number;
+  outbox_oldest_seconds: number;
+  ops: number;
+  pages: number;
+  /** Time since the newest op. On an idle instance this is large
+   *  and fine — the screen labels it rather than colouring it. */
+  lag_seconds: number;
+}
+
+export function getCollabStats(): Promise<CollabStats> {
+  return collabFetch<CollabStats>(`${COLLAB_URL}/collab/stats`);
+}
+
 export interface PalimpsestChar {
   rune: number; // a Go rune, i.e. a Unicode code point — String.fromCodePoint to render
   insert_step: number;

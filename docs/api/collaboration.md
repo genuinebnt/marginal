@@ -542,3 +542,48 @@ handing over the two document states to pick from.
 `from`/`to` out of `[0, len(steps))`, or malformed, is a `400`; a
 malformed confirmed log (fails to even replay) is a `500`, same
 partial-result contract as §5.
+
+---
+
+## 8. `GET /collab/stats` — this instance's queue depths
+
+Plain HTTP, read-only, no page id: it is an *instance* fact,
+not a resource. Backs `docs/ui-mockups/v2/index.html` § 16's
+QUEUE DEPTH panel, which is the one panel on a benchmark
+screen that is not measured locally.
+
+Reached directly, never through `api-gateway`, the same
+convention §§5–7 already follow — the gateway maps the REST
+resource contracts (`pages.md`, `auth.md`), and none of these
+is a resource.
+
+```json
+{
+  "outbox_depth": 0,
+  "outbox_oldest_seconds": 0,
+  "ops": 2422,
+  "pages": 140,
+  "lag_seconds": 17553.75
+}
+```
+
+**Two numbers per queue, not one.** `outbox_depth` alone
+cannot tell a healthy burst from a stopped poller: 400 events
+draining in 200 ms and 3 events whose oldest has waited four
+minutes are opposite conditions, and the count calls the
+second one fine. `outbox_oldest_seconds` is what actually
+distinguishes them.
+
+`lag_seconds` is time since the newest accepted op. On an
+idle instance it is large and perfectly healthy, so the
+screen labels it rather than colouring it — a UI that turns
+red because nobody is typing teaches its reader to ignore
+red.
+
+Two aggregate queries, no session state touched, safe to
+poll while people are editing — which is the only way it is
+useful. It is deliberately **not** authenticated, for the
+same reason and with the same caveat as §§5–7: these are
+local debug surfaces, and the RS256 verification `ADR-011`
+defers to a hardened gateway is not built in this repo yet.
+It exposes counts, never content.
