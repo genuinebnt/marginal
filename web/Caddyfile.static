@@ -22,7 +22,27 @@
 	@wasm path *.wasm
 	header @wasm Cache-Control "public, max-age=300"
 
-	# Client-side routing: unknown paths are SPA routes, not 404s.
+	# index.html must NEVER be cached, and this is not a tuning knob.
+	#
+	# It carried no Cache-Control at all, so browsers applied heuristic
+	# caching to it — and it is the one file that names which hashed bundle
+	# to load. A stale index.html therefore pins a visitor to the PREVIOUS
+	# deploy's /assets/index-<hash>.js, which is served `immutable` for a
+	# year and will never be revalidated. The result is a browser that
+	# cannot leave the old app no matter how many times the site is
+	# rebuilt: exactly the "the new screens still aren't there" report that
+	# found this.
+	#
+	# The pairing is the point — immutable assets are only safe when the
+	# document that names them is always fresh.
+	@html path / /index.html
+	header @html Cache-Control "no-cache, must-revalidate"
+
+	# Client-side routing: unknown paths are SPA routes, not 404s. Those
+	# responses ARE index.html, so they need the same treatment.
+	@spa not path /assets/* *.wasm *.js *.css *.svg *.png *.woff2
+	header @spa Cache-Control "no-cache, must-revalidate"
+
 	try_files {path} /index.html
 	file_server
 }
