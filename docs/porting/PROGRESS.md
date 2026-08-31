@@ -4757,3 +4757,71 @@ and replaying them there — the machinery exists (`Page.Apply`,
 `Invert`, and the wasm bridge) but it is a real piece of work
 rather than wiring, and it is recorded here rather than
 half-started.
+
+---
+
+## § 13 Trace is a scratchpad you type into (2026-08-31)
+
+The debt the previous entry recorded — "Trace and History still
+replay a stored page's op log" — is paid for Trace. `/lab/trace`
+with no page id is now a **playground**: the real
+`RichEditorPane`, wired to a page that has no socket, printing
+the op log your own typing produced.
+
+**`web/src/collab/useLocalPage.ts`** is the second implementation
+of `CollabPage`. `useCollabPage` sends ops to
+collaboration-service; this one applies them to a local page
+through `documentcore`'s wasm build and keeps every one. The
+editor does not know the difference — it takes `collab:
+CollabPage` as a prop, which is the whole reason that interface
+was worth having.
+
+**The law is run, not claimed.** Every recorded op gets its
+inverse from the Go core, the inverse is applied to the page the
+op produced, and the result is compared with the page from
+before it (`samePage`). `LocalOp.lawHolds` is the outcome of
+that comparison, and the top bar's chip says `HOLDS` or
+`BROKEN`. A screen that printed RFC-002 §3 without running it
+would be making the same empty claim as an audit log with a
+green tick and no hash chain.
+
+**Stepping is replay, not undo.** `◀ STEP` / `STEP ▶` rebuild the
+page from empty through the first *n* ops. The log is untouched,
+because the log is the truth and the document is a projection of
+it — step back to 0 and forward to 12 and you still have twelve
+ops.
+
+**The bug the step control found, which typing never would
+have.** Stepping back read `1/1 → 0/2`: the log GREW by one.
+`start()` seeds an empty paragraph that is deliberately not in
+the op stream (it is the page existing, not something you did),
+and the replay did not seed it — so the editor got a page with
+no blocks, needed somewhere to put a caret, inserted one, and
+*that* insert was recorded through `emit`. The fix is
+`emptyPage()`, shared by both paths, seeding the same block id
+from a ref. A replay has to start from the same empty page the
+log was recorded against, identity included.
+
+Also landed: `internal/opscript` (an op-script parser + replay,
+4 tests, including one asserting `Apply` refuses an op that lies
+about what it overwrote) and `cmd/wasm/scriptbridge.go`.
+`opscript` lives in `document-service/internal/`, not in
+`documentcore` — replaying a demo script is not part of the
+document model — and not in `cmd/wasm`, where a build tag would
+make it untestable.
+
+**Mockup reconciled:** § 13's `OPS` readout becomes `STEP n / m`,
+its second inspector tab `ABOUT` becomes `KINDS` (which counts
+the op kinds you emitted, and says why there are no character
+ops here), and the `HOLDS` chip is the live verdict rather than
+a fixture.
+
+**Gate:** `uidiff 13 /lab/trace` → missing 0 · property 0 ·
+chrome text 0. `verify.js` gains six § 13 checks, all passing;
+full sweep 114 ok.
+
+**Still owed:** § 17 History. Its palimpsest is the *character*
+tier — `doctext`/`palimpsest` live in collaboration-service,
+which has no wasm build — so it cannot be driven from the
+browser the way § 13 now is. Stated on the screen rather than
+faked.

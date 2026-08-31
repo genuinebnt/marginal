@@ -118,6 +118,9 @@ func main() {
 	js.Global().Set("documentcoreNewPage", js.FuncOf(newPage))
 	js.Global().Set("documentcoreApplyOp", js.FuncOf(applyOp))
 	js.Global().Set("documentcoreInvertOp", js.FuncOf(invertOp))
+	// § 13 TRACE's playground: a typed op script, replayed with the
+	// invertibility law re-checked at every step.
+	js.Global().Set("documentcoreReplayScript", js.FuncOf(replayScriptJS))
 
 	// Registered js.Func callbacks keep firing only while main is still
 	// running — block forever rather than returning.

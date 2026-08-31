@@ -605,6 +605,36 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
   await p.getByText('TEXT',{exact:true}).first().click(); await p.waitForTimeout(500);
   check('§17 TEXT/PALIMPSEST toggle', /TEXT AT THIS REVISION/.test(await txt()));
 
+  // ── § 13 TRACE (the scratchpad) ───────────────────────────────────────
+  await go('/lab/trace', 3000);
+  const blk = p.locator('[contenteditable="true"]').nth(1);
+  await blk.click();
+  await p.keyboard.type('anchors survive a split', { delay: 12 });
+  await p.waitForFunction(() => /STEP/.test(document.body.innerText) &&
+    !/STEP\s*0\s*\/\s*0/.test(document.body.innerText), null, { timeout: 20000 }).catch(()=>{});
+  const stepOf = async () => ((await txt()).match(/STEP\s*(\d+)\s*\/\s*(\d+)/) || []).slice(1).join('/');
+  const typed = await stepOf();
+  check('§13 typing into the scratchpad produces ops', /^[1-9]/.test(typed), typed);
+  check('§13 and each one carries its own inverse', /HOLDS/.test(await txt()));
+
+  // Stepping back is a replay from empty, not a delete: the text goes and
+  // the log stays, which is the whole claim the screen makes.
+  const preStep = await txt();
+  await p.getByText('◀ STEP', { exact: true }).first().click();
+  await p.waitForFunction(t => document.body.innerText !== t, preStep, { timeout: 15000 }).catch(()=>{});
+  const back = await stepOf();
+  check('§13 ◀ STEP rewinds the document', back !== typed && back.split('/')[1] === typed.split('/')[1], `${typed} → ${back}`);
+  const midText = await p.locator('.canvas').innerText();
+
+  await p.getByText('STEP ▶', { exact: true }).first().click();
+  await p.waitForFunction(() => true, null, { timeout: 1000 }).catch(()=>{});
+  await p.waitForFunction(t => document.querySelector('.canvas').innerText !== t, midText, { timeout: 15000 }).catch(()=>{});
+  check('§13 STEP ▶ replays it forward again', (await stepOf()) === typed, await stepOf());
+  check('§13 and the text comes back', (await p.locator('.canvas').innerText()) !== midText);
+
+  await p.locator('.it', { hasText: 'KINDS' }).first().click(); await p.waitForTimeout(400);
+  check('§13 KINDS counts the op kinds it emitted', /OP KINDS YOU PRODUCED/.test(await txt()) && /SetBlockContent|InsertBlock/.test(await txt()));
+
   console.log(errs.length ? `\nPAGE ERRORS: ${errs.slice(0,5).join(' | ')}` : '\nno page errors');
   if (errs.length) fails++;
   console.log(fails ? `\n${fails} FAILED` : '\nall checks passed');

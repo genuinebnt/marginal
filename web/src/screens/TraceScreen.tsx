@@ -17,10 +17,9 @@
  * undo possible at all.
  */
 import { useEffect, useMemo, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { useAuth } from "../auth/AuthContext";
+import { TracePlayground } from "./TracePlayground";
+import { useParams } from "react-router-dom";
 import { getTrace, describeOp, type TraceStep } from "../api/history";
-import { listPages, type Page } from "../api/pages";
 import {
   Body, Inspector, Label, Readout, Rule, Screen, StatusBar, TopBar, num,
 } from "../shell/Chrome";
@@ -43,20 +42,11 @@ function OpBody({ op }: { op: Record<string, unknown> }) {
 
 export function TraceScreen() {
   const { id } = useParams();
-  const { session } = useAuth();
-  const actorId = session?.actorId ?? null;
-  const navigate = useNavigate();
 
-  const [pages, setPages] = useState<Page[]>([]);
   const [steps, setSteps] = useState<TraceStep[]>([]);
   const [at, setAt] = useState(0);
   const [err, setErr] = useState<string | null>(null);
   const [insTab, setInsTab] = useState<"law" | "kinds">("law");
-
-  useEffect(() => {
-    if (!actorId) return;
-    listPages(actorId).then((r) => setPages(r.pages)).catch(() => {});
-  }, [actorId]);
 
   useEffect(() => {
     if (!id) return;
@@ -95,32 +85,7 @@ export function TraceScreen() {
   }, [steps]);
 
   if (!id) {
-    return (
-      <Screen>
-        <TopBar crumb={<>lab / <b>trace</b></>} />
-        <Body>
-          <div className="rail">
-            <div className="rail-h">PICK A PAGE<div /></div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 1, padding: "0 8px", overflowY: "auto" }}>
-              {pages.map((p) => (
-                <div key={p.id} className="tr" style={{ cursor: "pointer" }}
-                     onClick={() => navigate(`/pages/${p.id}/trace`)}>
-                  {p.title}
-                </div>
-              ))}
-            </div>
-          </div>
-          <div style={{ flex: 1, display: "grid", placeItems: "center", padding: 40 }}>
-            <div style={{ maxWidth: 520, fontSize: 12.5, lineHeight: 1.7, color: "#585550" }}>
-              A trace is per page, because an op log is. Pick one and every op it has
-              ever received is replayed here — applied, inverted, and the invertibility
-              law re-checked at each step.
-            </div>
-          </div>
-        </Body>
-        <StatusBar route="/lab/trace" mechanism="op-log debugger" state="no page selected" healthy />
-      </Screen>
-    );
+    return <TracePlayground />;
   }
 
   return (

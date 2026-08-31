@@ -144,6 +144,20 @@ const SEED = {
       null, { timeout: 60000 }).catch(() => {});
     await p.waitForTimeout(1200);
   },
+  '13': async (p) => {                     // TRACE — a log needs ops in it
+    // /lab/trace is a scratchpad: it starts empty, and the mockup
+    // depicts a session in progress. So type, exactly as a reader
+    // would, and let the editor produce the log the diff compares.
+    const block = p.locator('[contenteditable="true"]').nth(1);
+    if (await block.count()) {
+      await block.click();
+      await p.keyboard.type('A rope is the wrong primitive', { delay: 15 });
+      await p.waitForTimeout(1500);
+      await p.keyboard.press('Enter');
+      await p.keyboard.type('anchors survive a split', { delay: 15 });
+      await p.waitForTimeout(2000);
+    }
+  },
   '07': async (p) => {                       // GRAPH — a node is selected
     await p.waitForTimeout(2500);            // let the layout settle first
     const n = p.locator('svg circle').nth(3);
