@@ -25,6 +25,11 @@ func NewHandler(client documentv1.DiscoverServiceClient) *Handler {
 // Mount registers docs/api/discover.md §2's one route on r.
 func (h *Handler) Mount(r chi.Router) {
 	r.Get("/discover/{id}", h.near)
+	// Origin-free: "what is near this sentence". Registered as its own route
+	// rather than /discover/{id}?q= with a placeholder id, because a typed
+	// query has no page and a route that demanded one would be lying about
+	// what the request needs.
+	r.Get("/discover", h.near)
 }
 
 func (h *Handler) near(w http.ResponseWriter, r *http.Request) {
@@ -33,6 +38,7 @@ func (h *Handler) near(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := h.client.Near(actorctx.FromRequest(r), &documentv1.NearRequest{
 		SourcePageId: chi.URLParam(r, "id"),
+		QueryText:    q.Get("q"),
 		K:            int32(k),
 		Topics:       csv(q.Get("topics")),
 		Tags:         csv(q.Get("tags")),

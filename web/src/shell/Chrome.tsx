@@ -365,14 +365,20 @@ const TOPIC_CLASS: Record<string, string> = {
 };
 
 export function TopicChip({
-  name, colorKey, small,
-}: { name: string; colorKey: string; small?: boolean }) {
+  name, colorKey, small, onClick,
+}: { name: string; colorKey: string; small?: boolean; onClick?: () => void }) {
   return (
     <span
       className={`tpc ${TOPIC_CLASS[colorKey] ?? "tpc-proto"}`}
       // § 09's result rows draw the chip one size down, beside a title rather
       // than as the title's own label. Same component, not a second chip.
-      style={small ? { padding: "1px 6px" } : undefined}
+      style={{ ...(small ? { padding: "1px 6px" } : null), ...(onClick ? { cursor: "pointer" } : null) }}
+      // The chip takes the click itself rather than being wrapped in a
+      // clickable span. A wrapper is not just extra markup: it stops the chip
+      // being a flex item of the bar it sits in, and a flex item's inline-flex
+      // is blockified to flex — so the wrapped chip lays out differently from
+      // the unwrapped one beside it.
+      onClick={onClick}
     >
       <i />
       {name.toUpperCase()}

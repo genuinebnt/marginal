@@ -24,7 +24,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { listPages, type Page } from "../api/pages";
-import { discoverNear, type NearResponse } from "../api/discover";
+import { discoverNear, discoverText, type NearResponse } from "../api/discover";
 import {
   Body, Inspector, Label, Readout, Rule, Screen, StatusBar, TopBar, TopicChip,
   num,
@@ -48,6 +48,13 @@ export function DiscoverScreen() {
   /** § 09 offers one sort beside the two views. Sort order is view state:
    *  it changes what you see, never what the index was built from. */
   const [recentFirst, setRecentFirst] = useState(false);
+  /**
+   * The typed query. Empty means the selected PAGE is the origin, which is
+   * what the screen does on arrival; typing takes over, and clearing hands
+   * it back. Two origins, one index, one panel of results — not a second
+   * mode with its own screen.
+   */
+  const [text, setText] = useState("");
 
   useEffect(() => {
     if (!actorId) return;
@@ -60,11 +67,25 @@ export function DiscoverScreen() {
   const sourcePage = pages.find((p) => p.id === source) ?? null;
 
   useEffect(() => {
-    if (!actorId || !source) { setNear(null); return; }
-    discoverNear(actorId, source, { k: K, topics: scope, tags: mustTags })
-      .then((r) => { setNear(r); setErr(null); })
-      .catch((e) => { setNear(null); setErr(String(e)); });
-  }, [actorId, source, scope, mustTags]);
+    if (!actorId) { setNear(null); return; }
+    const typed = text.trim();
+    if (!typed && !source) { setNear(null); return; }
+
+    // Debounced, because every request rebuilds the index over the live
+    // corpus (internal/discover says so, and says what would replace that).
+    // Firing per keystroke would queue builds behind each other and the
+    // panel would show the answer to a question you had already changed.
+    let live = true;
+    const t = setTimeout(() => {
+      const req = typed
+        ? discoverText(actorId, typed, { k: K, topics: scope, tags: mustTags })
+        : discoverNear(actorId, source!, { k: K, topics: scope, tags: mustTags });
+      req
+        .then((r) => { if (live) { setNear(r); setErr(null); } })
+        .catch((e) => { if (live) { setNear(null); setErr(String(e)); } });
+    }, typed ? 260 : 0);
+    return () => { live = false; clearTimeout(t); };
+  }, [actorId, source, scope, mustTags, text]);
 
   const toggleScope = useCallback((t: string) => {
     setScope((cur) => (cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t]));
@@ -86,6 +107,9 @@ export function DiscoverScreen() {
   const sourceTags = sourcePage?.tags ?? [];
 
   const stats = near?.stats;
+  /** Whether the query has a page behind it. A typed one does not, and two
+   *  of the three signals are then absent rather than zero. */
+  const hasOrigin = stats?.has_origin ?? true;
   const maxCosine = useMemo(
     () => Math.max(...(near?.neighbours ?? []).map((n) => n.cosine), 0.0001),
     [near],
@@ -94,7 +118,9 @@ export function DiscoverScreen() {
   return (
     <Screen>
       <TopBar
-        crumb={<>discover / <b>near {sourcePage?.title ?? "…"}</b></>}
+        crumb={text.trim()
+          ? <>discover / <b>near “{text.trim().slice(0, 40)}”</b></>
+          : <>discover / <b>near {sourcePage?.title ?? "…"}</b></>}
         readouts={
           <>
             <Readout
@@ -114,6 +140,30 @@ export function DiscoverScreen() {
           width: 392, flex: "none", boxSizing: "border-box", background: "#0F1012",
           borderRight: "1px solid rgba(255,255,255,.07)", display: "flex", flexDirection: "column",
         }}>
+          {/* Two origins, one index. Type and the query vector comes from
+              your sentence; clear it and the selected page is the origin
+              again. The same HNSW descent either way — which is the point,
+              and why the recall figure above keeps meaning the same thing. */}
+          <div style={{ padding: "14px 14px 0" }}>
+            <input
+              className="mono"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder="or type a sentence…"
+              aria-label="semantic query"
+              style={{
+                width: "100%", boxSizing: "border-box", padding: "8px 10px",
+                background: "#0B0C0D", color: "#D2CFC8", fontSize: 11.5,
+                border: `1px solid ${text ? "rgba(232,135,60,.45)" : "rgba(255,255,255,.10)"}`,
+                outline: "none",
+              }}
+            />
+            <div style={{ marginTop: 7, fontSize: 10.5, lineHeight: 1.5, color: "#585550" }}>
+              {text.trim()
+                ? "Querying by text. Tag overlap and graph distance are blank — a sentence has neither."
+                : "Empty means the selected page is the query."}
+            </div>
+          </div>
           <div className="rail-h">
             POSTS<div /><span style={{ color: "#585550" }}>{num(pages.length)}</span>
           </div>
@@ -228,9 +278,7 @@ export function DiscoverScreen() {
               const on = scope.includes(t);
               const key = pages.find((p) => p.topic?.name === t)?.topic?.color_key ?? "protocol";
               return on
-                ? <span key={t} onClick={() => toggleScope(t)} style={{ cursor: "pointer" }}>
-                    <TopicChip name={t} colorKey={key} />
-                  </span>
+                ? <TopicChip key={t} name={t} colorKey={key} onClick={() => toggleScope(t)} />
                 : <span
                     key={t}
                     className="tpc"
@@ -238,7 +286,10 @@ export function DiscoverScreen() {
                     onClick={() => toggleScope(t)}
                   >
                     <i style={{ background: "#4B4842" }} />
-                    {t.toUpperCase()}
+                    {/* "+" because the chip is an ADD control while it is off —
+                        an unselected filter that reads exactly like a selected
+                        one is the thing this bar most needs not to be. */}
+                    + {t.toUpperCase()}
                   </span>;
             })}
             <span
@@ -350,13 +401,31 @@ export function DiscoverScreen() {
                   <span className="mono" style={{ fontSize: 9, letterSpacing: ".14em", color: "#585550" }}>GRAPH DISTANCE</span>
 
                   {(near?.neighbours ?? []).map((n) => (
-                    <Signals key={n.page_id} n={n} maxCosine={maxCosine} />
+                    <Signals key={n.page_id} n={n} maxCosine={maxCosine} hasOrigin={hasOrigin} />
                   ))}
                 </div>
                 {(() => {
                   // The finding, computed rather than asserted: the row with
                   // real prose similarity that neither the tags nor the graph
                   // would ever have surfaced.
+                  // The finding is "cosine found what the tags and the graph
+                  // both missed" — which needs the tags and the graph to have
+                  // been asked. A typed query asked neither, so there is no
+                  // disagreement to report, and reporting one anyway would be
+                  // reading a missing signal as a negative one.
+                  if (!hasOrigin) {
+                    return (
+                      <div style={{
+                        marginTop: 14, padding: "9px 12px", fontSize: 11.5, lineHeight: 1.55,
+                        color: "#6E6A63", border: "1px solid rgba(255,255,255,.07)",
+                      }}>
+                        Two of the three columns are blank because you typed the query. A
+                        sentence carries no tags and holds no node in the link graph, so only
+                        the cosine has anything to say. Click a page instead and all three
+                        answer.
+                      </div>
+                    );
+                  }
                   const odd = (near?.neighbours ?? []).find(
                     (n) => n.shared_tags === 0 && n.hops < 0,
                   );
@@ -513,8 +582,15 @@ export function DiscoverScreen() {
 
 /** One row of the three-signal table. */
 function Signals({
-  n, maxCosine,
-}: { n: import("../api/discover").SemanticNeighbour; maxCosine: number }) {
+  n, maxCosine, hasOrigin,
+}: {
+  n: import("../api/discover").SemanticNeighbour;
+  maxCosine: number;
+  /** False for a typed query. Two of the three columns then have no question
+   *  to answer, and drawing a 0 in them would make "you have no tags" look
+   *  like "you share none of theirs". */
+  hasOrigin: boolean;
+}) {
   return (
     <>
       <span style={{ color: "#D2CFC8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -530,17 +606,25 @@ function Signals({
         </div>
         <span className="mono" style={{ fontSize: 9.5, color: "#8C8880" }}>{n.cosine.toFixed(2)}</span>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-        <div style={{ flex: 1, height: 4, background: "rgba(255,255,255,.06)" }}>
-          <div style={{ width: `${Math.round(n.tag_jaccard * 100)}%`, height: "100%", background: "#7AA8E8" }} />
+      {hasOrigin ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          <div style={{ flex: 1, height: 4, background: "rgba(255,255,255,.06)" }}>
+            <div style={{ width: `${Math.round(n.tag_jaccard * 100)}%`, height: "100%", background: "#7AA8E8" }} />
+          </div>
+          <span className="mono" style={{ fontSize: 9.5, color: n.shared_tags ? "#8C8880" : "#4B4842" }}>
+            {n.shared_tags}/{n.tags.length || 0}
+          </span>
         </div>
-        <span className="mono" style={{ fontSize: 9.5, color: n.shared_tags ? "#8C8880" : "#4B4842" }}>
-          {n.shared_tags}/{n.tags.length || 0}
+      ) : (
+        <span className="mono" style={{ fontSize: 9.5, color: "#4B4842" }}>n/a · no tags</span>
+      )}
+      {hasOrigin ? (
+        <span className="mono" style={{ fontSize: 9.5, color: n.hops < 0 ? "#E0A34E" : "#8C8880" }}>
+          {n.hops < 0 ? "unreachable" : `${n.hops} hop${n.hops === 1 ? "" : "s"}`}
         </span>
-      </div>
-      <span className="mono" style={{ fontSize: 9.5, color: n.hops < 0 ? "#E0A34E" : "#8C8880" }}>
-        {n.hops < 0 ? "unreachable" : `${n.hops} hop${n.hops === 1 ? "" : "s"}`}
-      </span>
+      ) : (
+        <span className="mono" style={{ fontSize: 9.5, color: "#4B4842" }}>n/a · not a node</span>
+      )}
     </>
   );
 }

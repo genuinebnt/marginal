@@ -177,9 +177,21 @@ const SEED = {
   },
   '09': async (p) => {                       // DISCOVER — a scope and a tag are chosen
     await p.waitForTimeout(1200);
-    const topic = p.locator('.tpc').first();
+    // The mockup depicts a query in the box. Typing one is also the only way
+    // the n/a columns a typed query produces get compared at all.
+    const q = p.locator('input[aria-label="semantic query"]');
+    if (await q.count()) {
+      await q.fill('balanced tree of substrings');
+      await p.waitForTimeout(1400);
+      await q.fill('');
+      await p.waitForTimeout(900);
+    }
+    // PROTOCOL by name, not "the first chip": the mockup depicts that scope
+    // specifically, and which topic sorts first is a fact about the seed
+    // data rather than about this screen.
+    const topic = p.locator('.tpc', { hasText: 'PROTOCOL' }).first();
     if (await topic.count()) await topic.click();
-    await p.waitForTimeout(700);
+    await p.waitForTimeout(900);
     const tag = p.locator('.tg').first();
     if (await tag.count()) await tag.click();
     await p.waitForTimeout(900);

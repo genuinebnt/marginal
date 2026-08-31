@@ -63,9 +63,14 @@ type Stats struct {
 	LayerSizes []int
 	// Corpus is how many live pages were indexed.
 	Corpus int
-	// TopTerms are the query page's own heaviest terms — why it sits where it
-	// sits. A similarity nobody can interrogate is one nobody should trust.
+	// TopTerms are the query's own heaviest terms — the page's, or the typed
+	// string's. Why it sits where it sits: a similarity nobody can
+	// interrogate is one nobody should trust.
 	TopTerms []string
+	// HasOrigin is false for a typed query — which has no tags and no node in
+	// the link graph, so SharedTags/TagJaccard/Hops on every result below are
+	// not small numbers but absent ones, and the screen has to say so.
+	HasOrigin bool
 }
 
 // ErrUnknownPage is returned when the requested page is not in the live
@@ -73,10 +78,25 @@ type Stats struct {
 // because they call for different words on screen.
 var ErrUnknownPage = errors.New("discover: page is not in the live corpus")
 
+// ErrEmptyQuery is returned when a typed query holds nothing the tokenizer
+// keeps — punctuation, or stop words alone. Distinguished from "no results"
+// for the same reason as above: one is a corpus finding, the other is that
+// there was no question.
+var ErrEmptyQuery = errors.New("discover: query has no indexable terms")
+
 // Query is one Near request.
+//
+// Exactly one of PageID and Text is the origin. PageID asks "what is near
+// this page"; Text asks "what is near this sentence", vectorising the typed
+// string through the same corpus IDF the pages were embedded with — the same
+// index, the same descent, a query vector that simply did not come from a
+// row. Setting both is a caller error and Text wins, because a screen that
+// has a text box focused is asking about the text in it.
 type Query struct {
 	PageID string
-	K      int
+	// Text, when non-empty, replaces PageID as the origin.
+	Text string
+	K    int
 	// Topics restricts results to these topic names. Empty means every topic.
 	Topics []string
 	// MustTags requires every listed tag. Empty means no tag constraint.
@@ -116,9 +136,36 @@ func Near(pages []Page, links graphalgo.Graph, q Query) ([]Neighbour, Stats, err
 		ix.Add(p.ID.String(), vectors[i])
 	}
 
-	self, ok := byID[q.PageID]
-	if !ok {
-		return nil, Stats{Corpus: len(pages)}, ErrUnknownPage
+	// The origin vector, and what the origin can be compared against.
+	//
+	// A typed query is not a page: it has no tags and no node in the link
+	// graph, so two of the three signals have no question to answer for it.
+	// They are reported ABSENT rather than zero — "shares no tags with you"
+	// and "you have no tags" are different findings, and a screen that
+	// printed 0 for both would be making the second look like the first.
+	var (
+		qv        semantic.Vector
+		qTerms    []string
+		ownTags   []string
+		exclude   string
+		hasOrigin bool
+	)
+	if strings.TrimSpace(q.Text) != "" {
+		qTerms = semantic.Tokenize(q.Text)
+		qv = corpus.Embed(qTerms)
+		if len(qTerms) == 0 {
+			// Punctuation only, or nothing the tokenizer keeps. An empty
+			// vector matches everything equally badly, which reads on screen
+			// as a ranking; say there is nothing to rank instead.
+			return nil, Stats{Corpus: len(pages), LayerSizes: ix.LayerSizes()}, ErrEmptyQuery
+		}
+	} else {
+		self, ok := byID[q.PageID]
+		if !ok {
+			return nil, Stats{Corpus: len(pages)}, ErrUnknownPage
+		}
+		qv, qTerms = vectors[self], terms[self]
+		ownTags, exclude, hasOrigin = pages[self].Tags, q.PageID, true
 	}
 
 	wantTopic := map[string]bool{}
@@ -142,17 +189,21 @@ func Near(pages []Page, links graphalgo.Graph, q Query) ([]Neighbour, Stats, err
 		return true
 	}
 
-	hits, searchStats := ix.Search(vectors[self], q.K, ParamEfSearch, q.PageID, allow)
+	hits, searchStats := ix.Search(qv, q.K, ParamEfSearch, exclude, allow)
 
 	// Hop distance, from the same BFS /graph/neighborhood runs. A second
 	// signal over a different structure — not a re-scoring of the first.
-	dist, _ := graphalgo.BFS(links, graphalgo.NodeID(q.PageID))
+	// A typed query has no node to start from, so there is no BFS to run and
+	// every hop stays at the -1 the loop below defaults it to.
+	var dist map[graphalgo.NodeID]int
+	if hasOrigin {
+		dist, _ = graphalgo.BFS(links, graphalgo.NodeID(q.PageID))
+	}
 
-	own := pages[self]
 	out := make([]Neighbour, 0, len(hits))
 	for _, h := range hits {
 		p := pages[byID[h.ID]]
-		shared, jaccard := tagOverlap(own.Tags, p.Tags)
+		shared, jaccard := tagOverlap(ownTags, p.Tags)
 		hops := -1
 		if d, ok := dist[graphalgo.NodeID(h.ID)]; ok {
 			hops = d
@@ -175,7 +226,8 @@ func Near(pages []Page, links graphalgo.Graph, q Query) ([]Neighbour, Stats, err
 		SearchStats: searchStats,
 		LayerSizes:  ix.LayerSizes(),
 		Corpus:      len(pages),
-		TopTerms:    corpus.TopTerms(terms[self], 8),
+		TopTerms:    corpus.TopTerms(qTerms, 8),
+		HasOrigin:   hasOrigin,
 	}, nil
 }
 

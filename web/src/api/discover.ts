@@ -15,7 +15,9 @@ export interface SemanticNeighbour {
   cosine: number;
   shared_tags: number;
   tag_jaccard: number;
-  /** -1 is UNREACHABLE, not "very far" — the two are different findings. */
+  /** -1 is UNREACHABLE, not "very far" — the two are different findings.
+   *  For a typed query it is always -1, because a sentence has no node in
+   *  the link graph at all: see stats.has_origin. */
   hops: number;
 }
 
@@ -32,6 +34,10 @@ export interface DiscoverStats {
   m: number;
   ef_search: number;
   dimensions: number;
+  /** False for a typed query, which has no tags and no node in the link
+   *  graph — so shared_tags / tag_jaccard / hops are ABSENT rather than
+   *  zero, and the screen has to say so instead of drawing a 0. */
+  has_origin: boolean;
 }
 
 export interface NearResponse {
@@ -46,6 +52,27 @@ export function discoverNear(
   opts: { k?: number; topics?: string[]; tags?: string[] } = {},
 ): Promise<NearResponse> {
   const url = new URL(`${GATEWAY_URL}/discover/${pageId}`);
+  if (opts.k) url.searchParams.set("k", String(opts.k));
+  if (opts.topics?.length) url.searchParams.set("topics", opts.topics.join(","));
+  if (opts.tags?.length) url.searchParams.set("tags", opts.tags.join(","));
+  return apiFetch<NearResponse>(url.toString(), { actorId });
+}
+
+/**
+ * "What is near this sentence" — the same index, the same descent, a query
+ * vector that did not come from a row.
+ *
+ * Its own route rather than discoverNear with a placeholder id: a typed
+ * query has no page, and a URL that demanded one would be lying about what
+ * the request needs.
+ */
+export function discoverText(
+  actorId: string,
+  query: string,
+  opts: { k?: number; topics?: string[]; tags?: string[] } = {},
+): Promise<NearResponse> {
+  const url = new URL(`${GATEWAY_URL}/discover`);
+  url.searchParams.set("q", query);
   if (opts.k) url.searchParams.set("k", String(opts.k));
   if (opts.topics?.length) url.searchParams.set("topics", opts.topics.join(","));
   if (opts.tags?.length) url.searchParams.set("tags", opts.tags.join(","));

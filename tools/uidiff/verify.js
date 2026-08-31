@@ -118,6 +118,30 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
   await p.locator('.tpc').first().click(); await p.waitForTimeout(1200);
   check('§09 scope filter runs', (await count('.tpc')) > 0);
 
+  // A typed query is the same index reached from a different origin — and
+  // two of the three signals then have no question to answer, which the
+  // screen has to say rather than draw as zeros.
+  const qbox = p.locator('input[aria-label="semantic query"]');
+  const beforeQ = await txt();
+  await qbox.fill('balanced tree of substrings splice concat');
+  await p.waitForFunction(() => /n\/a · not a node/.test(document.body.innerText),
+    null, { timeout: 20000 }).catch(()=>{});
+  const afterQ = await txt();
+  check('§09 typing a sentence queries the index', afterQ !== beforeQ && /near “balanced/.test(afterQ));
+  check('§09 and it finds the page that sentence is about', /Ropes, and why we do not use one/.test(afterQ));
+  check('§09 the signals a typed query cannot have say so, rather than reading 0',
+    /n\/a · no tags/.test(afterQ) && /n\/a · not a node/.test(afterQ));
+  check('§09 and it explains why they are blank rather than leaving a gap',
+    /A sentence carries no tags/.test(afterQ));
+  await qbox.fill('');
+  // Wait for the n/a columns to GO, not merely for the text to change: a
+  // clock in the top bar changes the page text every second, so "differs
+  // from before" would pass while the request was still in flight.
+  await p.waitForFunction(() => !/n\/a · not a node/.test(document.body.innerText),
+    null, { timeout: 20000 }).catch(()=>{});
+  check('§09 clearing it hands the query back to the selected page',
+    !/n\/a · not a node/.test(await txt()));
+
   // ── § 10d SERIES ──────────────────────────────────────────────────────
   await go('/series', 5000);
   check('§10d series index lists the handbook', /Rust Porting Handbook/.test(await txt()));

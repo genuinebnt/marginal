@@ -4825,3 +4825,74 @@ tier — `doctext`/`palimpsest` live in collaboration-service,
 which has no wasm build — so it cannot be driven from the
 browser the way § 13 now is. Stated on the screen rather than
 faked.
+
+---
+
+## § 09 Discover takes a typed query (2026-08-31)
+
+Second half of the same debt: the labs and algorithm screens are meant to
+be typed into, and Discover could only be asked "what is near this
+**page**". It now also answers "what is near this **sentence**" —
+vectorising the typed string through the same corpus IDF the pages were
+embedded with, into the same HNSW, down the same descent. A query vector
+that simply did not come from a row.
+
+**Two origins, one index**, not a second mode. `/discover/{id}` and
+`/discover?q=` are separate routes because a typed query has no page and
+a URL demanding one would misdescribe the request. `q` wins if both
+arrive: a client with a focused text box is asking about its contents.
+
+**The part worth the work: a typed query has only ONE of the three
+signals.** A sentence carries no tags and holds no node in the link
+graph, so `shared_tags`/`tag_jaccard`/`hops` have no question to answer
+for it. They are reported **absent** — `stats.has_origin: false`, and
+the screen draws `n/a · no tags` / `n/a · not a node` with the reason —
+rather than zeroed. Zero would read as "shares none of yours", which is a
+finding about the corpus rather than about the query, on a screen whose
+whole posture is that its figures can be checked. For the same reason the
+"interesting row" callout (high cosine, no shared tags, unreachable)
+becomes an explanation instead: that finding is cosine disagreeing with
+two signals that a typed query never consulted.
+
+An empty-after-tokenising query (punctuation, stop words) is `422`, not
+an empty result. An empty vector is equidistant from everything, which a
+client would draw as a ranking.
+
+Five tests in `internal/discover`, over a corpus with two clearly
+separate subjects so a ranking claim has an unambiguous right answer —
+including one that the text beats a selected page id, and one that the
+absent signals stay absent.
+
+**Two defects the gate found that were already there, unrelated to the
+feature:**
+
+- **§ 09 was not at zero and had not been.** Its four topic-chip classes
+  were missing because the seed clicked "the first topic chip", and which
+  topic sorts first is a fact about seed data. Pinned to PROTOCOL by name.
+- **The mockup contradicted its own caption.** The § 09 comment says the
+  topic filter rides the descent — then drew RESEARCH, OPERATIONS and
+  STORAGE result rows underneath a selected PROTOCOL scope. If the filter
+  rides the descent those rows cannot exist. Mockup corrected.
+- **A wrapper span changed layout.** The selected scope chip was wrapped
+  in a clickable `<span>`, which stopped it being a flex item of the bar —
+  and a flex item's `inline-flex` is blockified to `flex`. So the wrapped
+  chip laid out differently from the unwrapped one beside it. `TopicChip`
+  takes the click itself now.
+- Unselected scope chips read `+ TOPIC`, per the mockup. An unselected
+  filter that reads exactly like a selected one is the thing that bar most
+  needs not to be.
+
+**Gate:** `uidiff 09 /discover` → missing 0 · property 0 · chrome text 0.
+Six new verify checks. Full sweep **120 ok**.
+
+**One more instance of the recorded lesson.** The "clearing it hands the
+query back" check first waited for the page text to *differ* — and the
+top bar holds a clock, so the text differs every second and the check
+passed while the request was still in flight. It waits for the `n/a`
+columns to go now. Waiting on anything other than the thing you assert on
+is a future intermittent failure.
+
+Also: `web/public/syntax.wasm` was missing locally (gitignored build
+artifact, removed in the master merge), so § 05's highlighting served
+`index.html` and the browser reported a bad magic word. Rebuilt. The
+wasm-magic-word check in `verify.js` is what named it.

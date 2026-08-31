@@ -30,8 +30,13 @@ const (
 )
 
 type NearRequest struct {
-	state        protoimpl.MessageState `protogen:"open.v1"`
-	SourcePageId string                 `protobuf:"bytes,1,opt,name=source_page_id,json=sourcePageId,proto3" json:"source_page_id,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Exactly one of these is the origin. source_page_id asks "what is near
+	// this page"; query_text asks "what is near this sentence", vectorised
+	// through the same corpus IDF the pages were embedded with. When both are
+	// set, query_text wins — a client with a focused text box is asking about
+	// its contents.
+	SourcePageId string `protobuf:"bytes,1,opt,name=source_page_id,json=sourcePageId,proto3" json:"source_page_id,omitempty"`
 	// 0 means the server's default (5).
 	K int32 `protobuf:"varint,2,opt,name=k,proto3" json:"k,omitempty"`
 	// topics restricts results to these topic NAMES; empty means every topic.
@@ -43,6 +48,7 @@ type NearRequest struct {
 	// relying on it.
 	Topics        []string `protobuf:"bytes,3,rep,name=topics,proto3" json:"topics,omitempty"`
 	Tags          []string `protobuf:"bytes,4,rep,name=tags,proto3" json:"tags,omitempty"`
+	QueryText     string   `protobuf:"bytes,5,opt,name=query_text,json=queryText,proto3" json:"query_text,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -103,6 +109,13 @@ func (x *NearRequest) GetTags() []string {
 		return x.Tags
 	}
 	return nil
+}
+
+func (x *NearRequest) GetQueryText() string {
+	if x != nil {
+		return x.QueryText
+	}
+	return ""
 }
 
 type NearResponse struct {
@@ -312,9 +325,13 @@ type DiscoverStats struct {
 	TopTerms []string `protobuf:"bytes,9,rep,name=top_terms,json=topTerms,proto3" json:"top_terms,omitempty"`
 	// The index's stated parameters, so the numbers above can be read against
 	// a setting rather than against nothing.
-	M             int32 `protobuf:"varint,10,opt,name=m,proto3" json:"m,omitempty"`
-	EfSearch      int32 `protobuf:"varint,11,opt,name=ef_search,json=efSearch,proto3" json:"ef_search,omitempty"`
-	Dimensions    int32 `protobuf:"varint,12,opt,name=dimensions,proto3" json:"dimensions,omitempty"`
+	M          int32 `protobuf:"varint,10,opt,name=m,proto3" json:"m,omitempty"`
+	EfSearch   int32 `protobuf:"varint,11,opt,name=ef_search,json=efSearch,proto3" json:"ef_search,omitempty"`
+	Dimensions int32 `protobuf:"varint,12,opt,name=dimensions,proto3" json:"dimensions,omitempty"`
+	// False for a typed query, which has no tags and no node in the link
+	// graph — so shared_tags / tag_jaccard / hops on every neighbour are
+	// ABSENT rather than zero, and a client must say so rather than draw a 0.
+	HasOrigin     bool `protobuf:"varint,13,opt,name=has_origin,json=hasOrigin,proto3" json:"has_origin,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -433,16 +450,25 @@ func (x *DiscoverStats) GetDimensions() int32 {
 	return 0
 }
 
+func (x *DiscoverStats) GetHasOrigin() bool {
+	if x != nil {
+		return x.HasOrigin
+	}
+	return false
+}
+
 var File_discover_proto protoreflect.FileDescriptor
 
 const file_discover_proto_rawDesc = "" +
 	"\n" +
-	"\x0ediscover.proto\x12\x14marginal.document.v1\"m\n" +
+	"\x0ediscover.proto\x12\x14marginal.document.v1\"\x8c\x01\n" +
 	"\vNearRequest\x12$\n" +
 	"\x0esource_page_id\x18\x01 \x01(\tR\fsourcePageId\x12\f\n" +
 	"\x01k\x18\x02 \x01(\x05R\x01k\x12\x16\n" +
 	"\x06topics\x18\x03 \x03(\tR\x06topics\x12\x12\n" +
-	"\x04tags\x18\x04 \x03(\tR\x04tags\"\xaa\x01\n" +
+	"\x04tags\x18\x04 \x03(\tR\x04tags\x12\x1d\n" +
+	"\n" +
+	"query_text\x18\x05 \x01(\tR\tqueryText\"\xaa\x01\n" +
 	"\fNearResponse\x12G\n" +
 	"\n" +
 	"neighbours\x18\x01 \x03(\v2'.marginal.document.v1.SemanticNeighbourR\n" +
@@ -463,7 +489,7 @@ const file_discover_proto_rawDesc = "" +
 	"\vtag_jaccard\x18\t \x01(\x01R\n" +
 	"tagJaccard\x12\x12\n" +
 	"\x04hops\x18\n" +
-	" \x01(\x05R\x04hops\"\xeb\x02\n" +
+	" \x01(\x05R\x04hops\"\x8a\x03\n" +
 	"\rDiscoverStats\x12 \n" +
 	"\vcomparisons\x18\x01 \x01(\x05R\vcomparisons\x12+\n" +
 	"\x11exact_comparisons\x18\x02 \x01(\x05R\x10exactComparisons\x12\x12\n" +
@@ -482,7 +508,9 @@ const file_discover_proto_rawDesc = "" +
 	"\tef_search\x18\v \x01(\x05R\befSearch\x12\x1e\n" +
 	"\n" +
 	"dimensions\x18\f \x01(\x05R\n" +
-	"dimensions2`\n" +
+	"dimensions\x12\x1d\n" +
+	"\n" +
+	"has_origin\x18\r \x01(\bR\thasOrigin2`\n" +
 	"\x0fDiscoverService\x12M\n" +
 	"\x04Near\x12!.marginal.document.v1.NearRequest\x1a\".marginal.document.v1.NearResponseB/Z-marginal/document-service/genproto/documentv1b\x06proto3"
 

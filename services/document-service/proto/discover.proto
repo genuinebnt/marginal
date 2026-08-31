@@ -19,6 +19,11 @@ service DiscoverService {
 }
 
 message NearRequest {
+  // Exactly one of these is the origin. source_page_id asks "what is near
+  // this page"; query_text asks "what is near this sentence", vectorised
+  // through the same corpus IDF the pages were embedded with. When both are
+  // set, query_text wins — a client with a focused text box is asking about
+  // its contents.
   string source_page_id = 1;
   // 0 means the server's default (5).
   int32 k = 2;
@@ -31,6 +36,7 @@ message NearRequest {
   // relying on it.
   repeated string topics = 3;
   repeated string tags   = 4;
+  string query_text = 5;
 }
 
 message NearResponse {
@@ -86,4 +92,9 @@ message DiscoverStats {
   int32 m = 10;
   int32 ef_search = 11;
   int32 dimensions = 12;
+
+  // False for a typed query, which has no tags and no node in the link
+  // graph — so shared_tags / tag_jaccard / hops on every neighbour are
+  // ABSENT rather than zero, and a client must say so rather than draw a 0.
+  bool has_origin = 13;
 }

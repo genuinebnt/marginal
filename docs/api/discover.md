@@ -110,7 +110,32 @@ not half-built here.
 
 | Method | Path | RPC |
 |---|---|---|
-| `GET` | `/discover/{id}?k=&topics=&tags=` | `Near` |
+| `GET` | `/discover/{id}?k=&topics=&tags=` | `Near`, page as origin |
+| `GET` | `/discover?q=&k=&topics=&tags=` | `Near`, typed text as origin |
+
+**Two origins, one index.** `/discover/{id}` asks "what is near this
+page"; `/discover?q=` asks "what is near this sentence", vectorising the
+typed string through the same corpus IDF the pages were embedded with —
+the same HNSW, the same descent, a query vector that simply did not come
+from a row. The text form gets its own path rather than
+`/discover/{id}?q=` with a placeholder id, because a typed query has no
+page and a URL demanding one would misdescribe the request. When both are
+somehow supplied, `q` wins: a client with a focused text box is asking
+about its contents.
+
+**A typed query has only one of the three signals**, and the response says
+so rather than zeroing the other two. `stats.has_origin` is `false`, and
+on every neighbour `shared_tags`/`tag_jaccard` are `0` and `hops` is `-1`
+**because the question does not apply** — a sentence carries no tags and
+holds no node in the link graph. The screen renders those columns `n/a`
+with the reason. Zero would read as "shares none of yours", which is a
+finding about the corpus rather than about the query, and the whole
+posture of this screen is that its figures can be checked.
+
+A `q` holding nothing the tokenizer keeps (punctuation, or stop words
+alone) is **`422 validation_failed`** (this repo's mapping for
+`InvalidArgument`, `pages.md` §2), not an empty result: an empty vector
+is equidistant from every page, which a client would draw as a ranking.
 
 `topics` and `tags` are comma-separated. An empty parameter produces an
 **empty** filter, never a filter naming the empty string — the latter
@@ -145,7 +170,8 @@ matches nothing and silently returns no results.
     "top_terms": ["projection", "replay", "invertible", "op"],
     "m": 16,
     "ef_search": 64,
-    "dimensions": 256
+    "dimensions": 256,
+    "has_origin": true
   },
   "topics": ["Interface", "Operations", "Protocol", "Research", "Storage"]
 }

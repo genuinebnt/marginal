@@ -32,6 +32,10 @@ type statsJSON struct {
 	M                int32    `json:"m"`
 	EfSearch         int32    `json:"ef_search"`
 	Dimensions       int32    `json:"dimensions"`
+	// No omitempty, deliberately: false is the interesting value here (it
+	// means the query was typed and two of the three signals are absent),
+	// and omitempty would drop exactly the case a client has to react to.
+	HasOrigin bool `json:"has_origin"`
 }
 
 type nearJSON struct {
@@ -77,6 +81,7 @@ func toNearJSON(r *documentv1.NearResponse) nearJSON {
 		M:                s.GetM(),
 		EfSearch:         s.GetEfSearch(),
 		Dimensions:       s.GetDimensions(),
+		HasOrigin:        s.GetHasOrigin(),
 	}
 	return out
 }

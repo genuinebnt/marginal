@@ -33,8 +33,13 @@ func NewServer(repo *PostgresRepo, graphRepo *graph.PostgresRepo) *Server {
 }
 
 func (s *Server) Near(ctx context.Context, req *documentv1.NearRequest) (*documentv1.NearResponse, error) {
-	if _, err := uuid.Parse(req.GetSourcePageId()); err != nil {
-		return nil, status.Error(codes.InvalidArgument, "discover: invalid source_page_id")
+	// A typed query needs no page id at all, so the uuid check applies only
+	// when the page IS the origin. Demanding one anyway would make the text
+	// box depend on a selection it has nothing to do with.
+	if req.GetQueryText() == "" {
+		if _, err := uuid.Parse(req.GetSourcePageId()); err != nil {
+			return nil, status.Error(codes.InvalidArgument, "discover: invalid source_page_id")
+		}
 	}
 
 	pages, err := s.repo.LoadCorpus(ctx)
@@ -48,12 +53,16 @@ func (s *Server) Near(ctx context.Context, req *documentv1.NearRequest) (*docume
 
 	neighbours, stats, err := Near(pages, links.Graph, Query{
 		PageID:   req.GetSourcePageId(),
+		Text:     req.GetQueryText(),
 		K:        int(req.GetK()),
 		Topics:   req.GetTopics(),
 		MustTags: req.GetTags(),
 	})
 	if errors.Is(err, ErrUnknownPage) {
 		return nil, status.Error(codes.NotFound, "discover: source_page_id is not a live page")
+	}
+	if errors.Is(err, ErrEmptyQuery) {
+		return nil, status.Error(codes.InvalidArgument, "discover: query has no indexable terms")
 	}
 	if err != nil {
 		return nil, status.Error(codes.Internal, "discover: query failed")
@@ -75,6 +84,7 @@ func (s *Server) Near(ctx context.Context, req *documentv1.NearRequest) (*docume
 			M:                ParamM,
 			EfSearch:         ParamEfSearch,
 			Dimensions:       semantic.Dim,
+			HasOrigin:        stats.HasOrigin,
 		},
 	}
 	for i, n := range neighbours {
