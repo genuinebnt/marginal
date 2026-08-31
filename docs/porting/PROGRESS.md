@@ -4896,3 +4896,81 @@ Also: `web/public/syntax.wasm` was missing locally (gitignored build
 artifact, removed in the master merge), so § 05's highlighting served
 `index.html` and the browser reported a bad magic word. Rebuilt. The
 wasm-magic-word check in `verify.js` is what named it.
+
+---
+
+## § 17's palimpsest was empty because Build could not replay a seeded block (2026-08-31)
+
+The last of the three "type into it" debts, and the one that turned out to
+be a real bug rather than missing data.
+
+**The symptom.** § 17's palimpsest reported `STORED 0 · LIVE 0 ·
+TOMBSTONED 0` on every seeded page — truthful and useless. The stated
+reason was that no seeded page had ever had a character typed into it,
+which was correct: the seeder writes through the BLOCK tier, so text
+arrives finished inside the `InsertBlock` that creates the block.
+
+**Giving one page a real character history exposed the actual defect.**
+`reviseBlockText` in the seeder now rewrites one block three times the way
+the editor does — `DeleteText` over the block's current boundaries, then
+`InsertText` — across two actors, so the tombstoned runs have more than
+one deleter between them. The endpoint answered **500**:
+
+```
+palimpsest: step 37: ops: anchor refers to an item this text never saw
+```
+
+**`palimpsest.Build` replayed only the character tier.** But
+`session.applyBlockOp` *seeds* a block's rope from
+`InsertBlock.Content.Text` and *reseeds* it wholesale on
+`SetBlockContent`. Every character a block is born with is an item that
+only the seeding created — so every anchor in a later `DeleteText` named
+an item Build's own replay had never made, and not one could resolve.
+**Any block written by the editor and then typed into was unreplayable**,
+which is nearly all of them; the seeded corpus simply never did the second
+half, so the panel was empty instead of broken. Those look identical from
+outside.
+
+`Build` now replays both tiers. A wholesale reseed is a
+delete-everything-then-insert as far as character history goes, and is
+recorded as exactly that: every live char tombstoned at that step,
+attributed to whoever sent the op, and the new content inserted fresh.
+That is not an approximation of `SetBlockContent` — it is what the op does
+to the rope.
+
+Two tests pin it: one replays the text a block was born with and then
+deletes into it by naming those very items; one asserts a reseed
+tombstones what it replaced rather than making it vanish from a structure
+whose whole promise is that nothing vanishes.
+
+**Live:** 573 chars · 147 live · 426 tombstoned · two distinct deleters.
+
+**Gate:** `uidiff 17` → 0/0/0 (its seed now scrubs back a revision, since
+RESTORE is correctly dimmed at head and the mockup depicts it live).
+Full sweep **122 ok**.
+
+### Three checks that were wrong about their own screens
+
+All three passed for reasons unrelated to what they claimed, and the
+reseed exposed them:
+
+- **`§08 and the route is drawn, hop by hop`** clicked `nth(9)` as the
+  destination. The corpus is not one connected component, so that is a
+  coin flip — and when it lands in another component the screen correctly
+  says *"no route — these two are in different components"* and draws
+  nothing. The check now searches for a reachable destination, so the
+  hop-drawing path is genuinely exercised.
+- **`§18b a deleted page is still named`** relied on an old deletion still
+  sitting inside the audit view's recent window — a fact about how much
+  has happened since, not about the screen. It now creates a page,
+  *edits* it (the audit log is derived from `collab.ops`, so a page nobody
+  opened has no row), deletes it, and looks for its own event.
+- **`§17 the palimpsest has real tombstones`** waited for the word
+  `TOMBSTONED`, which is static chrome sitting on screen beside a `0`. It
+  waits for a non-zero figure now. It also had to click `PALIMPSEST`
+  explicitly: both history routes match the same pattern, so React keeps
+  the screen **mounted** across the navigation and its lens was still
+  whatever the previous check left it on.
+
+The recurring lesson, third instance this stretch: **waiting on anything
+other than the thing you assert on is a future intermittent failure.**

@@ -202,7 +202,14 @@ const SEED = {
     await p.waitForTimeout(1200);
   },
   '17': async (p) => {                       // HISTORY — a block with characters
-    await p.waitForTimeout(1500);
+    await p.waitForTimeout(1800);
+    // The mockup depicts a revision selected part-way back, which is the only
+    // state where RESTORE is live — at head there is nothing to revert to and
+    // the chip is correctly dimmed. Scrub back to reach the depicted state.
+    const revs = p.locator('[title^="rev "]');
+    const n = await revs.count();
+    if (n > 2) await revs.nth(Math.max(0, n - 3)).click();
+    await p.waitForTimeout(900);
   },
   '24b': async (p) => {                      // COMMAND PALETTE — ⌘K, with a query typed
     await p.keyboard.press('Meta+k');

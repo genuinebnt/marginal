@@ -48,13 +48,28 @@ type Char struct {
 	DeleteActor *uuid.UUID `json:"delete_actor,omitempty"`
 }
 
-// Build replays confirmed's character-tier (pageop.Text) ops scoped to
-// blockID and returns the block's whole tombstoned character array,
-// oldest-inserted first — chars' own slice index is permanent once
-// assigned; nothing is ever removed or reordered, only marked. Any other
-// op in confirmed (a pageop.Block op, or a pageop.Text op naming a
-// different block) is skipped, not an error — a real page interleaves
-// edits across many blocks and other blocks' own structural changes.
+// Build replays confirmed's ops scoped to blockID and returns the block's
+// whole tombstoned character array, oldest-inserted first — chars' own
+// slice index is permanent once assigned; nothing is ever removed or
+// reordered, only marked. Any op naming a DIFFERENT block is skipped, not
+// an error — a real page interleaves edits across many blocks.
+//
+// Both tiers matter, and getting that wrong was a real bug. An earlier
+// version replayed only the character tier (pageop.Text) and skipped every
+// pageop.Block op — but the live session SEEDS a block's rope from
+// InsertBlock.Content.Text and RESEEDS it wholesale on SetBlockContent
+// (session.applyBlockOp). Every anchor in a later DeleteText therefore
+// names an item that only the seeding created, and a replay that skipped
+// the seed could not resolve a single one: "anchor refers to an item this
+// text never saw", on every block written by the editor and then typed
+// into — which is nearly all of them. The failure was invisible for as
+// long as no seeded block had ever had a character edit.
+//
+// A wholesale reseed is a delete-everything-then-insert as far as
+// character history is concerned, and is recorded as exactly that: every
+// live char tombstoned at that step, attributed to whoever sent the op,
+// and the new content's runes inserted fresh. That is not an
+// approximation — it is what the op does to the rope.
 //
 // serverActor must be the exact same tag the live session's own
 // doctext.Text used for this block (session.go's applyBlockOp calls
@@ -73,7 +88,45 @@ func Build(confirmed []oplog.LoggedOp, blockID documentcore.BlockID, serverActor
 	// expose the rune value or the deleting actor.
 	var live []int
 
+	// seed replaces the rope with fresh, and records the swap in the
+	// character history: everything live is tombstoned at this step, and
+	// content's runes are inserted as new characters.
+	seed := func(step int, actor uuid.UUID, content string) {
+		st, ac := step, actor
+		for _, idx := range live {
+			chars[idx].DeleteStep = &st
+			chars[idx].DeleteActor = &ac
+		}
+		live = live[:0]
+		text = doctext.New(serverActor)
+		runes := []rune(content)
+		if len(runes) == 0 {
+			return
+		}
+		if _, err := text.InsertAt(0, content); err != nil {
+			return // doctext only rejects an out-of-range position; 0 into empty is not one
+		}
+		for _, r := range runes {
+			live = append(live, len(chars))
+			chars = append(chars, Char{Rune: r, InsertStep: step, InsertActor: actor})
+		}
+	}
+
 	for step, l := range confirmed {
+		if pb, ok := l.Op.(pageop.Block); ok {
+			switch o := pb.Op.(type) {
+			case documentcore.InsertBlock:
+				if o.ID == blockID {
+					seed(step, l.ActorID, o.Content.Text)
+				}
+			case documentcore.SetBlockContent:
+				if o.Block == blockID {
+					seed(step, l.ActorID, o.Content.Text)
+				}
+			}
+			continue
+		}
+
 		pt, ok := l.Op.(pageop.Text)
 		if !ok || pt.BlockID != blockID {
 			continue

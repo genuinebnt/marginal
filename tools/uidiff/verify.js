@@ -103,10 +103,26 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
   check('§08 the path lens asks for a destination, not just a source',
         /PICK A DESTINATION/.test(await gesture() ?? ''), await gesture());
   const graphNodes = p.locator('svg g[font-family="Archivo"] > g');
-  await graphNodes.nth(9).click({ force: true });
-  await p.waitForTimeout(2500);
-  const routed = await gesture();
-  check('§08 a second click produces a real route', /ROUTE ::/.test(routed ?? ''), routed);
+  const gestureText = async () => (await txt()).match(/(no route[^\n]*|\d+ hops? · BFS[^\n]*)/)?.[0] ?? '';
+
+  // Try destinations until one is REACHABLE from the source.
+  //
+  // The corpus is not one connected component, so a fixed nth(N) destination
+  // is a coin flip: when it lands in another component the screen correctly
+  // says "no route — these two are in different components" and draws
+  // nothing, and a check demanding a drawn hop fails on a screen that is
+  // working. Which nodes share a component is a fact about seed data, so the
+  // check finds a reachable one instead of assuming one.
+  const total = await graphNodes.count();
+  let routed = '';
+  for (let i = 0; i < total && !/hops? · BFS/.test(routed); i++) {
+    await graphNodes.nth(i).click({ force: true });
+    await p.waitForFunction(
+      () => /no route|hops? · BFS|hop · BFS/.test(document.body.innerText),
+      null, { timeout: 15000 }).catch(() => {});
+    routed = await gestureText();
+  }
+  check('§08 a second click produces a real route', /hops? · BFS/.test(routed), routed);
   check('§08 and the route is drawn, hop by hop',
         (await p.evaluate(() => [...document.querySelectorAll('svg line')]
           .filter((l) => l.getAttribute('stroke') === '#E8873C').length)) >= 1);
@@ -452,6 +468,23 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
         /auth\.signin/.test(await txt()) && /page\.(block|text)\./.test(await txt()));
   check('§18b repeated events collapse with a count',
         /×\d+/.test(await txt()), (await txt()).match(/auth\.signin ×\d+/)?.[0]);
+  // Delete a page HERE rather than hoping one is still inside the audit
+  // view's recent window. Whether an old deletion is still on screen is a
+  // fact about how much has happened since, not about this screen.
+  const doomed = await (await fetch(`${GW}/pages`, {method:'POST',
+    headers:{'Content-Type':'application/json','X-Actor-Id':sub},
+    body: JSON.stringify({title:'Audit probe — deleted on purpose'})})).json();
+  // It has to be EDITED, not merely created: the audit log is derived from
+  // collab.ops, so a page nobody ever opened has no row to name it in.
+  await go(`/pages/${doomed.id}`, 4000);
+  const probeBlock = p.locator('[contenteditable="true"]').nth(1);
+  if (await probeBlock.count()) {
+    await probeBlock.click();
+    await p.keyboard.type('deleted on purpose', { delay: 12 });
+    await p.waitForTimeout(2500);
+  }
+  await fetch(`${GW}/pages/${doomed.id}`, {method:'DELETE', headers:{'X-Actor-Id':sub}});
+  await go('/admin/audit', 7000);
   check('§18b a deleted page is still named',
         /\(deleted\)/.test(await txt()));
 
@@ -628,6 +661,32 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
   check('§17 REVISIONS folds ops into gestures', /GESTURES ·/.test(await txt()));
   await p.getByText('TEXT',{exact:true}).first().click(); await p.waitForTimeout(500);
   check('§17 TEXT/PALIMPSEST toggle', /TEXT AT THIS REVISION/.test(await txt()));
+
+  // The palimpsest is the CHARACTER tier, so it only has anything to show on
+  // a block that was really typed into — the seeder gives exactly one page a
+  // character-level revision history for this reason.
+  const anchors = g.nodes.find(n => n.title === 'Anchors vs offsets');
+  if (anchors) {
+    await go(`/pages/${anchors.id}/history`, 3000);
+    // Both history routes match the same pattern, so React keeps the screen
+    // MOUNTED across this navigation and its lens is still whatever the
+    // check above left it on. Ask for the palimpsest rather than assuming.
+    await p.getByText('PALIMPSEST', { exact: true }).first().click().catch(() => {});
+    // Wait for a NUMBER, not for the word TOMBSTONED — the label is static
+    // chrome and is on screen while the figure beside it is still 0.
+    await p.waitForFunction(
+      () => /TOMBSTONED\s*\n?\s*[1-9]/.test(document.body.innerText),
+      null, { timeout: 25000 }).catch(()=>{});
+    const pal = await txt();
+    const tomb = Number((pal.match(/TOMBSTONED\s+([\d,]+)/) || [0,'0'])[1].replace(/,/g,''));
+    check('§17 the palimpsest has real tombstones, not an empty structure', tomb > 0, `${tomb} tombstoned`);
+    const stored = Number((pal.match(/STORED\s+([\d,]+)/) || [0,'0'])[1].replace(/,/g,''));
+    const liveN = Number((pal.match(/\bLIVE\s+([\d,]+)/) || [0,'0'])[1].replace(/,/g,''));
+    check('§17 and stored is live plus tombstoned — nothing is ever removed',
+      stored > 0 && stored === liveN + tomb, `${stored} = ${liveN} + ${tomb}`);
+  } else {
+    check('§17 the seeded corpus has a page with character history', false, 'Anchors vs offsets missing');
+  }
 
   // ── § 13 TRACE (the scratchpad) ───────────────────────────────────────
   await go('/lab/trace', 3000);

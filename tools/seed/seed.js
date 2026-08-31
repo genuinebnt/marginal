@@ -41,6 +41,34 @@ const SEED_PASSWORD = process.env.SEED_PASSWORD || 'ui-demo-password-123';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * A second seeded account, so § 17's palimpsest attributes its tombstoned
+ * runs to two different people. One deleter on every run demonstrates
+ * nothing about attribution — it looks like the column is hardcoded.
+ *
+ * Register-or-login: the workspace is rebuilt nightly but accounts are not,
+ * so this has to be idempotent across runs.
+ */
+async function secondActor() {
+  const body = JSON.stringify({
+    email: 'ui-demo-editor@example.com',
+    password: 'ui-demo-password-123',
+    display_name: 'Wren Halloway',
+  });
+  const H = { 'Content-Type': 'application/json' };
+  let r = await fetch(`${GW}/auth/register`, { method: 'POST', headers: H, body });
+  let pair = await r.json();
+  if (!pair.access_token) {
+    r = await fetch(`${GW}/auth/login`, {
+      method: 'POST', headers: H,
+      body: JSON.stringify({ email: 'ui-demo-editor@example.com', password: 'ui-demo-password-123' }),
+    });
+    pair = await r.json();
+  }
+  if (!pair.access_token) return null;   // not fatal: one actor is still a history
+  return JSON.parse(Buffer.from(pair.access_token.split('.')[1], 'base64url')).sub;
+}
+
 async function login() {
   const r = await fetch(`${GW}/auth/login`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -168,6 +196,74 @@ async function seedPage(actorId, pageId, blocks) {
   await sleep(120);
 }
 
+/**
+ * Rewrite one block's text CHARACTER by character, several times over.
+ *
+ * Everything above seeds through the BLOCK tier: InsertBlock carries the
+ * finished text, and a block that is written once and never edited has no
+ * character history at all. § 17's palimpsest — the tombstoned character
+ * array, who deleted each run and when — was therefore correct and empty on
+ * every seeded page, which reads exactly like a broken panel.
+ *
+ * So one page gets a real revision history, made the way the editor makes
+ * one: `DeleteText` over the block's current boundaries followed by an
+ * `InsertText`, which is precisely what `useCollabPage.setBlockText` sends
+ * when you retype a sentence. The deleted runes become tombstones because
+ * they really were deleted.
+ *
+ * Two actors, not one — a palimpsest whose every run names the same deleter
+ * demonstrates nothing about attribution.
+ */
+async function reviseBlockText(actorId, pageId, blockIndex, revisions) {
+  const ws = new WebSocket(`${COLLAB}/collab/pages/${pageId}?actor_id=${actorId}`);
+  let blockId = null;
+  let boundaries = null;
+
+  await new Promise((resolve, reject) => {
+    ws.on('message', (raw) => {
+      const m = JSON.parse(raw.toString());
+      if (m.type === 'snapshot') {
+        const blocks = (m.snapshot?.blocks ?? m.blocks ?? []).filter((b) => !b.parent);
+        const b = blocks[blockIndex];
+        if (b) { blockId = b.id; boundaries = b.boundaries ?? null; }
+        resolve();
+      }
+      // The server hands back the block's new anchor range with every text
+      // ack. Without it the next delete has nothing valid to name — an
+      // Anchor a client invented is not one the server ever issued.
+      if ((m.type === 'ack' || m.type === 'broadcast') && m.boundaries) {
+        boundaries = m.boundaries;
+      }
+      if (m.type === 'ack' && !m.boundaries) {
+        boundaries = null;   // the block was emptied; nothing to delete next
+      }
+      if (m.type === 'error') console.error('  revise:', m.message);
+    });
+    ws.on('error', reject);
+    setTimeout(resolve, 8000);
+  });
+
+  if (!blockId) { ws.close(); return false; }
+
+  const send = (op, group) =>
+    ws.send(JSON.stringify({ type: 'op', op, undo_group: group ?? undefined }));
+
+  for (const text of revisions) {
+    const group = randomUUID();
+    if (boundaries) {
+      send({ scope: 'text', block: blockId, op: { type: 'DeleteText', range: boundaries, text: '' } }, group);
+      await sleep(260);
+    }
+    send({ scope: 'text', block: blockId, op: { type: 'InsertText', at: null, text } }, group);
+    await sleep(320);
+  }
+
+  await sleep(900);
+  ws.close();
+  await sleep(120);
+  return true;
+}
+
 (async () => {
   const actorId = await login();
   const H = { 'X-Actor-Id': actorId, 'Content-Type': 'application/json' };
@@ -218,7 +314,32 @@ async function seedPage(actorId, pageId, blocks) {
     console.log(`  ${page.title} — ${page.blocks.length} blocks`);
   }
 
-  // 4. A few reading positions, so `resume` on the dashboard has something
+  // 4. One page gets a real CHARACTER-level revision history.
+  //
+  //    Everything above is block-tier: text arrives finished, inside the
+  //    InsertBlock that created the block. That leaves § 17's palimpsest —
+  //    the tombstoned character array — correct and empty on every page,
+  //    which reads exactly like a panel that does not work.
+  //
+  //    "Anchors vs offsets" is the page, because its own argument is that a
+  //    reference survives an edit that an offset does not, and the panel
+  //    below it is that argument running.
+  const anchorsId = idByTitle.get('Anchors vs offsets');
+  if (anchorsId) {
+    const other = await secondActor();
+    const drafts = [
+      'An offset is a number. An anchor is a reference to a thing.',
+      'An offset is a number counted from the start. An anchor names an item.',
+      'An offset is a number counted from the start of something. An anchor is a reference to a thing, so it survives an edit that invalidates the number.',
+    ];
+    //   The two actors alternate, so no run in the palimpsest is attributable
+    //   to the same person as the one before it.
+    let ok = await reviseBlockText(actorId, anchorsId, 0, drafts.slice(0, 2));
+    if (ok && other) ok = await reviseBlockText(other, anchorsId, 0, drafts.slice(2));
+    console.log(`  character history: ${ok ? 'Anchors vs offsets' : 'SKIPPED (block not found)'}`);
+  }
+
+  // 5. A few reading positions, so `resume` on the dashboard has something
   //    true to show. Written through the real endpoint, like everything else
   //    here — a position is view state stored per user, and seeding it any
   //    other way would be seeding a table this app does not otherwise write.
