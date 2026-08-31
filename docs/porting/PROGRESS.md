@@ -4594,3 +4594,166 @@ deploy window.
 mid-animation across three lenses and asserts the count actually
 falls — a lens that renders instantly would pass a "does it
 paint" check and fail this one.
+
+---
+
+## 2026-08-30/31 — ten dead inspector tabs, and the deploy that hid them
+
+A round of user reports, and separating the real defects from the
+noise took longer than fixing them. Recording both, because the
+noise had a cause worth not repeating.
+
+### The deploy problems
+
+Three, each masking the next.
+
+**1. Three wasm modules were never built into the image.**
+`sketch`, `netsim` and `bench` — all added this session — were
+missing from the Dockerfile's hand-kept list, so § 12, § 14 and
+§ 16 fetched a `.wasm` URL, got `index.html` through `try_files`,
+and died on `expected magic word 00 61 73 6d, found 3c 21 64 6f`
+(`<!do`). The list is discovered from `cmd/*wasm` now, and
+`verify.js` fetches all nine and checks the magic word. Its own
+comment had warned that a forgotten entry fails silently — and
+then it was forgotten, three times at once.
+
+**2. `index.html` was cacheable.** It carried no `Cache-Control`
+at all, so browsers cached the one file that names which hashed
+bundle to load. A stale copy pins a visitor to the previous
+deploy's `/assets/index-<hash>.js`, which is served `immutable`
+for a year and never revalidated — the browser cannot leave the
+old app no matter how often the site is rebuilt. That is what
+"netcode and perf still not showing" and "I can't type anything
+in netcode" *were*, after the wasm fix landed: a correct build on
+the server and a browser with no way to hear about it. Nothing
+reproduced locally, which is exactly the shape of this bug.
+
+**3. The gateway probed itself.** § 18's health fan-out reads its
+targets from the environment; the dev compose file had them and
+the prod one did not, so production fell back to `localhost:` and
+reported all five services down — with the URL it tried right
+there in the payload, which is how it was found in under a
+minute. The panel was not wrong, and putting the URL in the row
+rather than a bare red dot is what made it diagnosable.
+
+### The real defect
+
+**Ten screens shipped with a dead second inspector tab.** Every
+one had `active="..."` hardcoded and no `onSelect`, so the tab
+rendered, highlighted nothing and changed nothing. Every one
+passed `uidiff` — the markup was correct — and every one passed
+its own `verify.js` checks, because none of those checks clicked
+that tab.
+
+A user found all ten by clicking. That is precisely the failure
+mode `CLAUDE.md` describes and the reason the gate has a second
+half; the second half simply had a hole where these were.
+
+Each now has real content, and where there is no real data it
+says so and says what the data would require:
+
+| Screen | Tab | What it shows now |
+|---|---|---|
+| § 08 Graph | COST | Node/edge counts, density, per-lens complexity, and that every lens arrives in ONE call — switching costs a repaint, not a request |
+| § 15 Diff | MOVES | The `moves` array, already fetched and previously unreachable; and why a move is not a delete + insert |
+| § 13 Trace | KINDS | Op-kind histogram over the replayed log, and the two ISA tiers sharing one log |
+| § 09 Discover | INDEX | Vectors, dimensions, layer sizes — **and why only L0/L1**: layer assignment is random at 1/ln(M), so above L1 the expected count at this corpus size is under one. Two layers is what a few dozen vectors *should* produce |
+| § 11 Compiler | COST | Measured per-stage timings for this keystroke, and why replay is pure overhead kept on purpose |
+| § 06 Search | HISTORY | **Not recorded**, and why storing it is a decision rather than a feature |
+| § 23c Trash | PURGED | **Nothing is purged**, and why an append-only log makes purge a retention question rather than a button |
+| § 24c Notifications | MUTED | **Muting does not exist** — one topic, nothing to mute it against |
+| Topics | HISTORY | Not extracted; the edits are in the audit log, filtering by topic is the missing piece |
+| Facts | COST | No cache, and why a cached diagnostic is a claim about a document that may have changed |
+
+`verify.js` now walks all ten generically: click the second tab,
+assert the inspector's text changed, click back, assert it
+returned. A one-way tab is half a control.
+
+### And one real design bug in my own new work
+
+The § 08 path lens auto-picked a source (the graph's hub), so the
+first click landed on the *destination* and the start appeared
+stuck on whichever page the graph nominated — reported as "all
+graph animations are on Rust Porting Handbook and not user
+selectable". Correct diagnosis: the auto-pick makes sense for the
+one-node lenses and silently consumes the first slot on the
+two-node one. It no longer runs on `path`, both endpoints are
+shown with their own clear buttons, and clicking fills whichever
+slot is empty.
+
+### Two things I reported as broken that were not
+
+The compiler's stage chips and the § 08 lens animations both work
+in production; my first probe sampled the animation 300 ms in and
+compared total page-text length for the chips. Both were bad
+checks, and both produced a confident wrong answer. Re-measured:
+`pending 36 → 35 → 25 → 0` over four seconds, and `TOKENS* →
+AST*`.
+
+---
+
+## 2026-08-31 — the lab's own rule, stated and then applied
+
+Said plainly by the user, and it is the section's actual
+premise: *the labs exist to show what happens under the hood
+when someone uses the editor, so ideally every one of them takes
+typed input and moves in real time.*
+
+That is a sharper rule than "these screens are interactive", and
+it sorts the section immediately:
+
+| Screen | Typed input | State |
+|---|---|---|
+| § 11 Compiler | markdown buffer | already |
+| § 12 Analytics | event stream | already |
+| § 14 Netcode | edit script + wire sliders | already |
+| § 15 Diff | **two text panes** | **now** |
+| § 16 Perf | workload + sample chips | no free text, and none obviously wanted |
+| § 13/17 Trace | — | needs client-side op generation |
+| History | — | same |
+
+**§ 15 DIFF is editable.** `/pages/:id/diff` still diffs two real
+revisions; `/lab/diff` — which previously showed a page picker
+and nothing else — now has two textareas and rebuilds the DP
+table and its traceback on every keystroke. Same `diffTokens`
+call either way: the input differs, never the algorithm.
+
+The picker went because it was a wall in front of the thing the
+screen exists to show. A real page's revision diff is still one
+click from that page's own History screen, which is where you
+would look for it.
+
+Two details that mattered more than the wiring:
+
+- **The token counts beside each box are the tokenizer's own**
+  (`rows - 1`, `cols - 1`), not a second whitespace split. The
+  first version disagreed with itself — 21 tokens printed beside
+  a 41-column table — because `tokenizeWords` splits punctuation
+  too. A figure next to a table has to be that table's.
+- **The defaults are short enough that the matrix actually
+  paints.** The first pair tripped the >26-token legibility
+  guard, so the screen showed the guard's message instead of the
+  DP table — which is the one thing it exists to show. Six
+  tokens a side, and the traceback is a visible diagonal.
+
+The guard's wording was also wrong in the new mode: "pick a
+narrower revision range" means nothing when you are typing the
+input. It says "shorten either side" there.
+
+**Mockup reconciled:** § 15 gains the two `.labedit` panes, and
+its inspector tabs become EDIT SCRIPT / MOVES. `SUMMARY` /
+`ARGUMENT` never described what is under them — the first pane
+is the edit script the LCS produced, the second the block moves
+the op log recorded — and both are live tabs now, so the labels
+should say what they hold.
+
+**Gate:** `uidiff 15 /lab/diff` → missing 0 · property 0 ·
+chrome text 0.
+
+**Still owed under this rule:** § 13/17 Trace and History. Both
+replay a stored page's op log, so making them typeable means
+generating ops client-side through `documentcore`'s wasm build
+and replaying them there — the machinery exists (`Page.Apply`,
+`Invert`, and the wasm bridge) but it is a real piece of work
+rather than wiring, and it is recorded here rather than
+half-started.

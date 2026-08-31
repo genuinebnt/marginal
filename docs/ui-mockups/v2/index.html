@@ -2472,7 +2472,7 @@ di, bubble-menu, interface, 22000, marks</textarea>
     <div style="flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden">
       <div style="display:flex;flex:1;min-height:0;border-bottom:1px solid rgba(255,255,255,.07)">
         <div style="flex:1;padding:20px 24px;border-right:1px solid rgba(255,255,255,.07);min-width:0">
-          <div style="display:flex;align-items:center;gap:9px;margin-bottom:14px"><div style="width:6px;height:6px;background:#3FCFA8"></div><span class="lbl">YOUR REPLICA · PREDICTED</span></div>
+          <div style="display:flex;align-items:center;gap:9px;margin-bottom:14px"><div style="width:6px;height:6px;background:#3FCFA8"></div><span class="lbl">YOUR REPLICA · TYPE HERE</span></div>
           <div style="font-family:Spectral,serif;font-size:16px;line-height:1.7;color:#D2CFC8">A tree of addressable <span style="background:rgba(63,207,168,.14);border-bottom:1px solid #3FCFA8">nodes</span>, each one a unit of intent.</div>
           <div class="mono" style="font-size:10.5px;line-height:1.9;color:#8C8880;margin-top:16px">predicted&nbsp;&nbsp;3 ops<br>confirmed&nbsp;&nbsp;1 op<br>rolled back&nbsp;&nbsp;<span style="color:#E0A34E">2 ops</span></div>
         </div>
@@ -2484,7 +2484,7 @@ di, bubble-menu, interface, 22000, marks</textarea>
       </div>
       <div style="display:flex;flex:1;min-height:0">
         <div style="flex:1;padding:20px 24px;border-right:1px solid rgba(255,255,255,.07);min-width:0">
-          <div class="lbl" style="margin-bottom:14px">TREE · MERKLE COMPARISON</div>
+          <div class="lbl" style="margin-bottom:14px">OPS ON THE WIRE · PREDICTED → CONFIRMED</div>
           <svg viewBox="0 0 300 150" style="width:100%;display:block">
             <g stroke="rgba(255,255,255,.12)"><line x1="150" y1="24" x2="80" y2="72"></line><line x1="150" y1="24" x2="220" y2="72"></line><line x1="80" y1="72" x2="46" y2="122"></line><line x1="80" y1="72" x2="114" y2="122"></line><line x1="220" y1="72" x2="186" y2="122"></line><line x1="220" y1="72" x2="254" y2="122"></line></g>
             <circle cx="150" cy="24" r="7" fill="#E0A34E"></circle><text x="163" y="28" font-family="IBM Plex Mono" font-size="9" fill="#E0A34E">root ≠</text>
@@ -2492,11 +2492,12 @@ di, bubble-menu, interface, 22000, marks</textarea>
             <circle cx="46" cy="122" r="5" fill="#3FCFA8"></circle><circle cx="114" cy="122" r="5" fill="#3FCFA8"></circle><circle cx="186" cy="122" r="5" fill="#3FCFA8"></circle>
             <circle cx="254" cy="122" r="5" fill="#E0A34E"></circle><text x="240" y="144" font-family="IBM Plex Mono" font-size="9" fill="#E0A34E">c42</text>
           </svg>
-          <div style="font-size:11.5px;color:#8C8880;margin-top:10px;line-height:1.55">The first amber node <em>is</em> the divergence point — AHU subtree hashes, predicted against confirmed.</div>
+          <div style="font-size:11.5px;color:#8C8880;margin-top:10px;line-height:1.55">Each bar is one op crossing the wire. The bright tick on the left is the local echo — applied the instant it was typed, which is why the editor feels like a text box. The ember tick is the server confirming it, half an RTT later.</div>
           <div style="display:flex;gap:20px;margin-top:12px">
-            <div class="rd"><span class="rd-k">NODES COMPARED</span><span class="rd-v">4</span></div>
-            <div class="rd"><span class="rd-k">OF</span><span class="rd-v" style="color:#6E6A63">13</span></div>
-            <div class="rd"><span class="rd-k">LEAF</span><span class="rd-v" style="color:#6E6A63">8 B</span></div>
+            <div class="rd"><span class="rd-k">PREDICTED</span><span class="rd-v" style="color:#3FCFA8">3</span></div>
+            <div class="rd"><span class="rd-k">CONFIRMED</span><span class="rd-v">3</span></div>
+            <div class="rd"><span class="rd-k">ROLLED BACK</span><span class="rd-v" style="color:#E0A34E">1</span></div>
+            <div class="rd"><span class="rd-k">IN FLIGHT</span><span class="rd-v" style="color:#6E6A63">0</span></div>
           </div>
         </div>
         <div style="flex:1;padding:20px 24px;min-width:0">
@@ -2565,7 +2566,7 @@ di, bubble-menu, interface, 22000, marks</textarea>
   <div class="bar">
     <a class="wm" href="#">m<span style="color:#E8873C">/</span>arginal</a>
     <div class="tabs"><span class="tb">Write</span><span class="tb">Read</span><span class="tb">Search</span><span class="tb">Graph</span><span class="tb">History</span><span class="tb tb-on">Lab</span></div>
-    <span class="crumb">lab / <b>diff</b> · rev 1188 → 1208</span>
+    <span class="crumb">lab / <b>diff</b> · type either side</span>
     <div style="flex:1"></div>
     <div class="rd"><span class="rd-k">GRANULARITY</span><span class="rd-v">WORD</span></div>
     <div class="rd"><span class="rd-k">TABLE</span><span class="rd-v">28 × 31</span></div>
@@ -2577,11 +2578,13 @@ di, bubble-menu, interface, 22000, marks</textarea>
     <div style="flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden">
       <div style="display:flex;flex:1;min-height:0">
         <div style="flex:1;padding:22px 26px;border-right:1px solid rgba(255,255,255,.07);min-width:0">
-          <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:14px"><span class="lbl">REV 1188</span><span class="mono" style="font-size:10px;color:#585550">Ada · yesterday</span></div>
+          <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:14px"><span class="lbl">BEFORE · EDITABLE</span><span class="mono" style="font-size:10px;color:#585550">6 tokens</span></div>
+          <textarea class="labedit" rows="4" style="margin-bottom:14px">a rope is the wrong primitive</textarea>
           <div style="font-family:Spectral,serif;font-size:15.5px;line-height:1.75;color:#8C8880">A rope is <span style="background:rgba(224,163,78,.14);color:#E0A34E;text-decoration:line-through">probably not the right</span> primitive here. What we want is a <span style="background:rgba(224,163,78,.14);color:#E0A34E;text-decoration:line-through">structure</span> of addressable nodes.</div>
         </div>
         <div style="flex:1;padding:22px 26px;min-width:0">
-          <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:14px"><span class="lbl">REV 1208</span><span class="mono" style="font-size:10px;color:#585550">you · 4 min ago</span></div>
+          <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:14px"><span class="lbl">AFTER · EDITABLE</span><span class="mono" style="font-size:10px;color:#585550">6 tokens</span></div>
+          <textarea class="labedit" rows="4" style="margin-bottom:14px">a tree is the right primitive</textarea>
           <div style="font-family:Spectral,serif;font-size:15.5px;line-height:1.75;color:#D2CFC8">A rope is <span style="background:rgba(63,207,168,.14);color:#3FCFA8">the wrong</span> primitive here. What we want is a <span style="background:rgba(63,207,168,.14);color:#3FCFA8">tree</span> of addressable nodes.</div>
         </div>
       </div>
@@ -2603,7 +2606,7 @@ di, bubble-menu, interface, 22000, marks</textarea>
       </div>
     </div>
     <div class="insp">
-      <div class="insp-t"><span class="it it-on">SUMMARY</span><span class="it">ARGUMENT</span></div>
+      <div class="insp-t"><span class="it it-on">EDIT SCRIPT</span><span class="it">MOVES</span></div>
       <div style="padding:14px;display:flex;flex-direction:column;gap:13px">
         <span class="lbl">CHANGES</span>
         <div style="display:flex;flex-direction:column;gap:8px;font-size:12px">

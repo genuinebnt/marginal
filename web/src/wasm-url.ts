@@ -19,12 +19,21 @@
  */
 const BUILD_ID = import.meta.env.VITE_BUILD_ID ?? "dev";
 
+/**
+ * `?build=` rather than `?v=`, though both work.
+ *
+ * Measured, because I first assumed otherwise and was wrong: Vite's dev
+ * server serves `/graph.wasm?v=dev` at 200 with the correct magic word.
+ * `?v=` is Vite's query for pre-bundled deps, so avoiding it is hygiene
+ * against a future collision rather than a fix for a present one — and
+ * `build` says what the value is, which `v` does not.
+ */
 export function wasmURL(name: string): string {
-  return `/${name}.wasm?v=${BUILD_ID}`;
+  return `/${name}.wasm?build=${BUILD_ID}`;
 }
 
 /** wasm_exec.js is the Go runtime shim and gets the same treatment — it
  *  changes with the toolchain, which changes with a rebuild. */
 export function wasmExecURL(): string {
-  return `/wasm_exec.js?v=${BUILD_ID}`;
+  return `/wasm_exec.js?build=${BUILD_ID}`;
 }

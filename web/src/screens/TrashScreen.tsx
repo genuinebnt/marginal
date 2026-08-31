@@ -62,6 +62,7 @@ export function TrashScreen() {
   const [selected, setSelected] = useState<string | null>(null);
   const [preview, setPreview] = useState<DeletePreview | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const [insTab, setInsTab] = useState<"blast" | "purged">("blast");
   const [err, setErr] = useState<string | null>(null);
 
   const load = useCallback(() => {
@@ -246,9 +247,33 @@ export function TrashScreen() {
 
         <Inspector
           tabs={[{ id: "blast", label: "BLAST RADIUS" }, { id: "purged", label: "PURGED" }]}
-          active="blast"
+          active={insTab}
+          onSelect={(id) => setInsTab(id as "blast" | "purged")}
           width={302}
         >
+        {insTab === "purged" ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <Label>PURGED</Label>
+            <div style={{ fontSize: 11.5, lineHeight: 1.65, color: "#8C8880" }}>
+              <span style={{ color: "#E0A34E" }}>Nothing is purged.</span> The delete saga
+              is forward-only and stops at the trash: rows are marked deleted, and no step
+              in it removes them.
+            </div>
+            <div style={{ fontSize: 11, lineHeight: 1.6, color: "#585550" }}>
+              Deliberate rather than unfinished.{" "}
+              <span className="mono">collab.ops</span> is append-only and is the source of
+              truth — a page's blocks are a projection replay rebuilds, so purging would
+              mean deleting from the log, which deletes the document's history rather than
+              the document.
+            </div>
+            <div style={{ fontSize: 11, lineHeight: 1.6, color: "#585550" }}>
+              A real purge needs a retention decision first: what a person may ask to have
+              erased, and what an append-only log can honestly promise about that. It is
+              not a button this screen forgot.
+            </div>
+          </div>
+        ) : (
+          <>
           {!selected && (
             <div style={{ fontSize: 11.5, lineHeight: 1.65, color: "#585550" }}>
               Pick a row. The blast radius is computed for a LIVE page — the subtree it would
@@ -326,6 +351,8 @@ export function TrashScreen() {
             operation — it has its own retry count, and once the page is purged the row is
             history rather than state.
           </div>
+          </>
+        )}
         </Inspector>
       </Body>
 

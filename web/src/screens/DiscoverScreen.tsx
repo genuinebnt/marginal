@@ -41,6 +41,7 @@ export function DiscoverScreen() {
   const [pages, setPages] = useState<Page[]>([]);
   const [near, setNear] = useState<NearResponse | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [insTab, setInsTab] = useState<"hnsw" | "index">("hnsw");
   const [scope, setScope] = useState<string[]>([]);
   const [mustTags, setMustTags] = useState<string[]>([]);
   const [view, setView] = useState<"grid" | "list">("grid");
@@ -401,9 +402,53 @@ export function DiscoverScreen() {
 
         <Inspector
           tabs={[{ id: "hnsw", label: "HNSW" }, { id: "index", label: "INDEX" }]}
-          active="hnsw"
+          active={insTab}
+          onSelect={(id) => setInsTab(id as "hnsw" | "index")}
           width={352}
         >
+        {insTab === "index" ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <Label>THE INDEX</Label>
+            <div className="mono" style={{ fontSize: 10.5, lineHeight: 1.95, color: "#8C8880" }}>
+              vectors&nbsp;&nbsp;&nbsp;&nbsp;{stats?.corpus ?? 0}<br />
+              dimensions&nbsp;256<br />
+              layers&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{stats?.layers ?? 0}<br />
+              per layer&nbsp;&nbsp;{(stats?.layer_sizes ?? []).join(" · ") || "—"}
+            </div>
+
+            <div style={{ height: 1, background: "rgba(255,255,255,.07)" }} />
+            <Label>WHY ONLY L0 AND L1</Label>
+            <div style={{ fontSize: 11.5, lineHeight: 1.65, color: "#8C8880" }}>
+              Layer assignment is geometric: P(level ≥ l) = exp(−l/m<sub>L</sub>) with
+              m<sub>L</sub> = 1/ln(M) and M = 16. So P(≥ 1) = 6.3% and P(≥ 2) = 0.39% —
+              over {stats?.corpus ?? 0} vectors that is{" "}
+              <span className="mono" style={{ color: "#E4E2DC" }}>
+                {(((stats?.corpus ?? 0) * 0.0039)).toFixed(2)}
+              </span>{" "}
+              expected nodes at L2.
+            </div>
+            <div style={{ fontSize: 11.5, lineHeight: 1.65, color: "#8C8880" }}>
+              Two layers is not the index failing to build — it is the overwhelmingly
+              likely outcome at this size. An L2 node becomes more likely than not at
+              around 250 pages; the upper layers only do real work in the thousands.
+            </div>
+            <div style={{ fontSize: 11, lineHeight: 1.6, color: "#585550" }}>
+              Upper layers exist so the greedy descent can skip distance, and that only
+              pays once there is distance to skip. At this size the descent is close to a
+              scan — which is exactly why recall is measured against a brute-force scan on
+              every query instead of asserted.
+            </div>
+
+            <div style={{ height: 1, background: "rgba(255,255,255,.07)" }} />
+            <Label>NOT AN EMBEDDING MODEL</Label>
+            <div style={{ fontSize: 11.5, lineHeight: 1.65, color: "#8C8880" }}>
+              Hashed IDF-weighted term vectors — lexical, not semantic. There is no model
+              in this repository. A page about the same idea in different words scores far
+              away here, and that gap is the honest finding rather than a defect.
+            </div>
+          </div>
+        ) : (
+          <>
           <Label>LAYERS · GREEDY DESCENT</Label>
           <LayerTower sizes={stats?.layer_sizes ?? []} />
 
@@ -451,6 +496,8 @@ export function DiscoverScreen() {
             and recall collapses exactly when the filter is narrow, which is when someone is
             relying on it.
           </div>
+          </>
+        )}
         </Inspector>
       </Body>
 

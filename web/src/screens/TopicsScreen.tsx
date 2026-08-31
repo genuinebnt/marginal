@@ -57,6 +57,7 @@ export function TopicsScreen() {
   const [pages, setPages] = useState<Page[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [insTab, setInsTab] = useState<"hygiene" | "history">("hygiene");
 
   const load = useCallback(() => {
     if (!actorId) return;
@@ -373,9 +374,27 @@ export function TopicsScreen() {
 
         <Inspector
           tabs={[{ id: "hygiene", label: "HYGIENE" }, { id: "history", label: "HISTORY" }]}
-          active="hygiene"
+          active={insTab}
+          onSelect={(id) => setInsTab(id as "hygiene" | "history")}
           width={300}
         >
+        {insTab === "history" ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <Label>TOPIC HISTORY</Label>
+            <div style={{ fontSize: 11.5, lineHeight: 1.65, color: "#8C8880" }}>
+              <span style={{ color: "#E0A34E" }}>Not recorded as such.</span> Setting a
+              topic is a page edit like any other, so it is in the op log — but nothing
+              extracts a per-topic timeline from it, and a panel inventing one here would
+              be claiming a query that does not exist.
+            </div>
+            <div style={{ fontSize: 11, lineHeight: 1.6, color: "#585550" }}>
+              What does exist: every one of those edits is in the audit log, which reads{" "}
+              <span className="mono">collab.ops</span> directly rather than a second table.
+              Filtering it by topic is the missing piece, not the data.
+            </div>
+          </div>
+        ) : (
+          <>
           <Label>UNTOPICED · {untopiced}</Label>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <div style={{ flex: 1, height: 5, background: "rgba(255,255,255,.06)" }}>
@@ -465,6 +484,8 @@ export function TopicsScreen() {
             Collapse them into one field and you get folders — one axis, argued over forever, and a
             page that is genuinely two things has to lie.
           </div>
+          </>
+        )}
         </Inspector>
       </Body>
 

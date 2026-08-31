@@ -16,7 +16,13 @@
  * Add a check when you add a control. A screen whose controls are not in here
  * is a screen whose controls nobody is checking.
  */
-const { chromium } = require('/Users/genuinebasilnt/projects/marginal/tools/node_modules/playwright-core');
+const path = require('node:path');
+// Resolved from THIS file, not the caller's cwd: running the gate from
+// web/ used to die with MODULE_NOT_FOUND, and a chained `echo` made the
+// failure look like a pass. A gate that only works from one directory is
+// a gate that will be run from another.
+const REPO = path.resolve(__dirname, '..', '..');
+const { chromium } = require(path.join(REPO, 'tools', 'node_modules', 'playwright-core'));
 const GW='http://localhost:8000', APP='http://localhost:5173';
 let fails = 0;
 const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${name}${detail?'  '+detail:''}`); if(!ok) fails++; };
@@ -242,7 +248,8 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
   };
 
   check('§14 both replicas converge', await p.evaluate(() => {
-    const t = [...document.querySelectorAll('.body [style*="Spectral"]')].map(e => e.innerText);
+    const t = [...document.querySelectorAll('.body [style*="Spectral"]')]
+      .map((e) => (e instanceof HTMLTextAreaElement ? e.value : e.innerText).trim());
     return t.length === 2 && t[0] === t[1] && t[0].length > 0;
   }));
   check('§14 the transform actually moved an op',
@@ -252,16 +259,31 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
   // Every lens must paint something different. A tab strip whose
   // options all render the same panel is the exact defect this pass
   // exists to catch.
-  const lensText = {};
+  const panel = () => p.evaluate(() => {
+    const main = document.querySelector('.body');
+    if (!main) return '';
+    // The lens panel is the lower-left pane; take its heading and
+    // first lines rather than the whole page, so a label change
+    // elsewhere cannot pass for a different panel.
+    const labels = [...main.querySelectorAll('.lbl')].map((e) => e.textContent);
+    return labels.join('|');
+  });
+  const lensPanels = {};
   for (const name of ['TREE · MERKLE', 'CAUSALITY · DAG', 'LOG · LSM', 'PREDICTION · ROLLBACK']) {
     await lens(name);
-    lensText[name] = await txt();
+    lensPanels[name] = await panel();
   }
-  check('§14 four lenses paint four panels',
-        new Set(Object.values(lensText)).size >= 3,
-        `${new Set(Object.values(lensText)).size} distinct`);
-  check('§14 the DAG names a causal chain', /LONGEST CHAIN/.test(lensText['CAUSALITY · DAG']));
-  check('§14 the LSM reports write amplification', /WRITE AMP/.test(lensText['LOG · LSM']));
+  const distinctPanels = new Set(Object.values(lensPanels));
+  check('§14 four lenses paint four DIFFERENT panels',
+        distinctPanels.size === 4,
+        distinctPanels.size === 4 ? '4 distinct' : JSON.stringify(lensPanels));
+  await lens('CAUSALITY · DAG');
+  check('§14 the DAG names a causal chain', /LONGEST CHAIN/.test(await txt()));
+  await lens('LOG · LSM');
+  check('§14 the LSM reports write amplification', /WRITE AMP/.test(await txt()));
+  await lens('PREDICTION · ROLLBACK');
+  check('§14 prediction shows the wire, not the merkle tree',
+        /OPS ON THE WIRE/.test(await txt()) && !/MERKLE COMPARISON/.test(await txt()));
 
   // Drag the wire. A slider that renders and changes nothing is a
   // picture of a control.
@@ -521,13 +543,62 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
 
   await p.evaluate((s) => { if (s) localStorage.setItem('marginal.session', s); }, saved);
 
+  // ── every inspector's SECOND tab does something ───────────
+  //
+  // Ten screens shipped with `active` hardcoded and no onSelect, so the
+  // second tab rendered, highlighted nothing, and changed nothing. Every
+  // one passed uidiff — the markup was right — and every one passed the
+  // per-screen checks, because none of them clicked that tab. A user found
+  // all ten by clicking.
+  //
+  // So this walks them generically rather than trusting each screen's own
+  // block to remember. A tab that renders and does nothing is the single
+  // defect this whole pass exists for.
+  const tabbed = [
+    ['/graph/algorithms', 'COST'],
+    ['/search', 'HISTORY'],
+    ['/discover', 'INDEX'],
+    ['/facts', 'COST'],
+    ['/topics', 'HISTORY'],
+    ['/trash', 'PURGED'],
+    ['/notifications', 'MUTED'],
+    ['/lab/compiler', 'COST'],
+    [`/pages/${page.id}/diff`, 'MOVES'],
+    [`/pages/${page.id}/trace`, 'KINDS'],
+  ];
+  const deadTabs = [];
+  for (const [route, tab] of tabbed) {
+    await go(route, 6000);
+    const inspector = () => p.evaluate(() => document.querySelector('.insp')?.innerText ?? '');
+    const before = await inspector();
+    const t = p.locator('.it', { hasText: tab }).first();
+    if (!(await t.count())) { deadTabs.push(`${route}:${tab} MISSING`); continue; }
+    await t.click();
+    await p.waitForTimeout(700);
+    const after = await inspector();
+    if (after === before) deadTabs.push(`${route}:${tab}`);
+    // And it must be able to come back — a one-way tab is half a control.
+    const first = p.locator('.it').first();
+    await first.click();
+    await p.waitForTimeout(500);
+    if ((await inspector()) !== before) deadTabs.push(`${route}:${tab} NO RETURN`);
+  }
+  check('every inspector second tab changes the panel',
+        deadTabs.length === 0, deadTabs.join(' · ') || `${tabbed.length} checked`);
+
   // ── § 24e NOT FOUND ───────────────────────────────────────────────────
   await go('/p/the-documnt-block-modl', 4000);
   check('§24e a wrong URL is not a redirect', (await p.evaluate(()=>location.pathname)) === '/p/the-documnt-block-modl');
+  await p.waitForFunction(
+    () => /The document block model/.test(document.body.innerText),
+    null, { timeout: 20000 }).catch(() => {});
   check('§24e BK-tree suggests the real page', /The document block model/.test(await txt()));
 
   // ── § 17 HISTORY ──────────────────────────────────────────────────────
-  await go(`/pages/${page.id}/history`, 6000);
+  await go(`/pages/${page.id}/history`, 3000);
+  await p.waitForFunction(
+    () => /InsertBlock|SetBlockContent|InsertText/.test(document.body.innerText),
+    null, { timeout: 25000 }).catch(() => {});
   check('§17 op stream names the op kind', /InsertBlock|SetBlockContent|InsertText/.test(await txt()));
   await p.locator('.it', { hasText: 'REVISIONS' }).first().click(); await p.waitForTimeout(400);
   check('§17 REVISIONS folds ops into gestures', /GESTURES ·/.test(await txt()));

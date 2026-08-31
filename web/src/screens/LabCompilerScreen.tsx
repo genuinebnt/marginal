@@ -55,6 +55,7 @@ export function LabCompilerScreen() {
   const [src, setSrc] = useState(SAMPLE);
   const [result, setResult] = useState<CompileResult | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [insTab, setInsTab] = useState<"triggers" | "cost">("triggers");
   const [stage, setStage] = useState<Stage>("tokens");
   /** Bumped on every recompute, to flash the panels that just changed. */
   const [gen, setGen] = useState(0);
@@ -259,8 +260,35 @@ export function LabCompilerScreen() {
 
         <Inspector
           tabs={[{ id: "triggers", label: "PIPELINE" }, { id: "cost", label: "COST" }]}
-          active="triggers"
+          active={insTab}
+          onSelect={(id) => setInsTab(id as "triggers" | "cost")}
         >
+        {insTab === "cost" ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <Label>MEASURED, THIS KEYSTROKE</Label>
+            <div className="mono" style={{ fontSize: 10.5, lineHeight: 1.95, color: "#8C8880" }}>
+              lex&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{((result?.stats.lex_ns ?? 0) / 1000).toFixed(1)} µs<br />
+              parse&nbsp;&nbsp;&nbsp;{((result?.stats.parse_ns ?? 0) / 1000).toFixed(1)} µs<br />
+              emit&nbsp;&nbsp;&nbsp;&nbsp;{((result?.stats.emit_ns ?? 0) / 1000).toFixed(1)} µs<br />
+              replay&nbsp;&nbsp;{((result?.stats.replay_ns ?? 0) / 1000).toFixed(1)} µs<br />
+              total&nbsp;&nbsp;&nbsp;{(totalNs / 1000).toFixed(1)} µs
+            </div>
+            <div style={{ fontSize: 11, lineHeight: 1.6, color: "#585550" }}>
+              Replay is the projection check — the emitted ops applied to a second, empty
+              tree and compared field by field. It is pure overhead in production and is
+              here because a pipeline that claims to round-trip should be made to prove it
+              on every input, not on a fixture.
+            </div>
+            <div style={{ height: 1, background: "rgba(255,255,255,.07)" }} />
+            <Label>COMPLEXITY</Label>
+            <div style={{ fontSize: 11.5, lineHeight: 1.65, color: "#8C8880" }}>
+              Linear in input bytes, and deliberately so: the lexer does a bounded backward
+              scan with a hard 48-byte lookbehind and no recursion, so there is no input
+              that makes it quadratic. That bound is what lets it run on every keystroke.
+            </div>
+          </div>
+        ) : (
+          <>
           <Label>THE PROPERTY UNDER TEST</Label>
           <div style={{ fontSize: 11.5, lineHeight: 1.65, color: "#8C8880" }}>
             For any input, replaying the emitted ops into an empty tree must equal the tree the
@@ -315,6 +343,8 @@ export function LabCompilerScreen() {
               <div style={{ fontSize: 11.5, color: "#E0A34E" }}>◌ {err}</div>
             </>
           )}
+          </>
+        )}
         </Inspector>
       </Body>
 

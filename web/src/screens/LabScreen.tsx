@@ -40,9 +40,9 @@ const ENTRIES: Entry[] = [
   {
     name: "Diff",
     route: "/lab/diff",
-    to: (p) => `/pages/${p}/diff`,
-    blurb: "LCS by the full DP table, with the traceback outlined. Also the argument against it: O(n·m) is fine for a block and absurd for a document.",
-    facts: ["O(n·m)", "MYERS IS O(nd)"],
+    to: () => "/lab/diff",
+    blurb: "Type into either side and watch the DP table rebuild on every keystroke, traceback outlined. Also the argument against it: O(n·m) is fine for a block and absurd for a document.",
+    facts: ["EDITABLE", "O(n·m)", "MYERS IS O(nd)"],
   },
   {
     name: "History",

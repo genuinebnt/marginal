@@ -11,10 +11,8 @@
  * its quadratic table teaches nothing about why Myers exists.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
-import { useAuth } from "../auth/AuthContext";
+import { useParams } from "react-router-dom";
 import { getDiff, getTrace, type Move, type Snapshot } from "../api/history";
-import { listPages, type Page } from "../api/pages";
 import { diffTokens, tokenizeChars, tokenizeWords, type DiffResult } from "../diff-core/wasm";
 import {
   Body, Inspector, Label, Readout, Rule, Screen, StatusBar, TopBar, num,
@@ -24,11 +22,7 @@ type Granularity = "word" | "char";
 
 export function DiffScreen() {
   const { id } = useParams();
-  const { session } = useAuth();
-  const actorId = session?.actorId ?? null;
-  const navigate = useNavigate();
 
-  const [pages, setPages] = useState<Page[]>([]);
   const [total, setTotal] = useState(0);
   const [from, setFrom] = useState(0);
   const [to, setTo] = useState(0);
@@ -38,11 +32,12 @@ export function DiffScreen() {
   const [gran, setGran] = useState<Granularity>("word");
   const [result, setResult] = useState<DiffResult | null>(null);
   const [err, setErr] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!actorId) return;
-    listPages(actorId).then((r) => setPages(r.pages)).catch(() => {});
-  }, [actorId]);
+  const [insTab, setInsTab] = useState<"script" | "moves">("script");
+  // A near-miss pair on purpose: enough shared tokens that the traceback
+  // is a real diagonal through the table rather than a wipe down one edge,
+  // which is what makes the DP visible at all.
+  const [draftBefore, setDraftBefore] = useState("a rope is the wrong primitive");
+  const [draftAfter, setDraftAfter] = useState("a tree is the right primitive");
 
   // Revision bounds come from the op log's own length.
   useEffect(() => {
@@ -69,10 +64,28 @@ export function DiffScreen() {
 
   useEffect(load, [load]);
 
+  /**
+   * Two modes, one algorithm.
+   *
+   * `/pages/:id/diff` diffs two real revisions of a real page. `/lab/diff`
+   * has no page, and used to render nothing at all — it is the EDITABLE one
+   * now: type into either side and watch the DP table and its traceback
+   * rebuild on every keystroke.
+   *
+   * That split is the point of the lab section. A screen that can only
+   * replay something stored shows you the result; one you can type into
+   * shows you the mechanism, which is what these pages exist for. Same
+   * `diffTokens` call either way — the input differs, never the algorithm.
+   */
+  const playground = !id;
+
   /** Flatten each side to one string — the diff is over prose, not structure;
    *  structural change is what `moves` reports separately. */
-  const beforeText = useMemo(() => (before?.blocks ?? []).map((b) => b.text).join(" "), [before]);
-  const afterText = useMemo(() => (after?.blocks ?? []).map((b) => b.text).join(" "), [after]);
+  const revBefore = useMemo(() => (before?.blocks ?? []).map((b) => b.text).join(" "), [before]);
+  const revAfter = useMemo(() => (after?.blocks ?? []).map((b) => b.text).join(" "), [after]);
+
+  const beforeText = playground ? draftBefore : revBefore;
+  const afterText = playground ? draftAfter : revAfter;
 
   useEffect(() => {
     if (!beforeText && !afterText) { setResult(null); return; }
@@ -100,38 +113,12 @@ export function DiffScreen() {
   const CAP = 26;
   const showTable = rows > 0 && rows <= CAP && cols <= CAP;
 
-  if (!id) {
-    return (
-      <Screen>
-        <TopBar crumb={<>lab / <b>diff</b></>} />
-        <Body>
-          <div className="rail">
-            <div className="rail-h">PICK A PAGE<div /></div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 1, padding: "0 8px", overflowY: "auto" }}>
-              {pages.map((p) => (
-                <div key={p.id} className="tr" style={{ cursor: "pointer" }}
-                     onClick={() => navigate(`/pages/${p.id}/diff`)}>
-                  <span className="tr-t">{p.title}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div style={{ flex: 1, display: "grid", placeItems: "center", padding: 40 }}>
-            <div style={{ maxWidth: 520, fontSize: 12.5, lineHeight: 1.7, color: "#585550" }}>
-              A diff is between two revisions of one page, so it needs a page. Both sides are
-              replayed from the op log — neither is a stored snapshot.
-            </div>
-          </div>
-        </Body>
-        <StatusBar route="/lab/diff" mechanism="LCS in Go, via wasm" state="no page selected" healthy />
-      </Screen>
-    );
-  }
-
   return (
     <Screen>
       <TopBar
-        crumb={<>lab / <b>diff</b> · rev {num(from)} → {num(to)}</>}
+        crumb={playground
+          ? <>lab / <b>diff</b> · type either side</>
+          : <>lab / <b>diff</b> · rev {num(from)} → {num(to)}</>}
         readouts={
           <>
             <Readout k="GRANULARITY" v={gran.toUpperCase()} />
@@ -154,11 +141,24 @@ export function DiffScreen() {
           <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
             <div style={{ flex: 1, padding: "22px 26px", borderRight: "1px solid rgba(255,255,255,.07)", minWidth: 0, overflowY: "auto" }}>
               <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 14 }}>
-                <Label>REV {num(from)}</Label>
+                <Label>{playground ? "BEFORE · EDITABLE" : `REV ${num(from)}`}</Label>
                 <span className="mono" style={{ fontSize: 10, color: "#585550" }}>
-                  {before ? `${before.blocks.length} blocks` : "—"}
+                  {playground
+                    ? `${Math.max(0, rows - 1)} tokens`
+                    : before ? `${before.blocks.length} blocks` : "—"}
                 </span>
               </div>
+              {playground && (
+                <textarea
+                  className="labedit"
+                  rows={4}
+                  style={{ marginBottom: 14 }}
+                  value={draftBefore}
+                  spellCheck={false}
+                  onChange={(e) => setDraftBefore(e.target.value)}
+                  aria-label="Before text"
+                />
+              )}
               <div style={{ fontFamily: "Spectral,serif", fontSize: 15.5, lineHeight: 1.75, color: "#8C8880" }}>
                 {(result?.ops ?? []).filter((o) => o.kind !== "insert").map((o, i) => (
                   <span
@@ -176,11 +176,24 @@ export function DiffScreen() {
 
             <div style={{ flex: 1, padding: "22px 26px", minWidth: 0, overflowY: "auto" }}>
               <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 14 }}>
-                <Label>REV {num(to)}</Label>
+                <Label>{playground ? "AFTER · EDITABLE" : `REV ${num(to)}`}</Label>
                 <span className="mono" style={{ fontSize: 10, color: "#585550" }}>
-                  {after ? `${after.blocks.length} blocks` : "—"}
+                  {playground
+                    ? `${Math.max(0, cols - 1)} tokens`
+                    : after ? `${after.blocks.length} blocks` : "—"}
                 </span>
               </div>
+              {playground && (
+                <textarea
+                  className="labedit"
+                  rows={4}
+                  style={{ marginBottom: 14 }}
+                  value={draftAfter}
+                  spellCheck={false}
+                  onChange={(e) => setDraftAfter(e.target.value)}
+                  aria-label="After text"
+                />
+              )}
               <div style={{ fontFamily: "Spectral,serif", fontSize: 15.5, lineHeight: 1.75, color: "#D2CFC8" }}>
                 {(result?.ops ?? []).filter((o) => o.kind !== "delete").map((o, i) => (
                   <span
@@ -206,7 +219,8 @@ export function DiffScreen() {
               <div style={{ fontSize: 11.5, color: "#585550", lineHeight: 1.6, maxWidth: 620 }}>
                 {num(rows)} × {num(cols)} = {num(rows * cols)} cells. The table is computed in
                 full — that is the cost being demonstrated — but past {CAP} tokens a side it is
-                not legible, so it is not painted. Switch to a narrower revision range to see it.
+                not legible, so it is not painted.{" "}
+                {playground ? "Shorten either side to see it." : "Pick a narrower revision range to see it."}
               </div>
             )}
 
@@ -240,8 +254,47 @@ export function DiffScreen() {
 
         <Inspector
           tabs={[{ id: "script", label: "EDIT SCRIPT" }, { id: "moves", label: "MOVES" }]}
-          active="script"
+          active={insTab}
+          onSelect={(id) => setInsTab(id as "script" | "moves")}
         >
+        {insTab === "moves" ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <Label>BLOCKS THAT MOVED</Label>
+            {moves.length === 0 ? (
+              <div style={{ fontSize: 11.5, lineHeight: 1.65, color: "#8C8880" }}>
+                None between these two revisions. A move is only reported when a block
+                actually changed position — reordering that a text diff would show as a
+                delete here and an insert there.
+              </div>
+            ) : (
+              moves.map((m, i) => (
+                <div key={i} className="mono" style={{ fontSize: 10.5, lineHeight: 1.7, color: "#8C8880" }}>
+                  <span style={{ color: "#A98CE8" }}>MOVED</span>{" "}
+                  {m.block_id.slice(0, 8)}{" "}
+                  <span style={{ color: "#585550" }}>
+                    after {m.from ? m.from.slice(0, 8) : "—"} → after {m.to ? m.to.slice(0, 8) : "—"}
+                    {" · step "}{m.step}
+                  </span>
+                </div>
+              ))
+            )}
+            <div style={{ height: 1, background: "rgba(255,255,255,.07)" }} />
+            <Label>WHY A MOVE IS NOT A DELETE + INSERT</Label>
+            <div style={{ fontSize: 11.5, lineHeight: 1.65, color: "#8C8880" }}>
+              <span className="mono" style={{ color: "#9B968D" }}>MoveBlock</span> carries{" "}
+              <span className="mono">from</span> as well as <span className="mono">to</span>{" "}
+              (RFC-002 §3), so it inverts exactly. The diff <i>reads</i> that op rather than
+              inferring a move from geometry — which is why a moved block reads as{" "}
+              <span style={{ color: "#A98CE8" }}>MOVED</span> and never as a deletion
+              followed by an unrelated insertion.
+            </div>
+            <div style={{ fontSize: 11, lineHeight: 1.6, color: "#585550" }}>
+              This is the one thing an LCS over text cannot tell you, and the reason the
+              op log is the source of truth rather than the rendered document.
+            </div>
+          </div>
+        ) : (
+          <>
           <Label>REVISION RANGE</Label>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <input
@@ -292,6 +345,8 @@ export function DiffScreen() {
             hides its quadratic cost teaches nothing about why Myers exists — so the cost is a
             readout rather than a footnote.
           </div>
+          </>
+        )}
         </Inspector>
       </Body>
 

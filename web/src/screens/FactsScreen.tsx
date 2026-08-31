@@ -34,6 +34,7 @@ export function FactsScreen() {
   const [stale, setStale] = useState<FactReference[] | null>(null);
   const [filter, setFilter] = useState("");
   const [err, setErr] = useState<string | null>(null);
+  const [insTab, setInsTab] = useState<"refs" | "cost">("refs");
 
   useEffect(() => {
     if (!actorId) return;
@@ -282,8 +283,31 @@ export function FactsScreen() {
 
         <Inspector
           tabs={[{ id: "refs", label: "REFERENCES" }, { id: "cost", label: "COST" }]}
-          active="refs"
+          active={insTab}
+          onSelect={(id) => setInsTab(id as "refs" | "cost")}
         >
+        {insTab === "cost" ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <Label>WHAT A PASS COSTS</Label>
+            <div style={{ fontSize: 11.5, lineHeight: 1.65, color: "#8C8880" }}>
+              Diagnostics holds no database. Every request is computed fresh from{" "}
+              <span className="mono" style={{ color: "#9B968D" }}>document-service</span>'s
+              gRPC — nine analyzers over the page, plus the fact DAG over the link graph.
+            </div>
+            <div style={{ height: 1, background: "rgba(255,255,255,.07)" }} />
+            <Label>WHY NO CACHE</Label>
+            <div style={{ fontSize: 11.5, lineHeight: 1.65, color: "#8C8880" }}>
+              A cached diagnostic is a claim about a document that may have changed since.
+              Recomputing costs a few milliseconds; being confidently wrong about whether
+              a fact is stale costs the whole feature's credibility.
+            </div>
+            <div style={{ fontSize: 11, lineHeight: 1.6, color: "#585550" }}>
+              It is also why this service can die without touching editing (RFC-003 §5):
+              nothing depends on state it holds, because it holds none.
+            </div>
+          </div>
+        ) : (
+          <>
           <Label>DEFINED IN</Label>
           {selDef ? (
             <div
@@ -326,6 +350,8 @@ export function FactsScreen() {
             A definition nothing transcludes still costs nothing to keep — it is a note, not
             dead code. Reported so it can be found, not so it can be swept up.
           </div>
+          </>
+        )}
         </Inspector>
       </Body>
 

@@ -70,6 +70,7 @@ export function SearchScreen() {
   const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [elapsed, setElapsed] = useState<number | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [insTab, setInsTab] = useState<"hood" | "history">("hood");
 
   useEffect(() => {
     if (!actorId) return;
@@ -328,8 +329,35 @@ export function SearchScreen() {
         </div>
         <Inspector
           tabs={[{ id: "hood", label: "NEIGHBOURHOOD" }, { id: "history", label: "HISTORY" }]}
-          active="hood"
+          active={insTab}
+          onSelect={(id) => setInsTab(id as "hood" | "history")}
         >
+        {insTab === "history" ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <Label>SEARCH HISTORY</Label>
+            <div style={{ fontSize: 11.5, lineHeight: 1.65, color: "#8C8880" }}>
+              <span style={{ color: "#E0A34E" }}>Not recorded.</span> Nothing in this repo
+              writes what anyone searched for, so there is no list to show — an empty panel
+              here would read as "you have not searched yet", which is a different claim.
+            </div>
+            <div style={{ fontSize: 11, lineHeight: 1.6, color: "#585550" }}>
+              Storing it is a decision rather than a feature: a log of what a person looked
+              for is the same class of thing § 18b keeps out of the audit log on purpose.
+              Per-user recents would need a preferences store (<span className="mono">v3.5.0</span>)
+              and an answer to how long they are kept.
+            </div>
+            <div style={{ height: 1, background: "rgba(255,255,255,.07)" }} />
+            <Label>WHAT IS RECORDED</Label>
+            <div style={{ fontSize: 11.5, lineHeight: 1.65, color: "#8C8880" }}>
+              The index, not the queries. Postgres FTS over page content, a BK-tree of
+              titles for "did you mean", and a prefix trie for{" "}
+              <span className="mono">[[</span> autocomplete — all rebuilt from{" "}
+              <span className="mono" style={{ color: "#9B968D" }}>docs.blocks</span>, which is
+              itself a projection of the op log.
+            </div>
+          </div>
+        ) : (
+          <>
           <Label>WHY THESE, IN THIS ORDER</Label>
           <div style={{ fontSize: 11.5, lineHeight: 1.7, color: "#8C8880" }}>
             Score is <span className="mono" style={{ color: "#C3BFB7" }}>ts_rank</span> over title
@@ -389,6 +417,8 @@ export function SearchScreen() {
           ) : (
             <span style={{ fontSize: 11.5, color: "#585550" }}>Nothing selected.</span>
           )}
+          </>
+        )}
         </Inspector>
       </Body>
 

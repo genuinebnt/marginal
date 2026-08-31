@@ -23,7 +23,7 @@
  * re-runnable 400 ms of a 4%-loss network with every layer visible at
  * once.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { runSim, type Report, type MerkleNode } from "../netsim-core/wasm";
 import {
   Body, Inspector, Label, Main, Readout, Rule, Screen, StatusBar, SubBar,
@@ -87,6 +87,22 @@ export function LabNetcodeScreen() {
   const [transform, setTransform] = useState(true);
   const [seed, setSeed] = useState(7);
   const [lens, setLens] = useState<Lens>("prediction");
+  /**
+   * What you have typed but the simulation has not caught up with yet.
+   *
+   * The pane shows the SIMULATED text, which is the whole demonstration —
+   * but that text only exists after a wasm round trip, so binding the
+   * textarea straight to it means every keystroke diffs against a stale
+   * value and characters land in the wrong place or vanish. Typing " NOW"
+   * produced a single op for "W".
+   *
+   * So: the draft is what you see while typing, and it clears once you
+   * stop, at which point the pane goes back to showing what the two
+   * replicas actually converged on. Which is the point of the screen —
+   * you type, and then you watch the wire deliver it.
+   */
+  const [draft, setDraft] = useState<string | null>(null);
+  const typedAt = useRef(0);
   const [insTab, setInsTab] = useState<"wire" | "invariants">("wire");
   const [report, setReport] = useState<Report | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -108,7 +124,55 @@ export function LabNetcodeScreen() {
     return () => { cancelled = true; };
   }, [script, rtt, loss, jitter, transform, seed]);
 
+  // Hand the pane back to the simulation once you pause. Until then
+  // the draft wins, so typing is never fighting a lagging value.
+  useEffect(() => {
+    if (draft === null) return;
+    const t = setTimeout(() => {
+      if (Date.now() - typedAt.current >= 700) setDraft(null);
+    }, 750);
+    return () => clearTimeout(t);
+  }, [draft, report]);
+
   const you = report?.replicas.find((r) => r.actor === "you") ?? report?.replicas[0];
+
+  /**
+   * Turn what you just typed into one op, and append it to the script.
+   *
+   * A common-prefix/suffix scan against the current text gives the
+   * position and what changed - the same thing an editor does before it
+   * emits an op. This is not diffing (that is textdiff, in Go); it is
+   * reading a single edit out of a before/after pair, which is what the
+   * DOM already told us happened.
+   *
+   * The op is timestamped after everything else in the script, so it is
+   * concurrent with nothing and simply travels the wire - which is what
+   * makes the prediction lens move as you type.
+   */
+  function appendEdit(next: string) {
+    const cur = draft ?? you?.text ?? INITIAL;
+    setDraft(next);
+    typedAt.current = Date.now();
+    if (next === cur) return;
+
+    let start = 0;
+    while (start < cur.length && start < next.length && cur[start] === next[start]) start++;
+    let end = 0;
+    while (end < cur.length - start && end < next.length - start
+           && cur[cur.length - 1 - end] === next[next.length - 1 - end]) end++;
+
+    const removed = cur.length - start - end;
+    const inserted = next.slice(start, next.length - end);
+
+    const at = (report?.ticks ?? 0) + 20;
+    const lines: string[] = [];
+    // A replacement is a delete then an insert - exactly the pair the
+    // editor emits, and what the log will show.
+    if (removed > 0) lines.push(`${at}, you, delete, ${start}, ${removed}`);
+    if (inserted) lines.push(`${at + 1}, you, insert, ${start}, ${inserted}`);
+    if (lines.length === 0) return;
+    setScript((prev) => `${prev.replace(/\n+$/, "")}\n${lines.join("\n")}`);
+  }
   const them = report?.replicas.find((r) => r !== you) ?? null;
   const violations = report?.intent_violations ?? [];
 
@@ -204,14 +268,28 @@ export function LabNetcodeScreen() {
             }}>
               <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 14 }}>
                 <div style={{ width: 6, height: 6, background: "#3FCFA8" }} />
-                <Label>YOUR REPLICA · PREDICTED</Label>
+                <Label>YOUR REPLICA · TYPE HERE</Label>
               </div>
-              <div style={{
-                fontFamily: "Spectral, serif", fontSize: 16, lineHeight: 1.7,
-                color: "#D2CFC8", wordBreak: "break-word",
-              }}>
-                {you?.text ?? INITIAL}
-              </div>
+              {/* A real editor, because the section's own subtitle is
+                  "one editor, four lenses" and this pane looked exactly
+                  like that editor while being inert. Typing here appends
+                  an op to the same script the inspector shows, so what
+                  you type crosses the wire, is transformed against Ada's
+                  concurrent edit, and converges. */}
+              <textarea
+                value={draft ?? you?.text ?? INITIAL}
+                spellCheck={false}
+                onChange={(e) => appendEdit(e.target.value)}
+                aria-label="Your replica"
+                style={{
+                  width: "100%", boxSizing: "border-box", minHeight: 86,
+                  background: "rgba(63,207,168,.04)",
+                  border: "1px solid rgba(63,207,168,.25)",
+                  color: "#D2CFC8", resize: "none", outline: "none",
+                  padding: "10px 12px",
+                  fontFamily: "Spectral, serif", fontSize: 16, lineHeight: 1.7,
+                }}
+              />
               <div className="mono" style={{
                 fontSize: 10.5, lineHeight: 1.9, color: "#8C8880", marginTop: 16,
               }}>
@@ -254,7 +332,56 @@ export function LabNetcodeScreen() {
               flex: 1, padding: "20px 24px", minWidth: 0, overflow: "hidden",
               borderRight: "1px solid rgba(255,255,255,.07)",
             }}>
-              {lens === "merkle" || lens === "prediction" ? (
+              {lens === "prediction" ? (
+                <>
+                  <Label style={{ marginBottom: 14, display: "block" }}>
+                    OPS ON THE WIRE · PREDICTED → CONFIRMED
+                  </Label>
+                  <svg viewBox={`0 0 ${Math.max(1, report?.ticks ?? 1)} 150`}
+                       preserveAspectRatio="none"
+                       style={{ width: "100%", height: 150, display: "block" }}>
+                    {(report?.deliveries ?? []).slice(0, 14).map((d, i) => {
+                      const y = 10 + i * 9.5;
+                      const w = Math.max(1, d.arrives_at - d.sent_at);
+                      return (
+                        <g key={`${d.op_id}-${i}`}>
+                          {/* The flight: sent → arrived. */}
+                          <rect
+                            x={d.sent_at} y={y} width={w} height="5"
+                            fill={d.lost ? "rgba(224,163,78,.35)" : (d.actor === "you" ? "rgba(63,207,168,.5)" : "rgba(169,140,232,.5)")}
+                          />
+                          {/* Predicted: applied locally the instant it was
+                              typed, which is the whole point of the lens. */}
+                          <rect x={Math.max(0, d.sent_at - 1)} y={y - 1} width="2" height="7"
+                                fill={d.actor === "you" ? "#3FCFA8" : "#A98CE8"} />
+                          {/* Confirmed, unless this attempt was lost. */}
+                          {!d.lost && (
+                            <rect x={d.arrives_at} y={y - 1} width="2" height="7" fill="#E8873C" />
+                          )}
+                        </g>
+                      );
+                    })}
+                  </svg>
+                  <div style={{ display: "flex", gap: 20, marginTop: 12, flexWrap: "wrap" }}>
+                    <Readout k="PREDICTED" v={String(you?.predicted ?? 0)} tone="#3FCFA8" />
+                    <Readout k="CONFIRMED" v={String(you?.confirmed ?? 0)} />
+                    <Readout k="ROLLED BACK" v={String(you?.rolled_back ?? 0)}
+                      tone={(you?.rolled_back ?? 0) > 0 ? "#E0A34E" : undefined} />
+                    <Readout k="IN FLIGHT" v={String(you?.pending ?? 0)} tone="#6E6A63" />
+                  </div>
+                  <div style={{ fontSize: 11.5, color: "#8C8880", marginTop: 10, lineHeight: 1.55 }}>
+                    Each bar is one op crossing the wire. The bright tick on the left is the
+                    local echo — applied the instant it was typed, which is why the editor
+                    feels like a text box. The ember tick is the server confirming it, half
+                    an RTT later. Amber bars are attempts that were lost and resent.
+                  </div>
+                  <div style={{ fontSize: 11, color: "#585550", marginTop: 8, lineHeight: 1.55 }}>
+                    Drag RTT and the bars stretch; raise loss and amber stubs appear. A
+                    rollback happens when a confirmation comes back changed — the count
+                    above moves, and the replicas still converge.
+                  </div>
+                </>
+              ) : lens === "merkle" ? (
                 <>
                   <Label style={{ marginBottom: 14, display: "block" }}>
                     TREE · MERKLE COMPARISON

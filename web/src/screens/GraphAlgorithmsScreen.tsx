@@ -86,8 +86,8 @@ interface GestureCtx {
 
 const LENS_GESTURE: Record<Lens, (c: GestureCtx) => string> = {
   path: (c) => {
-    if (!c.source) return "click a node to start";
-    if (!c.target) return "click a second node — the route between them draws itself";
+    if (!c.source) return "click the page you are starting from";
+    if (!c.target) return "now click where you want to get to";
     if (c.hood && !c.hood.path_exists) return "no route — these two are in different components";
     const hops = Math.max(0, (c.hood?.shortest_path?.length ?? 1) - 1);
     return `${hops} hop${hops === 1 ? "" : "s"} · BFS, undirected`;
@@ -121,6 +121,7 @@ export function GraphAlgorithmsScreen() {
   const [target, setTarget] = useState<string | null>(null);
   const [hood, setHood] = useState<GraphNeighborhood | null>(null);
   const [lens, setLens] = useState<Lens>("path");
+  const [insTab, setInsTab] = useState<"results" | "cost">("results");
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
@@ -150,6 +151,11 @@ export function GraphAlgorithmsScreen() {
    * Explicit selection wins the moment there is one.
    */
   useEffect(() => {
+    // NOT on the path lens. There the first click is the START, and
+    // auto-picking a source silently consumes that slot — every click then
+    // lands on the destination and the start looks stuck on whichever page
+    // the graph nominated. Which is exactly how it behaved.
+    if (lens === "path") return;
     if (source || !graph || graph.nodes.length === 0) return;
     const degree = new Map<string, number>();
     graph.edges.forEach((e) => {
@@ -160,7 +166,7 @@ export function GraphAlgorithmsScreen() {
     const best = [...graph.nodes]
       .sort((a, b) => (degree.get(b.id) ?? 0) - (degree.get(a.id) ?? 0) || a.id.localeCompare(b.id))[0];
     setSource(best.id);
-  }, [graph, source]);
+  }, [graph, source, lens]);
 
   const nodeIds = useMemo(() => graph?.nodes.map((n) => n.id) ?? [], [graph]);
   const edges = useMemo(
@@ -207,6 +213,14 @@ export function GraphAlgorithmsScreen() {
     Object.values(hood.undirected_distance).forEach((d) => byLevel.set(d, (byLevel.get(d) ?? 0) + 1));
     return [...byLevel].sort((a, b) => a[0] - b[0]);
   }, [hood]);
+
+  /** Edges over the complete graph's edge count — what makes every
+   *  traversal here linear in practice rather than quadratic. */
+  const density = useMemo(() => {
+    const v = graph?.nodes.length ?? 0;
+    const e = graph?.edges.length ?? 0;
+    return v > 1 ? (2 * e) / (v * (v - 1)) : 0;
+  }, [graph]);
 
   const cycleSet = useMemo(() => new Set(analysis?.cycle ?? []), [analysis]);
 
@@ -521,9 +535,14 @@ export function GraphAlgorithmsScreen() {
                       // are and the second is where you want to get to; a
                       // third starts over, so the gesture never dead-ends.
                       if (lens !== "path") { setSource(raw.id); return; }
-                      if (raw.id === source) return;
-                      if (!target) setTarget(raw.id);
-                      else { setSource(raw.id); setTarget(null); }
+                      // Fill the empty slot: start, then destination, then
+                      // start over. Clicking either endpoint again clears
+                      // back to it, so the gesture never dead-ends.
+                      if (!source) { setSource(raw.id); return; }
+                      if (raw.id === source) { setSource(null); setTarget(null); return; }
+                      if (!target) { setTarget(raw.id); return; }
+                      setSource(raw.id);
+                      setTarget(null);
                     }}
                   >
                     {isSource && <circle cx={p.x} cy={p.y} r="15" fill="#E8873C" opacity=".2" />}
@@ -552,11 +571,38 @@ export function GraphAlgorithmsScreen() {
                 ? (target ? "ROUTE" : source ? "PICK A DESTINATION" : "PICK A START")
                 : source ? "FROM HERE" : "PICK A SOURCE"}
             </Label>
-            <div className="mono" style={{ fontSize: 11, color: "#E4E2DC", lineHeight: 1.6 }}>
-              {lens === "path" && target
-                ? `${titleOf.get(source!)} → ${titleOf.get(target)}`
-                : source ? titleOf.get(source) : "click any node"}
-            </div>
+            {lens === "path" ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                {([["start", source, () => { setSource(null); setTarget(null); }],
+                   ["end", target, () => setTarget(null)]] as const).map(([slot, id, clear]) => (
+                  <div key={slot} style={{ display: "flex", alignItems: "baseline", gap: 7 }}>
+                    <span className="mono" style={{ fontSize: 9, color: "#585550", width: 30 }}>
+                      {slot}
+                    </span>
+                    <span className="mono" style={{
+                      flex: 1, fontSize: 11, lineHeight: 1.5,
+                      color: id ? "#E4E2DC" : "#4B4842",
+                    }}>
+                      {id ? titleOf.get(id) : "click a node"}
+                    </span>
+                    {id && (
+                      <span
+                        className="mono"
+                        style={{ fontSize: 11, color: "#585550", cursor: "pointer" }}
+                        onClick={clear}
+                        title={`clear ${slot}`}
+                      >
+                        ×
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="mono" style={{ fontSize: 11, color: "#E4E2DC", lineHeight: 1.6 }}>
+                {source ? titleOf.get(source) : "click any node"}
+              </div>
+            )}
             <span className="mono" style={{ fontSize: 10, color: "#585550" }}>
               {LENS_GESTURE[lens](
                 { source, target, hood, reveal: reveal.shown, total: steps.length, visited },
@@ -584,8 +630,62 @@ export function GraphAlgorithmsScreen() {
 
         <Inspector
           tabs={[{ id: "results", label: "RESULTS" }, { id: "cost", label: "COST" }]}
-          active="results"
+          active={insTab}
+          onSelect={(id) => setInsTab(id as "results" | "cost")}
         >
+        {insTab === "cost" ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <Label>WHAT THIS GRAPH COSTS</Label>
+            <div className="mono" style={{ fontSize: 10.5, lineHeight: 1.95, color: "#8C8880" }}>
+              nodes&nbsp;&nbsp;&nbsp;&nbsp;{num(graph?.nodes.length ?? 0)}<br />
+              edges&nbsp;&nbsp;&nbsp;&nbsp;{num(graph?.edges.length ?? 0)}<br />
+              density&nbsp;&nbsp;{density.toFixed(3)}
+            </div>
+            <div style={{ fontSize: 11, lineHeight: 1.6, color: "#585550" }}>
+              Density is edges over the complete graph's edge count. Low is normal for a
+              notebook — people cite a handful of pages, not all of them — and it is why
+              every traversal below is linear rather than quadratic in practice.
+            </div>
+
+            <div style={{ height: 1, background: "rgba(255,255,255,.07)" }} />
+            <Label>PER LENS</Label>
+            {[
+              ["BFS · shortest path", "O(V+E)", "one traversal answers distance AND route"],
+              ["Nearest", "O(V+E)", "the same BFS, ranked"],
+              ["Components", "O(V+E)", "flood fill, each node visited once"],
+              ["SCC · Tarjan", "O(V+E)", "one DFS, no repeated descent"],
+              ["Cycles · 3-colour", "O(V+E)", "DFS with a colour per node"],
+              ["Topo · Kahn", "O(V+E)", "each edge decrements one in-degree"],
+              ["Betti / triangles", "O(V·d²)", "the expensive one — d is degree"],
+            ].map(([name, big, why]) => (
+              <div key={name} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 8, fontSize: 11.5 }}>
+                  <span style={{ flex: 1, color: "#9B968D" }}>{name}</span>
+                  <span className="mono" style={{
+                    fontSize: 10.5,
+                    color: big.includes("d²") ? "#E0A34E" : "#E4E2DC",
+                  }}>{big}</span>
+                </div>
+                <span style={{ fontSize: 10.5, color: "#585550" }}>{why}</span>
+              </div>
+            ))}
+
+            <div style={{ height: 1, background: "rgba(255,255,255,.07)" }} />
+            <Label>WHERE IT RUNS</Label>
+            <div style={{ fontSize: 11.5, lineHeight: 1.65, color: "#8C8880" }}>
+              All of it in Go, server-side, in{" "}
+              <span className="mono" style={{ color: "#9B968D" }}>marginal/graphalgo</span> — one
+              call per screen, not one per lens. Switching a lens above costs a repaint,
+              not a request: every answer arrived together.
+            </div>
+            <div style={{ fontSize: 11, lineHeight: 1.6, color: "#585550" }}>
+              The exception is the layout, which runs in the browser as wasm — a force
+              simulation has to tick against what you are dragging, and a round trip per
+              frame is not a thing.
+            </div>
+          </div>
+        ) : (
+          <>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             <Label>COMPONENTS · FLOOD FILL</Label>
             <div style={{ display: "flex", gap: 4, height: 8 }}>
@@ -793,6 +893,8 @@ export function GraphAlgorithmsScreen() {
               </div>
             )}
           </div>
+          </>
+        )}
         </Inspector>
       </Body>
 

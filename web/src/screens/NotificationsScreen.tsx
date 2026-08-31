@@ -38,6 +38,7 @@ const FACETS: Array<{ id: string; label: string; kinds: string[] | null }> = [
 export function NotificationsScreen() {
   const inbox = useInbox();
   const [facet, setFacet] = useState("all");
+  const [insTab, setInsTab] = useState<"delivery" | "muted">("delivery");
 
   const active = FACETS.find((f) => f.id === facet)!;
   const shown = active.kinds === null
@@ -217,8 +218,29 @@ export function NotificationsScreen() {
 
         <Inspector
           tabs={[{ id: "delivery", label: "DELIVERY" }, { id: "muted", label: "MUTED" }]}
-          active="delivery"
+          active={insTab}
+          onSelect={(id) => setInsTab(id as "delivery" | "muted")}
         >
+        {insTab === "muted" ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <Label>MUTED</Label>
+            <div style={{ fontSize: 11.5, lineHeight: 1.65, color: "#8C8880" }}>
+              <span style={{ color: "#E0A34E" }}>Muting does not exist.</span> There is one
+              notification topic in this repo —{" "}
+              <span className="mono" style={{ color: "#9B968D" }}>auth.user_registered</span>{" "}
+              — and nothing to mute it against: no per-user preferences store, and no
+              second topic to prefer over it.
+            </div>
+            <div style={{ fontSize: 11, lineHeight: 1.6, color: "#585550" }}>
+              Every other notification-worthy event needs a feature that is not built:
+              mentions and comments (<span className="mono">v3.2.0</span>), sharing and
+              roles (<span className="mono">v3.1.0</span>). Preferences arrive with them
+              (<span className="mono">v3.3.0</span>) — a mute list before there is anything
+              to mute would be a control with nothing behind it.
+            </div>
+          </div>
+        ) : (
+          <>
           <Label>HOW THESE ARRIVE</Label>
           <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12, color: "#8C8880" }}>
             <span style={{ color: "#3FCFA8" }}>✓</span>In-app, polled every 30 s
@@ -266,6 +288,8 @@ export function NotificationsScreen() {
             Storing the quoted text would freeze it. Storing the anchor means opening a mention a
             week later lands on the right words even after everything around them was rewritten.
           </div>
+          </>
+        )}
         </Inspector>
       </Body>
 

@@ -20,9 +20,13 @@
  * /pages. Requires the stack up (docker compose up) and the dev server
  * running, plus `npm install` in tools/ for playwright-core.
  */
-const { chromium } = require('playwright-core');
-
-const MOCKUP = 'file:///Users/genuinebasilnt/projects/marginal/docs/ui-mockups/v2/index.html';
+const path = require('node:path');
+// Resolved from THIS file rather than a hardcoded home directory or the
+// caller's cwd, so the tool works in any checkout and from any working
+// directory. Running the gate from web/ used to die with MODULE_NOT_FOUND.
+const REPO = path.resolve(__dirname, '..', '..');
+const { chromium } = require(path.join(REPO, 'tools', 'node_modules', 'playwright-core'));
+const MOCKUP = 'file://' + path.join(REPO, 'docs', 'ui-mockups', 'v2', 'index.html');
 const APP = 'http://localhost:5173';
 const GW = 'http://localhost:8000';
 

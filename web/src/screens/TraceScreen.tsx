@@ -51,6 +51,7 @@ export function TraceScreen() {
   const [steps, setSteps] = useState<TraceStep[]>([]);
   const [at, setAt] = useState(0);
   const [err, setErr] = useState<string | null>(null);
+  const [insTab, setInsTab] = useState<"law" | "kinds">("law");
 
   useEffect(() => {
     if (!actorId) return;
@@ -80,6 +81,18 @@ export function TraceScreen() {
   // A single failing step makes the whole trace suspect, so the readout
   // reports the trace, not just the step you happen to be looking at.
   const allHold = steps.every((s) => s.law_holds);
+
+  /** Op kinds in this log, commonest first — the KINDS tab's histogram.
+   *  Over the whole replayed log rather than the step you are on, because
+   *  "what is in this document's history" is not a per-step question. */
+  const kindCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const s of steps) {
+      const k = describeOp(s.op.op).kind;
+      m.set(k, (m.get(k) ?? 0) + 1);
+    }
+    return [...m].sort((a, b) => b[1] - a[1]);
+  }, [steps]);
 
   if (!id) {
     return (
@@ -263,8 +276,38 @@ export function TraceScreen() {
 
         <Inspector
           tabs={[{ id: "law", label: "LAW" }, { id: "kinds", label: "KINDS" }]}
-          active="law"
+          active={insTab}
+          onSelect={(id) => setInsTab(id as "law" | "kinds")}
         >
+        {insTab === "kinds" ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <Label>OP KINDS IN THIS LOG</Label>
+            {kindCounts.length === 0 ? (
+              <div style={{ fontSize: 11.5, color: "#8C8880" }}>No ops replayed yet.</div>
+            ) : kindCounts.map(([kind, n]) => (
+              <div key={kind} style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                <span className="mono" style={{ flex: 1, fontSize: 10.5, color: "#D2CFC8" }}>{kind}</span>
+                <div style={{ width: 64, height: 4, background: "rgba(255,255,255,.06)" }}>
+                  <div style={{
+                    width: `${(n / kindCounts[0][1]) * 100}%`, height: "100%",
+                    background: /Delete/.test(kind) ? "#E0A34E" : "#7AA8E8",
+                  }} />
+                </div>
+                <span className="mono" style={{ fontSize: 9.5, color: "#8C8880", width: 30, textAlign: "right" }}>{n}</span>
+              </div>
+            ))}
+            <div style={{ height: 1, background: "rgba(255,255,255,.07)" }} />
+            <Label>TWO TIERS, ONE LOG</Label>
+            <div style={{ fontSize: 11.5, lineHeight: 1.65, color: "#8C8880" }}>
+              Kinds are prefixed <span className="mono" style={{ color: "#9B968D" }}>block:</span>{" "}
+              or <span className="mono" style={{ color: "#9B968D" }}>text:</span> — RFC-002 §2's
+              two ISA tiers. Structure and characters share one log, one flush pipeline and
+              one broadcast, which is why replay reproduces both together rather than
+              reconciling them afterwards.
+            </div>
+          </div>
+        ) : (
+          <>
           <Label>RE-CHECKED THIS STEP</Label>
           <div style={{
             border: `1px solid ${step?.law_holds === false ? "rgba(224,163,78,.4)" : "rgba(63,207,168,.35)"}`,
@@ -302,6 +345,8 @@ export function TraceScreen() {
             undo_group is why one paste undoes as one action rather than forty. NULL
             degrades to a group of one, which is why it could be added later and was not.
           </div>
+          </>
+        )}
         </Inspector>
       </Body>
 
