@@ -21,7 +21,7 @@ type DropZone = "before" | "into" | "after";
  * backend endpoint to list soft-deleted pages at all (pages.md § Delete).
  */
 export function PageTreeRail({
-  actorId, activePageId, activePagePath, blocks, onJumpToBlock,
+  actorId, activePageId, activePagePath, blocks, onJumpToBlock, activeBlockId,
 }: {
   actorId: string;
   activePageId?: string;
@@ -34,6 +34,9 @@ export function PageTreeRail({
    *  show the tree without a document (the dashboard). */
   blocks?: import("../collab/useCollabPage").BlockView[];
   onJumpToBlock?: (blockId: string) => void;
+  /** The block the caret is in — which landmark IN THIS PAGE highlights.
+   *  The reader infers this from scroll position; the editor knows it. */
+  activeBlockId?: string | null;
 }) {
   const tree = usePageTree(actorId);
   const [filter, setFilter] = useState("");
@@ -274,6 +277,7 @@ export function PageTreeRail({
         <DocumentOutline
           blocks={blocks}
           title={activePageId ? tree.nodes[activePageId]?.title ?? "" : undefined}
+          activeId={activeBlockId}
           onJump={(id) => onJumpToBlock?.(id)}
         />
       )}

@@ -692,6 +692,28 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
     check('§17 the seeded corpus has a page with character history', false, 'Anchors vs offsets missing');
   }
 
+  // ── § 04's mid-delete row ─────────────────────────────────────────────
+  //
+  // The page tree marks a page whose delete saga is in flight. uidiff cannot
+  // see it — the saga finishes in well under a settled screenshot — so it is
+  // caught here, while it is happening, by polling the API the tree reads.
+  const sagaParent = await (await fetch(`${GW}/pages`, {method:'POST',
+    headers:{'Content-Type':'application/json','X-Actor-Id':sub},
+    body: JSON.stringify({title:'Saga probe — deleted on purpose'})})).json();
+  await fetch(`${GW}/pages`, {method:'POST',
+    headers:{'Content-Type':'application/json','X-Actor-Id':sub},
+    body: JSON.stringify({title:'Saga probe child', parent_id: sagaParent.id})});
+  const preview = await (await fetch(`${GW}/pages/${sagaParent.id}/delete-preview`,
+    {headers:{'X-Actor-Id':sub}})).json();
+  check('§04 a delete says what it will take with it, before it runs',
+        (preview.pages?.length ?? preview.count ?? 0) >= 2,
+        `${preview.pages?.length ?? preview.count ?? 0} pages`);
+  await fetch(`${GW}/pages/${sagaParent.id}`, {method:'DELETE', headers:{'X-Actor-Id':sub}});
+  const trash = await (await fetch(`${GW}/trash`, {headers:{'X-Actor-Id':sub}})).json();
+  check('§04 and the whole subtree lands in the trash, not just the page named',
+        (trash.entries ?? []).filter(e => /^Saga probe/.test(e.page.title)).length >= 2,
+        `${(trash.entries ?? []).filter(e => /^Saga probe/.test(e.page.title)).length} entries`);
+
   // ── § 13 TRACE (the scratchpad) ───────────────────────────────────────
   await go('/lab/trace', 3000);
   const blk = p.locator('[contenteditable="true"]').nth(1);

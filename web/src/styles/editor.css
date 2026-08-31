@@ -178,13 +178,26 @@
 
 /* ── presence ───────────────────────────────────────────────────────────── */
 
+/* Positioned, because the coordinates are MEASURED.
+   RichEditorPane resolves a peer's rune offsets to a DOM Range and reads
+   getBoundingClientRect() off it — viewport coordinates. Without a position
+   the inline top/left it sets are inert, and the caret renders in normal
+   flow at the end of the article instead: a purple bar and a name tag
+   stuck to the bottom of the document, nowhere near the peer.
+
+   pointer-events: none because it is an overlay drawn ON the text. A caret
+   that swallows a click is worse than no caret — it made a control under it
+   unclickable, which is how this was found. */
 .peer-caret {
+  position: fixed;
+  pointer-events: none;
   display: inline-block;
   width: 1.5px;
   height: .95em;
   background: #A98CE8;
   vertical-align: -.12em;
   margin: 0 1px;
+  z-index: 6;
 }
 .peer-caret-tag {
   font: 600 8.5px 'Archivo', sans-serif;
@@ -194,7 +207,7 @@
   vertical-align: .5em;
   margin-left: 2px;
 }
-.peer-selection { background: rgba(169,140,232,.18); }
+.peer-selection { position: fixed; pointer-events: none; background: rgba(169,140,232,.18); z-index: 5; }
 
 .avatars { display: flex; gap: 5px; align-items: center; }
 .dot { position: relative; width: 6px; height: 6px; flex: none; }

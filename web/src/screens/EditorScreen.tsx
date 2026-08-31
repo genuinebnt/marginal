@@ -87,6 +87,7 @@ export function EditorScreen() {
   }, [collab.blocks.length]);
   const opsPerSecond = opsWindow[opsWindow.length - 1] ?? 0;
 
+  const [caretBlock, setCaretBlock] = useState<string | null>(null);
   const caretRef = useRef<{ blockId: string | null; start: number; end: number } | null>(null);
   useEffect(() => {
     if (!id) return;
@@ -266,6 +267,7 @@ export function EditorScreen() {
           activePageId={id}
           activePagePath={activePage?.path}
           blocks={collab.blocks}
+          activeBlockId={caretBlock}
           onJumpToBlock={(blockId) => {
             document
               .querySelector(`[data-block-id="${blockId}"]`)
@@ -282,6 +284,16 @@ export function EditorScreen() {
               onRename={handleRename}
               onCaretMoved={(blockId, start, end) => {
                 caretRef.current = { blockId, start, end };
+                // Which landmark you are IN, for the outline. The caret is a
+                // better answer to that than scroll position — the reader has
+                // to infer it from what is on screen, but the editor knows
+                // exactly where you are working.
+                // Only when it actually CHANGES. selectionchange fires on
+                // every caret move including ones a re-render causes, so
+                // setting state unconditionally re-rendered the editor on
+                // each one — enough to peg the tab and make a click time
+                // out. The outline only cares which block, not the offsets.
+                setCaretBlock((cur) => (cur === blockId ? cur : blockId));
               }}
               diagnostics={diagnostics ?? undefined}
               actorId={actorId}

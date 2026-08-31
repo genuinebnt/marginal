@@ -285,6 +285,12 @@ export function RichEditorPane({
   // Each EditableTextBlock stamps its own block id via BLOCK_ID_ATTR so
   // the selection can be mapped back to a block without a second ref
   // table.
+  // Held in a ref so this listener is subscribed once. The prop is an inline
+  // arrow at every call site, so putting it in the dep array below would
+  // tear down and re-add a document listener on every render.
+  const caretMovedRef = useRef(onCaretMoved);
+  caretMovedRef.current = onCaretMoved;
+
   useEffect(() => {
     function onSelectionChange() {
       const sel = window.getSelection();
@@ -309,6 +315,12 @@ export function RichEditorPane({
         return;
       }
       setCursor(blockId, offsets.start, offsets.end);
+      // The same answer the peers get. Which landmark IN THIS PAGE
+      // highlights is "where is the caret", and this listener is the only
+      // place that knows it for a text block — CodeBlockField reports its
+      // own separately, because a textarea's selection is not part of
+      // window.getSelection() at all.
+      caretMovedRef.current?.(blockId, offsets.start, offsets.end);
       if (sel.isCollapsed || offsets.start === offsets.end) {
         setBubble(null);
         return;
@@ -803,9 +815,9 @@ export function RichEditorPane({
                 style={{ top: r.top, left: r.left, width: r.width, height: r.height }}
               />
             ))}
-            <div className="peer-caret" style={{ top: caretRect.top, left: caretRect.left, height: caretRect.height || 20 }}>
+            <span className="peer-caret" style={{ top: caretRect.top, left: caretRect.left, height: caretRect.height || 20 }}>
               <span className="peer-caret-tag">{actorTag(actorId)}</span>
-            </div>
+            </span>
           </div>
         ))}
 

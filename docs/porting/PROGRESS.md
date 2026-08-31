@@ -5020,3 +5020,99 @@ missing: an active outline item, a caret, presence dots, an AI avatar, a
 completed task row) — pre-existing, unrelated to this change (verified by
 re-running against the unmodified CSS), and recorded here as the next
 thing to fix rather than left to be discovered again.
+
+---
+
+## § 04 EDITOR reaches zero for the first time (2026-08-31)
+
+The editor's own gate had never passed. It was recorded as "9 missing"
+when the § 16 work touched it; this is that debt paid, and four of the
+nine turned out to be real defects rather than unreached states.
+
+### Two real bugs in the editor
+
+**Peer carets were not positioned.** `RichEditorPane` resolves a peer's
+rune offsets to a DOM `Range` and reads `getBoundingClientRect()` off it —
+viewport coordinates, written to inline `top`/`left`. But neither
+`.peer-caret` nor `.peer-selection` had a `position`, so those coordinates
+were **inert**: the caret rendered in normal flow at the end of the
+article, a purple bar and a name tag stuck to the bottom of the document,
+nowhere near the person it belonged to. Both are `position: fixed` now,
+and `pointer-events: none` — an overlay drawn on the text that swallows a
+click is worse than no overlay, which is how it was found (a control
+underneath stopped being clickable and a check timed out on it).
+
+**The editor's outline never highlighted anything.** The reader computes
+which landmark you are in from scroll position and passes `activeId`; the
+editor passed nothing, so `IN THIS PAGE` had no active row ever. The
+editor has a better answer than the reader does — it knows where the
+*caret* is, and already broadcasts exactly that to peers on every
+`selectionchange`. It reports the same thing to the outline now.
+
+That change needed a guard the first version did not have: `selectionchange`
+fires on caret moves a re-render itself causes, so setting state
+unconditionally re-rendered the editor on every one. Enough to peg the tab
+and make a click time out. It only sets state when the block actually
+changes.
+
+### Two corpus gaps
+
+**Nothing in the corpus was both nested and carried an h3**, so the
+outline's third level and the rail's depth guides could not be seen at
+once by anybody. "Lexing is a state machine" is a child of "Front end, end
+to end" now — which is also the true relationship, lexing being the first
+pass of a front end.
+
+**A peer's cursor frame is nested** (`{type:"cursor", cursor:{…}}`,
+`wsapi.clientMessage`). The seed sent it flat, which parses as a cursor
+naming no block — read by the server as "blurred out of every block". The
+peer showed as present and *reading*, and no caret was drawn. Sent
+correctly it draws.
+
+### Three mockup corrections
+
+- **The assistant came out of § 04.** `RELEASES.md` puts it at `v4.4.0`
+  and `§ 24d` is its own section; an `av-ai` avatar and APPLY / CREATE
+  PAGE chips in the editor's chrome describe a screen nobody can build for
+  three minors.
+- **The peer caret takes the app's structure**, not the mockup's. The
+  mockup typed a `<span class="caret">` into the prose; a real caret's
+  position has to be computed, so it is an overlay with its own tag
+  element. The app's version is the correct one.
+- **The inspector's active tab was CHECKS while the panel drawn below it
+  was LIVE IN THIS PAGE**, which belongs to PRESENCE. The tab now matches
+  the panel.
+
+### What the tool was calling a defect and should not have
+
+26 of § 04's property diffs were the page tree's own rows: a bar takes its
+topic's colour, a title goes bold when it is the open page, a number goes
+ember when it is the active one. Pairing the mockup's fourth row against
+the app's fourth row compares **one corpus's topics against another's**.
+That is the same rule uidiff already applies to text — body content
+legitimately differs, so only chrome text is compared — and it now applies
+to the properties that are functions of content: `.tr-bar`'s background,
+`.tr-t`'s weight, `.tr-n`'s colour, `.tr`'s indent (a row's depth),
+`.oi-t`/`.oi-k` (which landmark is active, and a landmark's kind colour),
+`.rd-v`'s tone (a readout's value takes its colour from what it reports).
+What the design system actually fixes about those rows — padding, gap,
+size, family — is still compared.
+
+Chrome text now strips a trailing count before comparing. A tab reading
+CHECKS where the mockup says PROBLEMS is a finding; `CHECKS 1` against
+`CHECKS 2` is a report that the two corpora differ, which is the tool's
+premise rather than a defect.
+
+**One state is unreachable and is ignored with the reason.** The tree's
+mid-delete row (`lifecycle_state = 'deleting'`) is really rendered, but
+the delete saga finishes in under 200ms at this scale — measured: a page
+with a child went from DELETE to gone before the first poll returned. A
+transient is not what a diff of a settled screen can see, so uidiff skips
+it and `verify.js` asserts the same machinery where it can be caught: the
+delete preview names the whole subtree, and the whole subtree lands in the
+trash.
+
+**Gate:** `uidiff 04 /pages/<Lexing is a state machine>` → missing 0 ·
+property 0 · chrome text 0. The seed brings a real second actor onto the
+page over its own socket, because presence is real join/leave and "someone
+else is here" cannot be faked into existence.

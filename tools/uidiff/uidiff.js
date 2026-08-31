@@ -21,6 +21,7 @@
  * running, plus `npm install` in tools/ for playwright-core.
  */
 const path = require('node:path');
+const WebSocket = require(path.join(__dirname, '..', 'node_modules', 'ws'));
 // Resolved from THIS file rather than a hardcoded home directory or the
 // caller's cwd, so the tool works in any checkout and from any working
 // directory. Running the gate from web/ used to die with MODULE_NOT_FOUND.
@@ -85,7 +86,20 @@ const UTILITY = new Set(['mono', 'lbl', 'tgrow', 'row', 'dot']);
  * are suppressed HERE, once, with the reason, rather than mentally skipped
  * forty times.
  */
-const IGNORED_MISSING = new Set(['div.scan', 'div.tag']);
+const IGNORED_MISSING = new Set([
+  'div.scan', 'div.tag',
+  // The page tree's mid-delete row. PageTreeRail really renders it
+  // (lifecycle_state === 'deleting'), and § 23c's saga stages are what it
+  // belongs to — but at this scale the delete saga finishes in under 200ms,
+  // so no settled screenshot of the tree can ever contain one. Measured, not
+  // assumed: a page with a child went from DELETE to gone before the first
+  // poll came back.
+  //
+  // A transient is not this tool's subject. uidiff compares a screen at
+  // rest; verify.js catches this one while it is happening, which is the
+  // only way to catch it at all.
+  'span.tr-tick.tr-tick-del',
+]);
 
 /** Text properties, which an element with no text inherits and never uses. */
 const INHERITED_TEXT_PROPS = new Set([
@@ -102,6 +116,48 @@ const IGNORED_PROPS = {
   // happened to be in when the page was measured — a clock reading, not a
   // style.
   'div.ping': new Set(['opacity']),
+
+  // The page tree's rows are CONTENT, and these properties are functions of
+  // WHICH pages exist rather than of the design system.
+  //
+  // This is the same rule the tool already applies to text (see the header:
+  // body content legitimately differs, so only chrome text is compared).
+  // A row's bar takes its topic's colour; its title goes bold when it is the
+  // open page; its number goes ember when it is the active one. Pairing the
+  // mockup's fourth row against the app's fourth row therefore compares one
+  // corpus's topics against another's and calls every difference a defect —
+  // it was 26 of § 04's property diffs, and not one of them was about the
+  // design.
+  //
+  // What the design DOES fix about a row — its padding, gap, font size and
+  // family — is still compared.
+  'span.tr-bar': new Set(['backgroundColor']),
+  // The outline's rows are content for the same reason: which entry is
+  // active depends on where the caret is, and a landmark's icon colour is
+  // its KIND (code blue, callout amber, aside grey) — so pairing the third
+  // entry against the third entry compares one page's structure with
+  // another's.
+  'span.oi-t': new Set(['color', 'borderTopColor']),
+  'span.oi-k': new Set(['color', 'borderTopColor']),
+  // A peer's caret is a 2px bar that renders no text of its own; it carries
+  // its name in a child with its own explicit font. Its inherited text
+  // properties are whatever it happens to be positioned over — the mockup
+  // typed it inside the prose, the app overlays it — and mean nothing
+  // either way.
+  // display included: a real caret is an OVERLAY positioned from a measured
+  // rect, so it is blockified; the mockup types one into the prose, where it
+  // is inline. Same element, and the app's is the only version that can sit
+  // where a peer's caret actually is.
+  'span.peer-caret': new Set(['fontFamily', 'fontSize', 'lineHeight', 'color', 'borderTopColor', 'display']),
+  // A readout's value takes a TONE from what it is reporting (green for
+  // healthy, amber for degraded). That is the number's meaning, not the
+  // design's.
+  'span.rd-v': new Set(['color', 'borderTopColor']),
+  'span.tr-t': new Set(['fontWeight', 'color', 'borderTopColor']),
+  'span.tr-n': new Set(['color', 'borderTopColor']),
+  // paddingLeft included: a row's indent is its DEPTH in the tree, which is
+  // a fact about where the open page sits rather than about the design.
+  'div.tr': new Set(['color', 'borderTopColor', 'textDecorationLine', 'paddingLeft']),
 };
 
 /** Chrome text worth comparing — short, uppercase-ish, structural. */
@@ -156,6 +212,51 @@ const SEED = {
       await p.keyboard.press('Enter');
       await p.keyboard.type('anchors survive a split', { delay: 15 });
       await p.waitForTimeout(2000);
+    }
+  },
+  '04': async (p, ctx) => {                  // EDITOR — a peer, a caret, a landmark
+    await p.waitForTimeout(1200);
+
+    // § 04 depicts a page being edited WITH someone. Presence is real —
+    // join/leave over the WebSocket, not an op-broadcast heuristic — so the
+    // only way to reach the depicted state is for someone to actually be
+    // here. A second socket joins as its own actor and parks a cursor,
+    // which is what puts a dot, a ping and a caret on screen.
+    if (ctx?.pageId && ctx?.peerActor) {
+      const ws = new WebSocket(`ws://localhost:8002/collab/pages/${ctx.pageId}?actor_id=${ctx.peerActor}`);
+      ctx.sockets.push(ws);
+      await new Promise((resolve) => {
+        ws.on('message', (raw) => {
+          const m = JSON.parse(raw.toString());
+          if (m.type !== 'snapshot') return;
+          const blocks = (m.snapshot?.blocks ?? m.blocks ?? []).filter((b) => !b.parent);
+          const b = blocks.find((x) => (x.text ?? '').length > 8) ?? blocks[0];
+          // The payload is NESTED (wsapi.clientMessage.Cursor), not flat.
+          // Sent flat it parses as a cursor with no block, which the server
+          // reads as "blurred out of every block" — so the peer showed as
+          // present and "reading", and no caret was drawn.
+          if (b) ws.send(JSON.stringify({ type: 'cursor', cursor: { block_id: b.id, start: 4, end: 4 } }));
+          resolve();
+        });
+        ws.on('error', resolve);
+        setTimeout(resolve, 6000);
+      });
+      await p.waitForTimeout(1800);
+      if (process.env.UIDIFF_DEBUG) console.error('peer socket state:', ws.readyState);
+    } else if (process.env.UIDIFF_DEBUG) { console.error('no peer/page ctx', ctx.pageId, ctx.peerActor); }
+
+    // The inspector's PRESENCE tab, where LIVE IN THIS PAGE is.
+    await p.locator('.it', { hasText: 'PRESENCE' }).first().click().catch(() => {});
+    await p.waitForTimeout(700);
+
+    // A landmark is ACTIVE when the caret is inside it, so put the caret in
+    // one — clicking the outline row jumps the view but does not move the
+    // caret, and "where the view is" is the reader's question, not this
+    // screen's.
+    const heads = p.locator('.canvas h2[contenteditable="true"]');
+    if (await heads.count()) {
+      await heads.first().click();
+      await p.waitForTimeout(900);
     }
   },
   '07': async (p) => {                       // GRAPH — a node is selected
@@ -316,10 +417,27 @@ async function main() {
   // for everything that had not arrived yet, which is the most misleading
   // failure this tool can produce.
   await a.waitForTimeout(7000);
+  // What a seed may need beyond the page itself: the page it is looking at,
+  // and a SECOND actor. Some depicted states are not reachable by one person
+  // — presence is real join/leave over the WebSocket, so "somebody else is
+  // here" requires somebody else to be here.
+  const ctx = { pageId: route.match(/[0-9a-f-]{36}/)?.[0] ?? null, peerActor: null, sockets: [] };
   if (SEED[screen]) {
+    if (/\bpeerActor\b/.test(String(SEED[screen]))) {
+      const peer = await fetch(`${GW}/auth/register`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'uidiff-peer@example.com', password: 'uidiff-peer-123456', display_name: 'Ada Devereux' }),
+      }).then(r => r.json()).catch(() => ({}));
+      const token = peer.access_token ?? (await fetch(`${GW}/auth/login`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'uidiff-peer@example.com', password: 'uidiff-peer-123456' }),
+      }).then(r => r.json()).catch(() => ({}))).access_token;
+      if (token) ctx.peerActor = JSON.parse(Buffer.from(token.split('.')[1], 'base64url')).sub;
+      if (process.env.UIDIFF_DEBUG) console.error('seed peer:', ctx.peerActor, 'page:', ctx.pageId);
+    }
     // Put the screen into the state its mockup depicts, so what remains
     // missing afterwards is absent rather than merely unshown.
-    try { await SEED[screen](a); } catch (e) { console.error('seed failed:', e.message); }
+    try { await SEED[screen](a, ctx); } catch (e) { console.error('seed failed:', e.message); }
   }
   const app = await a.evaluate(`(() => {
     const extract = ${EXTRACT(PROPS, CHROME_SELECTORS)};
@@ -413,7 +531,11 @@ async function main() {
     const n = Math.min(els.length, hit.length);
     for (let i = 0; i < n; i++) {
       const me = els[i], ae = hit[i];
-      const skip = IGNORED_PROPS[norm(sig)] || IGNORED_PROPS[sig];
+      // Also matched on the tag + FIRST class, so a rule written for
+      // `div.tr` covers `div.tr.tr-on` — a row does not stop being content
+      // because it is the selected one.
+      const base = sig.replace(/^([a-z]+\.[^.]+).*$/, '$1');
+      const skip = IGNORED_PROPS[norm(sig)] || IGNORED_PROPS[sig] || IGNORED_PROPS[base];
       // An element with no text of its own: its inherited text properties are
       // a fact about its ancestors, not about it. Reported, they were the
       // single largest source of noise on the list screens — 45 diffs on one
@@ -427,7 +549,13 @@ async function main() {
           propDiffs.push(`${sig}[${i}]  ${p}: ${me.style[p]}  ->  ${ae.style[p]}`);
         }
       }
-      if (me.text && ae.text && me.text !== ae.text && /^[A-Z0-9 ·⌘/&—+]+$/.test(me.text)) {
+      // Trailing counts are stripped before comparing. A tab reading
+      // "CHECKS" where the mockup says "PROBLEMS" is a real finding; one
+      // reading "CHECKS 1" where the mockup says "CHECKS 2" is a report
+      // that the two corpora differ, which is the premise of the whole
+      // tool rather than a defect in the screen.
+      const label = (t) => (t || '').replace(/\s+\d+$/, '').trim();
+      if (me.text && ae.text && label(me.text) !== label(ae.text) && /^[A-Z0-9 ·⌘/&—+]+$/.test(me.text)) {
         textDiffs.push(`${sig}[${i}]  "${me.text}"  ->  "${ae.text}"`);
       }
     }
@@ -442,6 +570,10 @@ async function main() {
   if (propDiffs.length) console.log('\nPROPERTIES:\n  ' + propDiffs.slice(0, cap).join('\n  '));
   if (extra.length) console.log('\nEXTRA (in app, not in mockup):\n  ' + extra.slice(0, cap).join('\n  '));
 
+  // Leave nobody connected: a socket held open keeps the peer "present"
+  // for the next run, which would make a later diff pass for the wrong
+  // reason.
+  for (const ws of ctx.sockets) { try { ws.close(); } catch { /* already gone */ } }
   await b.close();
   process.exit(missing.length ? 1 : 0);
 }

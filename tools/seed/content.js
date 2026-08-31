@@ -101,6 +101,12 @@ impl LineMap {
   },
   {
     title: 'Lexing is a state machine',
+    // A child of the front-end page it is the first pass of. Also the
+    // corpus's only page that is BOTH nested and carries an h3, which is
+    // the state § 04 depicts: depth guides in the rail and three heading
+    // levels in the outline. Without it the outline's third level and the
+    // rail's guides could not both be seen at once by anybody.
+    parent: 'Front end, end to end',
     topic: 'interface', tags: ['compilers', 'parsing'],
     blocks: [
       ['p', `A lexer is a deterministic finite automaton with an output tape. That framing is not an analogy or a teaching device — it is how you should implement it, because it tells you the cost up front: one pass, one byte at a time, no backtracking, no allocation in the common case.`],
