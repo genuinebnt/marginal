@@ -96,7 +96,7 @@ a{color:#E8873C}a:hover{color:#F2A264}
    The page tree answers "where am I in the workspace". This answers "where
    am I in the page", which is a different question and deserves its own
    section rather than a tab you have to go find. */
-.oi{display:flex;align-items:baseline;gap:8px;padding:4px 9px;white-space:nowrap;overflow:hidden;cursor:pointer}
+.oi{display:flex;flex:none;align-items:baseline;gap:8px;padding:4px 9px;white-space:nowrap;overflow:hidden;cursor:pointer}
 .oi:hover{background:#181A1B}
 .oi-m{font:600 8px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#4B4842;width:16px;flex:none}
 /* 12.5px, not 12: the rail is the surface you scan most, and a half

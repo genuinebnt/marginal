@@ -4974,3 +4974,49 @@ reseed exposed them:
 
 The recurring lesson, third instance this stretch: **waiting on anything
 other than the thing you assert on is a future intermittent failure.**
+
+---
+
+## § 16 runs off the main thread; the outline rail was being crushed (2026-08-31)
+
+**The benchmark moved into a Web Worker.** Go compiled to wasm runs on
+whichever thread instantiated it, and § 16's budget is two seconds — two
+seconds during which the tab could not paint, scroll or answer a click,
+on a screen whose subject is latency. The screen said so honestly, which
+did not make it less of a defect.
+
+`bench-core/worker.ts` holds its own instance; `runtime.ts` is the loading
+both paths share. Node keeps the direct path, because a test has no worker
+and no tab and routing it through one would test the plumbing instead of
+the benchmark. The two-second bound stays for the reason it always had —
+a run has to end somewhere it can name — and the three places that
+explained the bound as "otherwise the tab freezes" now say what is
+actually true.
+
+**The outline rail was crushing its own rows, and this was measured
+rather than eyeballed.** `IN THIS PAGE` is a flex column with
+`max-height: 260px`, and flex items shrink before a container scrolls — so
+on a page with eighteen landmarks every row was squeezed to **13.5px
+around 14px of text**, and `.oi`'s own `overflow: hidden` cropped the
+difference. Descenders were sliced off every row.
+
+`.oi` gets `flex: none`: a row is its own height and the list scrolls,
+which is what `overflow-y: auto` was there for. Rows measure 22px now —
+14px of text inside 4px padding, exactly the mockup's spec. Fixed in
+`mockup.css` and in the mockup itself, since they are the same rule.
+
+Worth naming as a class: **a flex column with a max-height silently
+resizes its children instead of scrolling.** Nothing errors, nothing
+warns, and it gets worse the more content there is — so it looks like a
+design choice until you measure a row against its own text.
+
+**One more racing check.** `§02 and it converges` waited for "converged"
+and then re-read the page to assert on it. The panel loops, so the word
+could appear and be replaced by "in flight" before the assert looked. The
+wait's own success is the evidence now.
+
+**Gate:** full sweep **122 ok**. § 04's own uidiff is *not* at zero (9
+missing: an active outline item, a caret, presence dots, an AI avatar, a
+completed task row) — pre-existing, unrelated to this change (verified by
+re-running against the unmodified CSS), and recorded here as the next
+thing to fix rather than left to be discovered again.

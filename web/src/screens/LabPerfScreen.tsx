@@ -252,8 +252,9 @@ export function LabPerfScreen() {
                 {budgeted && (
                   <span style={{ color: "#E0A34E" }}>
                     {" "}Stopped on its own clock after {num(result?.ran ?? 0)} of{" "}
-                    {num(result?.samples ?? 0)} — wasm runs on this page's thread,
-                    so a run that overruns freezes the tab rather than taking longer.
+                    {num(result?.samples ?? 0)} — the run is bounded at two seconds so it
+                    ends somewhere stated, and this one hit that bound rather than the
+                    sample count.
                   </span>
                 )}
                 {clamped && (
@@ -405,11 +406,12 @@ export function LabPerfScreen() {
 
       <StatusBar
         route="/lab/perf"
-        // The freeze is real and stated rather than hidden: wasm
-        // runs on this page's own thread, so the tab stops
-        // painting for the length of a run. Bounded at two
-        // seconds, which is why it is bounded at all.
-        mechanism={`benchmark ran locally · ${num(result?.ran ?? 0)} samples · the tab stops painting while it runs`}
+        // Go compiled to wasm runs on whichever thread instantiated
+        // it, so this ran in a Web Worker: two seconds of a screen
+        // about latency being unable to paint is the one thing it
+        // must not do. The two-second bound stays, for the reason it
+        // always had — a run has to end somewhere it can name.
+        mechanism={`benchmark ran locally, in a worker · ${num(result?.ran ?? 0)} samples · bounded at 2s`}
         state={result
           ? `p99.9 ${dur(result.p999_ns)} — measured here, not quoted`
           : "running…"}

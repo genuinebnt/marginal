@@ -209,7 +209,7 @@ func Run(w Workload, samples int) Result {
 	// reported rather than the count asked for.
 	//
 	// wasm runs on the page's own thread: a benchmark that
-	// overruns does not "take longer", it freezes the tab it
+	// overruns does not "take longer" — it holds the thread it
 	// is drawing into. Bounding the run is therefore part of
 	// the screen working, and saying which bound was hit —
 	// samples or seconds — is part of the numbers meaning

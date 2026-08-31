@@ -31,10 +31,12 @@ export interface BenchResult {
    *  and the wall-clock budget can stop it earlier still. */
   ran: number;
   /** True when the run stopped on the clock rather than on the
-   *  sample count. wasm holds the page's thread, so a run that
-   *  overruns freezes the tab — the bound is part of the screen
-   *  working, and which bound was hit is part of the numbers
-   *  meaning anything. */
+   *  sample count. The bound exists so a run ends somewhere
+   *  stated, and which bound it hit is part of the numbers
+   *  meaning anything. (It used to also be what kept the tab
+   *  alive: the benchmark ran on the main thread. It runs in a
+   *  Web Worker now, so overrunning costs a worker's time, not
+   *  the page's.) */
   budgeted: boolean;
   buckets: Bucket[];
   p50_ns: number;
@@ -70,12 +72,8 @@ export interface WorkloadInfo {
   max_samples: number;
 }
 
-interface WasmResult { value: string | null; error: string | null }
-interface BenchWasmExports {
-  benchRun(reqJson: string): WasmResult;
-  benchList(): WasmResult;
-}
-interface GoRuntime { importObject: WebAssembly.Imports; run(i: WebAssembly.Instance): Promise<void> }
+import { instantiateBench, type BenchWasmExports, type WasmResult } from "./runtime";
+import type { BenchRequest } from "./worker";
 
 export class BenchCoreError extends Error {
   constructor(message: string) {
@@ -91,50 +89,75 @@ function unwrap<T>(result: WasmResult): T {
 
 const isNode = typeof process !== "undefined" && process.versions?.node != null;
 
-async function loadGoRuntime(): Promise<void> {
-  if (typeof (globalThis as { Go?: unknown }).Go !== "undefined") return;
-  const source = isNode
-    ? await (await import("node:fs/promises")).readFile(
-        new URL("../../public/wasm_exec.js", import.meta.url), "utf-8")
-    : await (await fetch(wasmExecURL())).text();
-  new Function(source)();
+/**
+ * In the browser the benchmark runs in a Web Worker; under Node (the tests)
+ * it runs right here.
+ *
+ * The reason is § 16's whole subject. Go compiled to wasm runs on the thread
+ * that instantiated it, and the benchmark's budget is two seconds — two
+ * seconds in which a main-thread run cannot paint, scroll or answer a click,
+ * on a screen about latency. A worker costs one more instance of the module
+ * (fetched from cache) and buys back the tab.
+ *
+ * Node keeps the direct path because a test has no worker and no tab, and
+ * routing it through one would test the plumbing rather than the benchmark.
+ */
+let workerPort: Worker | null = null;
+let nextId = 1;
+const pending = new Map<number, (r: WasmResult) => void>();
+
+function worker(): Worker {
+  if (!workerPort) {
+    workerPort = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
+    workerPort.onmessage = (e: MessageEvent<{ id: number; result: WasmResult }>) => {
+      pending.get(e.data.id)?.(e.data.result);
+      pending.delete(e.data.id);
+    };
+  }
+  return workerPort;
 }
 
-async function fetchWasmBytes(): Promise<ArrayBuffer> {
-  if (isNode) {
-    const { readFile } = await import("node:fs/promises");
-    const buf = await readFile(new URL("../../public/bench.wasm", import.meta.url));
-    return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
-  }
-  const res = await fetch(wasmURL("bench"));
-  return res.arrayBuffer();
+function ask(req: Omit<BenchRequest, "id">): Promise<WasmResult> {
+  const id = nextId++;
+  return new Promise((resolve) => {
+    pending.set(id, resolve);
+    worker().postMessage({ ...req, id });
+  });
 }
 
 let loadPromise: Promise<BenchWasmExports> | null = null;
 
+/** The in-process instance — Node only. */
 export function loadBenchCore(): Promise<BenchWasmExports> {
-  if (!loadPromise) loadPromise = instantiate();
+  if (!loadPromise) {
+    loadPromise = instantiateBench(
+      async () => isNode
+        ? (await import("node:fs/promises")).readFile(
+            new URL("../../public/wasm_exec.js", import.meta.url), "utf-8")
+        : (await fetch(wasmExecURL())).text(),
+      async () => {
+        if (isNode) {
+          const { readFile } = await import("node:fs/promises");
+          const buf = await readFile(new URL("../../public/bench.wasm", import.meta.url));
+          return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+        }
+        return (await fetch(wasmURL("bench"))).arrayBuffer();
+      },
+    );
+  }
   return loadPromise;
 }
 
-async function instantiate(): Promise<BenchWasmExports> {
-  await loadGoRuntime();
-  const Go = (globalThis as unknown as { Go: new () => GoRuntime }).Go;
-  const go = new Go();
-  const bytes = await fetchWasmBytes();
-  const { instance } = await WebAssembly.instantiate(bytes, go.importObject);
-  void go.run(instance); // never resolves — Go's main() blocks in select{}
-  return globalThis as unknown as BenchWasmExports;
-}
-
 export async function listWorkloads(): Promise<WorkloadInfo[]> {
-  const api = await loadBenchCore();
-  return unwrap<{ workloads: WorkloadInfo[] }>(api.benchList()).workloads;
+  if (isNode) return unwrap<{ workloads: WorkloadInfo[] }>((await loadBenchCore()).benchList()).workloads;
+  return unwrap<{ workloads: WorkloadInfo[] }>(await ask({ kind: "list" })).workloads;
 }
 
 export async function runBench(workload: string, samples: number): Promise<BenchResult> {
-  const api = await loadBenchCore();
-  return unwrap<BenchResult>(api.benchRun(JSON.stringify({ workload, samples })));
+  if (isNode) {
+    return unwrap<BenchResult>((await loadBenchCore()).benchRun(JSON.stringify({ workload, samples })));
+  }
+  return unwrap<BenchResult>(await ask({ kind: "run", workload, samples }));
 }
 
 /** ns → the "2 ms" / "480 µs" form § 16 prints. Mirrors bench.Duration

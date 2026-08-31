@@ -574,9 +574,13 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
   await p.waitForTimeout(3000);
   const later = await paneText();
   check('§02 the live panel actually runs', first !== later, `${first.length} → ${later.length}`);
-  await p.waitForFunction(() => /converged/.test(document.body.innerText),
-    null, { timeout: 20000 }).catch(() => {});
-  check('§02 and it converges', /converged/.test(await txt()));
+  // The wait IS the evidence. Re-reading the page afterwards is a race: the
+  // panel loops, so "converged" can appear and be replaced by "in flight"
+  // before the assert gets to look.
+  const convergedSeen = await p.waitForFunction(
+    () => /converged/.test(document.body.innerText),
+    null, { timeout: 25000 }).then(() => true).catch(() => false);
+  check('§02 and it converges', convergedSeen);
   check('§02 it says the panel is the real transform, not an animation',
         /runs the real transform, in wasm/.test(await txt()));
 
