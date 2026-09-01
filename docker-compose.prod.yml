@@ -208,6 +208,9 @@ services:
       context: .
       dockerfile: services/notification-service/Dockerfile
     environment:
+      # Reached directly by the browser, so it verifies tokens itself
+      # (ADR-013 §1) — same JWKS as the gateway and the socket.
+      AUTH_SERVICE_JWKS_URL: http://auth-service:8006/.well-known/jwks.json
       DATABASE_URL: postgres://notification_service:${NOTIFICATION_DB_PASSWORD}@notification-db:5432/notification_service?sslmode=disable
       NATS_URL: nats://nats:4222
       CORS_ALLOWED_ORIGIN: ${PUBLIC_ORIGIN}

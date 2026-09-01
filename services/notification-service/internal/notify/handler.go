@@ -1,24 +1,49 @@
 package notify
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 )
 
+// TokenVerifier turns a bearer token into an actor id — an interface at
+// its point of use, mirroring wsapi.TokenVerifier and authmw.TokenVerifier.
+// The three entry points that are NOT behind api-gateway should describe
+// this dependency the same way.
+type TokenVerifier interface {
+	Subject(ctx context.Context, token string) (uuid.UUID, error)
+}
+
 // Handler exposes ListForUser over plain HTTP — reached directly by the
 // browser, same as collaboration-service's WebSocket, not proxied through
 // api-gateway (that shim only translates document-service/auth-service's
-// gRPC; nothing here is gRPC). Actor identity is the same temporary
-// X-Actor-Id header stand-in pages.md/auth.md already document.
+// gRPC; nothing here is gRPC).
+//
+// Which is exactly why it verifies the token itself (ADR-013 §1). This
+// service was missed in that pass and kept reading X-Actor-Id — a header
+// the SPA had stopped sending, so every inbox came back empty and the
+// unread badge silently vanished from every screen's top bar. An
+// authorization gap and a UI regression from the same line.
 type Handler struct {
-	repo Repo
+	repo     Repo
+	verifier TokenVerifier
 }
 
-func NewHandler(repo Repo) *Handler { return &Handler{repo: repo} }
+// NewHandler. verifier is required: a nil one would mean this endpoint
+// serves anybody's inbox to anybody, which is the state ADR-013 exists to
+// leave behind.
+func NewHandler(repo Repo, verifier TokenVerifier) *Handler {
+	if verifier == nil {
+		panic("notify: NewHandler requires a TokenVerifier")
+	}
+	return &Handler{repo: repo, verifier: verifier}
+}
 
 func (h *Handler) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("GET /notifications", h.list)
@@ -38,14 +63,9 @@ type notificationJSON struct {
 }
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
-	actorID := r.Header.Get("X-Actor-Id")
-	if actorID == "" {
-		writeError(w, http.StatusUnauthorized, "missing X-Actor-Id")
-		return
-	}
-	userID, err := uuid.Parse(actorID)
+	userID, err := h.actorFrom(r)
 	if err != nil {
-		writeError(w, http.StatusUnauthorized, "invalid X-Actor-Id")
+		writeError(w, http.StatusUnauthorized, "a valid access token is required")
 		return
 	}
 
@@ -74,18 +94,28 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"notifications": out, "unread": unread})
 }
 
-// actor resolves the temporary X-Actor-Id stand-in, writing the error itself
-// so each handler is a straight line rather than a repeated eight-line
-// preamble.
-func (h *Handler) actor(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
-	actorID := r.Header.Get("X-Actor-Id")
-	if actorID == "" {
-		writeError(w, http.StatusUnauthorized, "missing X-Actor-Id")
-		return uuid.Nil, false
+// actorFrom verifies the bearer token and returns its subject.
+//
+// One error for every failure — missing, malformed, expired, badly signed.
+// Which one it was describes the server's key state, and answering that for
+// free is how the state gets mapped.
+func (h *Handler) actorFrom(r *http.Request) (uuid.UUID, error) {
+	const prefix = "Bearer "
+	h2 := r.Header.Get("Authorization")
+	if len(h2) <= len(prefix) || !strings.EqualFold(h2[:len(prefix)], prefix) {
+		return uuid.Nil, errUnauthenticated
 	}
-	userID, err := uuid.Parse(actorID)
+	return h.verifier.Subject(r.Context(), strings.TrimSpace(h2[len(prefix):]))
+}
+
+var errUnauthenticated = errors.New("notify: unauthenticated")
+
+// actor writes the error itself so each handler is a straight line rather
+// than a repeated preamble.
+func (h *Handler) actor(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
+	userID, err := h.actorFrom(r)
 	if err != nil {
-		writeError(w, http.StatusUnauthorized, "invalid X-Actor-Id")
+		writeError(w, http.StatusUnauthorized, "a valid access token is required")
 		return uuid.Nil, false
 	}
 	return userID, true

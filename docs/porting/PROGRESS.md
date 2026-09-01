@@ -5416,3 +5416,40 @@ regression in any of them: § 04 was at zero when committed. It needs either
 a seed that leaves an unread notification or an explicit exclusion, and it
 is recorded here rather than absorbed into whichever screen next runs its
 gate.
+
+### § 23's reconciliation, done — and a real hole it uncovered
+
+**§ 23 is at `missing 1 · property 0 · chrome text 0`.** The mockup now
+shows three roles, the roster's static badge is the three-chip control the
+screen actually draws, and the cross-space grid is gone with its reason
+stated (a roster is admin-only, so such a grid could only be filled in for
+spaces you administer, and one blank elsewhere reads as "nobody is in them"
+rather than "you cannot see").
+
+**The method mattered more than the content.** Two earlier attempts patched
+the markup in successive string replacements, and both mis-cut a region and
+drove the diff from 1 missing to 31 — the second time because an end-marker
+that was not present made the slice run to the end of the section. The
+version that worked slices by **balanced `<div>` counting**, so an element's
+boundary is computed rather than guessed, and rewrites each region once.
+Editing HTML by searching for the string you think ends it is how a
+reconciliation turns into a corruption.
+
+**`div.bdg` was not a data condition — it was an authorization hole.**
+Recorded earlier as "the unread badge needs unread notifications", which was
+wrong. `notification-service` was **missed by ADR-013's identity pass** and
+kept reading `X-Actor-Id` — a header the SPA had stopped sending. So every
+inbox came back empty, the badge silently vanished from every screen's top
+bar, and anyone could still read anyone's inbox by naming them in a header.
+An authorization gap and a UI regression from the same line.
+
+It verifies the token now, like the socket and the gateway do, and for the
+same reason: it is reached directly by the browser and never passes through
+`api-gateway`. Measured after: `with token → 1 unread · no token → 401 ·
+forged X-Actor-Id → 401`.
+
+`div.bdg` still does not render in a headless run even with `unread: 1` on
+the API, and that last step is unfinished — it is a badge, not a boundary,
+and it is written down rather than left to be rediscovered.
+
+**Full sweep: 124 ok. Six Go modules and `tsc`: clean.**

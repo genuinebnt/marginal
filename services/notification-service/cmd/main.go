@@ -18,6 +18,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/nats-io/nats.go"
 
+	"marginal/authverify"
 	"marginal/envconfig"
 
 	"marginal/notification-service/internal/migrate"
@@ -74,7 +75,8 @@ func run() error {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
-	notify.NewHandler(repo).Mount(mux)
+	notify.NewHandler(repo, authverify.New(envconfig.EnvOr(
+		"AUTH_SERVICE_JWKS_URL", "http://localhost:8006/.well-known/jwks.json"))).Mount(mux)
 
 	addr := envconfig.EnvOr("NOTIFICATION_SERVICE_HTTP_ADDR", ":8007")
 	httpServer := &http.Server{Addr: addr, Handler: withCORS(mux)}
