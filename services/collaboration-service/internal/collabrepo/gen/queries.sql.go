@@ -11,6 +11,38 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const addComment = `-- name: AddComment :one
+INSERT INTO collab.comments (id, thread_id, author_id, body)
+VALUES ($1, $2, $3, $4)
+RETURNING id, thread_id, author_id, body, edited_at, created_at
+`
+
+type AddCommentParams struct {
+	ID       pgtype.UUID
+	ThreadID pgtype.UUID
+	AuthorID pgtype.UUID
+	Body     string
+}
+
+func (q *Queries) AddComment(ctx context.Context, arg AddCommentParams) (CollabComment, error) {
+	row := q.db.QueryRow(ctx, addComment,
+		arg.ID,
+		arg.ThreadID,
+		arg.AuthorID,
+		arg.Body,
+	)
+	var i CollabComment
+	err := row.Scan(
+		&i.ID,
+		&i.ThreadID,
+		&i.AuthorID,
+		&i.Body,
+		&i.EditedAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const auditCounts = `-- name: AuditCounts :many
 SELECT kind, COUNT(*) AS n
 FROM collab.ops
@@ -154,6 +186,90 @@ func (q *Queries) ClaimUnpublishedOutboxEvents(ctx context.Context, limit int32)
 	return items, nil
 }
 
+const commentsForPage = `-- name: CommentsForPage :many
+SELECT c.id, c.thread_id, c.author_id, c.body, c.edited_at, c.created_at
+FROM collab.comments c
+JOIN collab.comment_threads t ON t.id = c.thread_id
+WHERE t.page_id = $1
+ORDER BY c.created_at
+`
+
+// Every comment on a page's threads in ONE query, joined back client-side
+// by thread id. A query per thread would be a round trip per thread on a
+// page that might have thirty.
+func (q *Queries) CommentsForPage(ctx context.Context, pageID pgtype.UUID) ([]CollabComment, error) {
+	rows, err := q.db.Query(ctx, commentsForPage, pageID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CollabComment
+	for rows.Next() {
+		var i CollabComment
+		if err := rows.Scan(
+			&i.ID,
+			&i.ThreadID,
+			&i.AuthorID,
+			&i.Body,
+			&i.EditedAt,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const createThread = `-- name: CreateThread :one
+
+INSERT INTO collab.comment_threads
+  (id, page_id, block_id, anchor_start, anchor_end, quoted, created_by)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, page_id, block_id, anchor_start, anchor_end, quoted,
+          resolved_at, resolved_by, created_by, created_at
+`
+
+type CreateThreadParams struct {
+	ID          pgtype.UUID
+	PageID      pgtype.UUID
+	BlockID     pgtype.UUID
+	AnchorStart []byte
+	AnchorEnd   []byte
+	Quoted      string
+	CreatedBy   pgtype.UUID
+}
+
+// ── comments (v3.2.0) ────────────────────────────────────────────────────
+func (q *Queries) CreateThread(ctx context.Context, arg CreateThreadParams) (CollabCommentThread, error) {
+	row := q.db.QueryRow(ctx, createThread,
+		arg.ID,
+		arg.PageID,
+		arg.BlockID,
+		arg.AnchorStart,
+		arg.AnchorEnd,
+		arg.Quoted,
+		arg.CreatedBy,
+	)
+	var i CollabCommentThread
+	err := row.Scan(
+		&i.ID,
+		&i.PageID,
+		&i.BlockID,
+		&i.AnchorStart,
+		&i.AnchorEnd,
+		&i.Quoted,
+		&i.ResolvedAt,
+		&i.ResolvedBy,
+		&i.CreatedBy,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const databaseSize = `-- name: DatabaseSize :one
 SELECT pg_database_size(current_database())::bigint AS bytes
 `
@@ -166,6 +282,30 @@ func (q *Queries) DatabaseSize(ctx context.Context) (int64, error) {
 	var bytes int64
 	err := row.Scan(&bytes)
 	return bytes, err
+}
+
+const getThread = `-- name: GetThread :one
+SELECT id, page_id, block_id, anchor_start, anchor_end, quoted,
+       resolved_at, resolved_by, created_by, created_at
+FROM collab.comment_threads WHERE id = $1
+`
+
+func (q *Queries) GetThread(ctx context.Context, id pgtype.UUID) (CollabCommentThread, error) {
+	row := q.db.QueryRow(ctx, getThread, id)
+	var i CollabCommentThread
+	err := row.Scan(
+		&i.ID,
+		&i.PageID,
+		&i.BlockID,
+		&i.AnchorStart,
+		&i.AnchorEnd,
+		&i.Quoted,
+		&i.ResolvedAt,
+		&i.ResolvedBy,
+		&i.CreatedBy,
+		&i.CreatedAt,
+	)
+	return i, err
 }
 
 const insertOp = `-- name: InsertOp :one
@@ -615,4 +755,82 @@ func (q *Queries) ProfileTotals(ctx context.Context, actorID pgtype.UUID) (Profi
 	var i ProfileTotalsRow
 	err := row.Scan(&i.Ops, &i.Pages)
 	return i, err
+}
+
+const reopenThread = `-- name: ReopenThread :execrows
+UPDATE collab.comment_threads
+SET resolved_at = NULL, resolved_by = NULL
+WHERE id = $1 AND resolved_at IS NOT NULL
+`
+
+func (q *Queries) ReopenThread(ctx context.Context, id pgtype.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, reopenThread, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const resolveThread = `-- name: ResolveThread :execrows
+UPDATE collab.comment_threads
+SET resolved_at = NOW(), resolved_by = $2
+WHERE id = $1 AND resolved_at IS NULL
+`
+
+type ResolveThreadParams struct {
+	ID         pgtype.UUID
+	ResolvedBy pgtype.UUID
+}
+
+// Idempotent by design: resolving an already-resolved thread is not an
+// error, because the caller's intent already holds and failing it would
+// make two people clicking at once into a bug report.
+func (q *Queries) ResolveThread(ctx context.Context, arg ResolveThreadParams) (int64, error) {
+	result, err := q.db.Exec(ctx, resolveThread, arg.ID, arg.ResolvedBy)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const threadsForPage = `-- name: ThreadsForPage :many
+SELECT id, page_id, block_id, anchor_start, anchor_end, quoted,
+       resolved_at, resolved_by, created_by, created_at
+FROM collab.comment_threads
+WHERE page_id = $1
+ORDER BY (resolved_at IS NOT NULL), created_at DESC
+`
+
+// Open threads first, then resolved — a resolved thread is still readable
+// (docs/api/comments.md §2) but it is not what somebody opening the page
+// is looking for.
+func (q *Queries) ThreadsForPage(ctx context.Context, pageID pgtype.UUID) ([]CollabCommentThread, error) {
+	rows, err := q.db.Query(ctx, threadsForPage, pageID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CollabCommentThread
+	for rows.Next() {
+		var i CollabCommentThread
+		if err := rows.Scan(
+			&i.ID,
+			&i.PageID,
+			&i.BlockID,
+			&i.AnchorStart,
+			&i.AnchorEnd,
+			&i.Quoted,
+			&i.ResolvedAt,
+			&i.ResolvedBy,
+			&i.CreatedBy,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

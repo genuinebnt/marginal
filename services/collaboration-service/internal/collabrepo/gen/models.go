@@ -8,6 +8,28 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type CollabComment struct {
+	ID        pgtype.UUID
+	ThreadID  pgtype.UUID
+	AuthorID  pgtype.UUID
+	Body      string
+	EditedAt  pgtype.Timestamptz
+	CreatedAt pgtype.Timestamptz
+}
+
+type CollabCommentThread struct {
+	ID          pgtype.UUID
+	PageID      pgtype.UUID
+	BlockID     pgtype.UUID
+	AnchorStart []byte
+	AnchorEnd   []byte
+	Quoted      string
+	ResolvedAt  pgtype.Timestamptz
+	ResolvedBy  pgtype.UUID
+	CreatedBy   pgtype.UUID
+	CreatedAt   pgtype.Timestamptz
+}
+
 type CollabOp struct {
 	ID              pgtype.UUID
 	PageID          pgtype.UUID

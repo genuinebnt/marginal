@@ -903,6 +903,37 @@ func (s *Session) broadcastCursorLocked(e CursorEvent, exceptSubID uint64) {
 // Subscribe's own Snapshot field when connecting for the first time (the
 // same state, taken atomically with registering as a subscriber); this
 // method is for anything that needs a fresh read later, mid-connection.
+// ResolveRange turns a stored AnchorRange into offsets into a block's
+// CURRENT text — what a comment thread's highlight needs, every time the
+// page is read (docs/api/comments.md §2).
+//
+// ok is false when either end names an item this block's rope no longer
+// has. That is the ORPHANED case, and it is a real answer rather than an
+// error: the text somebody commented on is gone, the remark is not, and a
+// caller must be able to tell those apart to show the second without
+// pretending the first.
+func (s *Session) ResolveRange(blockID documentcore.BlockID, r anchor.AnchorRange) (start, end int, ok bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	text, exists := s.blocks[blockID]
+	if !exists {
+		return 0, 0, false
+	}
+	from := text.Resolve(r.Start)
+	to := text.Resolve(r.End)
+	if from.Kind == anchor.Unknown || to.Kind == anchor.Unknown {
+		return 0, 0, false
+	}
+	// A range whose ends have crossed is one whose middle was deleted from
+	// both directions. Clamped rather than returned inverted, because a
+	// negative-width highlight is not something a caller can draw.
+	if from.Offset > to.Offset {
+		return to.Offset, to.Offset, true
+	}
+	return from.Offset, to.Offset, true
+}
+
 func (s *Session) Snapshot() Snapshot {
 	s.mu.Lock()
 	defer s.mu.Unlock()

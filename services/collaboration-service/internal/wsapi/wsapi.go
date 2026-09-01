@@ -487,10 +487,27 @@ func clientSafeMessage(err error) string {
 // this server" is a different question from "what does this page say".
 func RequireToken(v TokenVerifier, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if _, err := v.Subject(r.Context(), handshakeToken(r)); err != nil {
+		sub, err := v.Subject(r.Context(), handshakeToken(r))
+		if err != nil {
 			http.Error(w, "unauthenticated", http.StatusUnauthorized)
 			return
 		}
-		next(w, r)
+		// The verified subject is carried forward, not discarded. A handler
+		// that needed to know WHO was calling — a comment's author, say —
+		// would otherwise have to read it from the request body, which is
+		// the client asserting its own identity all over again.
+		next(w, r.WithContext(context.WithValue(r.Context(), actorKey{}, sub)))
 	}
+}
+
+type actorKey struct{}
+
+// ActorFrom returns the verified caller RequireToken stored.
+//
+// ok is false only on a route that is not behind RequireToken — and a
+// handler that needs an actor and is not behind it is a bug, so callers
+// treat false as a refusal rather than as an anonymous caller.
+func ActorFrom(r *http.Request) (uuid.UUID, bool) {
+	sub, ok := r.Context().Value(actorKey{}).(uuid.UUID)
+	return sub, ok
 }

@@ -186,6 +186,12 @@ func run() error {
 	// another name.
 	mux.HandleFunc("/collab/people/{id}/profile", wsapi.RequireToken(verifier, wsapi.NewProfileHandler(pool)))
 
+	// v3.2.0's comment threads (docs/api/comments.md). They need the
+	// Manager, not just the pool: a thread's extent is an AnchorRange, and
+	// resolving one means asking the live session where those anchors point
+	// in the block's text right now.
+	wsapi.NewCommentsHandler(pool, manager).Mount(mux, verifier)
+
 	httpServer := &http.Server{Addr: httpAddr, Handler: allowCORS(mux)}
 
 	errCh := make(chan error, 1)

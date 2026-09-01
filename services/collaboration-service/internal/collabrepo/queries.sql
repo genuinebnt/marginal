@@ -216,3 +216,55 @@ WHERE o.actor_id <> $1
 GROUP BY o.actor_id
 ORDER BY count(DISTINCT o.page_id) DESC
 LIMIT sqlc.arg(row_limit);
+
+-- ── comments (v3.2.0) ────────────────────────────────────────────────────
+
+-- name: CreateThread :one
+INSERT INTO collab.comment_threads
+  (id, page_id, block_id, anchor_start, anchor_end, quoted, created_by)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, page_id, block_id, anchor_start, anchor_end, quoted,
+          resolved_at, resolved_by, created_by, created_at;
+
+-- name: ThreadsForPage :many
+-- Open threads first, then resolved — a resolved thread is still readable
+-- (docs/api/comments.md §2) but it is not what somebody opening the page
+-- is looking for.
+SELECT id, page_id, block_id, anchor_start, anchor_end, quoted,
+       resolved_at, resolved_by, created_by, created_at
+FROM collab.comment_threads
+WHERE page_id = $1
+ORDER BY (resolved_at IS NOT NULL), created_at DESC;
+
+-- name: GetThread :one
+SELECT id, page_id, block_id, anchor_start, anchor_end, quoted,
+       resolved_at, resolved_by, created_by, created_at
+FROM collab.comment_threads WHERE id = $1;
+
+-- name: CommentsForPage :many
+-- Every comment on a page's threads in ONE query, joined back client-side
+-- by thread id. A query per thread would be a round trip per thread on a
+-- page that might have thirty.
+SELECT c.id, c.thread_id, c.author_id, c.body, c.edited_at, c.created_at
+FROM collab.comments c
+JOIN collab.comment_threads t ON t.id = c.thread_id
+WHERE t.page_id = $1
+ORDER BY c.created_at;
+
+-- name: AddComment :one
+INSERT INTO collab.comments (id, thread_id, author_id, body)
+VALUES ($1, $2, $3, $4)
+RETURNING id, thread_id, author_id, body, edited_at, created_at;
+
+-- name: ResolveThread :execrows
+-- Idempotent by design: resolving an already-resolved thread is not an
+-- error, because the caller's intent already holds and failing it would
+-- make two people clicking at once into a bug report.
+UPDATE collab.comment_threads
+SET resolved_at = NOW(), resolved_by = $2
+WHERE id = $1 AND resolved_at IS NULL;
+
+-- name: ReopenThread :execrows
+UPDATE collab.comment_threads
+SET resolved_at = NULL, resolved_by = NULL
+WHERE id = $1 AND resolved_at IS NOT NULL;
