@@ -235,6 +235,7 @@ open indefinitely (no idle-eviction), matching this repo's demo scale.
 | `docs/api/diagnostics.md` | Diagnostics/facts contract — gRPC `DiagnosticsService` §1 + the gateway's REST mapping §2 (`v2.3.0`) |
 | `docs/api/search.md` | Search contract — gRPC `SearchService` §1 + the gateway's REST mapping §2 (`v2.5.0`) |
 | `docs/api/auth.md` | Auth contract — gRPC `AuthService` §1 + the gateway's REST mapping §2 |
+| `docs/api/spaces.md` | Spaces & roles — gRPC `SpaceService` §1 + REST §2 (`v3.1.0`, `ADR-013`) |
 | `docs/api/collaboration.md` | Collaboration contract — the WebSocket wire format (one contract, no REST projection) |
 | `docs/architecture/ARCHITECTURE.md` | Service map, event bus, request flows |
 | `docs/architecture/DATA_MODEL.md` | **Database per service** — schemas, ownership, and where a join happens |
