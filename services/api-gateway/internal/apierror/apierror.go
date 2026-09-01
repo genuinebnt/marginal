@@ -51,6 +51,12 @@ func httpStatusFor(c codes.Code) (int, string) {
 		return http.StatusUnprocessableEntity, "validation_failed"
 	case codes.NotFound:
 		return http.StatusNotFound, "not_found"
+	// Added with v3.1.0 (ADR-013). Nothing in this repo could return
+	// PERMISSION_DENIED before roles existed, so it fell through to a 500 —
+	// which turned "you may not do that" into "the server is broken", the
+	// most misleading direction that mistake can go.
+	case codes.PermissionDenied:
+		return http.StatusForbidden, "forbidden"
 	case codes.FailedPrecondition:
 		return http.StatusConflict, "conflict"
 	case codes.AlreadyExists:

@@ -114,6 +114,11 @@ func run() error {
 
 	grpcServer := grpc.NewServer()
 	authv1.RegisterAuthServiceServer(grpcServer, &api.Server{Service: svc})
+	// v3.1.0's permission boundary (ADR-013). Its own service rather than
+	// more methods on AuthService: "who are you" and "what may you do here"
+	// have different lifetimes and different callers — document-service
+	// polls the second and never asks the first.
+	authv1.RegisterSpaceServiceServer(grpcServer, api.NewSpaceServer(pool))
 	reflection.Register(grpcServer) // local dev only, same as document-service
 
 	lis, err := net.Listen("tcp", grpcAddr)

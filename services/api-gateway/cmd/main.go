@@ -38,6 +38,7 @@ import (
 	"marginal/api-gateway/internal/graphrest"
 	"marginal/api-gateway/internal/pagesrest"
 	"marginal/api-gateway/internal/searchrest"
+	"marginal/api-gateway/internal/spacesrest"
 )
 
 // requestTimeout bounds every request this gateway handles, which in turn
@@ -101,6 +102,7 @@ func run() error {
 	discoverHandler := discoverrest.NewHandler(documentv1.NewDiscoverServiceClient(documentConn))
 	diagnosticsHandler := diagnosticsrest.NewHandler(diagnosticsv1.NewDiagnosticsServiceClient(diagnosticsConn))
 	auth := authrest.NewHandler(authv1.NewAuthServiceClient(authConn))
+	spacesHandler := spacesrest.NewHandler(authv1.NewSpaceServiceClient(authConn))
 
 	// § 18 ADMIN's SERVICES panel. HTTP health endpoints, not the
 	// gRPC ones: the question is "is the process answering", and
@@ -173,6 +175,7 @@ func run() error {
 	discoverHandler.Mount(r)
 	diagnosticsHandler.Mount(r)
 	auth.Mount(r)
+	spacesHandler.Mount(r)
 	admin.Mount(r)
 
 	addr := envconfig.EnvOr("API_GATEWAY_HTTP_ADDR", ":8000")

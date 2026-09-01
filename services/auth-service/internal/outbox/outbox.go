@@ -12,6 +12,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -28,6 +29,55 @@ import (
 // the one event this repo's Track 1 scope can actually produce (every
 // other auth.* topic needs sharing/RBAC/deactivation, none in scope).
 const EventUserRegistered = "auth.user_registered"
+
+// The two membership events (DATA_MODEL.md §10, reserved there long before
+// v3.1.0 built them). document-service consumes both to maintain
+// docs.space_members, the projection it filters reads against.
+const (
+	EventRoleGranted = "auth.role_granted"
+	EventRoleRevoked = "auth.role_revoked"
+)
+
+// RolePayload carries enough for a consumer to apply the change without
+// asking anything back.
+//
+// GrantedAt is the decisive field. Core NATS gives no ordering guarantee
+// across publishes, so two events for one user can arrive out of order —
+// a consumer that took last-write-by-arrival would let a revoke be undone
+// by a grant that happened before it. Role is empty on a revoke.
+type RolePayload struct {
+	UserID    uuid.UUID `json:"user_id"`
+	SpaceID   uuid.UUID `json:"space_id"`
+	Role      string    `json:"role,omitempty"`
+	GrantedAt time.Time `json:"granted_at"`
+}
+
+// WriteRoleEvent inserts a membership event in the SAME transaction as the
+// membership row itself — the write and its announcement cannot disagree.
+// q must be scoped to that transaction via WithTx, never the pool-level
+// Queries (see WriteUserRegistered for the failure that prevents).
+func WriteRoleEvent(ctx context.Context, q *authrepo.Queries, eventType string, p RolePayload) error {
+	payload, err := json.Marshal(p)
+	if err != nil {
+		return fmt.Errorf("outbox: marshaling %s payload: %w", eventType, err)
+	}
+	id, err := uuid.NewV7()
+	if err != nil {
+		return fmt.Errorf("outbox: generating event id: %w", err)
+	}
+	// AggregateID is the USER, matching DATA_MODEL.md §10's partition key
+	// for both topics — events about one person stay in order relative to
+	// each other, which is the ordering that actually matters here.
+	if _, err := q.InsertOutboxEvent(ctx, authrepo.InsertOutboxEventParams{
+		ID:          pgtype.UUID{Bytes: id, Valid: true},
+		AggregateID: pgtype.UUID{Bytes: p.UserID, Valid: true},
+		EventType:   eventType,
+		Payload:     payload,
+	}); err != nil {
+		return fmt.Errorf("outbox: inserting %s event: %w", eventType, err)
+	}
+	return nil
+}
 
 // UserRegisteredPayload mirrors notification-service's own
 // notify.UserRegisteredEvent field-for-field — kept as an independent
