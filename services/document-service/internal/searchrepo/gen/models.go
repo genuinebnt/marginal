@@ -77,6 +77,13 @@ type DocsReadingPosition struct {
 	UpdatedAt  pgtype.Timestamptz
 }
 
+type DocsSpaceMember struct {
+	UserID    pgtype.UUID
+	SpaceID   pgtype.UUID
+	Role      string
+	GrantedAt pgtype.Timestamptz
+}
+
 type DocsTopic struct {
 	ID        pgtype.UUID
 	Name      string

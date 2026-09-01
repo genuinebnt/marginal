@@ -98,6 +98,10 @@ services:
       context: . # repo root — see services/document-service/Dockerfile's own comment on why
       dockerfile: services/document-service/Dockerfile
     environment:
+      # For the space-membership reconcile only (ADR-013 §4) — not on
+      # any request path: a per-request call would make listing pages
+      # depend on auth-service being up.
+      AUTH_SERVICE_GRPC_ADDR: auth-service:9006
       DATABASE_URL: postgres://document_service:dev-only-not-a-real-secret@doc-db:5432/document_service?sslmode=disable
       NATS_URL: nats://nats:4222
     ports:

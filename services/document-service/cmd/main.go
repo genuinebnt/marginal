@@ -17,11 +17,13 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/nats-io/nats.go"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/reflection"
 
 	"marginal/envconfig"
@@ -33,6 +35,7 @@ import (
 	"marginal/document-service/internal/migrate"
 	"marginal/document-service/internal/pages"
 	"marginal/document-service/internal/search"
+	"marginal/document-service/internal/spaceproj"
 )
 
 func main() {
@@ -79,6 +82,29 @@ func run() error {
 		return err
 	}
 	defer func() { _ = unsubscribe() }()
+
+	// docs.space_members — which spaces a reader may see (ADR-013 §4).
+	//
+	// Events keep it current; the reconcile puts a FLOOR under how wrong it
+	// can get. Both are needed: core NATS has no redelivery, and it delivers
+	// nothing at all to a subscriber that was down when the event was
+	// published — which makes a restart exactly when this is most likely to
+	// be wrong and least likely to notice.
+	authConn, err := grpc.NewClient(
+		envconfig.EnvOr("AUTH_SERVICE_GRPC_ADDR", "localhost:9006"),
+		grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = authConn.Close() }()
+
+	spaces := spaceproj.NewProjector(pool)
+	unsubSpaces, err := spaceproj.Subscribe(nc, spaces)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = unsubSpaces() }()
+	go spaceproj.RunReconcile(ctx, spaces, spaceproj.NewGRPCSource(authConn), 5*time.Minute)
 
 	grpcAddr := envconfig.EnvOr("DOCUMENT_SERVICE_GRPC_ADDR", ":9001")
 	httpAddr := envconfig.EnvOr("DOCUMENT_SERVICE_HTTP_ADDR", ":8001")
