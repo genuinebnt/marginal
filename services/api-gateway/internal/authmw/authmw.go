@@ -21,6 +21,17 @@ import (
 
 type ctxKey struct{}
 
+// TokenVerifier is what turns a credential into an actor id — an interface
+// declared at its point of use, this repo's rule for every external
+// dependency. Concretely it is *authverify.Verifier; as an interface, a
+// test can exercise the real middleware without standing up a JWKS server,
+// which is what makes "the handler forwards the VERIFIED actor" testable at
+// all. Mirrors wsapi.TokenVerifier, deliberately: the two entry points
+// should not describe the same dependency two different ways.
+type TokenVerifier interface {
+	Subject(ctx context.Context, token string) (uuid.UUID, error)
+}
+
 // public is the exact set of routes that may be reached with no token.
 //
 // An ALLOWLIST, keyed by method and path, and deliberately not a prefix
@@ -45,7 +56,7 @@ var public = map[string]bool{
 // X-Actor-Id is not consulted. Not "preferred less than the token" —
 // ignored: a header read even when the token is absent is the same hole
 // with an extra step, and it is the hole this whole slice exists to close.
-func Middleware(v *authverify.Verifier) func(http.Handler) http.Handler {
+func Middleware(v TokenVerifier) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if public[r.Method+" "+r.URL.Path] {

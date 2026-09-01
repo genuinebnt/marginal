@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -21,6 +23,7 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	"marginal/api-gateway/internal/authmw"
 	authv1 "marginal/auth-service/genproto/authv1"
 
 	"marginal/api-gateway/internal/authrest"
@@ -83,10 +86,28 @@ func newTestServer(t *testing.T, fake *fakeAuthService) *httptest.Server {
 
 	h := authrest.NewHandler(authv1.NewAuthServiceClient(conn))
 	r := chi.NewRouter()
+	// The REAL middleware, with a verifier that treats the token as the
+	// subject. The handler's contract is "forward the VERIFIED actor", and
+	// a test that injected an id straight into the context would skip the
+	// half that makes it verified.
+	r.Use(authmw.Middleware(tokenIsTheSubject{}))
 	h.Mount(r)
 	httpSrv := httptest.NewServer(r)
 	t.Cleanup(httpSrv.Close)
 	return httpSrv
+}
+
+// tokenIsTheSubject lets a test say "call as this actor" in one argument
+// while still going through the real verification path. Refuses anything
+// that is not a uuid, so an unauthenticated request is still unauthenticated.
+type tokenIsTheSubject struct{}
+
+func (tokenIsTheSubject) Subject(_ context.Context, token string) (uuid.UUID, error) {
+	id, err := uuid.Parse(token)
+	if err != nil {
+		return uuid.Nil, errors.New("authrest_test: not a subject")
+	}
+	return id, nil
 }
 
 func jsonBody(t *testing.T, v any) io.Reader {
@@ -148,7 +169,13 @@ func TestGetUserOmitsPasswordHash(t *testing.T) {
 	}
 	srv := newTestServer(t, fake)
 
-	resp, err := http.Get(srv.URL + "/auth/users/some-id")
+	// GetUser is NOT on authmw's public allowlist — only register, login
+	// and refresh are, and refresh only because the whole reason to call it
+	// is that your access token has expired.
+	getReq, err := http.NewRequest(http.MethodGet, srv.URL+"/auth/users/some-id", nil)
+	require.NoError(t, err)
+	getReq.Header.Set("Authorization", "Bearer 018f2b1c-0000-7000-8000-00000000000a")
+	resp, err := http.DefaultClient.Do(getReq)
 	require.NoError(t, err)
 	defer func() { _ = resp.Body.Close() }()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
@@ -187,7 +214,9 @@ func TestRevokeAllForwardsActorIDAndReturnsNoContent(t *testing.T) {
 
 	req, err := http.NewRequest(http.MethodPost, srv.URL+"/auth/revoke-all", nil)
 	require.NoError(t, err)
-	req.Header.Set("X-Actor-Id", "018f2b1c-0000-7000-8000-000000000009")
+	// A bearer token now, not a claimed id (ADR-013 §1). The gateway does
+	// not read X-Actor-Id at all — sending it would be sending nothing.
+	req.Header.Set("Authorization", "Bearer 018f2b1c-0000-7000-8000-000000000009")
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)

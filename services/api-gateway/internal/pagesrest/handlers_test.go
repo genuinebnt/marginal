@@ -3,6 +3,8 @@ package pagesrest_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -20,6 +23,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"marginal/api-gateway/internal/authmw"
 	documentv1 "marginal/document-service/genproto/documentv1"
 
 	"marginal/api-gateway/internal/pagesrest"
@@ -96,6 +100,9 @@ func newTestServer(t *testing.T, fake *fakePageService) *httptest.Server {
 	t.Helper()
 	h := newTestHandler(t, fake)
 	r := chi.NewRouter()
+	// The REAL middleware, so these exercise "forward the VERIFIED actor"
+	// rather than "relay a header" — which is the contract since ADR-013.
+	r.Use(authmw.Middleware(tokenIsTheSubject{}))
 	h.Mount(r)
 	srv := httptest.NewServer(r)
 	t.Cleanup(srv.Close)
@@ -120,7 +127,7 @@ func TestCreatePageTranslatesRequestAndResponse(t *testing.T) {
 	}
 	srv := newTestServer(t, fake)
 
-	resp, err := http.Post(srv.URL+"/pages", "application/json", jsonBody(t, map[string]any{"title": "Architecture"}))
+	resp, err := postAuthed(t, srv.URL+"/pages", "application/json", jsonBody(t, map[string]any{"title": "Architecture"}))
 	require.NoError(t, err)
 	defer func() { _ = resp.Body.Close() }()
 
@@ -134,7 +141,39 @@ func TestCreatePageTranslatesRequestAndResponse(t *testing.T) {
 	assert.False(t, hasDeletedAt, "deleted_at must be omitted while active, not sent as null")
 }
 
-func TestGetPageForwardsActorIDFromHeader(t *testing.T) {
+// testActor is who an unadorned test request is, and authed is a client
+// that carries its token on every call.
+//
+// A transport rather than a header on each request: every route but
+// register/login/refresh needs a credential now, and a helper that has to
+// be remembered per-call is one that will be forgotten — leaving a test
+// that passes because it got a 401 it did not assert on.
+const testActor = "018f2b1c-0000-7000-8000-00000000000b"
+
+type bearer struct{ token string }
+
+func (b bearer) RoundTrip(r *http.Request) (*http.Response, error) {
+	if r.Header.Get("Authorization") == "" {
+		r.Header.Set("Authorization", "Bearer "+b.token)
+	}
+	return http.DefaultTransport.RoundTrip(r)
+}
+
+var authed = &http.Client{Transport: bearer{token: testActor}}
+
+// tokenIsTheSubject lets a test say "call as this actor" in one argument
+// while still going through the real verification path.
+type tokenIsTheSubject struct{}
+
+func (tokenIsTheSubject) Subject(_ context.Context, token string) (uuid.UUID, error) {
+	id, err := uuid.Parse(token)
+	if err != nil {
+		return uuid.Nil, errors.New("pagesrest_test: not a subject")
+	}
+	return id, nil
+}
+
+func TestGetPageForwardsTheVerifiedActor(t *testing.T) {
 	fake := &fakePageService{
 		getFn: func(req *documentv1.GetPageRequest) (*documentv1.Page, error) {
 			return &documentv1.Page{Id: req.Id, LifecycleState: documentv1.LifecycleState_LIFECYCLE_STATE_ACTIVE}, nil
@@ -144,9 +183,11 @@ func TestGetPageForwardsActorIDFromHeader(t *testing.T) {
 
 	req, err := http.NewRequest(http.MethodGet, srv.URL+"/pages/some-id", nil)
 	require.NoError(t, err)
-	req.Header.Set("X-Actor-Id", "018f2b1c-0000-7000-8000-000000000009")
+	// A bearer token, not a claimed id: the gateway derives the actor from
+	// the token's subject and does not read X-Actor-Id at all (ADR-013 §1).
+	req.Header.Set("Authorization", "Bearer 018f2b1c-0000-7000-8000-000000000009")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := authed.Do(req)
 	require.NoError(t, err)
 	defer func() { _ = resp.Body.Close() }()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
@@ -161,7 +202,7 @@ func TestGetPageNotFoundMapsTo404(t *testing.T) {
 	}
 	srv := newTestServer(t, fake)
 
-	resp, err := http.Get(srv.URL + "/pages/missing")
+	resp, err := getAuthed(t, srv.URL+"/pages/missing")
 	require.NoError(t, err)
 	defer func() { _ = resp.Body.Close() }()
 
@@ -186,7 +227,7 @@ func TestListPagesBuildsQueryParamsAndResponse(t *testing.T) {
 	}
 	srv := newTestServer(t, fake)
 
-	resp, err := http.Get(srv.URL + "/pages?parent_id=some-parent&limit=10")
+	resp, err := getAuthed(t, srv.URL+"/pages?parent_id=some-parent&limit=10")
 	require.NoError(t, err)
 	defer func() { _ = resp.Body.Close() }()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
@@ -207,7 +248,7 @@ func TestDeletePageReturnsNoContent(t *testing.T) {
 
 	req, err := http.NewRequest(http.MethodDelete, srv.URL+"/pages/some-id", nil)
 	require.NoError(t, err)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := authed.Do(req)
 	require.NoError(t, err)
 	defer func() { _ = resp.Body.Close() }()
 	assert.Equal(t, http.StatusNoContent, resp.StatusCode)
@@ -216,7 +257,7 @@ func TestDeletePageReturnsNoContent(t *testing.T) {
 func TestCreatePageRejectsInvalidJSON(t *testing.T) {
 	srv := newTestServer(t, &fakePageService{})
 
-	resp, err := http.Post(srv.URL+"/pages", "application/json", jsonBodyRaw(t, "{not json"))
+	resp, err := postAuthed(t, srv.URL+"/pages", "application/json", jsonBodyRaw(t, "{not json"))
 	require.NoError(t, err)
 	defer func() { _ = resp.Body.Close() }()
 	assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
@@ -235,7 +276,7 @@ func TestBacklinksTranslatesRequestAndResponse(t *testing.T) {
 	}
 	srv := newTestServer(t, fake)
 
-	resp, err := http.Get(srv.URL + "/pages/target-id/backlinks")
+	resp, err := getAuthed(t, srv.URL+"/pages/target-id/backlinks")
 	require.NoError(t, err)
 	defer func() { _ = resp.Body.Close() }()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
@@ -249,4 +290,19 @@ func TestBacklinksTranslatesRequestAndResponse(t *testing.T) {
 	assert.Equal(t, "Source Page", body.Backlinks[0]["from_page_title"])
 	assert.Equal(t, "Target Page", body.Backlinks[0]["target_title"])
 	assert.Equal(t, false, body.Backlinks[0]["from_page_deleted"])
+}
+
+func getAuthed(t *testing.T, url string) (*http.Response, error) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	require.NoError(t, err)
+	return authed.Do(req)
+}
+
+func postAuthed(t *testing.T, url, contentType string, body io.Reader) (*http.Response, error) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPost, url, body)
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", contentType)
+	return authed.Do(req)
 }
