@@ -271,6 +271,51 @@ CREATE TABLE auth.refresh_tokens (
 CREATE INDEX ON auth.refresh_tokens (user_id) WHERE revoked_at IS NULL;
 ```
 
+### Spaces and memberships (`v3.1.0`, `ADR-013`)
+
+```sql
+-- The permission boundary. A page belongs to exactly one space, and its
+-- permissions ARE its space's — which is what makes a check one lookup
+-- instead of a walk up the page tree, and what stops "who can read this"
+-- from depending on where somebody last dragged it.
+CREATE TABLE auth.spaces (
+    id          UUID PRIMARY KEY DEFAULT uuidv7(),
+    name        TEXT NOT NULL,
+    -- The space every pre-v3.1.0 page was migrated into. Exactly one row may
+    -- carry this, and it cannot be deleted: it is what "the workspace" meant
+    -- before spaces existed, and a delete would orphan every page written
+    -- before the migration.
+    is_default  BOOLEAN NOT NULL DEFAULT FALSE,
+    created_by  UUID NOT NULL REFERENCES auth.users(id),
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX ON auth.spaces (is_default) WHERE is_default;
+
+-- One row per (user, space). The role is on the MEMBERSHIP, not on the user:
+-- a person is an admin of one space and a viewer of another, and a role
+-- stored on auth.users could not say that.
+CREATE TABLE auth.memberships (
+    user_id     UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    space_id    UUID NOT NULL REFERENCES auth.spaces(id) ON DELETE CASCADE,
+    -- Three, deliberately. viewer reads; editor also emits ops; admin also
+    -- manages membership and deletes the space. A fourth role is a product
+    -- decision this repo has no requirement for — adding one later is a row
+    -- and a switch arm; adding one now is a guess (ADR-013 §2).
+    role        TEXT NOT NULL CHECK (role IN ('viewer','editor','admin')),
+    granted_by  UUID REFERENCES auth.users(id),
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, space_id)
+);
+CREATE INDEX ON auth.memberships (space_id);
+```
+
+**A space cannot be left without an admin.** Enforced in the service, not by
+a constraint: the rule is "the last admin of a space may not be demoted or
+removed", which is a statement about the *set* of remaining rows and cannot
+be expressed as a row-level `CHECK`. A trigger could, but a trigger that
+rejects a legitimate two-step change (promote B, then demote A) is worse
+than the check living where the transaction does.
+
 Access tokens are **not** stored — they are RS256-signed JWTs verified locally by the gateway (ADR-007). Revocation is a Redis blocklist keyed by `jti` with a TTL matching token lifetime.
 
 ---
@@ -294,6 +339,12 @@ CREATE TABLE docs.pages (
     -- Fractional index: a page is reordered by writing ONE row, never by
     -- renumbering siblings. Lexicographic ordering, midpoint generation.
     sort_key     TEXT NOT NULL,
+    -- The permission boundary (ADR-013 §2). NOT NULL: a page with no space
+    -- is a page no rule applies to, which is the one state this must never
+    -- be able to reach. No FK — auth.spaces lives in another service's
+    -- schema, and this repo does not join across them (§1); document-service
+    -- keeps a local projection of which spaces exist, fed by auth's events.
+    space_id     UUID NOT NULL,
     -- Saga state (ARCHITECTURE §5). A crash mid-delete resumes, not restarts.
     lifecycle_state TEXT NOT NULL DEFAULT 'active'
         CHECK (lifecycle_state IN ('active','deleting','deleted')),
@@ -303,6 +354,9 @@ CREATE TABLE docs.pages (
 );
 CREATE INDEX ON docs.pages USING GIST (path);
 CREATE INDEX ON docs.pages (parent_id, sort_key) WHERE deleted_at IS NULL;
+-- Every read filters by "the spaces you are in" before anything else, so
+-- this index is on the hot path of listing, searching and the graph.
+CREATE INDEX ON docs.pages (space_id) WHERE deleted_at IS NULL;
 -- Title uniqueness is NOT enforced: duplicates are a diagnostic
 -- (RFC-003 DuplicateTitle), not a constraint violation. Enforcing it here
 -- would make a legitimate in-progress edit fail at the database.
@@ -755,6 +809,48 @@ is that redelivery and dead-lettering are scoped to the thing that actually fail
 | `auth.user_deactivated` | `auth-service` | `user_id` | document · notification · search |
 | `auth.role_granted` | `auth-service` | `user_id` | document (local permission read-model) |
 | `auth.role_revoked` | `auth-service` | `user_id` | document · search (refilter results) |
+
+### `docs.space_members` — the local permission read-model (`v3.1.0`)
+
+`document-service` filters every read by "the spaces you are in", and it
+cannot ask `auth-service` that question per request: it is on the hot path of
+listing, searching and the graph, and a join across service schemas is the
+thing §1 exists to forbid.
+
+So it keeps a projection, fed by `auth.role_granted` / `auth.role_revoked`:
+
+```sql
+-- A PROJECTION of auth.memberships, never a second source of truth. If it
+-- disagrees with auth, auth is right and this is stale — which is why the
+-- write path (can_apply, in collaboration-service) does NOT read it. This
+-- table decides what you can SEE; auth decides what you can DO.
+CREATE TABLE docs.space_members (
+    user_id     UUID NOT NULL,
+    space_id    UUID NOT NULL,
+    role        TEXT NOT NULL,
+    -- The event's own timestamp, not NOW(). Two events for one user can
+    -- arrive out of order (core NATS gives no ordering guarantee across
+    -- publishes), and last-write-wins by arrival would let a revoke be
+    -- undone by a grant that happened before it.
+    granted_at  TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (user_id, space_id)
+);
+CREATE INDEX ON docs.space_members (user_id);
+```
+
+**The staleness is real and bounded, not hidden.** Core NATS has no
+redelivery (`internal/notify`'s doc comment), so a dropped `role_revoked`
+leaves someone able to *read* a space they were removed from until the next
+event for that user arrives. Two things keep that honest:
+
+1. It is a **read** model only. Writing is gated by `can_apply`, which
+   resolves the role from `auth-service` at join (`ADR-013` §3) rather than
+   from this table.
+2. `document-service` reconciles on startup and on a timer by asking
+   `auth-service` for the full membership set — the same "periodically ask
+   the source of truth" answer the `authverify` JWKS cache already uses, for
+   the same reason: an event bus with no redelivery needs a floor under how
+   wrong it can get.
 
 > **`docs.page_renamed` is the expensive one.** It invalidates diagnostics on every page that
 > links to the renamed page (RFC-003 §4), so it is the topic most likely to need its own
