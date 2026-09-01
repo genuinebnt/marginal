@@ -54,6 +54,24 @@ on `sh: npm: not found` and every HTML route 502s while the wasm files
 keep returning 200 — the confusing part, since Caddy is up and only the
 container behind it is gone.
 
+That mistake has a **second, delayed** consequence worth knowing about. The
+base file's `web` service sets `image: node:22-alpine` as well as the
+override's `build:`, and when Compose is given both it builds the Dockerfile
+and **tags the result with that image name** — silently replacing the real
+`node:22-alpine` on the host with a static Caddy image that has no node and
+no npm in it. Nothing fails at the time. What fails is the next thing on the
+box that runs `node:22-alpine`, which here is the nightly reseed:
+
+```
+sh: npm: not found
+reseed.service: Main process exited, code=exited, status=127/n/a
+```
+
+The fix is `docker pull node:22-alpine`, then start the service again. Worth
+checking whenever a container that used to work reports a missing binary:
+`docker image inspect node:22-alpine --format '{{.Created}}'` should be the
+upstream image's date, not today's.
+
 `BUILD_ID` is what makes each build's wasm URLs unique so they can be
 cached `immutable`; it defaults to the date, which degrades to a daily
 cache rather than a stale-forever one.

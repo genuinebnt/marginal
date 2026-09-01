@@ -5116,3 +5116,16 @@ trash.
 property 0 · chrome text 0. The seed brings a real second actor onto the
 page over its own socket, because presence is real join/leave and "someone
 else is here" cannot be faked into existence.
+
+**Deployed and verified on prod** (`8f84b74`, 2026-09-01): § 17's
+palimpsest reads `STORED 573 · TOMBSTONED 426` against the real seeded
+character history; § 04's outline draws its h3 row and its rows measure
+22.0px rather than the crushed 13.5; § 16 finishes in 8.7s and says it ran
+in a worker. No page errors.
+
+One operational scar from earlier the same day, written up in
+`ops/README.md`: deploying with both compose files did not only break that
+deploy — Compose tagged the built static image as `node:22-alpine`,
+replacing the real one on the host. Nothing failed at the time. The
+nightly reseed failed the next day with `sh: npm: not found`, twenty hours
+later and with no visible connection to the cause.
