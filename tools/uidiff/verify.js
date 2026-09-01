@@ -705,9 +705,11 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
     body: JSON.stringify({title:'Saga probe child', parent_id: sagaParent.id})});
   const preview = await (await fetch(`${GW}/pages/${sagaParent.id}/delete-preview`,
     {headers:{'X-Actor-Id':sub}})).json();
+  // `descendants`, and it excludes the page itself — the preview answers
+  // "what ELSE goes", which is the only part a person cannot already see.
   check('§04 a delete says what it will take with it, before it runs',
-        (preview.pages?.length ?? preview.count ?? 0) >= 2,
-        `${preview.pages?.length ?? preview.count ?? 0} pages`);
+        (preview.descendants?.length ?? 0) >= 1,
+        `${preview.descendants?.length ?? 0} descendants`);
   await fetch(`${GW}/pages/${sagaParent.id}`, {method:'DELETE', headers:{'X-Actor-Id':sub}});
   const trash = await (await fetch(`${GW}/trash`, {headers:{'X-Actor-Id':sub}})).json();
   check('§04 and the whole subtree lands in the trash, not just the page named',
