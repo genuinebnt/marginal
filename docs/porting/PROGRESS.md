@@ -5304,8 +5304,27 @@ was the code under test:**
    was still alive, and they fought over the same corpus — four failures
    that were neither real nor reproducible. One process at a time.
 
-**Still not verified:** a single clean full sweep, start to finish. Three
-attempts were cut short by the local Docker daemon going down (three times
-in one session; the last while writing this up). Everything else in this
-slice rests on unit tests, the probe matrices, and the seeder running end to
-end. **Nothing is deployed.**
+**The sweep passed: 124 ok.** It took several attempts, and three of the
+things standing in the way were the gate's own checks rather than the code:
+
+- **§ 08 killed the browser.** The earlier "try destinations until one is
+  reachable" fix clicked up to 38 nodes with a 15-second wait each — most of
+  ten minutes, and Chrome died partway through with "Target page, context or
+  browser has been closed". The graph already knows who is reachable, so the
+  check now runs a BFS over the edges it has already fetched and clicks the
+  one node it needs. One click instead of thirty-eight.
+- **§ 04's `inspector tab counts`** asserted `CHECKS \d`, which needs a page
+  that actually has a diagnostic. Which seeded page does is decided by the
+  link graph — and nesting one page under another changed the answer, so a
+  check written against a hardcoded title went red for a screen that was
+  working. It asks the API for a page with a diagnostic now.
+- **§ 02's `the live panel actually runs`** sampled the panel twice, three
+  seconds apart, and called it dead when the two matched. The simulation
+  replays a fixed script and can finish between the samples. It waits for the
+  text to change now — the same lesson as the convergence check directly
+  below it, which had already been fixed for the same reason.
+
+That is the third, fourth and fifth instance this session of one rule:
+**waiting on anything other than the thing you assert on, or asserting on a
+fact about the corpus rather than about the screen, is a check that will
+eventually be wrong about working code.**

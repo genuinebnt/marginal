@@ -111,24 +111,49 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
   const graphNodes = p.locator('svg g[font-family="Archivo"] > g');
   const gestureText = async () => (await txt()).match(/(no route[^\n]*|\d+ hops? · BFS[^\n]*)/)?.[0] ?? '';
 
-  // Try destinations until one is REACHABLE from the source.
+  // Pick a destination that is REACHABLE from the source, computed from the
+  // link graph rather than found by clicking.
   //
-  // The corpus is not one connected component, so a fixed nth(N) destination
-  // is a coin flip: when it lands in another component the screen correctly
-  // says "no route — these two are in different components" and draws
-  // nothing, and a check demanding a drawn hop fails on a screen that is
-  // working. Which nodes share a component is a fact about seed data, so the
-  // check finds a reachable one instead of assuming one.
-  const total = await graphNodes.count();
+  // The corpus is not one connected component, so a fixed nth(N) is a coin
+  // flip: land in another component and the screen correctly says "no route"
+  // and draws nothing, failing a check about drawing. An earlier fix tried
+  // every node until one worked — up to 38 clicks each with a 15s wait,
+  // which took the better part of ten minutes and killed the browser
+  // outright. The graph already says who is reachable; ask it.
+  const adjacency = new Map();
+  for (const e of (g.edges ?? [])) {
+    if (!adjacency.has(e.from_page)) adjacency.set(e.from_page, []);
+    if (!adjacency.has(e.to_page)) adjacency.set(e.to_page, []);
+    adjacency.get(e.from_page).push(e.to_page);
+    adjacency.get(e.to_page).push(e.from_page);   // undirected: BFS is
+  }
+  const sourceTitle = (((await gesture()) ?? '').split('::').pop() ?? '').trim();
+  const sourceNode = g.nodes.find(n => n.title === sourceTitle);
+  const reachable = (() => {
+    if (!sourceNode) return null;
+    const seen = new Set([sourceNode.id]);
+    const queue = [sourceNode.id];
+    while (queue.length) {
+      const cur = queue.shift();
+      for (const next of (adjacency.get(cur) ?? [])) {
+        if (seen.has(next)) continue;
+        seen.add(next);
+        queue.push(next);
+      }
+    }
+    seen.delete(sourceNode.id);
+    const id = [...seen][0];
+    return g.nodes.find(n => n.id === id) ?? null;
+  })();
+
   let routed = '';
-  for (let i = 0; i < total && !/hops? · BFS/.test(routed); i++) {
-    await graphNodes.nth(i).click({ force: true });
-    await p.waitForFunction(
-      () => /no route|hops? · BFS|hop · BFS/.test(document.body.innerText),
-      null, { timeout: 15000 }).catch(() => {});
+  if (reachable) {
+    await graphNodes.filter({ hasText: reachable.title }).first().click({ force: true });
+    await p.waitForFunction(() => /no route|hops? · BFS/.test(document.body.innerText),
+      null, { timeout: 20000 }).catch(() => {});
     routed = await gestureText();
   }
-  check('§08 a second click produces a real route', /hops? · BFS/.test(routed), routed);
+  check('§08 a second click produces a real route', /hops? · BFS/.test(routed), routed || 'no reachable destination');
   check('§08 and the route is drawn, hop by hop',
         (await p.evaluate(() => [...document.querySelectorAll('svg line')]
           .filter((l) => l.getAttribute('stroke') === '#E8873C').length)) >= 1);
@@ -191,8 +216,27 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
   check('§04 rail draws depth guides', (await count('.tr-guide')) > 0);
   check('§04 rail shows a part count', (await count('.tr-parts')) > 0);
   check('§04 ACK P99 is measured', /ACK P99/.test(await txt()));
-  await p.locator('.it', { hasText: 'CHECKS' }).first().click(); await p.waitForTimeout(400);
-  check('§04 inspector tab counts', /CHECKS \d/.test(await txt()));
+  // The CHECKS tab shows a COUNT, so it needs a page that actually has
+  // diagnostics. Which seeded page does is a fact about the corpus — the
+  // link graph decides it, and nesting one page under another changed the
+  // answer — so ask the API rather than assume a title.
+  const diagnosed = await (async () => {
+    for (const n of g.nodes.slice(0, 12)) {
+      const r = await fetch(`${GW}/pages/${n.id}/diagnostics`,
+        { headers: { Authorization: `Bearer ${pair.access_token}` } }).catch(() => null);
+      if (!r || !r.ok) continue;
+      const d = await r.json().catch(() => ({}));
+      if ((d.diagnostics ?? []).length > 0) return n;
+    }
+    return null;
+  })();
+  if (diagnosed) {
+    await go(`/pages/${diagnosed.id}`, 6000);
+    await p.locator('.it', { hasText: 'CHECKS' }).first().click(); await p.waitForTimeout(600);
+    check('§04 inspector tab counts', /CHECKS \d/.test(await txt()), diagnosed.title);
+  } else {
+    check('§04 inspector tab counts', false, 'no seeded page has a diagnostic to count');
+  }
 
   // ── § 24b COMMAND PALETTE ─────────────────────────────────────────────
   await p.keyboard.press('Meta+k'); await p.waitForTimeout(500);
@@ -576,10 +620,16 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
   // the text has to actually change and then converge.
   const paneText = () => p.evaluate(() =>
     document.querySelector('[style*="Spectral"]')?.textContent ?? '');
+  // Wait for the text to CHANGE, rather than sampling twice three seconds
+  // apart. The simulation replays a fixed script and can finish between the
+  // two samples — which reads as "the panel is dead" when what actually
+  // happened is that it was quick. Same lesson as the convergence check
+  // below: wait for the thing you assert on.
   const first = await paneText();
-  await p.waitForTimeout(3000);
-  const later = await paneText();
-  check('§02 the live panel actually runs', first !== later, `${first.length} → ${later.length}`);
+  const changed = await p.waitForFunction(
+    (before) => (document.querySelector('[style*="Spectral"]')?.textContent ?? '') !== before,
+    first, { timeout: 25000 }).then(() => true).catch(() => false);
+  check('§02 the live panel actually runs', changed, `${first.length} → ${(await paneText()).length}`);
   // The wait IS the evidence. Re-reading the page afterwards is a race: the
   // panel loops, so "converged" can appear and be replaced by "in flight"
   // before the assert gets to look.
