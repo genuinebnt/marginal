@@ -5328,3 +5328,91 @@ That is the third, fourth and fifth instance this session of one rule:
 **waiting on anything other than the thing you assert on, or asserting on a
 fact about the corpus rather than about the screen, is a check that will
 eventually be wrong about working code.**
+
+---
+
+## `v3.1.0` part two: spaces, roles, and enforcement on both sides (2026-09-01)
+
+`ADR-013`'s model, built. `auth.spaces` / `auth.memberships` own the truth;
+`document-service` keeps a projection and filters reads against it;
+`collaboration-service` resolves a role at join and gates writes in
+`can_apply`. `SpaceService` and its REST shim; § 23's screen.
+
+**Verified live, end to end:**
+
+```
+member of the default space   18 pages       user in no space        0 pages
+new registration              18, as viewer  editor writes           ack
+admin demotes them to viewer  200            their next write        denied by can_apply
+non-member lists members      404            viewer lists members    403
+sole admin demotes self       409            reconcile               8 memberships, matches auth
+```
+
+**Five defects that only running it could find:**
+
+1. **The resolver set `actor-id` on its second hop but not its first**, so
+   every join failed `UNAUTHENTICATED` from document-service. Correctly.
+2. **Migration `00002` left the default space with NO admin.** It made
+   everyone an editor — right for preserving access, nobody's ability to
+   read or write changed on the day the model did — but nobody could ever
+   manage the space, since granting requires an admin to start from. The
+   rule was written, tested and correct, and the data still reached a state
+   it forbids, because the migration ran before anything checked it.
+   `00003` promotes the founder.
+3. **A fresh registration landed in no space** and saw an empty instance —
+   correct enforcement, terrible front door. New accounts join as `viewer`.
+4. **A fresh DATABASE had no default space at all**: `00002` builds it from
+   existing users, so on an empty database it builds nothing, and the first
+   account would land nowhere with no way out. The first registration
+   bootstraps the space as its admin — the only moment that can happen.
+5. **`api-gateway` never mapped `PermissionDenied`.** Nothing could return
+   it before roles existed, so it fell through to **500**: "you may not do
+   that" became "the server is broken".
+
+**`CanApplyFunc` gained a `pageID`.** Authorization is per-page — a role is
+held in a space, a page belongs to a space, one Manager serves every page —
+so without it RFC-002 §5's chokepoint could not express its own question.
+
+**Absence is a denial.** No live role entry means no write. If a missing
+entry permitted one, every failure to resolve a role would be an
+escalation; the resolver refuses the handshake for the same reason.
+
+### § 23 SPACES — screen built, mockup reconciliation UNFINISHED
+
+The screen is real and works: spaces list, roster, a live role control per
+member (three chips plus REMOVE, each one a real call), the capability
+table, and a REACH tab stating where each half is enforced and what the
+staleness costs.
+
+**Its uidiff is not at zero, and the mockup edits were reverted.** § 23
+depicts five roles — OWNER / EDITOR / COMMENTER / PROPOSER / READER — where
+`ADR-013` decided three. Two of those five gate capabilities this repo does
+not have (comments are `v3.2.0`, the assistant `v4.4.0`), so the mockup is
+ahead of itself in the same way § 04's assistant chips were, and the same
+correction applies. I made those edits by patching the markup in several
+passes, mis-cut a region, and drove the diff from 1 missing to 31 — so the
+file was reverted to its committed state rather than left in one I could no
+longer reason about. **The reconciliation is owed, and should be done as
+one deterministic rewrite of § 23's `<main>`, not as successive patches.**
+
+What that rewrite has to say, already worked out:
+
+- Three role columns (ADMIN / EDITOR / VIEWER) and five capability rows:
+  read, emit ops, move-or-delete, change membership, delete the space.
+- The roster's static role badge becomes the three-chip control the screen
+  actually draws — a label is exactly the drawn-but-inert affordance the
+  gate's second half exists to catch.
+- The cross-space grid comes out. A roster is admin-only, so such a grid
+  could only be filled in for spaces you administer, and one left blank
+  elsewhere reads as "nobody is in them" rather than "you cannot see". The
+  REACH tab answers the part that is answerable for everyone.
+
+### A shared, data-dependent gap now visible on three screens
+
+`div.bdg` — the unread-notification badge — renders only when there are
+unread notifications, and this session's reseed and role changes cleared
+that state. § 04, § 23 and § 23c all now report it missing. It is **not** a
+regression in any of them: § 04 was at zero when committed. It needs either
+a seed that leaves an unread notification or an explicit exclusion, and it
+is recorded here rather than absorbed into whichever screen next runs its
+gate.

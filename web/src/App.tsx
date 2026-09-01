@@ -17,6 +17,7 @@ import { SearchScreen } from "./screens/SearchScreen";
 import { NotificationsScreen } from "./screens/NotificationsScreen";
 import { DiscoverScreen } from "./screens/DiscoverScreen";
 import { SeriesScreen } from "./screens/SeriesScreen";
+import { SpacesScreen } from "./screens/SpacesScreen";
 import { TrashScreen } from "./screens/TrashScreen";
 import { NotFoundScreen } from "./screens/NotFoundScreen";
 import { LabCompilerScreen } from "./screens/LabCompilerScreen";
@@ -120,6 +121,7 @@ function App() {
         }
       />
       <Route path="/trash" element={<RequireAuth><TrashScreen /></RequireAuth>} />
+      <Route path="/spaces" element={<RequireAuth><SpacesScreen /></RequireAuth>} />
       <Route path="/series" element={<RequireAuth><SeriesScreen /></RequireAuth>} />
       <Route path="/series/:id" element={<RequireAuth><SeriesScreen /></RequireAuth>} />
       <Route path="/discover" element={<RequireAuth><DiscoverScreen /></RequireAuth>} />
