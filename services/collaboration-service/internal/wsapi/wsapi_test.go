@@ -91,7 +91,7 @@ func newTestServerWithRepo(t *testing.T, opts *websocket.AcceptOptions) (*httpte
 	t.Cleanup(func() { _ = mgr.CloseAll() })
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/collab/pages/{id}", NewHandler(mgr, opts, tokenIsTheActorID{}).ServeHTTP)
+	mux.HandleFunc("/collab/pages/{id}", NewHandler(mgr, opts, tokenIsTheActorID{}, alwaysEditor{}, noRecorder{}).ServeHTTP)
 	mux.HandleFunc("/collab/pages/{id}/trace", NewTraceHandler(repo, "server-actor"))
 	mux.HandleFunc("/collab/pages/{id}/blocks/{blockId}/palimpsest", NewPalimpsestHandler(repo, "server-actor"))
 	mux.HandleFunc("/collab/pages/{id}/diff", NewDiffHandler(repo, "server-actor"))
@@ -115,6 +115,21 @@ func newTestServerWithRepo(t *testing.T, opts *websocket.AcceptOptions) (*httpte
 //
 // It refuses anything that is not a uuid, so the "no credential" and
 // "garbage credential" tests below are still meaningful.
+// alwaysEditor and noRecorder let these tests exercise the socket without
+// standing up document-service and auth-service. The role RULES have their
+// own tests in internal/roles; what this package is responsible for is
+// resolving once at join and refusing when it cannot.
+type alwaysEditor struct{}
+
+func (alwaysEditor) Resolve(context.Context, uuid.UUID, uuid.UUID) (string, error) {
+	return "editor", nil
+}
+
+type noRecorder struct{}
+
+func (noRecorder) Set(uuid.UUID, uuid.UUID, string) {}
+func (noRecorder) Clear(uuid.UUID, uuid.UUID)       {}
+
 type tokenIsTheActorID struct{}
 
 func (tokenIsTheActorID) Subject(_ context.Context, token string) (uuid.UUID, error) {

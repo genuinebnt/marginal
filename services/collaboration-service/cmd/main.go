@@ -20,16 +20,22 @@ import (
 	"syscall"
 
 	"github.com/coder/websocket"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/nats-io/nats.go"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
 	"marginal/authverify"
 	"marginal/envconfig"
 
 	"marginal/collaboration-service/internal/migrate"
+	"marginal/collaboration-service/internal/oplog"
 	"marginal/collaboration-service/internal/opstore"
 	"marginal/collaboration-service/internal/outbox"
+	"marginal/collaboration-service/internal/pageop"
+	"marginal/collaboration-service/internal/roles"
 	"marginal/collaboration-service/internal/session"
 	"marginal/collaboration-service/internal/wsapi"
 )
@@ -108,7 +114,38 @@ func run() error {
 	serverActor := envconfig.EnvOr("COLLAB_SERVER_ACTOR", "server")
 
 	repo := opstore.NewPostgresRepo(pool)
-	manager := session.NewManager(repo, walDir, serverActor)
+	// Roles are resolved once per join and read by can_apply on every op
+	// (ADR-013 §3). The two gRPC clients are for the JOIN path only —
+	// resolving a role needs document-service (which space is this page in)
+	// and auth-service (what is this actor in that space).
+	documentConn, err := grpc.NewClient(
+		envconfig.EnvOr("DOCUMENT_SERVICE_GRPC_ADDR", "localhost:9001"),
+		grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = documentConn.Close() }()
+
+	authConn, err := grpc.NewClient(
+		envconfig.EnvOr("AUTH_SERVICE_GRPC_ADDR", "localhost:9006"),
+		grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = authConn.Close() }()
+
+	directory := roles.New()
+	ws := roles.WS{Dir: directory, Resolver: roles.NewResolver(documentConn, authConn)}
+
+	// can_apply reads the directory and nothing else — RFC-002 §5's single
+	// auditable chokepoint, still synchronous and still pure. Every writer
+	// arrived through a join that resolved a role first, so an absent entry
+	// means an expired one or a path that skipped the join, and both are
+	// refused rather than trusted.
+	manager := session.NewManager(repo, walDir, serverActor,
+		session.WithCanApply(func(pageID uuid.UUID, _ pageop.Op, actorID uuid.UUID, _ oplog.ActorKind) bool {
+			return directory.CanApply(pageID, actorID)
+		}))
 	defer func() {
 		if err := manager.CloseAll(); err != nil {
 			slog.Error("closing sessions during shutdown", "err", err)
@@ -126,7 +163,8 @@ func run() error {
 	// (ADR-013 §1). Same JWKS, same local verification, no per-connect RPC.
 	verifier := authverify.New(envconfig.EnvOr(
 		"AUTH_SERVICE_JWKS_URL", "http://localhost:8006/.well-known/jwks.json"))
-	mux.HandleFunc("/collab/pages/{id}", wsapi.NewHandler(manager, wsAcceptOptions(), verifier).ServeHTTP)
+
+	mux.HandleFunc("/collab/pages/{id}", wsapi.NewHandler(manager, wsAcceptOptions(), verifier, ws, ws).ServeHTTP)
 	// These read endpoints return a page's OP LOG — its content, its edit
 	// history, and who made each edit. They are not proxied either, so they
 	// verify the same token the socket does (ADR-013 §1). Leaving them open

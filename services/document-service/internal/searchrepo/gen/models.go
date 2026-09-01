@@ -42,6 +42,7 @@ type DocsPage struct {
 	UpdatedAt      pgtype.Timestamptz
 	SearchVector   interface{}
 	TopicID        pgtype.UUID
+	SpaceID        pgtype.UUID
 }
 
 type DocsPageDeletion struct {

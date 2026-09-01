@@ -48,12 +48,12 @@ func (r *PostgresRepo) PreviewDelete(ctx context.Context, id PageID) (DeletePrev
 	for _, d := range descRows {
 		out.Descendants = append(out.Descendants, pageFromRow(
 			d.ID, d.CreatedBy, d.ParentID, d.Title, d.Path, d.SortKey,
-			d.LifecycleState, d.DeletedAt, d.CreatedAt, d.UpdatedAt))
+			d.LifecycleState, d.DeletedAt, d.CreatedAt, d.UpdatedAt, d.SpaceID))
 	}
 	for _, f := range refRows {
 		out.Referrers = append(out.Referrers, pageFromRow(
 			f.ID, f.CreatedBy, f.ParentID, f.Title, f.Path, f.SortKey,
-			f.LifecycleState, f.DeletedAt, f.CreatedAt, f.UpdatedAt))
+			f.LifecycleState, f.DeletedAt, f.CreatedAt, f.UpdatedAt, f.SpaceID))
 	}
 	return out, nil
 }
@@ -96,7 +96,7 @@ func (r *PostgresRepo) ListTrash(ctx context.Context, window time.Duration, limi
 	for _, row := range rows {
 		e := TrashEntry{
 			Page: pageFromRow(row.ID, row.CreatedBy, row.ParentID, row.Title, row.Path,
-				row.SortKey, row.LifecycleState, row.DeletedAt, row.CreatedAt, row.UpdatedAt),
+				row.SortKey, row.LifecycleState, row.DeletedAt, row.CreatedAt, row.UpdatedAt, row.SpaceID),
 		}
 		if row.PurgeAt.Valid {
 			e.PurgeAt = row.PurgeAt.Time

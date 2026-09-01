@@ -100,6 +100,15 @@ message Page {
   // the page yet, which an empty page and a lagging projection share.
   int32 block_count             = 13;
   int32 word_count              = 14;
+  // v3.1.0's permission boundary (ADR-013 §2). Always set: docs.pages
+  // makes it NOT NULL, because a page with no space is a page no rule
+  // applies to.
+  //
+  // On Page rather than a separate RPC because everything that needs it
+  // already has a page — collaboration-service resolves an actor's role at
+  // join by asking which space the page is in, and a second round trip for
+  // one column would be a round trip per connection.
+  string space_id               = 15;
 }
 
 // A topic is singular per page and carries a colour KEY, never a hex value

@@ -16,6 +16,7 @@ func pageFromRow(
 	id, createdBy, parentID pgtype.UUID,
 	title, path, sortKey, lifecycleState string,
 	deletedAt, createdAt, updatedAt pgtype.Timestamptz,
+	spaceID pgtype.UUID,
 ) Page {
 	return Page{
 		ID:             PageID(fromPgUUID(id)),
@@ -28,6 +29,7 @@ func pageFromRow(
 		DeletedAt:      fromPgTimestamptzPtr(deletedAt),
 		CreatedAt:      fromPgTimestamptz(createdAt),
 		UpdatedAt:      fromPgTimestamptz(updatedAt),
+		SpaceID:        fromPgUUID(spaceID),
 	}
 }
 
@@ -42,21 +44,21 @@ func fromPgTimestamptzPtr(ts pgtype.Timestamptz) *time.Time {
 }
 
 func pageFromCreateRow(r pagerepo.CreatePageRow) Page {
-	return pageFromRow(r.ID, r.CreatedBy, r.ParentID, r.Title, r.Path, r.SortKey, r.LifecycleState, r.DeletedAt, r.CreatedAt, r.UpdatedAt)
+	return pageFromRow(r.ID, r.CreatedBy, r.ParentID, r.Title, r.Path, r.SortKey, r.LifecycleState, r.DeletedAt, r.CreatedAt, r.UpdatedAt, r.SpaceID)
 }
 
 func pageFromGetRow(r pagerepo.GetPageRow) Page {
-	return pageFromRow(r.ID, r.CreatedBy, r.ParentID, r.Title, r.Path, r.SortKey, r.LifecycleState, r.DeletedAt, r.CreatedAt, r.UpdatedAt)
+	return pageFromRow(r.ID, r.CreatedBy, r.ParentID, r.Title, r.Path, r.SortKey, r.LifecycleState, r.DeletedAt, r.CreatedAt, r.UpdatedAt, r.SpaceID)
 }
 
 func pageFromListRow(r pagerepo.ListPagesRow) Page {
-	return pageFromRow(r.ID, r.CreatedBy, r.ParentID, r.Title, r.Path, r.SortKey, r.LifecycleState, r.DeletedAt, r.CreatedAt, r.UpdatedAt)
+	return pageFromRow(r.ID, r.CreatedBy, r.ParentID, r.Title, r.Path, r.SortKey, r.LifecycleState, r.DeletedAt, r.CreatedAt, r.UpdatedAt, r.SpaceID)
 }
 
 func pageFromRenameRow(r pagerepo.RenamePageRow) Page {
-	return pageFromRow(r.ID, r.CreatedBy, r.ParentID, r.Title, r.Path, r.SortKey, r.LifecycleState, r.DeletedAt, r.CreatedAt, r.UpdatedAt)
+	return pageFromRow(r.ID, r.CreatedBy, r.ParentID, r.Title, r.Path, r.SortKey, r.LifecycleState, r.DeletedAt, r.CreatedAt, r.UpdatedAt, r.SpaceID)
 }
 
 func pageFromReparentRow(r pagerepo.ReparentPageRowRow) Page {
-	return pageFromRow(r.ID, r.CreatedBy, r.ParentID, r.Title, r.Path, r.SortKey, r.LifecycleState, r.DeletedAt, r.CreatedAt, r.UpdatedAt)
+	return pageFromRow(r.ID, r.CreatedBy, r.ParentID, r.Title, r.Path, r.SortKey, r.LifecycleState, r.DeletedAt, r.CreatedAt, r.UpdatedAt, r.SpaceID)
 }

@@ -159,8 +159,17 @@ type Page struct {
 	// client-side word counts over four differently-shaped payloads is four
 	// numbers that disagree. Both are 0 when the projection has no rows for
 	// the page yet, which an empty page and a lagging projection share.
-	BlockCount    int32 `protobuf:"varint,13,opt,name=block_count,json=blockCount,proto3" json:"block_count,omitempty"`
-	WordCount     int32 `protobuf:"varint,14,opt,name=word_count,json=wordCount,proto3" json:"word_count,omitempty"`
+	BlockCount int32 `protobuf:"varint,13,opt,name=block_count,json=blockCount,proto3" json:"block_count,omitempty"`
+	WordCount  int32 `protobuf:"varint,14,opt,name=word_count,json=wordCount,proto3" json:"word_count,omitempty"`
+	// v3.1.0's permission boundary (ADR-013 §2). Always set: docs.pages
+	// makes it NOT NULL, because a page with no space is a page no rule
+	// applies to.
+	//
+	// On Page rather than a separate RPC because everything that needs it
+	// already has a page — collaboration-service resolves an actor's role at
+	// join by asking which space the page is in, and a second round trip for
+	// one column would be a round trip per connection.
+	SpaceId       string `protobuf:"bytes,15,opt,name=space_id,json=spaceId,proto3" json:"space_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -291,6 +300,13 @@ func (x *Page) GetWordCount() int32 {
 		return x.WordCount
 	}
 	return 0
+}
+
+func (x *Page) GetSpaceId() string {
+	if x != nil {
+		return x.SpaceId
+	}
+	return ""
 }
 
 // A topic is singular per page and carries a colour KEY, never a hex value
@@ -2471,7 +2487,7 @@ var File_document_proto protoreflect.FileDescriptor
 
 const file_document_proto_rawDesc = "" +
 	"\n" +
-	"\x0edocument.proto\x12\x14marginal.document.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1bgoogle/protobuf/empty.proto\"\xd4\x04\n" +
+	"\x0edocument.proto\x12\x14marginal.document.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1bgoogle/protobuf/empty.proto\"\xef\x04\n" +
 	"\x04Page\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -2493,7 +2509,8 @@ const file_document_proto_rawDesc = "" +
 	"\vblock_count\x18\r \x01(\x05R\n" +
 	"blockCount\x12\x1d\n" +
 	"\n" +
-	"word_count\x18\x0e \x01(\x05R\twordCountB\f\n" +
+	"word_count\x18\x0e \x01(\x05R\twordCount\x12\x19\n" +
+	"\bspace_id\x18\x0f \x01(\tR\aspaceIdB\f\n" +
 	"\n" +
 	"_parent_idB\r\n" +
 	"\v_deleted_atB\b\n" +

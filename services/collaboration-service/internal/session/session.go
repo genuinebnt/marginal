@@ -74,9 +74,15 @@ var ErrOutOfRange = errors.New("session: restore target step out of range")
 
 // CanApplyFunc is RFC-002 §5's one auditable authorization chokepoint.
 // Every op passes through it before touching the page or any block's rope.
-type CanApplyFunc func(op pageop.Op, actorID uuid.UUID, actorKind oplog.ActorKind) bool
+//
+// pageID is a parameter rather than something the implementation is
+// expected to already know, because authorization is per-PAGE: a role is
+// held in a space, a page belongs to a space, and one Manager serves every
+// page in the process. Without it the chokepoint cannot express the
+// question it exists to answer (ADR-013 §3).
+type CanApplyFunc func(pageID uuid.UUID, op pageop.Op, actorID uuid.UUID, actorKind oplog.ActorKind) bool
 
-func allowAll(pageop.Op, uuid.UUID, oplog.ActorKind) bool { return true }
+func allowAll(uuid.UUID, pageop.Op, uuid.UUID, oplog.ActorKind) bool { return true }
 
 // CommitResult is what every client learns about a just-committed op: the
 // op itself, and — only when that op was a pageop.Text (a character edit
@@ -497,7 +503,7 @@ func (s *Session) ApplyClientOp(ctx context.Context, actorID uuid.UUID, actorKin
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if !s.canApply(op, actorID, actorKind) {
+	if !s.canApply(s.pageID, op, actorID, actorKind) {
 		return CommitResult{}, ErrDenied
 	}
 
@@ -620,7 +626,7 @@ func (s *Session) Undo(ctx context.Context, actorID uuid.UUID, actorKind oplog.A
 	var produced []pageop.Op // filled newest-original-op-first; reversed below
 	for i := len(group.inverses) - 1; i >= 0; i-- {
 		op := group.inverses[i]
-		if !s.canApply(op, actorID, actorKind) {
+		if !s.canApply(s.pageID, op, actorID, actorKind) {
 			s.undo[actorID] = append(remaining, undoGroup{groupID: group.groupID, inverses: group.inverses[:i+1]})
 			return results, ErrDenied
 		}
@@ -664,7 +670,7 @@ func (s *Session) Redo(ctx context.Context, actorID uuid.UUID, actorKind oplog.A
 	var results []CommitResult
 	for i := 0; i < len(group.inverses); i++ {
 		op := group.inverses[i]
-		if !s.canApply(op, actorID, actorKind) {
+		if !s.canApply(s.pageID, op, actorID, actorKind) {
 			s.redo[actorID] = append(remaining, undoGroup{groupID: group.groupID, inverses: group.inverses[i:]})
 			return results, ErrDenied
 		}
@@ -748,7 +754,7 @@ func (s *Session) RestoreTo(ctx context.Context, actorID uuid.UUID, actorKind op
 	var produced []pageop.Op
 	for i := len(steps) - 1; i > toStep; i-- {
 		op := steps[i].Inverse
-		if !s.canApply(op, actorID, actorKind) {
+		if !s.canApply(s.pageID, op, actorID, actorKind) {
 			return results, ErrDenied
 		}
 		result, redoOp, err := s.commitOpLocked(ctx, actorID, actorKind, op, &groupID, senderSubID)

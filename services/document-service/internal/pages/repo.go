@@ -77,6 +77,12 @@ func (r *PostgresRepo) Create(ctx context.Context, np NewPage) (Page, error) {
 			return Page{}, fmt.Errorf("pages: resolving parent: %w", err)
 		}
 		parentPath = parent.Path
+		// A child inherits its parent's space, and this OVERRIDES anything
+		// the caller asked for. Letting a child sit in a different space
+		// from its parent would make permissions change partway down a
+		// tree, and "who can read this" would stop being one lookup and
+		// become a walk — which ADR-013 §2 rules out explicitly.
+		np.SpaceID = parent.SpaceID
 	}
 	path := childPath(parentPath, id)
 
@@ -92,6 +98,7 @@ func (r *PostgresRepo) Create(ctx context.Context, np NewPage) (Page, error) {
 		Path:      path,
 		SortKey:   sortKey,
 		ParentID:  toPgUUIDPtr(np.ParentID),
+		SpaceID:   toPgUUID(spaceFor(np)),
 	})
 	if err != nil {
 		return Page{}, fmt.Errorf("pages: create: %w", err)
@@ -393,4 +400,26 @@ func fromPgUUIDPtr(id pgtype.UUID) *PageID {
 	}
 	p := PageID(fromPgUUID(id))
 	return &p
+}
+
+// DefaultSpaceID is the space every pre-v3.1.0 page was migrated into, and
+// where a page goes when nothing says otherwise.
+//
+// The same constant appears in both services' migrations, which
+// DATA_MODEL.md already records as a deliberate coordination point: two
+// services must agree which space existing pages belong to and cannot join
+// across schemas to find out.
+var DefaultSpaceID = uuid.MustParse("00000000-0000-7000-8000-00000000d0c5")
+
+// spaceFor decides where a new page lands, once Create has already applied
+// parent inheritance.
+//
+// A root page with no space named goes to the default. That is v3.1.0's
+// migration promise held for new pages too: nothing changes about where
+// things land until a space switcher exists to say otherwise (§ 23).
+func spaceFor(np NewPage) uuid.UUID {
+	if np.SpaceID != uuid.Nil {
+		return np.SpaceID
+	}
+	return DefaultSpaceID
 }

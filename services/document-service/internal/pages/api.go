@@ -151,6 +151,11 @@ func toProto(p Page) *documentv1.Page {
 		LifecycleState: toProtoLifecycle(p.LifecycleState),
 		CreatedAt:      timestamppb.New(p.CreatedAt),
 		UpdatedAt:      timestamppb.New(p.UpdatedAt),
+		// collaboration-service resolves an actor's role at join by asking
+		// which space the page is in, so this has to be on the wire — a
+		// second round trip for one column would be a round trip per
+		// connection (ADR-013 §3).
+		SpaceId: p.SpaceID.String(),
 	}
 	if p.ParentID != nil {
 		id := p.ParentID.String()

@@ -166,7 +166,7 @@ func TestUnsubscribeStopsFurtherDelivery(t *testing.T) {
 func TestCanApplyDeniesWithoutMutatingState(t *testing.T) {
 	repo := newFakeRepo()
 	pageID := uuid.Must(uuid.NewV7())
-	deny := func(pageop.Op, uuid.UUID, oplog.ActorKind) bool { return false }
+	deny := func(uuid.UUID, pageop.Op, uuid.UUID, oplog.ActorKind) bool { return false }
 
 	s, err := open(context.Background(), pageID, repo, t.TempDir(), "server-actor", deny, noAutoFlush(), nil)
 	require.NoError(t, err)

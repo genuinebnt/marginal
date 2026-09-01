@@ -176,6 +176,10 @@ services:
       context: .
       dockerfile: services/collaboration-service/Dockerfile
     environment:
+      # For resolving a role at JOIN only (ADR-013 §3) — which space
+      # is this page in, and what is this actor in that space.
+      DOCUMENT_SERVICE_GRPC_ADDR: document-service:9001
+      AUTH_SERVICE_GRPC_ADDR: auth-service:9006
       # This socket is not proxied — it verifies tokens itself
       # (ADR-013 §1), so it needs the same JWKS the gateway uses.
       AUTH_SERVICE_JWKS_URL: http://auth-service:8006/.well-known/jwks.json

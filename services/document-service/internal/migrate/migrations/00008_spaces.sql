@@ -2,30 +2,26 @@
 -- ADR-013 §2. docs.pages gains its permission boundary, and this service
 -- gains the local projection it filters reads against.
 
--- The default space's id is FIXED and shared with auth-service's own
--- migration, deliberately.
+-- Added nullable, backfilled, then made NOT NULL. Adding a NOT NULL column
+-- with no default to a table that already has rows fails; a DEFAULT would
+-- silently give every FUTURE page the default space too, which is exactly
+-- the mistake this column exists to prevent.
 --
--- Two services must agree on which space every pre-existing page belongs to,
--- and they cannot join across schemas to find out (DATA_MODEL.md §1). The
--- alternatives were worse: deriving it from an event means pages have no
--- space until that event arrives (and space_id is NOT NULL), and looking it
--- up at migration time means a network call inside a schema migration.
+-- Plain statements rather than a DO block, deliberately: sqlc parses these
+-- migrations to learn the schema and cannot see through PL/pgSQL. Written
+-- procedurally, every query naming the new column fails to generate with
+-- "column does not exist" — true of sqlc's model, false of the database.
+ALTER TABLE docs.pages ADD COLUMN space_id UUID;
+
+-- The default space's id is FIXED and shared with auth-service's own
+-- migration. Two services must agree which space every pre-existing page
+-- belongs to and cannot join across schemas to find out (DATA_MODEL.md §1);
+-- deriving it from an event leaves pages spaceless while space_id is NOT
+-- NULL, and looking it up means a network call inside a schema migration.
 -- A constant is honest about being a coordination point.
--- +goose StatementBegin
-DO $$
-DECLARE
-    space UUID := '00000000-0000-7000-8000-00000000d0c5';
-BEGIN
-    -- Added nullable, backfilled, then made NOT NULL: adding a NOT NULL
-    -- column with no default to a table that already has rows fails, and a
-    -- DEFAULT would silently give every FUTURE page the default space too,
-    -- which is exactly the mistake this column exists to prevent.
-    ALTER TABLE docs.pages ADD COLUMN space_id UUID;
-    UPDATE docs.pages SET space_id = space WHERE space_id IS NULL;
-    ALTER TABLE docs.pages ALTER COLUMN space_id SET NOT NULL;
-END
-$$;
--- +goose StatementEnd
+UPDATE docs.pages SET space_id = '00000000-0000-7000-8000-00000000d0c5' WHERE space_id IS NULL;
+
+ALTER TABLE docs.pages ALTER COLUMN space_id SET NOT NULL;
 
 -- Every read filters by "the spaces you are in" before anything else, so
 -- this is on the hot path of listing, searching and the graph.

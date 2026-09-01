@@ -2,10 +2,10 @@
 -- id is generated application-side (uuid v7, internal/pages), not by a
 -- database default: the row's own path needs the id as its final LTREE
 -- label, so it has to be known before the INSERT, not after.
-INSERT INTO docs.pages (id, created_by, title, parent_id, path, sort_key)
-VALUES (@id, @created_by, @title, sqlc.narg(parent_id), @path::ltree, @sort_key)
+INSERT INTO docs.pages (id, created_by, title, parent_id, path, sort_key, space_id)
+VALUES (@id, @created_by, @title, sqlc.narg(parent_id), @path::ltree, @sort_key, @space_id)
 RETURNING id, created_by, title, parent_id, path::text AS path, sort_key,
-          lifecycle_state, deleted_at, created_at, updated_at;
+          lifecycle_state, deleted_at, created_at, updated_at, space_id;
 
 -- name: GetPage :one
 -- No owner scoping — every page on this instance is visible to every
@@ -16,7 +16,7 @@ RETURNING id, created_by, title, parent_id, path::text AS path, sort_key,
 -- content). created_by is still recorded — who made a page — just no
 -- longer an access filter.
 SELECT id, created_by, title, parent_id, path::text AS path, sort_key,
-       lifecycle_state, deleted_at, created_at, updated_at
+       lifecycle_state, deleted_at, created_at, updated_at, space_id
 FROM docs.pages
 WHERE id = $1 AND deleted_at IS NULL;
 
@@ -49,7 +49,7 @@ LIMIT 1;
 -- No owner scoping — see GetPage. Lists every page on the instance
 -- matching parent_id, not just the caller's own.
 SELECT id, created_by, title, parent_id, path::text AS path, sort_key,
-       lifecycle_state, deleted_at, created_at, updated_at
+       lifecycle_state, deleted_at, created_at, updated_at, space_id
 FROM docs.pages
 WHERE deleted_at IS NULL
   AND (parent_id = sqlc.narg(parent_id) OR (parent_id IS NULL AND sqlc.narg(parent_id) IS NULL))
@@ -62,7 +62,7 @@ LIMIT $1;
 UPDATE docs.pages SET title = $2, updated_at = NOW()
 WHERE id = $1 AND deleted_at IS NULL
 RETURNING id, created_by, title, parent_id, path::text AS path, sort_key,
-          lifecycle_state, deleted_at, created_at, updated_at;
+          lifecycle_state, deleted_at, created_at, updated_at, space_id;
 
 -- name: ReparentPageRow :one
 -- Moves a single page: new parent (nullable — NULL promotes it to root),
@@ -75,7 +75,7 @@ UPDATE docs.pages
 SET parent_id = sqlc.narg(parent_id), path = @path::ltree, sort_key = @sort_key, updated_at = NOW()
 WHERE id = @id AND deleted_at IS NULL
 RETURNING id, created_by, title, parent_id, path::text AS path, sort_key,
-          lifecycle_state, deleted_at, created_at, updated_at;
+          lifecycle_state, deleted_at, created_at, updated_at, space_id;
 
 -- name: RewriteDescendantPaths :execrows
 -- Replaces the old_prefix ancestry on every descendant of the page being
@@ -172,7 +172,7 @@ WHERE source_page_id IN (
 -- at read time rather than stored, so changing the window moves every
 -- pending purge without a backfill (DATA_MODEL.md § Page deletions).
 SELECT p.id, p.created_by, p.title, p.parent_id, p.path::text AS path, p.sort_key,
-       p.lifecycle_state, p.deleted_at, p.created_at, p.updated_at,
+       p.lifecycle_state, p.deleted_at, p.created_at, p.updated_at, p.space_id,
        (p.deleted_at + @purge_window::interval)::timestamptz AS purge_at,
        d.steps_done, d.attempts, d.last_error, d.completed_at
 FROM docs.pages p
@@ -256,7 +256,7 @@ LIMIT $1;
 
 -- name: ListPagesByTopic :many
 SELECT id, created_by, title, parent_id, path::text AS path, sort_key,
-       lifecycle_state, deleted_at, created_at, updated_at, topic_id
+       lifecycle_state, deleted_at, created_at, updated_at, space_id, topic_id
 FROM docs.pages
 WHERE topic_id = $1 AND deleted_at IS NULL
 ORDER BY updated_at DESC;
@@ -356,7 +356,7 @@ ORDER BY c.part_count DESC, p.title ASC;
 -- containment (<@) rather than a recursive CTE: the path is already
 -- materialised, and this is the query the delete preview has to be fast at.
 SELECT id, created_by, title, parent_id, path::text AS path, sort_key,
-       lifecycle_state, deleted_at, created_at, updated_at
+       lifecycle_state, deleted_at, created_at, updated_at, space_id
 FROM docs.pages
 WHERE deleted_at IS NULL
   AND path <@ (SELECT root.path FROM docs.pages root WHERE root.id = $1)
@@ -368,7 +368,7 @@ ORDER BY path;
 -- that would dangle. Distinct by source: a page linking three times is one
 -- page to warn about, not three.
 SELECT DISTINCT p.id, p.created_by, p.title, p.parent_id, p.path::text AS path,
-       p.sort_key, p.lifecycle_state, p.deleted_at, p.created_at, p.updated_at
+       p.sort_key, p.lifecycle_state, p.deleted_at, p.created_at, p.updated_at, p.space_id
 FROM docs.page_links l
 JOIN docs.pages p ON p.id = l.from_page
 WHERE p.deleted_at IS NULL

@@ -148,10 +148,10 @@ func (q *Queries) CountUntopicedPages(ctx context.Context) (int64, error) {
 }
 
 const createPage = `-- name: CreatePage :one
-INSERT INTO docs.pages (id, created_by, title, parent_id, path, sort_key)
-VALUES ($1, $2, $3, $4, $5::ltree, $6)
+INSERT INTO docs.pages (id, created_by, title, parent_id, path, sort_key, space_id)
+VALUES ($1, $2, $3, $4, $5::ltree, $6, $7)
 RETURNING id, created_by, title, parent_id, path::text AS path, sort_key,
-          lifecycle_state, deleted_at, created_at, updated_at
+          lifecycle_state, deleted_at, created_at, updated_at, space_id
 `
 
 type CreatePageParams struct {
@@ -161,6 +161,7 @@ type CreatePageParams struct {
 	ParentID  pgtype.UUID
 	Path      string
 	SortKey   string
+	SpaceID   pgtype.UUID
 }
 
 type CreatePageRow struct {
@@ -174,6 +175,7 @@ type CreatePageRow struct {
 	DeletedAt      pgtype.Timestamptz
 	CreatedAt      pgtype.Timestamptz
 	UpdatedAt      pgtype.Timestamptz
+	SpaceID        pgtype.UUID
 }
 
 // id is generated application-side (uuid v7, internal/pages), not by a
@@ -187,6 +189,7 @@ func (q *Queries) CreatePage(ctx context.Context, arg CreatePageParams) (CreateP
 		arg.ParentID,
 		arg.Path,
 		arg.SortKey,
+		arg.SpaceID,
 	)
 	var i CreatePageRow
 	err := row.Scan(
@@ -200,6 +203,7 @@ func (q *Queries) CreatePage(ctx context.Context, arg CreatePageParams) (CreateP
 		&i.DeletedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SpaceID,
 	)
 	return i, err
 }
@@ -226,7 +230,7 @@ func (q *Queries) DeleteSubtreeLinks(ctx context.Context, parentPath string) (in
 
 const getPage = `-- name: GetPage :one
 SELECT id, created_by, title, parent_id, path::text AS path, sort_key,
-       lifecycle_state, deleted_at, created_at, updated_at
+       lifecycle_state, deleted_at, created_at, updated_at, space_id
 FROM docs.pages
 WHERE id = $1 AND deleted_at IS NULL
 `
@@ -242,6 +246,7 @@ type GetPageRow struct {
 	DeletedAt      pgtype.Timestamptz
 	CreatedAt      pgtype.Timestamptz
 	UpdatedAt      pgtype.Timestamptz
+	SpaceID        pgtype.UUID
 }
 
 // No owner scoping — every page on this instance is visible to every
@@ -265,6 +270,7 @@ func (q *Queries) GetPage(ctx context.Context, id pgtype.UUID) (GetPageRow, erro
 		&i.DeletedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SpaceID,
 	)
 	return i, err
 }
@@ -332,7 +338,7 @@ func (q *Queries) ListChildrenOrdered(ctx context.Context, parentID pgtype.UUID)
 
 const listDescendants = `-- name: ListDescendants :many
 SELECT id, created_by, title, parent_id, path::text AS path, sort_key,
-       lifecycle_state, deleted_at, created_at, updated_at
+       lifecycle_state, deleted_at, created_at, updated_at, space_id
 FROM docs.pages
 WHERE deleted_at IS NULL
   AND path <@ (SELECT root.path FROM docs.pages root WHERE root.id = $1)
@@ -351,6 +357,7 @@ type ListDescendantsRow struct {
 	DeletedAt      pgtype.Timestamptz
 	CreatedAt      pgtype.Timestamptz
 	UpdatedAt      pgtype.Timestamptz
+	SpaceID        pgtype.UUID
 }
 
 // The subtree a delete would cascade to, excluding the page itself. LTREE
@@ -376,6 +383,7 @@ func (q *Queries) ListDescendants(ctx context.Context, id pgtype.UUID) ([]ListDe
 			&i.DeletedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.SpaceID,
 		); err != nil {
 			return nil, err
 		}
@@ -413,7 +421,7 @@ func (q *Queries) ListPageTags(ctx context.Context, pageID pgtype.UUID) ([]strin
 
 const listPages = `-- name: ListPages :many
 SELECT id, created_by, title, parent_id, path::text AS path, sort_key,
-       lifecycle_state, deleted_at, created_at, updated_at
+       lifecycle_state, deleted_at, created_at, updated_at, space_id
 FROM docs.pages
 WHERE deleted_at IS NULL
   AND (parent_id = $2 OR (parent_id IS NULL AND $2 IS NULL))
@@ -439,6 +447,7 @@ type ListPagesRow struct {
 	DeletedAt      pgtype.Timestamptz
 	CreatedAt      pgtype.Timestamptz
 	UpdatedAt      pgtype.Timestamptz
+	SpaceID        pgtype.UUID
 }
 
 // No owner scoping — see GetPage. Lists every page on the instance
@@ -463,6 +472,7 @@ func (q *Queries) ListPages(ctx context.Context, arg ListPagesParams) ([]ListPag
 			&i.DeletedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.SpaceID,
 		); err != nil {
 			return nil, err
 		}
@@ -476,7 +486,7 @@ func (q *Queries) ListPages(ctx context.Context, arg ListPagesParams) ([]ListPag
 
 const listPagesByTopic = `-- name: ListPagesByTopic :many
 SELECT id, created_by, title, parent_id, path::text AS path, sort_key,
-       lifecycle_state, deleted_at, created_at, updated_at, topic_id
+       lifecycle_state, deleted_at, created_at, updated_at, space_id, topic_id
 FROM docs.pages
 WHERE topic_id = $1 AND deleted_at IS NULL
 ORDER BY updated_at DESC
@@ -493,6 +503,7 @@ type ListPagesByTopicRow struct {
 	DeletedAt      pgtype.Timestamptz
 	CreatedAt      pgtype.Timestamptz
 	UpdatedAt      pgtype.Timestamptz
+	SpaceID        pgtype.UUID
 	TopicID        pgtype.UUID
 }
 
@@ -516,6 +527,7 @@ func (q *Queries) ListPagesByTopic(ctx context.Context, topicID pgtype.UUID) ([]
 			&i.DeletedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.SpaceID,
 			&i.TopicID,
 		); err != nil {
 			return nil, err
@@ -586,7 +598,7 @@ func (q *Queries) ListReadingPositions(ctx context.Context, arg ListReadingPosit
 
 const listReferrers = `-- name: ListReferrers :many
 SELECT DISTINCT p.id, p.created_by, p.title, p.parent_id, p.path::text AS path,
-       p.sort_key, p.lifecycle_state, p.deleted_at, p.created_at, p.updated_at
+       p.sort_key, p.lifecycle_state, p.deleted_at, p.created_at, p.updated_at, p.space_id
 FROM docs.page_links l
 JOIN docs.pages p ON p.id = l.from_page
 WHERE p.deleted_at IS NULL
@@ -610,6 +622,7 @@ type ListReferrersRow struct {
 	DeletedAt      pgtype.Timestamptz
 	CreatedAt      pgtype.Timestamptz
 	UpdatedAt      pgtype.Timestamptz
+	SpaceID        pgtype.UUID
 }
 
 // Pages whose [[links]] point INTO the subtree being deleted — the links
@@ -635,6 +648,7 @@ func (q *Queries) ListReferrers(ctx context.Context, id pgtype.UUID) ([]ListRefe
 			&i.DeletedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.SpaceID,
 		); err != nil {
 			return nil, err
 		}
@@ -778,7 +792,7 @@ func (q *Queries) ListTopics(ctx context.Context) ([]ListTopicsRow, error) {
 
 const listTrash = `-- name: ListTrash :many
 SELECT p.id, p.created_by, p.title, p.parent_id, p.path::text AS path, p.sort_key,
-       p.lifecycle_state, p.deleted_at, p.created_at, p.updated_at,
+       p.lifecycle_state, p.deleted_at, p.created_at, p.updated_at, p.space_id,
        (p.deleted_at + $3::interval)::timestamptz AS purge_at,
        d.steps_done, d.attempts, d.last_error, d.completed_at
 FROM docs.pages p
@@ -805,6 +819,7 @@ type ListTrashRow struct {
 	DeletedAt      pgtype.Timestamptz
 	CreatedAt      pgtype.Timestamptz
 	UpdatedAt      pgtype.Timestamptz
+	SpaceID        pgtype.UUID
 	PurgeAt        pgtype.Timestamptz
 	StepsDone      []string
 	Attempts       *int32
@@ -836,6 +851,7 @@ func (q *Queries) ListTrash(ctx context.Context, arg ListTrashParams) ([]ListTra
 			&i.DeletedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.SpaceID,
 			&i.PurgeAt,
 			&i.StepsDone,
 			&i.Attempts,
@@ -997,7 +1013,7 @@ const renamePage = `-- name: RenamePage :one
 UPDATE docs.pages SET title = $2, updated_at = NOW()
 WHERE id = $1 AND deleted_at IS NULL
 RETURNING id, created_by, title, parent_id, path::text AS path, sort_key,
-          lifecycle_state, deleted_at, created_at, updated_at
+          lifecycle_state, deleted_at, created_at, updated_at, space_id
 `
 
 type RenamePageParams struct {
@@ -1016,6 +1032,7 @@ type RenamePageRow struct {
 	DeletedAt      pgtype.Timestamptz
 	CreatedAt      pgtype.Timestamptz
 	UpdatedAt      pgtype.Timestamptz
+	SpaceID        pgtype.UUID
 }
 
 // No owner scoping — see GetPage.
@@ -1033,6 +1050,7 @@ func (q *Queries) RenamePage(ctx context.Context, arg RenamePageParams) (RenameP
 		&i.DeletedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SpaceID,
 	)
 	return i, err
 }
@@ -1042,7 +1060,7 @@ UPDATE docs.pages
 SET parent_id = $1, path = $2::ltree, sort_key = $3, updated_at = NOW()
 WHERE id = $4 AND deleted_at IS NULL
 RETURNING id, created_by, title, parent_id, path::text AS path, sort_key,
-          lifecycle_state, deleted_at, created_at, updated_at
+          lifecycle_state, deleted_at, created_at, updated_at, space_id
 `
 
 type ReparentPageRowParams struct {
@@ -1063,6 +1081,7 @@ type ReparentPageRowRow struct {
 	DeletedAt      pgtype.Timestamptz
 	CreatedAt      pgtype.Timestamptz
 	UpdatedAt      pgtype.Timestamptz
+	SpaceID        pgtype.UUID
 }
 
 // Moves a single page: new parent (nullable — NULL promotes it to root),
@@ -1090,6 +1109,7 @@ func (q *Queries) ReparentPageRow(ctx context.Context, arg ReparentPageRowParams
 		&i.DeletedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SpaceID,
 	)
 	return i, err
 }

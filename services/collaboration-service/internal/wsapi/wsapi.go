@@ -127,10 +127,26 @@ func toCursorWire(e session.CursorEvent) cursorWire {
 // closes. Register it at a path carrying the page id — e.g.
 // mux.HandleFunc("/collab/pages/{id}", handler.ServeHTTP) — Go 1.22+'s
 // ServeMux pattern syntax, read via r.PathValue("id").
+// RoleResolver answers "what may this actor do on this page", once, at
+// join (ADR-013 §3). An interface at its point of use, so this package does
+// not depend on internal/roles' concrete type and a test can hand in a
+// fixed answer.
+type RoleResolver interface {
+	Resolve(ctx context.Context, pageID, actorID uuid.UUID) (string, error)
+}
+
+// RoleRecorder is where a resolved role is kept for can_apply to read.
+type RoleRecorder interface {
+	Set(page, actor uuid.UUID, role string)
+	Clear(page, actor uuid.UUID)
+}
+
 type Handler struct {
 	manager    *session.Manager
 	acceptOpts *websocket.AcceptOptions
 	verifier   TokenVerifier
+	resolver   RoleResolver
+	roles      RoleRecorder
 }
 
 // NewHandler. acceptOpts is passed straight through to websocket.Accept —
@@ -147,7 +163,7 @@ type Handler struct {
 // a nil one would mean this socket accepts anybody, which is exactly the
 // state ADR-013 exists to leave behind, so it is a parameter rather than an
 // option with a permissive default.
-func NewHandler(m *session.Manager, acceptOpts *websocket.AcceptOptions, verifier TokenVerifier) *Handler {
+func NewHandler(m *session.Manager, acceptOpts *websocket.AcceptOptions, verifier TokenVerifier, resolver RoleResolver, recorder RoleRecorder) *Handler {
 	if verifier == nil {
 		panic("wsapi: NewHandler requires a TokenVerifier — an unauthenticated socket is not a supported configuration")
 	}
@@ -161,7 +177,7 @@ func NewHandler(m *session.Manager, acceptOpts *websocket.AcceptOptions, verifie
 	// Echo back only "bearer", never the token. A server that echoed the
 	// whole offered list would put the credential in a response header.
 	opts.Subprotocols = append(opts.Subprotocols, BearerSubprotocol)
-	return &Handler{manager: m, acceptOpts: opts, verifier: verifier}
+	return &Handler{manager: m, acceptOpts: opts, verifier: verifier, resolver: resolver, roles: recorder}
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -178,6 +194,30 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthenticated", http.StatusUnauthorized)
 		return
 	}
+
+	// Resolve the role BEFORE the upgrade, so a refusal is an HTTP status
+	// rather than a socket that opens and shuts (ADR-013 §3). Once per
+	// join, never per op: can_apply runs on every keystroke, and a lookup
+	// there would put a network hop inside the hot path of typing.
+	//
+	// A resolution FAILURE is a refusal, not a fallback. A resolver that
+	// failed open would turn every auth-service outage into an escalation
+	// for everyone who connected during it.
+	role, err := h.resolver.Resolve(r.Context(), pageID, actorID)
+	if err != nil {
+		slog.Error("wsapi: resolving role", "page_id", pageID, "actor_id", actorID, "err", err)
+		http.Error(w, "could not resolve your role for this page", http.StatusServiceUnavailable)
+		return
+	}
+	if role == "" {
+		// Not a member of the page's space. NOT_FOUND rather than
+		// forbidden, for the reason docs/api/spaces.md §3 gives: a 403 on
+		// something you cannot see confirms it exists.
+		http.Error(w, "page not found", http.StatusNotFound)
+		return
+	}
+	h.roles.Set(pageID, actorID, role)
+	defer h.roles.Clear(pageID, actorID)
 
 	conn, err := websocket.Accept(w, r, h.acceptOpts)
 	if err != nil {

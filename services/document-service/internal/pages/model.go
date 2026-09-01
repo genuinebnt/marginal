@@ -40,6 +40,10 @@ type Page struct {
 	DeletedAt      *time.Time
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
+	// The permission boundary (ADR-013 §2). Always set — docs.pages makes
+	// it NOT NULL, because a page with no space is a page no rule applies
+	// to.
+	SpaceID uuid.UUID
 }
 
 // Backlink is one page linking into another — docs.page_links
@@ -81,6 +85,10 @@ type NewPage struct {
 	Title     string
 	ParentID  *PageID
 	After     *PageID
+	// Where the page lands (ADR-013 §2). Zero means "decide for me" — see
+	// spaceFor: a child inherits its parent's space, and a root with no
+	// space named goes to the default.
+	SpaceID uuid.UUID
 }
 
 // TopicID is a topic's identity. Its own type rather than a bare uuid.UUID
