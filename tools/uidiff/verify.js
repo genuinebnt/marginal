@@ -23,6 +23,7 @@ const path = require('node:path');
 // a gate that will be run from another.
 const REPO = path.resolve(__dirname, '..', '..');
 const { chromium } = require(path.join(REPO, 'tools', 'node_modules', 'playwright-core'));
+const COLLAB='http://localhost:8002';
 const GW='http://localhost:8000', APP='http://localhost:5173';
 let fails = 0;
 const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${name}${detail?'  '+detail:''}`); if(!ok) fails++; };
@@ -534,6 +535,23 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
     await p.waitForTimeout(2500);
   }
   await fetch(`${GW}/pages/${doomed.id}`, {method:'DELETE', headers:{Authorization:`Bearer ${pair.access_token}`}});
+
+  // Wait for the op to reach collab.ops before looking at a screen derived
+  // from it. The flush pipeline BATCHES — an op is acked from the WAL long
+  // before it is queryable — and the audit view reads the newest 120 rows,
+  // so a probe that lost that race left its page outside the window
+  // entirely. Measured: 0 of 120 rows referenced any trashed page.
+  //
+  // Polling the API the screen reads, not sleeping longer: a fixed wait
+  // that happens to work is a check that fails the day the corpus grows.
+  for (let i = 0; i < 30; i++) {
+    const seen = await fetch(`${COLLAB}/collab/audit?limit=120`,
+      { headers: { Authorization: `Bearer ${pair.access_token}` } })
+      .then(r => r.json()).then(d => (d.entries ?? []).some(e => e.page_id === doomed.id))
+      .catch(() => false);
+    if (seen) break;
+    await p.waitForTimeout(1000);
+  }
   await go('/admin/audit', 7000);
   check('§18b a deleted page is still named',
         /\(deleted\)/.test(await txt()));
