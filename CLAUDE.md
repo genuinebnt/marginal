@@ -237,6 +237,7 @@ open indefinitely (no idle-eviction), matching this repo's demo scale.
 | `docs/api/auth.md` | Auth contract — gRPC `AuthService` §1 + the gateway's REST mapping §2 |
 | `docs/api/spaces.md` | Spaces & roles — gRPC `SpaceService` §1 + REST §2 (`v3.1.0`, `ADR-013`) |
 | `docs/api/collaboration.md` | Collaboration contract — the WebSocket wire format (one contract, no REST projection) |
+| `docs/api/comments.md` | Comments contract — collaboration-service's own HTTP routes; why a comment is not an op (`v3.2.0`) |
 | `docs/architecture/ARCHITECTURE.md` | Service map, event bus, request flows |
 | `docs/architecture/DATA_MODEL.md` | **Database per service** — schemas, ownership, and where a join happens |
 | `docs/architecture/CLOUD_PORTABILITY.md` | Ports & adapters, local vs Google Cloud |

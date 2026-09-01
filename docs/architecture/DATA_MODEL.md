@@ -852,6 +852,69 @@ event for that user arrives. Two things keep that honest:
    the same reason: an event bus with no redelivery needs a floor under how
    wrong it can get.
 
+### Comments (`v3.2.0`) — `collab`, and NOT ops
+
+**Owned by `collaboration-service`, in the `collab` schema.** A comment's
+extent is an `AnchorRange` — the same stable range a mark uses (RFC-001 §9)
+— and an anchor is only resolvable by whatever holds the block's live rope
+and its anchor log. `document-service` storing comments would mean
+`document-service` resolving anchors it has no rope for.
+
+**A comment is not an op**, and that is the load-bearing decision here.
+RFC-002's ISA is about document mutation: every op changes the block tree
+or a block's text, every op is invertible, and undo walks that log. A
+comment changes neither, so making it an op would put comments inside the
+document's undo stack — one `⌘Z` too many would silently retract somebody's
+remark. Comments are their own table, referencing the same anchors.
+
+```sql
+CREATE TABLE collab.comment_threads (
+    id          UUID PRIMARY KEY,
+    page_id     UUID NOT NULL,      -- no FK, cross-schema (§1)
+    block_id    UUID NOT NULL,
+    -- The extent, as anchors rather than offsets — the whole reason this
+    -- survives a concurrent edit. An offset pair would silently drift to
+    -- the wrong words the moment somebody typed above it, which is exactly
+    -- the failure "anchors vs offsets" describes.
+    anchor_start JSONB NOT NULL,    -- anchor.Anchor
+    anchor_end   JSONB NOT NULL,
+    -- The text the thread was opened ON, captured at creation.
+    --
+    -- Not a cache of what the anchors resolve to: the anchored text CHANGES
+    -- as people edit, and a thread whose quote silently followed the edits
+    -- would make old remarks read as replies to new words. This is what was
+    -- being discussed, and it never moves.
+    quoted      TEXT NOT NULL,
+    -- resolved is a STATE, not a delete. A resolved thread stays readable
+    -- because the argument it holds is often why the page reads as it does.
+    resolved_at TIMESTAMPTZ,
+    resolved_by UUID,
+    created_by  UUID NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX ON collab.comment_threads (page_id) WHERE resolved_at IS NULL;
+CREATE INDEX ON collab.comment_threads (page_id, block_id);
+
+CREATE TABLE collab.comments (
+    id         UUID PRIMARY KEY,
+    thread_id  UUID NOT NULL REFERENCES collab.comment_threads(id) ON DELETE CASCADE,
+    author_id  UUID NOT NULL,
+    body       TEXT NOT NULL,
+    -- Edited in place rather than versioned. A comment is a remark, not a
+    -- document — and giving it its own op log would be building a second
+    -- editor inside the first.
+    edited_at  TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX ON collab.comments (thread_id, created_at);
+```
+
+**An anchor that no longer resolves is `orphaned`, not deleted.** When the
+text a thread points at is gone, the thread is still shown — attached to
+its block, marked as having lost its anchor, still carrying `quoted`. The
+alternative is deleting somebody's remark because somebody else edited a
+sentence, which is a worse failure than an untidy list.
+
 > **`docs.page_renamed` is the expensive one.** It invalidates diagnostics on every page that
 > links to the renamed page (RFC-003 §4), so it is the topic most likely to need its own
 > backpressure story before any other.
