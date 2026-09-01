@@ -7,6 +7,7 @@
 // plain-text body on error (net/http.Error, not the {error, message}
 // JSON shape ../api/http.ts's apiFetch expects) — collabFetch handles
 // that directly instead of reusing apiFetch and mismatching its contract.
+import { accessToken } from "./http";
 import { COLLAB_URL } from "./config";
 
 export class CollabHttpError extends Error {
@@ -19,7 +20,12 @@ export class CollabHttpError extends Error {
 }
 
 async function collabFetch<T>(url: string): Promise<T> {
-  const res = await fetch(url);
+  // collaboration-service verifies the same token the socket does — these
+  // endpoints return a page's whole op log, so they are not public
+  // (ADR-013 §1). /collab/stats is public and goes through here too;
+  // sending a token it does not need costs nothing.
+  const token = accessToken();
+  const res = await fetch(url, token ? { headers: { Authorization: `Bearer ${token}` } } : undefined);
   if (!res.ok) {
     const text = await res.text();
     throw new CollabHttpError(res.status, text.trim() || res.statusText);

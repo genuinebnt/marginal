@@ -24,6 +24,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/nats-io/nats.go"
 
+	"marginal/authverify"
 	"marginal/envconfig"
 
 	"marginal/collaboration-service/internal/migrate"
@@ -120,12 +121,28 @@ func run() error {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
-	mux.HandleFunc("/collab/pages/{id}", wsapi.NewHandler(manager, wsAcceptOptions()).ServeHTTP)
-	mux.HandleFunc("/collab/pages/{id}/trace", wsapi.NewTraceHandler(repo, serverActor))
-	mux.HandleFunc("/collab/pages/{id}/blocks/{blockId}/palimpsest", wsapi.NewPalimpsestHandler(repo, serverActor))
-	mux.HandleFunc("/collab/pages/{id}/diff", wsapi.NewDiffHandler(repo, serverActor))
+	// This socket is NOT proxied — a browser reaches it directly — so it
+	// verifies tokens itself rather than trusting anything the gateway did
+	// (ADR-013 §1). Same JWKS, same local verification, no per-connect RPC.
+	verifier := authverify.New(envconfig.EnvOr(
+		"AUTH_SERVICE_JWKS_URL", "http://localhost:8006/.well-known/jwks.json"))
+	mux.HandleFunc("/collab/pages/{id}", wsapi.NewHandler(manager, wsAcceptOptions(), verifier).ServeHTTP)
+	// These read endpoints return a page's OP LOG — its content, its edit
+	// history, and who made each edit. They are not proxied either, so they
+	// verify the same token the socket does (ADR-013 §1). Leaving them open
+	// while the socket was closed would just move the hole.
+	mux.HandleFunc("/collab/pages/{id}/trace", wsapi.RequireToken(verifier, wsapi.NewTraceHandler(repo, serverActor)))
+	mux.HandleFunc("/collab/pages/{id}/blocks/{blockId}/palimpsest", wsapi.RequireToken(verifier, wsapi.NewPalimpsestHandler(repo, serverActor)))
+	mux.HandleFunc("/collab/pages/{id}/diff", wsapi.RequireToken(verifier, wsapi.NewDiffHandler(repo, serverActor)))
+
+	// Deliberately PUBLIC. § 02 HOME is the one route reachable without a
+	// session, and its live counters come from here — instance-level totals
+	// (sessions open, ops flushed, queue depth), never a page's content.
+	// "How busy is this server" is not a secret; "what does this page say"
+	// is, which is the line the three routes above sit on the other side of.
 	mux.HandleFunc("/collab/stats", wsapi.NewStatsHandler(pool, manager))
-	mux.HandleFunc("/collab/audit", wsapi.NewAuditHandler(pool))
+
+	mux.HandleFunc("/collab/audit", wsapi.RequireToken(verifier, wsapi.NewAuditHandler(pool)))
 
 	httpServer := &http.Server{Addr: httpAddr, Handler: allowCORS(mux)}
 
@@ -161,7 +178,7 @@ func allowCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", http.MethodGet)
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return

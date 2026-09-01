@@ -31,16 +31,22 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
   const r = await fetch(`${GW}/auth/login`, {method:'POST',headers:{'Content-Type':'application/json'},
     body: JSON.stringify({email:'ui-demo@example.com',password:'ui-demo-password-123'})});
   const pair = await r.json(); const sub = JSON.parse(Buffer.from(pair.access_token.split('.')[1],'base64url')).sub;
-  const g = await (await fetch(`${GW}/graph`,{headers:{'X-Actor-Id':sub}})).json();
+  const g = await (await fetch(`${GW}/graph`,{headers:{Authorization:`Bearer ${pair.access_token}`}})).json();
   const page = g.nodes.find(n=>n.title==='The document block model');
   const hub  = g.nodes.find(n=>n.title==='The Rust Porting Handbook');
 
   const b = await chromium.launch({channel:'chrome'});
   const p = await b.newPage({viewport:{width:1440,height:900}});
   const errs=[]; p.on('pageerror',e=>errs.push(e.message));
+  // addInitScript, not goto-then-evaluate: the session has to be in storage
+  // BEFORE the app's own scripts read it. Setting it afterwards raced a
+  // redirect to /login — the evaluate landed mid-navigation and died with
+  // "Execution context was destroyed". This runs on every navigation, before
+  // any page script, so there is no window in which the app sees no session.
+  await p.addInitScript((s) => {
+    try { localStorage.setItem('marginal.session', JSON.stringify(s)); } catch { /* private mode */ }
+  }, {actorId:sub,accessToken:pair.access_token,refreshToken:pair.refresh_token});
   await p.goto(APP+'/',{waitUntil:'domcontentloaded'});
-  await p.evaluate(s=>localStorage.setItem('marginal.session',JSON.stringify(s)),
-    {actorId:sub,accessToken:pair.access_token,refreshToken:pair.refresh_token});
 
   const go = async (route, wait=6000) => { await p.goto(APP+route,{waitUntil:'networkidle'}); await p.waitForTimeout(wait); };
   const txt = () => p.evaluate(()=>document.body.innerText);
@@ -472,7 +478,7 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
   // view's recent window. Whether an old deletion is still on screen is a
   // fact about how much has happened since, not about this screen.
   const doomed = await (await fetch(`${GW}/pages`, {method:'POST',
-    headers:{'Content-Type':'application/json','X-Actor-Id':sub},
+    headers:{'Content-Type':'application/json',Authorization:`Bearer ${pair.access_token}`},
     body: JSON.stringify({title:'Audit probe — deleted on purpose'})})).json();
   // It has to be EDITED, not merely created: the audit log is derived from
   // collab.ops, so a page nobody ever opened has no row to name it in.
@@ -483,7 +489,7 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
     await p.keyboard.type('deleted on purpose', { delay: 12 });
     await p.waitForTimeout(2500);
   }
-  await fetch(`${GW}/pages/${doomed.id}`, {method:'DELETE', headers:{'X-Actor-Id':sub}});
+  await fetch(`${GW}/pages/${doomed.id}`, {method:'DELETE', headers:{Authorization:`Bearer ${pair.access_token}`}});
   await go('/admin/audit', 7000);
   check('§18b a deleted page is still named',
         /\(deleted\)/.test(await txt()));
@@ -698,20 +704,20 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
   // see it — the saga finishes in well under a settled screenshot — so it is
   // caught here, while it is happening, by polling the API the tree reads.
   const sagaParent = await (await fetch(`${GW}/pages`, {method:'POST',
-    headers:{'Content-Type':'application/json','X-Actor-Id':sub},
+    headers:{'Content-Type':'application/json',Authorization:`Bearer ${pair.access_token}`},
     body: JSON.stringify({title:'Saga probe — deleted on purpose'})})).json();
   await fetch(`${GW}/pages`, {method:'POST',
-    headers:{'Content-Type':'application/json','X-Actor-Id':sub},
+    headers:{'Content-Type':'application/json',Authorization:`Bearer ${pair.access_token}`},
     body: JSON.stringify({title:'Saga probe child', parent_id: sagaParent.id})});
   const preview = await (await fetch(`${GW}/pages/${sagaParent.id}/delete-preview`,
-    {headers:{'X-Actor-Id':sub}})).json();
+    {headers:{Authorization:`Bearer ${pair.access_token}`}})).json();
   // `descendants`, and it excludes the page itself — the preview answers
   // "what ELSE goes", which is the only part a person cannot already see.
   check('§04 a delete says what it will take with it, before it runs',
         (preview.descendants?.length ?? 0) >= 1,
         `${preview.descendants?.length ?? 0} descendants`);
-  await fetch(`${GW}/pages/${sagaParent.id}`, {method:'DELETE', headers:{'X-Actor-Id':sub}});
-  const trash = await (await fetch(`${GW}/trash`, {headers:{'X-Actor-Id':sub}})).json();
+  await fetch(`${GW}/pages/${sagaParent.id}`, {method:'DELETE', headers:{Authorization:`Bearer ${pair.access_token}`}});
+  const trash = await (await fetch(`${GW}/trash`, {headers:{Authorization:`Bearer ${pair.access_token}`}})).json();
   check('§04 and the whole subtree lands in the trash, not just the page named',
         (trash.entries ?? []).filter(e => /^Saga probe/.test(e.page.title)).length >= 2,
         `${(trash.entries ?? []).filter(e => /^Saga probe/.test(e.page.title)).length} entries`);

@@ -91,7 +91,7 @@ func newTestServerWithRepo(t *testing.T, opts *websocket.AcceptOptions) (*httpte
 	t.Cleanup(func() { _ = mgr.CloseAll() })
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/collab/pages/{id}", NewHandler(mgr, opts).ServeHTTP)
+	mux.HandleFunc("/collab/pages/{id}", NewHandler(mgr, opts, tokenIsTheActorID{}).ServeHTTP)
 	mux.HandleFunc("/collab/pages/{id}/trace", NewTraceHandler(repo, "server-actor"))
 	mux.HandleFunc("/collab/pages/{id}/blocks/{blockId}/palimpsest", NewPalimpsestHandler(repo, "server-actor"))
 	mux.HandleFunc("/collab/pages/{id}/diff", NewDiffHandler(repo, "server-actor"))
@@ -107,11 +107,29 @@ func newTestServerWithRepo(t *testing.T, opts *websocket.AcceptOptions) (*httpte
 // which is exactly why the real bug this pins went unnoticed by tests —
 // only trying it from an actual browser surfaced it; see
 // docs/porting/PROGRESS.md).
+// tokenIsTheActorID is the tests' TokenVerifier: the "token" is just the
+// actor's uuid, so a test can still say "connect as this actor" in one
+// argument while the real handshake path — credential in, verifier, subject
+// out — is the one being exercised. Signing a real RS256 token per dial
+// would test golang-jwt, not this package.
+//
+// It refuses anything that is not a uuid, so the "no credential" and
+// "garbage credential" tests below are still meaningful.
+type tokenIsTheActorID struct{}
+
+func (tokenIsTheActorID) Subject(_ context.Context, token string) (uuid.UUID, error) {
+	id, err := uuid.Parse(token)
+	if err != nil {
+		return uuid.Nil, ErrUnauthenticated
+	}
+	return id, nil
+}
+
 func dialWithOrigin(t *testing.T, srv *httptest.Server, pageID uuid.UUID, actorID uuid.UUID, origin string) (*websocket.Conn, error) {
 	t.Helper()
 	url := "ws" + srv.URL[len("http"):] + "/collab/pages/" + pageID.String()
 	header := http.Header{}
-	header.Set("X-Actor-Id", actorID.String())
+	header.Set("Authorization", "Bearer "+actorID.String())
 	header.Set("Origin", origin)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -124,7 +142,7 @@ func dial(t *testing.T, srv *httptest.Server, pageID uuid.UUID, actorID uuid.UUI
 	t.Helper()
 	url := "ws" + srv.URL[len("http"):] + "/collab/pages/" + pageID.String()
 	header := http.Header{}
-	header.Set("X-Actor-Id", actorID.String())
+	header.Set("Authorization", "Bearer "+actorID.String())
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -133,16 +151,20 @@ func dial(t *testing.T, srv *httptest.Server, pageID uuid.UUID, actorID uuid.UUI
 	return conn, func() { _ = conn.Close(websocket.StatusNormalClosure, "") }
 }
 
-// dialWithQueryParamActor mimics a real browser client, which cannot set
-// a custom header on a WebSocket upgrade request at all — see
-// actorFromRequest's own doc comment.
-func dialWithQueryParamActor(t *testing.T, srv *httptest.Server, pageID uuid.UUID, actorID uuid.UUID) (*websocket.Conn, func()) {
+// dialAsBrowser mimics a real browser client, which cannot set a custom
+// header on a WebSocket upgrade at all — but CAN set the subprotocol list,
+// which is why the credential rides there (ADR-013 §1). It used to put the
+// actor id in the query string, where a credential would end up in every
+// access log.
+func dialAsBrowser(t *testing.T, srv *httptest.Server, pageID uuid.UUID, actorID uuid.UUID) (*websocket.Conn, func()) {
 	t.Helper()
-	url := "ws" + srv.URL[len("http"):] + "/collab/pages/" + pageID.String() + "?actor_id=" + actorID.String()
+	url := "ws" + srv.URL[len("http"):] + "/collab/pages/" + pageID.String()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	conn, _, err := websocket.Dial(ctx, url, nil)
+	conn, _, err := websocket.Dial(ctx, url, &websocket.DialOptions{
+		Subprotocols: []string{BearerSubprotocol, actorID.String()},
+	})
 	require.NoError(t, err)
 	return conn, func() { _ = conn.Close(websocket.StatusNormalClosure, "") }
 }
@@ -366,7 +388,7 @@ func TestActorIdViaQueryParamWorksLikeTheHeader(t *testing.T) {
 	srv, _ := newTestServer(t)
 	pageID := uuid.Must(uuid.NewV7())
 	actorID := uuid.Must(uuid.NewV7())
-	conn, closeConn := dialWithQueryParamActor(t, srv, pageID, actorID)
+	conn, closeConn := dialAsBrowser(t, srv, pageID, actorID)
 	defer closeConn()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -974,4 +996,105 @@ func TestDiffEndpointRejectsFromGreaterThanTo(t *testing.T) {
 	require.NoError(t, err)
 	defer resp2.Body.Close()
 	assert.Equal(t, http.StatusBadRequest, resp2.StatusCode)
+}
+
+// ── the handshake is the trust boundary (ADR-013 §1) ──────────────────────
+//
+// This socket is not proxied: a browser reaches it directly, and it is the
+// path every mutation takes. It used to accept whatever actor id the caller
+// wrote in a query parameter, which is not authentication — so these are the
+// tests that would have passed before and must not.
+
+func TestAConnectionWithNoCredentialIsRefused(t *testing.T) {
+	srv, _, _ := newTestServerWithRepo(t, nil)
+	pageID := uuid.Must(uuid.NewV7())
+	url := "ws" + srv.URL[len("http"):] + "/collab/pages/" + pageID.String()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, resp, err := websocket.Dial(ctx, url, nil)
+	if err == nil {
+		_ = conn.Close(websocket.StatusNormalClosure, "")
+		t.Fatal("an unauthenticated connection was accepted")
+	}
+	if resp != nil {
+		require.Equal(t, http.StatusUnauthorized, resp.StatusCode,
+			"rejection must be an HTTP status on the upgrade, not a socket that opens and closes")
+	}
+}
+
+// The exact shape of the old hole: naming an actor id in the URL. It must
+// no longer be a credential, whatever else it is.
+func TestAnActorIdInTheQueryStringIsNotACredential(t *testing.T) {
+	srv, _, _ := newTestServerWithRepo(t, nil)
+	pageID := uuid.Must(uuid.NewV7())
+	victim := uuid.Must(uuid.NewV7())
+	url := "ws" + srv.URL[len("http"):] + "/collab/pages/" + pageID.String() +
+		"?actor_id=" + victim.String()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, _, err := websocket.Dial(ctx, url, nil)
+	if err == nil {
+		_ = conn.Close(websocket.StatusNormalClosure, "")
+		t.Fatal("?actor_id= still opens a socket — anyone can still claim to be anyone")
+	}
+}
+
+func TestAGarbageCredentialIsRefused(t *testing.T) {
+	srv, _, _ := newTestServerWithRepo(t, nil)
+	pageID := uuid.Must(uuid.NewV7())
+	url := "ws" + srv.URL[len("http"):] + "/collab/pages/" + pageID.String()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, _, err := websocket.Dial(ctx, url, &websocket.DialOptions{
+		Subprotocols: []string{BearerSubprotocol, "not-a-token"},
+	})
+	if err == nil {
+		_ = conn.Close(websocket.StatusNormalClosure, "")
+		t.Fatal("a garbage credential was accepted")
+	}
+}
+
+// The server must echo back only "bearer" — echoing the offered list would
+// put the credential itself into a response header.
+func TestTheServerDoesNotEchoTheTokenBackAsASubprotocol(t *testing.T) {
+	srv, _, _ := newTestServerWithRepo(t, nil)
+	pageID := uuid.Must(uuid.NewV7())
+	actorID := uuid.Must(uuid.NewV7())
+
+	conn, closeConn := dialAsBrowser(t, srv, pageID, actorID)
+	defer closeConn()
+
+	require.Equal(t, BearerSubprotocol, conn.Subprotocol(),
+		"the negotiated subprotocol must be the marker alone, never the token")
+}
+
+// handshakeToken is where a credential is found or missed, so its parsing is
+// worth pinning directly rather than only through a dial.
+func TestHandshakeTokenReadsBothSpellingsAndNothingElse(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		header http.Header
+		query  string
+		want   string
+	}{
+		{"browser subprotocol", http.Header{"Sec-Websocket-Protocol": {"bearer, abc.def.ghi"}}, "", "abc.def.ghi"},
+		{"subprotocol without spaces", http.Header{"Sec-Websocket-Protocol": {"bearer,abc.def.ghi"}}, "", "abc.def.ghi"},
+		{"authorization header", http.Header{"Authorization": {"Bearer abc.def.ghi"}}, "", "abc.def.ghi"},
+		{"lowercase scheme", http.Header{"Authorization": {"bearer abc.def.ghi"}}, "", "abc.def.ghi"},
+		{"marker with no token", http.Header{"Sec-Websocket-Protocol": {"bearer"}}, "", ""},
+		{"some other subprotocol", http.Header{"Sec-Websocket-Protocol": {"graphql-ws"}}, "", ""},
+		{"nothing at all", http.Header{}, "", ""},
+		// The old spelling is not a credential, and must not be read as one
+		// even by accident.
+		{"actor_id query param", http.Header{}, "?actor_id=" + uuid.NewString(), ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := httptest.NewRequest(http.MethodGet, "/collab/pages/"+uuid.NewString()+tc.query, nil)
+			r.Header = tc.header
+			require.Equal(t, tc.want, handshakeToken(r))
+		})
+	}
 }

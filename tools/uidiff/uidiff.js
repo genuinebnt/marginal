@@ -223,7 +223,7 @@ const SEED = {
     // here. A second socket joins as its own actor and parks a cursor,
     // which is what puts a dot, a ping and a caret on screen.
     if (ctx?.pageId && ctx?.peerActor) {
-      const ws = new WebSocket(`ws://localhost:8002/collab/pages/${ctx.pageId}?actor_id=${ctx.peerActor}`);
+      const ws = new WebSocket(`ws://localhost:8002/collab/pages/${ctx.pageId}`, ['bearer', ctx.peerToken]);
       ctx.sockets.push(ws);
       await new Promise((resolve) => {
         ws.on('message', (raw) => {
@@ -387,7 +387,7 @@ async function main() {
     // /graph, not /pages: ListPages returns ROOT pages only, so once the
     // corpus had nested pages every title inside a series resolved to
     // nothing and the diff silently ran against the wrong route.
-    const graph = await (await fetch(`${GW}/graph`, { headers: { 'X-Actor-Id': sub } })).json();
+    const graph = await (await fetch(`${GW}/graph`, { headers: { Authorization: `Bearer ${pair.access_token}` } })).json();
     const p = graph.nodes.find(x => x.title === pageTitle);
     if (!p) {
       const near = graph.nodes
@@ -406,9 +406,12 @@ async function main() {
   }
 
   const a = await b.newPage({ viewport: { width: 1440, height: 900 } });
+  // Before any page script runs, on every navigation — see verify.js's own
+  // note: setting it after a goto races the app's redirect to /login.
+  await a.addInitScript((s) => {
+    try { localStorage.setItem('marginal.session', JSON.stringify(s)); } catch { /* private mode */ }
+  }, { actorId: sub, accessToken: pair.access_token, refreshToken: pair.refresh_token });
   await a.goto(APP + '/', { waitUntil: 'domcontentloaded' });
-  await a.evaluate(s => localStorage.setItem('marginal.session', JSON.stringify(s)),
-    { actorId: sub, accessToken: pair.access_token, refreshToken: pair.refresh_token });
   await a.goto(APP + route, { waitUntil: 'networkidle' });
   await a.evaluate('document.fonts.ready');
   // 3.5s was enough when the rail listed 18 flat pages. It is not enough now
@@ -421,7 +424,7 @@ async function main() {
   // and a SECOND actor. Some depicted states are not reachable by one person
   // — presence is real join/leave over the WebSocket, so "somebody else is
   // here" requires somebody else to be here.
-  const ctx = { pageId: route.match(/[0-9a-f-]{36}/)?.[0] ?? null, peerActor: null, sockets: [] };
+  const ctx = { pageId: route.match(/[0-9a-f-]{36}/)?.[0] ?? null, peerActor: null, peerToken: null, sockets: [] };
   if (SEED[screen]) {
     if (/\bpeerActor\b/.test(String(SEED[screen]))) {
       const peer = await fetch(`${GW}/auth/register`, {
@@ -432,7 +435,7 @@ async function main() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: 'uidiff-peer@example.com', password: 'uidiff-peer-123456' }),
       }).then(r => r.json()).catch(() => ({}))).access_token;
-      if (token) ctx.peerActor = JSON.parse(Buffer.from(token.split('.')[1], 'base64url')).sub;
+      if (token) { ctx.peerActor = JSON.parse(Buffer.from(token.split('.')[1], 'base64url')).sub; ctx.peerToken = token; }
       if (process.env.UIDIFF_DEBUG) console.error('seed peer:', ctx.peerActor, 'page:', ctx.pageId);
     }
     // Put the screen into the state its mockup depicts, so what remains

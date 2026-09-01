@@ -66,7 +66,7 @@ async function secondActor() {
     pair = await r.json();
   }
   if (!pair.access_token) return null;   // not fatal: one actor is still a history
-  return JSON.parse(Buffer.from(pair.access_token.split('.')[1], 'base64url')).sub;
+  return pair.access_token;
 }
 
 async function login() {
@@ -79,7 +79,7 @@ async function login() {
     throw new Error(`login failed for ${SEED_EMAIL} at ${GW}: ${JSON.stringify(pair)}`);
   }
   const sub = JSON.parse(Buffer.from(pair.access_token.split('.')[1], 'base64url')).sub;
-  return sub;
+  return { actorId: sub, token: pair.access_token };
 }
 
 const KIND = {
@@ -97,8 +97,11 @@ const KIND = {
 };
 
 /** One page's blocks, sent as ops over a single live session. */
-async function seedPage(actorId, pageId, blocks) {
-  const ws = new WebSocket(`${COLLAB}/collab/pages/${pageId}?actor_id=${actorId}`);
+async function seedPage(token, pageId, blocks) {
+  // The credential is a token in the subprotocol list, not an id in the URL
+  // (ADR-013 §1). `ws` sends the array as Sec-WebSocket-Protocol, which is
+  // exactly what a browser does.
+  const ws = new WebSocket(`${COLLAB}/collab/pages/${pageId}`, ['bearer', token]);
   const order = [];            // top-level block ids, in order
   let ready = false;
 
@@ -214,8 +217,8 @@ async function seedPage(actorId, pageId, blocks) {
  * Two actors, not one — a palimpsest whose every run names the same deleter
  * demonstrates nothing about attribution.
  */
-async function reviseBlockText(actorId, pageId, blockIndex, revisions) {
-  const ws = new WebSocket(`${COLLAB}/collab/pages/${pageId}?actor_id=${actorId}`);
+async function reviseBlockText(token, pageId, blockIndex, revisions) {
+  const ws = new WebSocket(`${COLLAB}/collab/pages/${pageId}`, ['bearer', token]);
   let blockId = null;
   let boundaries = null;
 
@@ -265,8 +268,10 @@ async function reviseBlockText(actorId, pageId, blockIndex, revisions) {
 }
 
 (async () => {
-  const actorId = await login();
-  const H = { 'X-Actor-Id': actorId, 'Content-Type': 'application/json' };
+  const { actorId, token } = await login();
+  // A bearer token, not a claimed id (ADR-013 §1). The gateway ignores
+  // X-Actor-Id now, so sending it would be sending nothing.
+  const H = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
 
   // 1. Clear what is there, unless asked to append. DELETE is idempotent and
   //    cascades to descendants.
@@ -310,7 +315,7 @@ async function reviseBlockText(actorId, pageId, blockIndex, revisions) {
       });
     }
 
-    await seedPage(actorId, created.id, page.blocks);
+    await seedPage(token, created.id, page.blocks);
     console.log(`  ${page.title} — ${page.blocks.length} blocks`);
   }
 
@@ -334,7 +339,7 @@ async function reviseBlockText(actorId, pageId, blockIndex, revisions) {
     ];
     //   The two actors alternate, so no run in the palimpsest is attributable
     //   to the same person as the one before it.
-    let ok = await reviseBlockText(actorId, anchorsId, 0, drafts.slice(0, 2));
+    let ok = await reviseBlockText(token, anchorsId, 0, drafts.slice(0, 2));
     if (ok && other) ok = await reviseBlockText(other, anchorsId, 0, drafts.slice(2));
     console.log(`  character history: ${ok ? 'Anchors vs offsets' : 'SKIPPED (block not found)'}`);
   }

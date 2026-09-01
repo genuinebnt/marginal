@@ -101,8 +101,13 @@ An empty `q` returns an empty result immediately, without ever reaching
 Postgres or the BK-tree — not an error, since a search box's own natural
 starting state is empty.
 
-Auth follows every other endpoint in this repo's current scope:
-`X-Actor-Id` header (or `actor_id` query param), unauthenticated — the
-same temporary stand-in `pages.md`/`graph.md` already document. Search
-results are not permission-filtered (no RBAC exists yet, `v3.1.0`) — a
-stated, not hidden, gap at this repo's current single-tenant scope.
+Auth is a **verified bearer token** (`ADR-013` §1): `Authorization: Bearer
+<access token>`, checked by `api-gateway` against `auth-service`'s JWKS, with
+the actor id taken from the token's `sub` claim. `X-Actor-Id` is no longer
+read anywhere — it was a value the caller wrote and nobody checked.
+
+Search results are still **not permission-filtered**: identity is verified
+now, but spaces and roles are `v3.1.0` part two, so there is nothing to
+filter *by* yet. Stated rather than hidden — and the distinction matters,
+because "we know who you are" and "we know what you may see" are different
+claims and only the first is true today.

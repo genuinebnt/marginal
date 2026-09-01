@@ -117,10 +117,10 @@ here to fact names instead of pages).
 `[]`, never `null`, when there's nothing to report — a client that only
 ever checks `.length` shouldn't also need a null guard.
 
-Auth follows every other endpoint in this repo's current scope:
-`X-Actor-Id` header (or `actor_id` query param), unauthenticated — the
-same temporary stand-in `pages.md`/`graph.md` already document, not a
-real trust boundary yet. `diagnostics-service`'s own outgoing calls to
+Auth is a **verified bearer token** (`ADR-013` §1): `Authorization: Bearer
+<access token>`, checked by `api-gateway` against `auth-service`'s JWKS, with
+the actor id taken from the token's `sub` claim. `X-Actor-Id` is no longer
+read anywhere — it was a value the caller wrote and nobody checked. `diagnostics-service`'s own outgoing calls to
 `document-service` use a separate, synthetic actor identity of their own
 (`internal/service.Server.withActor`) — this service reads across the
 whole workspace on nobody's specific behalf, the same reason

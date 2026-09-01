@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { accessToken } from "../api/http";
 import { COLLAB_URL } from "../api/config";
 import type { Mark } from "./marks";
 import type { AnchorRange, BlockKind, ClientMessage, PageOp, ServerMessage } from "./types";
@@ -300,12 +301,13 @@ export function useCollabPage(pageId: string, actorId: string): CollabPage {
 
     const url = new URL(`${COLLAB_URL}/collab/pages/${pageId}`);
     url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-    // The browser WebSocket API has no mechanism to set custom headers on
-    // the upgrade request, so the actor id rides as a query param instead
-    // of the X-Actor-Id header pages.md/auth.md use — collaboration.md §1
-    // documents both forms; the header exists for non-browser callers.
-    url.searchParams.set("actor_id", actorId);
-    const ws = new WebSocket(url);
+    // The credential rides the SUBPROTOCOL list, which is the one header a
+    // browser's WebSocket constructor can set (ADR-013 §1). It used to be an
+    // ?actor_id= query parameter — an identity the client asserted and
+    // nobody checked, in a URL, where it would reach every access log. The
+    // server verifies the token and echoes back "bearer" alone.
+    const token = accessToken();
+    const ws = new WebSocket(url, token ? ["bearer", token] : undefined);
     socketRef.current = ws;
 
     ws.onopen = () => {

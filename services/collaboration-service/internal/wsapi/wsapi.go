@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
@@ -129,6 +130,7 @@ func toCursorWire(e session.CursorEvent) cursorWire {
 type Handler struct {
 	manager    *session.Manager
 	acceptOpts *websocket.AcceptOptions
+	verifier   TokenVerifier
 }
 
 // NewHandler. acceptOpts is passed straight through to websocket.Accept —
@@ -141,8 +143,25 @@ type Handler struct {
 // every test in this package dials from the same process, which
 // coder/websocket's default already allows since the request host and
 // origin genuinely match there).
-func NewHandler(m *session.Manager, acceptOpts *websocket.AcceptOptions) *Handler {
-	return &Handler{manager: m, acceptOpts: acceptOpts}
+// verifier turns the handshake credential into an actor id. Required —
+// a nil one would mean this socket accepts anybody, which is exactly the
+// state ADR-013 exists to leave behind, so it is a parameter rather than an
+// option with a permissive default.
+func NewHandler(m *session.Manager, acceptOpts *websocket.AcceptOptions, verifier TokenVerifier) *Handler {
+	if verifier == nil {
+		panic("wsapi: NewHandler requires a TokenVerifier — an unauthenticated socket is not a supported configuration")
+	}
+	opts := acceptOpts
+	if opts == nil {
+		opts = &websocket.AcceptOptions{}
+	} else {
+		copied := *opts
+		opts = &copied
+	}
+	// Echo back only "bearer", never the token. A server that echoed the
+	// whole offered list would put the credential in a response header.
+	opts.Subprotocols = append(opts.Subprotocols, BearerSubprotocol)
+	return &Handler{manager: m, acceptOpts: opts, verifier: verifier}
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -151,9 +170,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid page id", http.StatusBadRequest)
 		return
 	}
-	actorID, actorKind, err := actorFromRequest(r)
+	actorID, actorKind, err := actorFromRequest(r.Context(), h.verifier, r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		// Rejected BEFORE the upgrade, so the client gets a real HTTP status
+		// instead of a socket that opens and immediately closes — the second
+		// is far harder to tell apart from a network problem.
+		http.Error(w, "unauthenticated", http.StatusUnauthorized)
 		return
 	}
 
@@ -201,30 +223,54 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	<-writeDone
 }
 
-// actorFromRequest is the temporary auth stand-in described in the
-// package doc comment. Accepts the actor id as either the X-Actor-Id
-// header (pages.md/auth.md's convention, and what a non-browser client —
-// grpcurl, a test, another service — can set directly) or an
-// `actor_id` query parameter (what a real browser actually has to use:
-// the WebSocket browser API has no mechanism to set custom headers on
-// the upgrade request at all — not a missing feature to add, a
-// characteristic of the API itself — so this is the one place in the
-// repo where the header stand-in needs a second on-the-wire spelling).
-// The header wins if both are somehow present. X-Actor-Kind/actor_kind
-// defaults to "user" when absent — every real client is a person until
-// agents/plugins are actors (ADR-009, not yet in this repo's scope).
-func actorFromRequest(r *http.Request) (uuid.UUID, oplog.ActorKind, error) {
-	raw := r.Header.Get("X-Actor-Id")
-	if raw == "" {
-		raw = r.URL.Query().Get("actor_id")
+// BearerSubprotocol is the Sec-WebSocket-Protocol element that marks the
+// second element as an access token: the client offers `bearer, <token>`
+// and the server echoes back only `bearer`.
+//
+// The credential rides the subprotocol header because the browser's
+// WebSocket constructor takes no headers and this is the one it CAN set
+// (ADR-013 §1). It therefore never enters the URL, and so never reaches an
+// access log, a Referer, or browser history — which a query parameter
+// unavoidably does.
+const BearerSubprotocol = "bearer"
+
+// TokenVerifier is what turns the handshake credential into an actor id.
+// An interface declared at its point of use (this repo's rule for every
+// external dependency) so tests can hand in a fake without a JWKS server,
+// and so this package does not depend on marginal/authverify's concrete
+// type.
+type TokenVerifier interface {
+	Subject(ctx context.Context, token string) (uuid.UUID, error)
+}
+
+// ErrUnauthenticated is every handshake rejection: no credential, a
+// malformed one, a bad signature, an expired token. One error, because
+// which one it was describes the server's key state.
+var ErrUnauthenticated = errors.New("wsapi: unauthenticated")
+
+// actorFromRequest resolves the connecting actor from a VERIFIED token
+// (ADR-013 §1).
+//
+// It used to read whatever the caller wrote in an X-Actor-Id header or an
+// ?actor_id= query parameter, which is to say it did not resolve an identity
+// so much as accept a claim about one. That mattered more here than
+// anywhere: this socket is not proxied, so it is the entry point every
+// mutation takes, and a gateway that checked tokens while this did not would
+// be one connection away from irrelevant.
+//
+// The actor KIND still comes from the request. It is not a security claim —
+// every kind is a person until agents and plugins are actors (ADR-009) — and
+// it only ever labels a row in the op log.
+func actorFromRequest(ctx context.Context, v TokenVerifier, r *http.Request) (uuid.UUID, oplog.ActorKind, error) {
+	token := handshakeToken(r)
+	if token == "" {
+		return uuid.UUID{}, "", ErrUnauthenticated
 	}
-	if raw == "" {
-		return uuid.UUID{}, "", fmt.Errorf("wsapi: missing actor id (X-Actor-Id header or actor_id query param)")
-	}
-	actorID, err := uuid.Parse(raw)
+	actorID, err := v.Subject(ctx, token)
 	if err != nil {
-		return uuid.UUID{}, "", fmt.Errorf("wsapi: invalid actor id: %w", err)
+		return uuid.UUID{}, "", ErrUnauthenticated
 	}
+
 	kindRaw := r.Header.Get("X-Actor-Kind")
 	if kindRaw == "" {
 		kindRaw = r.URL.Query().Get("actor_kind")
@@ -237,6 +283,34 @@ func actorFromRequest(r *http.Request) (uuid.UUID, oplog.ActorKind, error) {
 		return uuid.UUID{}, "", fmt.Errorf("wsapi: invalid actor kind %q", kind)
 	}
 	return actorID, kind, nil
+}
+
+// handshakeToken pulls the access token out of the handshake.
+//
+// Two spellings, and both are headers — neither is a query parameter, which
+// is the point:
+//
+//   - Sec-WebSocket-Protocol: bearer, <token>  — what a browser sends, since
+//     its WebSocket constructor takes a protocol list and nothing else.
+//   - Authorization: Bearer <token>            — what anything that can set
+//     headers sends (a test, a service, curl).
+func handshakeToken(r *http.Request) string {
+	for _, raw := range r.Header.Values("Sec-WebSocket-Protocol") {
+		parts := strings.Split(raw, ",")
+		for i, p := range parts {
+			if strings.TrimSpace(p) != BearerSubprotocol {
+				continue
+			}
+			if i+1 < len(parts) {
+				return strings.TrimSpace(parts[i+1])
+			}
+		}
+	}
+	const prefix = "Bearer "
+	if h := r.Header.Get("Authorization"); len(h) > len(prefix) && strings.EqualFold(h[:len(prefix)], prefix) {
+		return strings.TrimSpace(h[len(prefix):])
+	}
+	return ""
 }
 
 func readLoop(ctx context.Context, conn *websocket.Conn, sess *session.Session, sub *connSubscriber, actorID uuid.UUID, actorKind oplog.ActorKind, subID uint64) {
@@ -342,4 +416,27 @@ func clientSafeMessage(err error) string {
 	}
 	slog.Error("wsapi: op rejected by an unrecognized error", "err", err)
 	return "internal error"
+}
+
+// RequireToken wraps a plain-HTTP handler so it needs the same verified
+// credential the socket does.
+//
+// collaboration-service's read endpoints (/trace, /palimpsest, /diff,
+// /audit) are reached directly, exactly like the socket — they were never
+// behind api-gateway, which is the whole reason this service verifies
+// tokens itself. Closing the socket while leaving them open would have
+// moved the hole rather than fixed it: /trace returns a page's entire op
+// log, which is its content plus who typed each character of it.
+//
+// /collab/stats is deliberately NOT wrapped. It reports instance-level
+// counters for § 02 HOME, the one route with no session, and "how busy is
+// this server" is a different question from "what does this page say".
+func RequireToken(v TokenVerifier, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if _, err := v.Subject(r.Context(), handshakeToken(r)); err != nil {
+			http.Error(w, "unauthenticated", http.StatusUnauthorized)
+			return
+		}
+		next(w, r)
+	}
 }

@@ -58,12 +58,15 @@ nowhere else.**
   actor id from it. `X-Actor-Id` is **ignored on input**, not merely
   deprioritised — a header that is read "only when the token is absent" is the
   same hole with an extra step.
-- `collaboration-service` verifies the token on the WebSocket handshake. The
-  browser cannot set a handshake header, so the token arrives the way the
-  actor id does today — as a query parameter — and `?actor_id=` is removed.
-  A token in a URL is a real weakness (it lands in logs and `Referer`), so it
-  is a **short-lived** token minted for this purpose, not the session's own
-  access token. See Consequences.
+- `collaboration-service` verifies the token on the WebSocket handshake,
+  carried in the **`Sec-WebSocket-Protocol`** header as
+  `bearer, <access token>`. `?actor_id=` is removed.
+
+  The browser's `WebSocket` constructor cannot set arbitrary headers, but it
+  *can* set this one — `new WebSocket(url, ["bearer", token])` — which is why
+  it is the conventional place to put a credential on a socket. The token
+  therefore never enters the URL, and so never reaches an access log, a
+  `Referer`, or browser history.
 - Verification is local: `auth-service` signs, everyone else verifies against
   the public key. No service asks `auth-service` "is this token good" on the
   request path, because that turns every keystroke into a second network hop
@@ -135,13 +138,26 @@ place a request arrives.
 
 ## Consequences
 
-**A token in a query string is a real weakness, and is bounded, not waved
-through.** The WebSocket handshake token is minted by `auth-service` for that
-purpose: short TTL (60s), single audience (`collab`), and it buys a session
-rather than authorising operations directly — once the socket is open, the
-connection is the credential. This is the standard shape for the problem, and
-it is worth writing down that the alternative (a subprotocol-header trick) was
-considered and rejected as more moving parts for the same guarantee.
+**The subprotocol carries the credential, and the first draft of this ADR got
+that backwards.** It specified a short-lived ticket minted by `auth-service`
+and passed in the query string, and dismissed the subprotocol header as "more
+moving parts for the same guarantee". That was wrong on both halves, and is
+recorded rather than quietly edited:
+
+- It is *fewer* moving parts, not more. The ticket needs a new RPC, a new
+  token kind, a new lifetime, a new claim shape, and an extra round trip
+  before every connect. The subprotocol needs none of those — the token
+  already exists.
+- The guarantee is *better*, not the same. A ticket in a URL is still a
+  credential in a URL, bounded to sixty seconds; a subprotocol value is a
+  header and never lands in a log at all. Bounding an exposure is worse than
+  not having one.
+
+The cost is that `Sec-WebSocket-Protocol` is being used for something that
+is not really a subprotocol. That is a well-worn convention rather than an
+abuse — it is how browsers are expected to authenticate a socket, precisely
+because the constructor takes no headers — and the server echoes back only
+the `bearer` element, never the token.
 
 **Every existing client call site changes.** `X-Actor-Id` is how the SPA, the
 seeder, `verify.js` and every smoke test currently identify themselves. All of

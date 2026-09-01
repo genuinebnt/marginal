@@ -190,6 +190,7 @@ hundreds of pages.
 Every repeated field is `[]`, never `null`, when empty — a client that
 only checks `.length` should not also need a null guard.
 
-Auth follows every other endpoint in this repo's current scope:
-`X-Actor-Id` header, unauthenticated — the same temporary stand-in
-`pages.md` documents, not a real trust boundary yet.
+Auth is a **verified bearer token** (`ADR-013` §1): `Authorization: Bearer
+<access token>`, checked by `api-gateway` against `auth-service`'s JWKS, with
+the actor id taken from the token's `sub` claim. `X-Actor-Id` is no longer
+read anywhere — it was a value the caller wrote and nobody checked.

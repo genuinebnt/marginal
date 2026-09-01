@@ -23,6 +23,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"marginal/authverify"
 	"marginal/envconfig"
 
 	authv1 "marginal/auth-service/genproto/authv1"
@@ -30,6 +31,7 @@ import (
 	documentv1 "marginal/document-service/genproto/documentv1"
 
 	"marginal/api-gateway/internal/adminrest"
+	"marginal/api-gateway/internal/authmw"
 	"marginal/api-gateway/internal/authrest"
 	"marginal/api-gateway/internal/diagnosticsrest"
 	"marginal/api-gateway/internal/discoverrest"
@@ -114,6 +116,13 @@ func run() error {
 		"diagnostics-service":   envconfig.EnvOr("DIAGNOSTICS_SERVICE_HEALTH_URL", "http://localhost:8008/health"),
 	})
 
+	// Tokens are verified HERE, locally, against auth-service's published
+	// JWKS — never by asking auth-service about each one, which would put a
+	// second hop in front of every request and make every screen depend on
+	// auth-service being up (ADR-013 §1).
+	verifier := authverify.New(envconfig.EnvOr(
+		"AUTH_SERVICE_JWKS_URL", "http://localhost:8006/.well-known/jwks.json"))
+
 	r := chi.NewRouter()
 	r.Use(middleware.Timeout(requestTimeout))
 	r.Use(limitRequestBody)
@@ -131,12 +140,29 @@ func run() error {
 		// codebase (auth is a bearer-less header/query stand-in — see
 		// pages.md/auth.md's "Actor identity" sections), so there is no
 		// credential a wildcard origin could leak.
-		AllowedOrigins:   allowedOrigins(),
-		AllowedMethods:   []string{http.MethodGet, http.MethodPost, http.MethodPatch, http.MethodDelete, http.MethodOptions},
-		AllowedHeaders:   []string{"Content-Type", "X-Actor-Id", "X-Actor-Kind"},
+		//
+		// ADR-013 changed the second half of that reasoning and it is worth
+		// being precise rather than leaving a stale justification in place.
+		// There IS a credential now — the bearer token. A wildcard origin is
+		// still not a leak, but for a different reason than before: a bearer
+		// token is attached by the page's own code, never automatically by
+		// the browser the way a cookie is, and AllowCredentials stays false
+		// so no ambient credential can ride along. If this ever moves to
+		// cookie auth, "*" stops being safe the same day.
+		AllowedOrigins: allowedOrigins(),
+		AllowedMethods: []string{http.MethodGet, http.MethodPost, http.MethodPatch, http.MethodDelete, http.MethodOptions},
+		// X-Actor-Id and X-Actor-Kind are gone: nothing reads them any more,
+		// and advertising a header the server ignores invites a client to
+		// keep sending it and believe it means something.
+		AllowedHeaders:   []string{"Content-Type", "Authorization"},
 		AllowCredentials: false,
 		MaxAge:           300,
 	}))
+	// After CORS (so a preflight is answered rather than rejected) and
+	// before every route: this is the line that makes actorctx's identity a
+	// verified one instead of a claimed one.
+	r.Use(authmw.Middleware(verifier))
+
 	r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))

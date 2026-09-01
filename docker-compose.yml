@@ -145,6 +145,9 @@ services:
       context: . # repo root — see services/collaboration-service/Dockerfile's own comment on why
       dockerfile: services/collaboration-service/Dockerfile
     environment:
+      # This socket is not proxied — it verifies tokens itself
+      # (ADR-013 §1), so it needs the same JWKS the gateway uses.
+      AUTH_SERVICE_JWKS_URL: http://auth-service:8006/.well-known/jwks.json
       DATABASE_URL: postgres://collaboration_service:dev-only-not-a-real-secret@collab-db:5432/collaboration_service?sslmode=disable
       COLLAB_WAL_DIR: /data/collab-wal
       NATS_URL: nats://nats:4222
@@ -180,6 +183,9 @@ services:
     environment:
       DOCUMENT_SERVICE_GRPC_ADDR: document-service:9001
       AUTH_SERVICE_GRPC_ADDR: auth-service:9006
+      # Where the gateway verifies tokens against (ADR-013 §1). Local, not a
+      # per-request RPC — this is a key fetch, cached, not a validation call.
+      AUTH_SERVICE_JWKS_URL: http://auth-service:8006/.well-known/jwks.json
       DIAGNOSTICS_SERVICE_GRPC_ADDR: diagnostics-service:9008
       # § 18 ADMIN's SERVICES panel probes these. Service names,
       # not localhost: inside the compose network each service is

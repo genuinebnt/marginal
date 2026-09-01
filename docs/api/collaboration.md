@@ -34,28 +34,44 @@ apply here even conceptually.
 ## 1. Connecting
 
 ```
-GET /collab/pages/{id}?actor_id=<uuid>&actor_kind=user
+GET /collab/pages/{id}
 Upgrade: websocket
+Sec-WebSocket-Protocol: bearer, <access token>
 ```
 
-or, for a non-browser caller that can set headers on the upgrade request
-(`grpcurl`-style tools, another service, a test):
+or, for a caller that can set headers on the upgrade request (another
+service, a test, `curl`):
 
 ```
 GET /collab/pages/{id}
 Upgrade: websocket
-X-Actor-Id: <uuid>
+Authorization: Bearer <access token>
 X-Actor-Kind: user            # optional, defaults to "user"
 ```
 
-**A real browser must use the query parameters, not the headers.** The
-WebSocket browser API has no mechanism to set custom headers on the
-upgrade request at all — not a gap in this API, a characteristic of the
-browser API itself. The header form exists because it matches
-`pages.md`/`auth.md`'s convention for every other service; the query-param
-form exists because this is the one endpoint in the repo an actual browser
-connects to directly without going through `fetch` (which can set
-headers) first. If both are present, the header wins.
+**The credential is a verified token, and it is carried in a header either
+way** (`ADR-013` §1). The browser's `WebSocket` constructor cannot set
+arbitrary headers, but it *can* set the subprotocol list —
+`new WebSocket(url, ["bearer", token])` — which is why that is where a
+browser puts a credential on a socket. The server verifies the token against
+`auth-service`'s JWKS locally (no per-connect RPC) and **echoes back only
+`bearer`**, never the token.
+
+The actor id is the token's `sub` claim. `?actor_id=` and `X-Actor-Id` are
+**gone**: they were an identity the caller asserted and nobody checked. That
+mattered more here than anywhere else in the repo, because this socket is
+not proxied — it is the entry point every mutation takes, and a gateway that
+verified tokens while this did not would have been one connection away from
+irrelevant.
+
+A handshake with no credential, an unverifiable one, or an id in the query
+string is rejected with **`401` on the upgrade**, before the socket opens —
+a socket that opens and immediately closes is much harder to tell apart from
+a network problem.
+
+`actor_kind` is *not* a security claim and still comes from the request. It
+labels a row in the op log; every kind is a person until agents and plugins
+are actors (`ADR-009`).
 
 `{id}` is the page's id (a UUID, matching `document-service`'s `Page.id`).
 There is no check today that the page actually exists in `document-service`

@@ -105,15 +105,28 @@ materialize them from `auth.user_updated` events (not built in this repo's
 scope) rather than calling this per-request. It exists for occasional
 lookups, not the hot path.
 
-### Actor identity (temporary, until a gateway exists)
+### Actor identity
 
-Same stand-in `document-service` uses (`docs/api/pages.md`): `Refresh` and
-`Revoke` authenticate via the token itself (presenting a valid refresh
-token/its hash *is* the credential). `RevokeAll` reads the caller's user id
-from `actor-id` gRPC metadata, rejecting its absence with `UNAUTHENTICATED`.
-This is scaffolding, not the real trust boundary — replace it, don't build
-on it, once `api-gateway` exists and issues verified access tokens as the
-actual source of `actor-id`.
+**The actor id is a verified token's `sub` claim** (`ADR-013` §1). Callers
+present `Authorization: Bearer <access token>`; `api-gateway` verifies it
+locally against this service's JWKS and forwards the subject as `actor-id`
+gRPC metadata, which is what every service reads. `Refresh` and `Revoke`
+still authenticate via the token they are given (presenting a valid refresh
+token *is* the credential); `RevokeAll` reads `actor-id`, rejecting its
+absence with `UNAUTHENTICATED`.
+
+This section used to say "temporary, until a gateway exists", and described
+the `X-Actor-Id` header — a user id the caller wrote and nobody checked.
+That is gone: the header is not read anywhere, and the gateway ignores it
+rather than falling back to it, since a header consulted "only when the
+token is absent" is the same hole with an extra step.
+
+Verification is **local**, against `GET /.well-known/jwks.json`. No service
+asks this one whether a token is good on the request path — that would put a
+second hop in front of every request and make editing depend on
+`auth-service` being reachable. The cost is stated rather than hidden: a
+token stays valid until it expires (15 minutes), so the `jti` blocklist
+cannot revoke one early for a service that only verifies signatures.
 
 ### Status codes (LLD §8 — reproduced here as the authoritative table)
 
@@ -221,10 +234,11 @@ op log records an actor *kind*, not where a request came from,
 and the SOURCE column shows the former rather than inventing the
 latter.
 
-`/auth/revoke-all`'s actor identity comes from the same `X-Actor-Id` header
-stand-in `pages.md`'s gateway shim reads (§ Actor identity above) — there
-is no session cookie or verified-token source to read it from instead
-until a real `api-gateway` exists.
+`/auth/revoke-all`'s actor identity is the **verified token's `sub` claim**
+(`ADR-013` §1) — the gateway checks the `Authorization: Bearer` credential
+and forwards the subject. It used to be the `X-Actor-Id` header, which meant
+an endpoint that revokes every session of a user took, as its only proof of
+who that user was, a string the caller typed.
 
 ```json
 {

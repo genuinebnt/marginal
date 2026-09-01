@@ -5209,3 +5209,78 @@ free is how an attacker maps that state.
 `X-Actor-Id` entirely (a header read "only when the token is absent" is the
 same hole with an extra step), collaboration-service verifies a short-lived
 handshake ticket, and every client call site moves over.
+
+### Both entry points verify (2026-09-01, continued)
+
+**`api-gateway`.** `authmw` verifies `Authorization: Bearer` and stores the
+subject; `actorctx` forwards that instead of a header. `X-Actor-Id` is
+**ignored**, not deprioritised — a header read "only when the token is
+absent" is the same hole with an extra step. Public routes are an explicit
+allowlist keyed by method *and* path, not a `/auth` prefix: that prefix also
+carries `revoke` and `revoke-all`, and a rule letting an unauthenticated
+caller revoke sessions is one careless prefix away.
+
+Measured, not assumed:
+
+```
+no token              : 401
+forged X-Actor-Id     : 401   ← was 200
+real bearer token     : 200
+garbage bearer token  : 401
+login (public)        : 200
+```
+
+**`collaboration-service`, which is the one that actually mattered.** Its
+socket is not proxied — a browser reaches it directly — so it is the entry
+point every mutation takes, and a gateway checking tokens while this did not
+would have been one connection away from irrelevant.
+
+```
+no credential                      rejected 401
+?actor_id= (the old hole)          rejected 401
+garbage token                      rejected 401
+real token                         OPENED
+```
+
+Its `/trace`, `/palimpsest`, `/diff` and `/audit` read endpoints verify the
+same token: they return a page's whole op log, which is its content plus who
+typed each character. `/collab/stats` stays **public** on purpose — § 02
+HOME is the one route with no session and its counters come from there. "How
+busy is this server" is not the same question as "what does this page say",
+and that is the line those routes sit either side of.
+
+**ADR-013's own WebSocket decision was wrong and is corrected in place
+rather than quietly edited.** The first draft specified a 60-second ticket
+minted by `auth-service` and passed in the query string, dismissing the
+`Sec-WebSocket-Protocol` header as "more moving parts for the same
+guarantee". Both halves were wrong: the ticket needs a new RPC, token kind,
+lifetime, claim shape and an extra round trip before every connect, while
+the subprotocol needs none of those — and a ticket in a URL is still a
+credential in a URL, where a subprotocol value is a header that never
+reaches an access log at all. Bounding an exposure is worse than not having
+one. `new WebSocket(url, ["bearer", token])` is what a browser can actually
+do, and the server echoes back `bearer` alone — never the token.
+
+Five new `wsapi` tests are the ones that would have passed before and must
+not now: no credential, `?actor_id=` in the URL, a garbage credential, the
+server echoing the token back as a subprotocol, and `handshakeToken`'s
+parsing table (which pins that `actor_id` is not read as a credential even
+by accident). Rejection is a `401` **on the upgrade**, before the socket
+opens — a socket that opens and immediately closes is far harder to tell
+apart from a network problem.
+
+Both CORS configurations had a justification that ADR-013 invalidated
+("nothing on this transport uses cookies or any other ambient credential").
+There *is* a credential now. `*` is still safe, but for a different reason —
+a bearer token is attached by the page's own code, never automatically by
+the browser — and both comments say so, including the condition under which
+it stops being true.
+
+**Verified so far:** the two probe matrices above, the seeder running end to
+end over authenticated sockets, `authverify` (12 tests, `-race -count=2`),
+`wsapi` (`-race`), and every touched module building and testing clean.
+
+**Not yet verified:** the full `verify.js` sweep, and the `/trace` boundary
+probe — the local Docker daemon went down mid-run (twice today; the second
+time while this was being written). Both are the first thing to run when it
+is back, before this reaches prod.
