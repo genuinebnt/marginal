@@ -155,3 +155,64 @@ SELECT kind, COUNT(*) AS n
 FROM collab.ops
 GROUP BY kind
 ORDER BY n DESC;
+
+-- ── § 23b PROFILE — a person as their op log (v3.1.0) ────────────────────
+--
+-- Every figure below is a GROUP BY over collab.ops. Nothing here is a
+-- counter kept alongside the log, because a counter can drift from what
+-- happened and a projection of the log cannot. That is the screen's whole
+-- claim, so it has to be true of the queries as well as the prose.
+--
+-- The payload is never selected, same rule as AuditOps: a profile says
+-- what somebody did, not what they typed.
+
+-- name: ProfileTotals :one
+SELECT count(*)::bigint AS ops, count(DISTINCT page_id)::bigint AS pages
+FROM collab.ops
+WHERE actor_id = $1;
+
+-- name: ProfileDaily :many
+-- One row per day the actor wrote anything, for the contribution grid.
+--
+-- Days with NO ops are absent rather than zero-filled here — the client
+-- draws 52×7 squares and looks each date up, so filling a year of empty
+-- days server-side would ship ~300 rows saying nothing. The screen already
+-- says a quiet week is fine; it should not cost a payload to say so.
+SELECT created_at::date AS day, count(*)::bigint AS ops
+FROM collab.ops
+WHERE actor_id = $1 AND created_at >= NOW() - INTERVAL '52 weeks'
+GROUP BY 1
+ORDER BY 1;
+
+-- name: ProfilePages :many
+-- Which pages this person touched, and how much. The client joins titles,
+-- topics and tags from the graph — those live in another service's schema
+-- and this one does not reach across (DATA_MODEL.md §1).
+SELECT page_id, count(*)::bigint AS ops, max(created_at)::timestamptz AS last_touched
+FROM collab.ops
+WHERE actor_id = $1
+GROUP BY page_id
+ORDER BY count(*) DESC
+LIMIT sqlc.arg(row_limit);
+
+-- name: ProfileRecent :many
+SELECT id, page_id, kind, seq, created_at
+FROM collab.ops
+WHERE actor_id = $1
+ORDER BY seq DESC
+LIMIT sqlc.arg(row_limit);
+
+-- name: ProfileCollaborators :many
+-- Who else has ops on the pages this person touched — co-authorship, read
+-- off the log rather than stored anywhere.
+--
+-- "Pages in common", not "ops in common": someone who made one edit to
+-- forty of your pages worked alongside you more than someone who made
+-- forty edits to one, and counting ops would say the opposite.
+SELECT o.actor_id, count(DISTINCT o.page_id)::bigint AS pages
+FROM collab.ops o
+WHERE o.actor_id <> $1
+  AND o.page_id IN (SELECT DISTINCT page_id FROM collab.ops WHERE actor_id = $1)
+GROUP BY o.actor_id
+ORDER BY count(DISTINCT o.page_id) DESC
+LIMIT sqlc.arg(row_limit);

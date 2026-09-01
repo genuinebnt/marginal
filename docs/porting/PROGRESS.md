@@ -5494,3 +5494,45 @@ sentence broke across lines. The same rule that moved the peer caret in
 § 04. Wrapped in one span.
 
 **Sweep: 125 ok**, including a new check that a viewer is actually told.
+
+### § 23b PROFILE — a person as their op log (2026-09-01)
+
+Every figure is a `GROUP BY actor` over `collab.ops`. Nothing is a counter
+kept beside the log, and that is the screen's claim rather than a detail: a
+counter can drift from what happened, a projection of the log cannot. The
+prose says so, and the four new queries make it true.
+
+`GET /collab/people/{id}/profile` — totals, a daily histogram for 52 weeks,
+top pages, recent ops, and co-authorship. Behind `RequireToken` like every
+other read here: who edited what and when is a page's content by another
+name.
+
+Three decisions worth keeping:
+
+- **Silent days are absent from the payload, not zero-filled.** The grid is
+  drawn client-side over a fixed 52×7 and looks each date up, so a year of
+  empty rows would be payload spent saying nothing happened.
+- **Co-authorship is `count(DISTINCT page_id)`, not ops.** Somebody who made
+  one edit to forty of your pages worked alongside you more than somebody
+  who made forty edits to one, and counting ops says the opposite.
+- **The cross-service join happens in the client.** collaboration-service
+  owns the ops and knows page ids; titles, topics and tags are
+  document-service's. Neither reads the other's schema, so the join lands
+  where both answers have already arrived — the shape § 18b already uses. A
+  page the reader cannot see is shown as *a page you cannot see* rather than
+  dropped: the op happened, and hiding the row would misreport the count
+  beside it.
+
+**What the screen refuses to invent.** The mockup's rail carries a bio and
+an "editing now · Block model" line. `auth.users` stores a display name, an
+email and a cursor colour — there is no bio — and presence is per-page
+rather than per-person, so neither could be shown without making it up. The
+rail says that instead.
+
+The assistant left this section too, for the third time (`v4.4.0`): a
+profile of something that cannot author an op is a profile of nothing.
+
+**Gate:** `uidiff 23b /people/<someone else>` → **0 · 0 · 0**, pointed at
+another person's profile rather than your own, which is the representative
+case and the only one that exercises the `av-them` path. Four new checks.
+**Sweep: 129 ok.**

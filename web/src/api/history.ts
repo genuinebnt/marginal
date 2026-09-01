@@ -149,3 +149,29 @@ export function describeOp(op: Op): { kind: string; detail: string } {
   const type = inner?.type ?? "text edit";
   return { kind: type, detail: inner?.text ? `"${inner.text.slice(0, 40)}"` : "" };
 }
+
+/** § 23b PROFILE — a person as their op log.
+ *
+ *  Titles, topics and tags are NOT in this payload: they live in
+ *  document-service's schema and collaboration-service does not reach
+ *  across it. The screen joins them from the link graph it already
+ *  fetches, the same way § 18b's audit rows get their titles. */
+export interface Profile {
+  actor_id: string;
+  ops: number;
+  pages: number;
+  /** One entry per day the actor wrote anything. Silent days are ABSENT,
+   *  not zero — the grid is drawn client-side and looks each date up. */
+  daily: { day: string; ops: number }[];
+  top_pages: { page_id: string; ops: number; last_touched: string }[];
+  recent: { id: string; page_id: string; kind: string; seq: number; created_at: string }[];
+  /** Who else has ops on the pages this person touched — pages in common,
+   *  not ops in common. */
+  most_edited_with: { actor_id: string; pages: number }[];
+  /** The window every figure covers, stated rather than implied. */
+  weeks: number;
+}
+
+export function getProfile(actorId: string): Promise<Profile> {
+  return collabFetch(`${COLLAB_URL}/collab/people/${actorId}/profile`);
+}

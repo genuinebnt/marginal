@@ -181,6 +181,10 @@ func run() error {
 	mux.HandleFunc("/collab/stats", wsapi.NewStatsHandler(pool, manager))
 
 	mux.HandleFunc("/collab/audit", wsapi.RequireToken(verifier, wsapi.NewAuditHandler(pool)))
+	// § 23b PROFILE — a person as their op log. Behind the token like every
+	// other read here: who edited what and when is a page's content by
+	// another name.
+	mux.HandleFunc("/collab/people/{id}/profile", wsapi.RequireToken(verifier, wsapi.NewProfileHandler(pool)))
 
 	httpServer := &http.Server{Addr: httpAddr, Handler: allowCORS(mux)}
 

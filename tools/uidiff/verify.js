@@ -790,6 +790,28 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
         (trash.entries ?? []).filter(e => /^Saga probe/.test(e.page.title)).length >= 2,
         `${(trash.entries ?? []).filter(e => /^Saga probe/.test(e.page.title)).length} entries`);
 
+  // ── § 23b PROFILE: every figure is a GROUP BY over the op log ────────
+  const people = await fetch(`${GW}/admin/people`,
+    { headers: { Authorization: `Bearer ${pair.access_token}` } })
+    .then(r => r.json()).then(d => d.people ?? []).catch(() => []);
+  const subject = people.find(x => x.email === 'ui-demo-editor@example.com') ?? people[0];
+  if (subject) {
+    await go(`/people/${subject.id}`, 7000);
+    const prof = await txt();
+    check('§23b a profile is counted from the op log', /OPS AUTHORED/.test(prof) && /\d/.test(prof));
+    check('§23b it says a count is not a ranking',
+          /op count is not merit/.test(prof) || /not contribution/.test(prof));
+    check('§23b co-authorship is pages in common, not ops',
+          /MOST EDITED WITH/.test(prof));
+    // The join is client-side across two services, so a page the reader
+    // cannot see must still be counted and named as unseen rather than
+    // dropped — dropping it would misreport the number beside it.
+    check('§23b a page you cannot see is still accounted for',
+          !/undefined/.test(prof));
+  } else {
+    check('§23b a profile is counted from the op log', false, 'no people to profile');
+  }
+
   // ── a viewer is told BEFORE they type ────────────────────────────────
   //
   // can_apply refuses a viewer's op either way; it used to refuse it

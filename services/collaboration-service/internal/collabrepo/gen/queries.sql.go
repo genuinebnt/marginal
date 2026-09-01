@@ -413,3 +413,206 @@ func (q *Queries) OutboxDepth(ctx context.Context) (OutboxDepthRow, error) {
 	err := row.Scan(&i.Depth, &i.OldestSeconds)
 	return i, err
 }
+
+const profileCollaborators = `-- name: ProfileCollaborators :many
+SELECT o.actor_id, count(DISTINCT o.page_id)::bigint AS pages
+FROM collab.ops o
+WHERE o.actor_id <> $1
+  AND o.page_id IN (SELECT DISTINCT page_id FROM collab.ops WHERE actor_id = $1)
+GROUP BY o.actor_id
+ORDER BY count(DISTINCT o.page_id) DESC
+LIMIT $2
+`
+
+type ProfileCollaboratorsParams struct {
+	ActorID  pgtype.UUID
+	RowLimit int32
+}
+
+type ProfileCollaboratorsRow struct {
+	ActorID pgtype.UUID
+	Pages   int64
+}
+
+// Who else has ops on the pages this person touched — co-authorship, read
+// off the log rather than stored anywhere.
+//
+// "Pages in common", not "ops in common": someone who made one edit to
+// forty of your pages worked alongside you more than someone who made
+// forty edits to one, and counting ops would say the opposite.
+func (q *Queries) ProfileCollaborators(ctx context.Context, arg ProfileCollaboratorsParams) ([]ProfileCollaboratorsRow, error) {
+	rows, err := q.db.Query(ctx, profileCollaborators, arg.ActorID, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ProfileCollaboratorsRow
+	for rows.Next() {
+		var i ProfileCollaboratorsRow
+		if err := rows.Scan(&i.ActorID, &i.Pages); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const profileDaily = `-- name: ProfileDaily :many
+SELECT created_at::date AS day, count(*)::bigint AS ops
+FROM collab.ops
+WHERE actor_id = $1 AND created_at >= NOW() - INTERVAL '52 weeks'
+GROUP BY 1
+ORDER BY 1
+`
+
+type ProfileDailyRow struct {
+	Day pgtype.Date
+	Ops int64
+}
+
+// One row per day the actor wrote anything, for the contribution grid.
+//
+// Days with NO ops are absent rather than zero-filled here — the client
+// draws 52×7 squares and looks each date up, so filling a year of empty
+// days server-side would ship ~300 rows saying nothing. The screen already
+// says a quiet week is fine; it should not cost a payload to say so.
+func (q *Queries) ProfileDaily(ctx context.Context, actorID pgtype.UUID) ([]ProfileDailyRow, error) {
+	rows, err := q.db.Query(ctx, profileDaily, actorID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ProfileDailyRow
+	for rows.Next() {
+		var i ProfileDailyRow
+		if err := rows.Scan(&i.Day, &i.Ops); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const profilePages = `-- name: ProfilePages :many
+SELECT page_id, count(*)::bigint AS ops, max(created_at)::timestamptz AS last_touched
+FROM collab.ops
+WHERE actor_id = $1
+GROUP BY page_id
+ORDER BY count(*) DESC
+LIMIT $2
+`
+
+type ProfilePagesParams struct {
+	ActorID  pgtype.UUID
+	RowLimit int32
+}
+
+type ProfilePagesRow struct {
+	PageID      pgtype.UUID
+	Ops         int64
+	LastTouched pgtype.Timestamptz
+}
+
+// Which pages this person touched, and how much. The client joins titles,
+// topics and tags from the graph — those live in another service's schema
+// and this one does not reach across (DATA_MODEL.md §1).
+func (q *Queries) ProfilePages(ctx context.Context, arg ProfilePagesParams) ([]ProfilePagesRow, error) {
+	rows, err := q.db.Query(ctx, profilePages, arg.ActorID, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ProfilePagesRow
+	for rows.Next() {
+		var i ProfilePagesRow
+		if err := rows.Scan(&i.PageID, &i.Ops, &i.LastTouched); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const profileRecent = `-- name: ProfileRecent :many
+SELECT id, page_id, kind, seq, created_at
+FROM collab.ops
+WHERE actor_id = $1
+ORDER BY seq DESC
+LIMIT $2
+`
+
+type ProfileRecentParams struct {
+	ActorID  pgtype.UUID
+	RowLimit int32
+}
+
+type ProfileRecentRow struct {
+	ID        pgtype.UUID
+	PageID    pgtype.UUID
+	Kind      string
+	Seq       int64
+	CreatedAt pgtype.Timestamptz
+}
+
+func (q *Queries) ProfileRecent(ctx context.Context, arg ProfileRecentParams) ([]ProfileRecentRow, error) {
+	rows, err := q.db.Query(ctx, profileRecent, arg.ActorID, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ProfileRecentRow
+	for rows.Next() {
+		var i ProfileRecentRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.PageID,
+			&i.Kind,
+			&i.Seq,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const profileTotals = `-- name: ProfileTotals :one
+
+SELECT count(*)::bigint AS ops, count(DISTINCT page_id)::bigint AS pages
+FROM collab.ops
+WHERE actor_id = $1
+`
+
+type ProfileTotalsRow struct {
+	Ops   int64
+	Pages int64
+}
+
+// ── § 23b PROFILE — a person as their op log (v3.1.0) ────────────────────
+//
+// Every figure below is a GROUP BY over collab.ops. Nothing here is a
+// counter kept alongside the log, because a counter can drift from what
+// happened and a projection of the log cannot. That is the screen's whole
+// claim, so it has to be true of the queries as well as the prose.
+//
+// The payload is never selected, same rule as AuditOps: a profile says
+// what somebody did, not what they typed.
+func (q *Queries) ProfileTotals(ctx context.Context, actorID pgtype.UUID) (ProfileTotalsRow, error) {
+	row := q.db.QueryRow(ctx, profileTotals, actorID)
+	var i ProfileTotalsRow
+	err := row.Scan(&i.Ops, &i.Pages)
+	return i, err
+}
