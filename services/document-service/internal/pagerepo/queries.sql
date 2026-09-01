@@ -46,12 +46,20 @@ ORDER BY sort_key DESC
 LIMIT 1;
 
 -- name: ListPages :many
--- No owner scoping — see GetPage. Lists every page on the instance
--- matching parent_id, not just the caller's own.
+-- Scoped to the SPACES the caller is in (ADR-013 §4), filtered in SQL
+-- rather than after: a filter applied to a result set already limited by
+-- LIMIT silently returns fewer rows than asked for, and the shortfall
+-- looks exactly like "there were no more".
+--
+-- space_ids comes from docs.space_members, this service's own projection.
+-- An empty array matches nothing, which is the correct answer for a user
+-- in no space — returning everything for an empty filter is how a
+-- permission check becomes a no-op precisely when it matters.
 SELECT id, created_by, title, parent_id, path::text AS path, sort_key,
        lifecycle_state, deleted_at, created_at, updated_at, space_id
 FROM docs.pages
 WHERE deleted_at IS NULL
+  AND space_id = ANY(@space_ids::uuid[])
   AND (parent_id = sqlc.narg(parent_id) OR (parent_id IS NULL AND sqlc.narg(parent_id) IS NULL))
   AND (sqlc.narg(after)::text IS NULL OR sort_key > sqlc.narg(after))
 ORDER BY sort_key ASC

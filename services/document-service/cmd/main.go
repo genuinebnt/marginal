@@ -117,7 +117,7 @@ func run() error {
 	defer searchServer.Stop()
 
 	grpcServer := grpc.NewServer()
-	documentv1.RegisterPageServiceServer(grpcServer, pages.NewServer(pages.NewPostgresRepo(pool)))
+	documentv1.RegisterPageServiceServer(grpcServer, pages.NewServer(pages.NewPostgresRepo(pool), spaces))
 	graphRepo := graph.NewPostgresRepo(pool)
 	documentv1.RegisterGraphServiceServer(grpcServer, graph.NewServer(graphRepo))
 	// DiscoverService shares the graph repo: link distance is one of § 09's

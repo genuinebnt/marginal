@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"marginal/auth-service/internal/authrepo/gen"
@@ -134,6 +136,25 @@ func (s *Service) Register(ctx context.Context, email domain.Email, password dom
 
 	if err := outbox.WriteUserRegistered(ctx, q, uuid.UUID(id), email.String(), displayName.String()); err != nil {
 		return users.User{}, TokenPair{}, fmt.Errorf("authservice: register: writing outbox event: %w", err)
+	}
+
+	// A new account joins the default space as a VIEWER (ADR-013's own
+	// consequence: "the showcase content lives in a space where new
+	// accounts are viewer").
+	//
+	// Without this a fresh registration lands in no space at all and sees
+	// an empty instance — technically correct enforcement and a terrible
+	// front door. Viewer rather than editor is the actual tightening this
+	// release buys: before spaces, anyone who registered could edit or
+	// delete the seeded corpus, which is why ops/reseed.timer rebuilds it
+	// nightly. That timer stays, but it stops being the only thing between
+	// a visitor and the pages.
+	//
+	// In the SAME transaction as the user, with its own event: a member
+	// row that is durable without its announcement leaves document-service
+	// filtering reads against a projection that will never learn about it.
+	if err := s.joinDefaultSpace(ctx, q, uuid.UUID(id)); err != nil {
+		return users.User{}, TokenPair{}, fmt.Errorf("authservice: register: %w", err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -382,4 +403,64 @@ func issueTokenPair(ctx context.Context, q *authrepo.Queries, store keys.Store, 
 		RefreshToken: refreshPlain,
 		ExpiresIn:    int64(sessions.AccessTokenLifetime.Seconds()),
 	}, nil
+}
+
+// DefaultSpaceID is the space every pre-v3.1.0 page was migrated into. The
+// same constant appears in both services' migrations and in
+// document-service's own code, which DATA_MODEL.md records as a deliberate
+// coordination point: two services must agree which space existing pages
+// belong to and cannot join across schemas to find out.
+var DefaultSpaceID = uuid.MustParse("00000000-0000-7000-8000-00000000d0c5")
+
+// joinDefaultSpace puts a newly registered user in the default space, and
+// announces it.
+//
+// THE FIRST USER BOOTSTRAPS THE SPACE, AS ITS ADMIN.
+//
+// Migration 00002 creates the default space from the users that already
+// exist — so on a FRESH database it creates nothing, and without this the
+// first account would land in no space, see an empty instance, and have no
+// way to fix that: granting requires an admin, and there would be none.
+// The first registration is the only moment that bootstrap can happen.
+//
+// Everyone after that joins as a VIEWER (ADR-013's own consequence: "the
+// showcase content lives in a space where new accounts are viewer"). That
+// is the actual tightening this release buys — before spaces, anyone who
+// registered could edit or delete the seeded corpus.
+func (s *Service) joinDefaultSpace(ctx context.Context, q *authrepo.Queries, userID uuid.UUID) error {
+	pgUser := pgtype.UUID{Bytes: userID, Valid: true}
+
+	space, err := q.DefaultSpace(ctx)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		// Bootstrap: create it, with this user as its admin.
+		created, err := q.CreateDefaultSpace(ctx, authrepo.CreateDefaultSpaceParams{
+			ID:        pgtype.UUID{Bytes: DefaultSpaceID, Valid: true},
+			Name:      "Workspace",
+			CreatedBy: pgUser,
+		})
+		if err != nil {
+			return fmt.Errorf("bootstrapping default space: %w", err)
+		}
+		space = created
+	case err != nil:
+		return fmt.Errorf("reading default space: %w", err)
+	}
+
+	role := "viewer"
+	if uuid.UUID(space.CreatedBy.Bytes) == userID {
+		role = "admin"
+	}
+
+	if _, err := q.UpsertMembership(ctx, authrepo.UpsertMembershipParams{
+		UserID:    pgUser,
+		SpaceID:   space.ID,
+		Role:      role,
+		GrantedBy: space.CreatedBy,
+	}); err != nil {
+		return fmt.Errorf("joining default space: %w", err)
+	}
+	return outbox.WriteRoleEvent(ctx, q, outbox.EventRoleGranted, outbox.RolePayload{
+		UserID: userID, SpaceID: uuid.UUID(space.ID.Bytes), Role: role, GrantedAt: time.Now().UTC(),
+	})
 }

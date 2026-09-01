@@ -46,12 +46,23 @@ func (e *InvalidPageIDError) Error() string {
 // the translation layer docs/api/pages.md describes: proto <-> domain
 // types, domain errors <-> gRPC status codes. No business logic of its
 // own; see PostgresRepo for that.
-type Server struct {
-	documentv1.UnimplementedPageServiceServer
-	repo *PostgresRepo
+// SpaceReader answers "which spaces may this reader see" from this
+// service's own projection (docs.space_members) — an interface at its point
+// of use, so this package does not depend on internal/spaceproj and a test
+// can hand in a fixed set.
+type SpaceReader interface {
+	SpacesFor(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, error)
 }
 
-func NewServer(repo *PostgresRepo) *Server { return &Server{repo: repo} }
+type Server struct {
+	documentv1.UnimplementedPageServiceServer
+	repo   *PostgresRepo
+	spaces SpaceReader
+}
+
+func NewServer(repo *PostgresRepo, spaces SpaceReader) *Server {
+	return &Server{repo: repo, spaces: spaces}
+}
 
 // actorID reads the caller's identity from gRPC metadata. In the full
 // design this is set by api-gateway after RS256 verification
@@ -238,7 +249,10 @@ const (
 )
 
 func (s *Server) ListPages(ctx context.Context, req *documentv1.ListPagesRequest) (*documentv1.ListPagesResponse, error) {
-	if _, err := actorID(ctx); err != nil {
+	// The actor used to be read only to reject unauthenticated calls and
+	// then discarded — there was nothing to scope to. There is now.
+	actor, err := actorID(ctx)
+	if err != nil {
 		return nil, toStatus(err)
 	}
 	parentID, err := parseOptionalPageID(req.ParentId)
@@ -254,8 +268,16 @@ func (s *Server) ListPages(ctx context.Context, req *documentv1.ListPagesRequest
 		}
 	}
 
+	// Scoped to the caller's spaces, in SQL. Filtering after the query
+	// would return fewer rows than the LIMIT asked for, and that shortfall
+	// is indistinguishable from "there were no more" (ADR-013 §4).
+	visible, err := s.spaces.SpacesFor(ctx, uuid.UUID(actor))
+	if err != nil {
+		return nil, status.Error(codes.Internal, "pages: resolving visible spaces")
+	}
+
 	after := req.GetAfter()
-	pagesList, err := s.repo.List(ctx, parentID, after, limit)
+	pagesList, err := s.repo.List(ctx, visible, parentID, after, limit)
 	if err != nil {
 		return nil, toStatus(err)
 	}

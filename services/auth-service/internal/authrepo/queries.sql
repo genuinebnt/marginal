@@ -208,3 +208,12 @@ DELETE FROM auth.memberships WHERE user_id = $1 AND space_id = $2;
 -- remaining rows, so it is checked in the transaction rather than by a
 -- constraint (DATA_MODEL.md says why a trigger is worse).
 SELECT count(*) FROM auth.memberships WHERE space_id = $1 AND role = 'admin';
+
+-- name: CreateDefaultSpace :one
+-- The bootstrap path: a fresh database has no users when 00002 runs, so it
+-- creates no space either, and the FIRST registration has to. The partial
+-- unique index on is_default means a race produces a constraint violation
+-- rather than two default spaces.
+INSERT INTO auth.spaces (id, name, is_default, created_by)
+VALUES ($1, $2, TRUE, $3)
+RETURNING id, name, is_default, created_by, created_at;

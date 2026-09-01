@@ -69,6 +69,31 @@ async function secondActor() {
   return pair.access_token;
 }
 
+/**
+ * Make `target` an editor of the default space.
+ *
+ * Since v3.1.0 a NEW registration joins as a viewer (ADR-013), so the
+ * second seeded actor cannot write the character history it exists to
+ * produce — its ops would be refused by can_apply, and § 17's palimpsest
+ * would quietly go back to having one deleter.
+ *
+ * Best-effort: this only works when the seeding account is an admin of the
+ * default space, which it is on a database this seeder bootstrapped (the
+ * first registration becomes its admin) and may not be otherwise. A
+ * failure is logged rather than fatal — one actor is still a history.
+ */
+async function makeEditor(token, targetToken) {
+  const sub = (t) => JSON.parse(Buffer.from(t.split('.')[1], 'base64url')).sub;
+  const DEFAULT_SPACE = '00000000-0000-7000-8000-00000000d0c5';
+  const r = await fetch(`${GW}/spaces/${DEFAULT_SPACE}/members/${sub(targetToken)}`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ role: 'editor' }),
+  });
+  if (!r.ok) console.log(`  (second actor stays a viewer: ${r.status} — needs an admin token)`);
+  return r.ok;
+}
+
 async function login() {
   const r = await fetch(`${GW}/auth/login`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -340,7 +365,10 @@ async function reviseBlockText(token, pageId, blockIndex, revisions) {
     //   The two actors alternate, so no run in the palimpsest is attributable
     //   to the same person as the one before it.
     let ok = await reviseBlockText(token, anchorsId, 0, drafts.slice(0, 2));
-    if (ok && other) ok = await reviseBlockText(other, anchorsId, 0, drafts.slice(2));
+    if (ok && other) {
+      await makeEditor(token, other);
+      ok = await reviseBlockText(other, anchorsId, 0, drafts.slice(2));
+    }
     console.log(`  character history: ${ok ? 'Anchors vs offsets' : 'SKIPPED (block not found)'}`);
   }
 

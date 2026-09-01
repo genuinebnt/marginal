@@ -172,13 +172,22 @@ func (r *PostgresRepo) get(ctx context.Context, q *pagerepo.Queries, id PageID) 
 	return pageFromGetRow(row), nil
 }
 
-func (r *PostgresRepo) List(ctx context.Context, parentID *PageID, after string, limit int32) ([]Page, error) {
+// List returns pages inside spaceIDs only (ADR-013 §4).
+//
+// spaceIDs is a required argument rather than something List looks up,
+// because the caller is the only one who knows WHO is asking — and a
+// signature that could be called without it is one that will be. Passing
+// an empty slice returns nothing, which is the right answer for a user in
+// no space: a filter that matches everything when it is empty is a
+// permission check that disappears exactly when it is needed.
+func (r *PostgresRepo) List(ctx context.Context, spaceIDs []uuid.UUID, parentID *PageID, after string, limit int32) ([]Page, error) {
 	var afterPtr *string
 	if after != "" {
 		afterPtr = &after
 	}
 	rows, err := r.q.ListPages(ctx, pagerepo.ListPagesParams{
 		Limit:    limit,
+		SpaceIds: toPgUUIDs(spaceIDs),
 		ParentID: toPgUUIDPtr(parentID),
 		After:    afterPtr,
 	})
@@ -422,4 +431,17 @@ func spaceFor(np NewPage) uuid.UUID {
 		return np.SpaceID
 	}
 	return DefaultSpaceID
+}
+
+// toPgUUIDs converts a caller's space set for the ANY(...) filter.
+func toPgUUIDs(ids []uuid.UUID) []pgtype.UUID {
+	// Non-nil even when empty: a nil array and an empty one both match
+	// nothing here, but returning nil invites a "== nil means unfiltered"
+	// shortcut somewhere downstream, and that shortcut is the whole bug
+	// this filter exists to prevent.
+	out := make([]pgtype.UUID, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, toPgUUID(id))
+	}
+	return out
 }

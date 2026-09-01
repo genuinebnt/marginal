@@ -152,6 +152,35 @@ func (q *Queries) CountAdmins(ctx context.Context, spaceID pgtype.UUID) (int64, 
 	return count, err
 }
 
+const createDefaultSpace = `-- name: CreateDefaultSpace :one
+INSERT INTO auth.spaces (id, name, is_default, created_by)
+VALUES ($1, $2, TRUE, $3)
+RETURNING id, name, is_default, created_by, created_at
+`
+
+type CreateDefaultSpaceParams struct {
+	ID        pgtype.UUID
+	Name      string
+	CreatedBy pgtype.UUID
+}
+
+// The bootstrap path: a fresh database has no users when 00002 runs, so it
+// creates no space either, and the FIRST registration has to. The partial
+// unique index on is_default means a race produces a constraint violation
+// rather than two default spaces.
+func (q *Queries) CreateDefaultSpace(ctx context.Context, arg CreateDefaultSpaceParams) (AuthSpace, error) {
+	row := q.db.QueryRow(ctx, createDefaultSpace, arg.ID, arg.Name, arg.CreatedBy)
+	var i AuthSpace
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.IsDefault,
+		&i.CreatedBy,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const createSpace = `-- name: CreateSpace :one
 INSERT INTO auth.spaces (id, name, created_by) VALUES ($1, $2, $3)
 RETURNING id, name, is_default, created_by, created_at

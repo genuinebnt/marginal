@@ -424,14 +424,16 @@ SELECT id, created_by, title, parent_id, path::text AS path, sort_key,
        lifecycle_state, deleted_at, created_at, updated_at, space_id
 FROM docs.pages
 WHERE deleted_at IS NULL
-  AND (parent_id = $2 OR (parent_id IS NULL AND $2 IS NULL))
-  AND ($3::text IS NULL OR sort_key > $3)
+  AND space_id = ANY($2::uuid[])
+  AND (parent_id = $3 OR (parent_id IS NULL AND $3 IS NULL))
+  AND ($4::text IS NULL OR sort_key > $4)
 ORDER BY sort_key ASC
 LIMIT $1
 `
 
 type ListPagesParams struct {
 	Limit    int32
+	SpaceIds []pgtype.UUID
 	ParentID pgtype.UUID
 	After    *string
 }
@@ -450,10 +452,22 @@ type ListPagesRow struct {
 	SpaceID        pgtype.UUID
 }
 
-// No owner scoping — see GetPage. Lists every page on the instance
-// matching parent_id, not just the caller's own.
+// Scoped to the SPACES the caller is in (ADR-013 §4), filtered in SQL
+// rather than after: a filter applied to a result set already limited by
+// LIMIT silently returns fewer rows than asked for, and the shortfall
+// looks exactly like "there were no more".
+//
+// space_ids comes from docs.space_members, this service's own projection.
+// An empty array matches nothing, which is the correct answer for a user
+// in no space — returning everything for an empty filter is how a
+// permission check becomes a no-op precisely when it matters.
 func (q *Queries) ListPages(ctx context.Context, arg ListPagesParams) ([]ListPagesRow, error) {
-	rows, err := q.db.Query(ctx, listPages, arg.Limit, arg.ParentID, arg.After)
+	rows, err := q.db.Query(ctx, listPages,
+		arg.Limit,
+		arg.SpaceIds,
+		arg.ParentID,
+		arg.After,
+	)
 	if err != nil {
 		return nil, err
 	}
