@@ -13,14 +13,17 @@
  * lists as candidates: "already too many to show at once" is the mockup's own
  * note, and a strip overflowing its 332px panel reads as a rendering bug.
  */
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getBacklinks, type Backlink, type Page } from "../api/pages";
+import {
+  listThreads, replyToThread, setThreadResolved, type Thread,
+} from "../api/comments";
 import type { Diagnostic } from "../api/diagnostics";
 import type { CollabPage } from "../collab/useCollabPage";
 import { Label, Rule, TopicChip, num } from "../shell/Chrome";
 
-type Tab = "outline" | "checks" | "links" | "presence" | "queue";
+type Tab = "outline" | "checks" | "links" | "presence" | "comments" | "queue";
 
 /** A short, stable two-character tag for an actor — never their id verbatim. */
 function actorTag(actorId: string): string {
@@ -45,6 +48,33 @@ export function InspectorRail({
 }) {
   const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>("checks");
+  const [threads, setThreads] = useState<Thread[]>([]);
+  const [threadsError, setThreadsError] = useState<string | null>(null);
+
+  /** Open threads only. A count including resolved ones would grow forever
+ *  and stop meaning "there is something to answer". */
+  const openThreads = threads.filter((t) => !t.resolved_at).length;
+
+  const loadThreads = useCallback(() => {
+    if (!page?.id) return;
+    listThreads(page.id)
+      .then((r) => { setThreads(r.threads); setThreadsError(null); })
+      .catch((e) => setThreadsError(String(e)));
+  }, [page?.id]);
+
+  useEffect(loadThreads, [loadThreads]);
+
+  const replyTo = useCallback(async (threadId: string) => {
+    const body = window.prompt("Reply:");
+    if (!body) return;
+    try { await replyToThread(threadId, body); loadThreads(); }
+    catch (e) { setThreadsError(String(e)); }
+  }, [loadThreads]);
+
+  const toggleResolved = useCallback(async (t: Thread) => {
+    try { await setThreadResolved(t.id, !t.resolved_at); loadThreads(); }
+    catch (e) { setThreadsError(String(e)); }
+  }, [loadThreads]);
   const [backlinks, setBacklinks] = useState<Backlink[]>([]);
 
   useEffect(() => {
@@ -72,6 +102,9 @@ export function InspectorRail({
           { id: "checks", label: "CHECKS", count: open.length, tone: "#E0A34E" },
           { id: "links", label: "LINKS", count: backlinks.length, tone: "#E8873C" },
           { id: "presence", label: "PRESENCE", count: collab.peers.size, tone: "#A98CE8" },
+          // Open threads only. A count that included resolved ones would
+          // grow forever and stop meaning "there is something to answer".
+          { id: "comments", label: "COMMENTS", count: openThreads, tone: "#7AA8E8" },
           // § 24's own tab, and it appears only when there IS a queue: a
           // permanently-visible "QUEUE 0" is a tab that teaches you to ignore
           // it, which is exactly wrong for the one that matters when it is
@@ -254,6 +287,71 @@ export function InspectorRail({
               ),
             )}
           </>
+        )}
+
+        {tab === "comments" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {threadsError && (
+              <div style={{ fontSize: 11.5, color: "#E0A34E" }}>◌ {threadsError}</div>
+            )}
+            {threads.length === 0 && !threadsError && (
+              <div style={{ fontSize: 11.5, lineHeight: 1.6, color: "#585550" }}>
+                No threads on this page. Select a block's handle and use COMMENT to open one —
+                a thread is anchored to the text, so it follows the words when somebody edits
+                around it.
+              </div>
+            )}
+            {threads.map((t) => (
+              <div key={t.id} style={{
+                border: "1px solid rgba(255,255,255,.08)", padding: "10px 11px",
+                background: t.resolved_at ? "transparent" : "rgba(122,168,232,.04)",
+                opacity: t.resolved_at ? 0.65 : 1,
+              }}>
+                <div className="mono" style={{
+                  fontSize: 10, color: t.orphaned ? "#E0A34E" : "#7AA8E8", marginBottom: 6,
+                }}>
+                  {t.orphaned
+                    // Said, not hidden: the words are gone and the remark is
+                    // not, and a reader has to be able to tell.
+                    ? "the text this was about is gone"
+                    : `chars ${t.range?.start ?? 0}–${t.range?.end ?? 0}`}
+                  {t.resolved_at && " · resolved"}
+                </div>
+                <div style={{
+                  fontSize: 11.5, lineHeight: 1.5, color: "#8C8880", marginBottom: 8,
+                  borderLeft: "2px solid rgba(255,255,255,.12)", paddingLeft: 8,
+                }}>
+                  {t.quoted || <i>(an empty block)</i>}
+                </div>
+                {t.comments.map((c) => (
+                  <div key={c.id} style={{ marginBottom: 7 }}>
+                    <span className="mono" style={{ fontSize: 9.5, color: "#585550" }}>
+                      {actorTag(c.author_id)}
+                    </span>
+                    <div style={{ fontSize: 12, lineHeight: 1.5, color: "#D2CFC8" }}>{c.body}</div>
+                  </div>
+                ))}
+                <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                  <span className="chip" style={{ cursor: "pointer" }}
+                        onClick={() => void replyTo(t.id)}>REPLY</span>
+                  <span className="chip" style={{ cursor: "pointer" }}
+                        onClick={() => void toggleResolved(t)}>
+                    {t.resolved_at ? "REOPEN" : "RESOLVE"}
+                  </span>
+                </div>
+              </div>
+            ))}
+            <Rule />
+            <div style={{ fontSize: 11.5, lineHeight: 1.7, color: "#8C8880" }}>
+              A thread is anchored, not positioned: it holds the identity of the characters it
+              was opened on, so it follows them when somebody types above. The quote never
+              changes — it is what was being discussed, not what the anchors point at now.
+              <br /><br />
+              Comments are not ops. They are absent from Trace, the palimpsest and the diff on
+              purpose: those are views of the op log, and a remark is not a change to the
+              document.
+            </div>
+          </div>
         )}
 
         {tab === "presence" && (

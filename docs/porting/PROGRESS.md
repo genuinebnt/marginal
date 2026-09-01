@@ -5596,3 +5596,50 @@ for calls with no caller.
 
 **Sweep: 129 ok. Six modules clean.** `/security-review` is still owed as a
 process step — this was a manual audit, and it is not a substitute.
+
+### `v3.2.0` comments — backend proven, UI landed, one loose end (2026-09-01)
+
+**The claim, tested rather than asserted.** A thread opened on *"anchors
+survive a split"* sat at chars 0–23. Inserting `"NOTE: "` before it moved
+the thread to 6–29 — still the same words, `quoted` unchanged. Offsets would
+have drifted, which is the failure described by the very page the test ran
+on.
+
+`Session.ResolveRange` turns a stored `AnchorRange` into offsets into the
+block's current text, and reports `ok=false` when either end names an item
+the rope no longer has — the **orphaned** case, which is an answer rather
+than an error.
+
+`RequireToken` now carries the verified subject forward instead of
+discarding it. A comment's author has to come from the token; reading it
+from the request body would be the client asserting its own identity again,
+which is exactly what ADR-013 removed.
+
+**UI:** a COMMENTS tab in `InspectorRail` (open threads only in the count —
+one including resolved would grow forever and stop meaning "there is
+something to answer"), and a Comment action on the block handle.
+
+**Comments are anchored to a BLOCK, not to a selection, and that is a real
+limit rather than a simplification.** An anchor must be one the server
+issued, and the only anchors a client is handed are a block's own
+`boundaries`. Anchoring a sub-range needs the wire to carry anchors for it,
+which it does not. A comment on a selection is worth having; inventing
+offsets to fake one is not, because they drift.
+
+**Loose end, stated rather than buried.** The block menu's Comment item
+renders and is found, but a browser probe cannot click it: the item's
+measured position sits outside the menu's own box, so my model of which
+element the probe is hitting is wrong. I clamped the menu to the viewport
+three times on the assumption it was overflowing — the clamp IS applied
+(menu top 351, height 360, `overflow-y: auto`) and the measured item is
+still at y=858, outside 351–711. That means the clamp was fixing something
+that was not the problem, and I stopped rather than keep guessing.
+
+The menu clamp is kept regardless: an unclamped menu puts its last items —
+the destructive ones — under the status bar, where they render, report as
+present, and cannot be clicked. That is worth preventing on its own.
+
+**What is verified:** the API end to end (open, list, reply, resolve,
+reopen, anchor survival) and the sweep at **134 ok**. **What is not:**
+opening a thread through the UI, which needs the probe question answered
+first.

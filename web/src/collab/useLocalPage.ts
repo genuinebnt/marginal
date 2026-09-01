@@ -186,6 +186,10 @@ export function useLocalPage(): LocalPage {
     role: "editor",
     canWrite: true,
     denied: rejected,
+    // A scratchpad's blocks have no server-issued anchors — there is no
+    // server. Comments need one, so there are no comments here, and saying
+    // so beats handing back an anchor this page invented.
+    boundariesOf: () => null,
     ready: page !== null,
     blocks,
     peers: new Set<string>(),

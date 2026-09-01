@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type DragEvent, type ElementType, type For
 import type { Page } from "../api/pages";
 import type { Diagnostic } from "../api/diagnostics";
 import { getLinkGraph } from "../api/graph";
+import { openThread } from "../api/comments";
 import { prefixSearch } from "../trie-core/wasm";
 import { compile as compileMarkdown } from "../mdc-core/wasm";
 import type { CollabPage, BlockView } from "../collab/useCollabPage";
@@ -13,6 +14,17 @@ import { addMark, isFullyMarked, removeMark, renderMarkedHTML, shiftMarksForEdit
 // Lists are two blocks (a List container plus its first ListItem child),
 // not a single in-place conversion the way every other kind is — see
 // chooseKind's own comment for why this table exists.
+/** The block menu's cap. Named because two places must agree on it: the
+ *  maxHeight that makes a long menu scroll, and the clamp that keeps its
+ *  bottom on screen. */
+const MENU_MAX_HEIGHT = 360;
+
+/** The status bar's own height plus a margin. The menu has to clear it: a
+ *  menu item rendered underneath the status bar is present in the DOM,
+ *  reports as visible, and cannot be clicked — which is the worst of the
+ *  three states an affordance can be in. */
+const STATUS_BAR_GAP = 56;
+
 const LIST_KEYS: Partial<Record<BlockKindKey, "bulleted" | "numbered" | "todo">> = {
   bulleted_list: "bulleted",
   numbered_list: "numbered",
@@ -586,6 +598,38 @@ export function RichEditorPane({
     setKindMenu({ mode: "handle", blockId, top: rect.bottom + 6, left: rect.left });
   }
 
+  /**
+   * Opens a comment thread on this whole block.
+   *
+   * On the BLOCK, not on an arbitrary selection, and that is a real limit
+   * rather than a simplification: an anchor has to be one the SERVER
+   * issued, and the only anchors a client is handed are a block's own
+   * `boundaries`. Anchoring a sub-range would mean the wire carrying
+   * anchors for it, which it does not yet. A comment on a selection is
+   * worth having; inventing offsets to fake one is not, because they drift
+   * to the wrong words the moment anybody types above them.
+   */
+  function handleCommentFromMenu() {
+    if (!kindMenu || kindMenu.mode !== "handle") return;
+    const blockId = kindMenu.blockId;
+    const block = byId.get(blockId);
+    const bounds = collab.boundariesOf?.(blockId);
+    setKindMenu(null);
+    if (!bounds) {
+      window.alert("This block has no text yet, so there is nothing to anchor a comment to.");
+      return;
+    }
+    const body = window.prompt("Comment on this block:");
+    if (!body) return;
+    void openThread(page.id, {
+      block_id: blockId,
+      anchor_start: bounds.start,
+      anchor_end: bounds.end,
+      quoted: block?.text ?? "",
+      body,
+    }).catch((e: unknown) => window.alert(String(e)));
+  }
+
   function chooseKind(kind: BlockKindKey) {
     if (!kindMenu) return;
     const listKind = LIST_KEYS[kind];
@@ -731,7 +775,27 @@ export function RichEditorPane({
         {kindMenu && (
           <>
             <div style={{ position: "fixed", inset: 0, zIndex: 29 }} onClick={() => setKindMenu(null)} />
-            <div className="slash" style={{ top: kindMenu.top, left: kindMenu.left }}>
+            {/* Clamped to the viewport rather than placed blindly below the
+                handle. The menu grows as block kinds and actions are added,
+                and an unclamped one puts its LAST items — the destructive
+                ones — under the status bar, where they render, report as
+                present, and cannot be clicked. Found by adding one item.
+
+                maxHeight with its own scroll, so a menu taller than the
+                window is reachable rather than merely repositioned. */}
+            <div
+              className="slash"
+              style={{
+                // The clamp has to leave room for the menu's OWN height,
+                // not just for its top edge — clamping the top alone still
+                // lets the bottom items fall off, which is the bug this is
+                // fixing and the one I first wrote again.
+                top: Math.max(8, Math.min(kindMenu.top, window.innerHeight - MENU_MAX_HEIGHT - STATUS_BAR_GAP)),
+                left: kindMenu.left,
+                maxHeight: MENU_MAX_HEIGHT,
+                overflowY: "auto",
+              }}
+            >
               <div className="slash-h">
                 {kindMenu.containersOnly ? "WRAP IN" : "TURN INTO"}
               </div>
@@ -745,6 +809,10 @@ export function RichEditorPane({
               {kindMenu.mode === "handle" && (
                 <>
                   <div className="menu-divider" />
+                  <div className="palette-item" onClick={handleCommentFromMenu}>
+                    <span className="lead mono muted">❝</span>
+                    Comment
+                  </div>
                   <div className="palette-item" onClick={handleDeleteFromMenu}>
                     <span className="lead mono muted">×</span>
                     Delete

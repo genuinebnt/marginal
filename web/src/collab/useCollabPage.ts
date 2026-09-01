@@ -47,6 +47,13 @@ export interface CollabPage {
   /** The last op the server refused, for a screen to show. Cleared on the
    *  next accepted op. */
   denied: string | null;
+  /** A block's current boundary anchors, as the server issued them.
+   *
+   *  The only anchors a client legitimately has. Anything that needs to
+   *  name a range durably — a comment thread — must use these rather than
+   *  offsets it computed, which drift to the wrong words the moment
+   *  somebody types above them. null when the block is empty or unknown. */
+  boundariesOf: (blockId: string) => { start: unknown; end: unknown } | null;
   /** True once the initial "snapshot" frame has actually been processed —
    * distinct from state === "open", which only means the socket handshake
    * finished. blocks is meaningless (always []) until this is true, since
@@ -774,5 +781,10 @@ export function useCollabPage(pageId: string, actorId: string): CollabPage {
   const redo = useCallback(() => send({ type: "redo" }), [send]);
   const restoreTo = useCallback((toStep: number) => send({ type: "restore", to_step: toStep }), [send]);
 
-  return { state, role, canWrite: role === "editor" || role === "admin", denied, ready, blocks, peers, cursors, ackP99, queued, attempt, retryAt, retryNow, setCursor, insertCompiled, setBlockText, setBlockContent, insertBlock, deleteBlock, setBlockKind, moveBlock, undo, redo, restoreTo };
+  const boundariesOf = useCallback((blockId: string) => {
+    const b = liveRef.current.get(blockId);
+    return b?.boundaries ?? null;
+  }, []);
+
+  return { state, boundariesOf, role, canWrite: role === "editor" || role === "admin", denied, ready, blocks, peers, cursors, ackP99, queued, attempt, retryAt, retryNow, setCursor, insertCompiled, setBlockText, setBlockContent, insertBlock, deleteBlock, setBlockKind, moveBlock, undo, redo, restoreTo };
 }
