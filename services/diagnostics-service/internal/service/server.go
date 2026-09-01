@@ -37,15 +37,21 @@ type Server struct {
 	systemActor string
 }
 
-// NewServer. systemActor is the actor-id document-service's own
-// temporary auth stand-in (pages.md's "Actor identity") requires on
-// every call — this service acts as itself, not on behalf of one
-// specific browser user (every analysis here reads across the whole
-// workspace, and this repo's pages carry no per-actor access scoping
-// anyway — DATA_MODEL.md's "shared workspace, not multi-tenant"), so a
-// fixed synthetic id is the right identity, the same way
-// collaboration-service's own serverActor is a synthetic identity
-// distinct from a real editing user.
+// NewServer. systemActor is the fallback actor-id for calls with no
+// caller of their own.
+//
+// It used to be used for EVERY outgoing call, justified by "this repo's
+// pages carry no per-actor access scoping anyway". ADR-013 made that
+// false: pages are scoped by space now, and a synthetic actor belongs to
+// no space — so document-service correctly stopped answering, and every
+// diagnostic silently became empty.
+//
+// The fix is not to give the synthetic actor access. Diagnostics are
+// computed FOR a person, so they must see exactly what that person sees:
+// a diagnostic naming a page you have no access to would leak both the
+// page's existence and its title. The caller's own actor id is forwarded
+// instead, and systemActor remains only for calls that genuinely have no
+// caller.
 func NewServer(pages documentv1.PageServiceClient, graph documentv1.GraphServiceClient, systemActor string) *Server {
 	return &Server{pages: pages, graph: graph, systemActor: systemActor}
 }
@@ -54,6 +60,14 @@ func NewServer(pages documentv1.PageServiceClient, graph documentv1.GraphService
 // outgoing gRPC metadata — document-service's PageService/GraphService
 // both reject a call missing it with UNAUTHENTICATED.
 func (s *Server) withActor(ctx context.Context) context.Context {
+	// The CALLER's identity, forwarded. An analysis run on somebody's
+	// behalf must be scoped to them, or it reports on pages they cannot
+	// see — which is a leak with extra steps.
+	if md, ok := metadata.FromIncomingContext(ctx); ok {
+		if v := md.Get("actor-id"); len(v) > 0 && v[0] != "" {
+			return metadata.AppendToOutgoingContext(ctx, "actor-id", v[0])
+		}
+	}
 	return metadata.AppendToOutgoingContext(ctx, "actor-id", s.systemActor)
 }
 

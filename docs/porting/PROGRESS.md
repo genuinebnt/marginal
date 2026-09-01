@@ -5536,3 +5536,63 @@ profile of something that cannot author an op is a profile of nothing.
 another person's profile rather than your own, which is the representative
 case and the only one that exercises the `av-them` path. Four new checks.
 **Sweep: 129 ok.**
+
+---
+
+## The audit `RELEASES.md` asked for, run late — and it found two real holes (2026-09-01)
+
+`RELEASES.md`'s `v3.1.0` row says *"Every change here gets `/security-review`
+before merge (this is the phase where a bug is a breach)."* I merged
+without it. Enumerating the entry points afterwards found two gaps that
+would have made "RBAC" a label rather than a boundary.
+
+### 1. A scoped list is not access control
+
+`ListPages` filtered by space in SQL, so pages outside your spaces could
+not be **enumerated**. Nothing stopped them being **addressed**: `GetPage`,
+`ListBlocks`, `ListBacklinks`, `RenamePage`, `DeletePage` and
+`ReparentPage` all read the actor and then ignored it. A page id is not a
+secret — it is in links, the graph, search results and URLs — so a scoped
+list beside an unscoped `GetPage` is a slightly inconvenient index, not a
+permission.
+
+Every page-addressed RPC now calls `visible()` first: `NOT_FOUND` for a
+page outside your spaces, for the reason `docs/api/spaces.md` §3 already
+gives.
+
+### 2. "Writes go through can_apply" was true of the sentence, false of the system
+
+`ADR-013` §4 says writes are gated by `can_apply`. `can_apply` only sees
+**ops**. Rename, delete, reparent and create are document-service RPCs,
+not ops — so **a viewer could delete any page they could see**, and create
+new ones. Measured before the fix: `viewer DELETE → 204`,
+`viewer CREATE → 201`.
+
+`mayWrite()` now gates all four against the role in the page's space.
+`NOT_FOUND` for a non-member, `PERMISSION_DENIED` for a member without the
+rank — the difference being the security decision, not a formatting one.
+
+The permission matrix, measured after:
+
+```
+viewer     GET 200 · CREATE 403 · DELETE 403
+stranger   GET 404 · DELETE 404
+admin      DELETE 204
+```
+
+### 3. The fix broke diagnostics, and that was correct
+
+`diagnostics-service` called document-service with a **synthetic actor**,
+justified in its own comment by *"this repo's pages carry no per-actor
+access scoping anyway"*. `v3.1.0` made that false: a synthetic actor is in
+no space, so document-service correctly stopped answering and every
+diagnostic silently became empty. `§ 04 inspector tab counts` caught it.
+
+The fix is not to give the synthetic actor access. Diagnostics are computed
+**for** a person and must see exactly what that person sees — a diagnostic
+naming a page you have no access to leaks both its existence and its
+title. The caller's own actor id is forwarded; `systemActor` remains only
+for calls with no caller.
+
+**Sweep: 129 ok. Six modules clean.** `/security-review` is still owed as a
+process step — this was a manual audit, and it is not a substitute.

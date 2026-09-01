@@ -52,6 +52,25 @@ func (q *Queries) DeleteSpaceMemberIfOlder(ctx context.Context, arg DeleteSpaceM
 	return err
 }
 
+const roleInSpace = `-- name: RoleInSpace :one
+SELECT role FROM docs.space_members WHERE user_id = $1 AND space_id = $2
+`
+
+type RoleInSpaceParams struct {
+	UserID  pgtype.UUID
+	SpaceID pgtype.UUID
+}
+
+// The write check's lookup: what may this reader DO in this space. Absent
+// means "not a member", which the caller turns into NOT_FOUND rather than
+// PERMISSION_DENIED (docs/api/spaces.md §3).
+func (q *Queries) RoleInSpace(ctx context.Context, arg RoleInSpaceParams) (string, error) {
+	row := q.db.QueryRow(ctx, roleInSpace, arg.UserID, arg.SpaceID)
+	var role string
+	err := row.Scan(&role)
+	return role, err
+}
+
 const spacesForUser = `-- name: SpacesForUser :many
 SELECT space_id FROM docs.space_members WHERE user_id = $1
 `

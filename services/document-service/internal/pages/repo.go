@@ -18,6 +18,11 @@ import (
 
 var (
 	ErrNotFound = errors.New("pages: not found")
+	// ErrForbidden is a MEMBER without the rank — distinct from
+	// ErrNotFound, which is a non-member. The difference is the security
+	// decision: 403 confirms the thing exists, and is only safe to say to
+	// somebody who already knows (docs/api/spaces.md §3).
+	ErrForbidden = errors.New("pages: your role in this space does not allow that")
 	// ErrAnchorMismatch is docs/api/pages.md's "Anchor is not a child of
 	// the named parent" — distinct from ErrNotFound (FAILED_PRECONDITION,
 	// not NOT_FOUND, at the gRPC layer): the anchor page exists, just not

@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/nats-io/nats.go"
@@ -131,6 +132,25 @@ func (p *Projector) SpacesFor(ctx context.Context, userID uuid.UUID) ([]uuid.UUI
 		out = append(out, uuid.UUID(r.Bytes))
 	}
 	return out, nil
+}
+
+// RoleFor is the WRITE question: what may this actor do in this space.
+//
+// "" means not a member, and it is deliberately the same value as an
+// unknown role — both must be refused. A caller that treated "no role
+// found" as anything but "no" would turn every gap in the projection into
+// permission.
+func (p *Projector) RoleFor(ctx context.Context, userID, spaceID uuid.UUID) (string, error) {
+	role, err := p.q.RoleInSpace(ctx, spacerepo.RoleInSpaceParams{
+		UserID: pgUUID(userID), SpaceID: pgUUID(spaceID),
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("spaceproj: reading role: %w", err)
+	}
+	return role, nil
 }
 
 // Reconcile replaces the whole projection from the source of truth.

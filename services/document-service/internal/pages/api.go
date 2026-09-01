@@ -52,6 +52,9 @@ func (e *InvalidPageIDError) Error() string {
 // can hand in a fixed set.
 type SpaceReader interface {
 	SpacesFor(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, error)
+	// RoleFor answers the WRITE question. "" means not a member, which is
+	// the same answer as an unknown role and must be refused either way.
+	RoleFor(ctx context.Context, userID, spaceID uuid.UUID) (string, error)
 }
 
 type Server struct {
@@ -62,6 +65,66 @@ type Server struct {
 
 func NewServer(repo *PostgresRepo, spaces SpaceReader) *Server {
 	return &Server{repo: repo, spaces: spaces}
+}
+
+// visible refuses a page outside every space the caller is in.
+//
+// ListPages filters in SQL, which stops ENUMERATION. It does not stop
+// ADDRESSING: a page id is not a secret — it appears in links, in the
+// graph, in search results and in URLs — so a scoped list beside an
+// unscoped GetPage is not access control, it is a slightly inconvenient
+// index. Every RPC that takes a page id asks this first.
+//
+// NOT_FOUND rather than PERMISSION_DENIED, for the reason
+// docs/api/spaces.md §3 gives: a 403 on something you cannot see confirms
+// it exists.
+//
+// It reads docs.space_members — this service's own projection, an indexed
+// lookup in its own database rather than a call to auth-service. The
+// staleness that buys is stated in ADR-013 and bounded to reads; a write
+// still passes can_apply, which resolves from the source of truth at join.
+func (s *Server) visible(ctx context.Context, actor uuid.UUID, id PageID) error {
+	page, err := s.repo.Get(ctx, id)
+	if err != nil {
+		return err
+	}
+	spaces, err := s.spaces.SpacesFor(ctx, actor)
+	if err != nil {
+		return fmt.Errorf("pages: resolving visible spaces: %w", err)
+	}
+	for _, sp := range spaces {
+		if sp == page.SpaceID {
+			return nil
+		}
+	}
+	return ErrNotFound
+}
+
+// mayWrite refuses a page-lifecycle change from somebody who may read the
+// page but not change it.
+//
+// This exists because ADR-013 §4 said writes go through can_apply — and
+// can_apply only sees OPS. Rename, delete and reparent are
+// document-service RPCs, not ops, so "writes are gated by can_apply" was
+// true of the sentence and false of the system: a viewer could delete any
+// page they could see. Found by auditing the entry points rather than by a
+// test, which is the uncomfortable part.
+//
+// NOT_FOUND for a non-member (they must not learn the page exists) and
+// PERMISSION_DENIED for a member without the rank (they already know).
+func (s *Server) mayWrite(ctx context.Context, actor uuid.UUID, spaceID uuid.UUID) error {
+	role, err := s.spaces.RoleFor(ctx, actor, spaceID)
+	if err != nil {
+		return fmt.Errorf("pages: resolving role: %w", err)
+	}
+	switch role {
+	case "editor", "admin":
+		return nil
+	case "":
+		return ErrNotFound
+	default:
+		return ErrForbidden
+	}
 }
 
 // actorID reads the caller's identity from gRPC metadata. In the full
@@ -135,6 +198,8 @@ func toStatus(err error) error {
 		return nil
 	case errors.Is(err, ErrNotFound):
 		return status.Error(codes.NotFound, "page not found")
+	case errors.Is(err, ErrForbidden):
+		return status.Error(codes.PermissionDenied, err.Error())
 	case errors.Is(err, ErrAnchorMismatch):
 		return status.Error(codes.FailedPrecondition, "anchor is not a child of the named parent")
 	case errors.Is(err, ErrCycle):
@@ -208,6 +273,22 @@ func (s *Server) CreatePage(ctx context.Context, req *documentv1.CreatePageReque
 		return nil, toStatus(err)
 	}
 
+	// Which space this page lands in decides who may create it. A child
+	// inherits its parent's space (repo.Create enforces that), so the
+	// permission question is about the PARENT's space; a root page lands
+	// in the default one.
+	target := DefaultSpaceID
+	if parentID != nil {
+		parent, err := s.repo.Get(ctx, *parentID)
+		if err != nil {
+			return nil, toStatus(err)
+		}
+		target = parent.SpaceID
+	}
+	if err := s.mayWrite(ctx, createdBy, target); err != nil {
+		return nil, toStatus(err)
+	}
+
 	page, err := s.repo.Create(ctx, NewPage{
 		CreatedBy: createdBy,
 		Title:     req.GetTitle(),
@@ -221,11 +302,16 @@ func (s *Server) CreatePage(ctx context.Context, req *documentv1.CreatePageReque
 }
 
 func (s *Server) GetPage(ctx context.Context, req *documentv1.GetPageRequest) (*documentv1.Page, error) {
-	if _, err := actorID(ctx); err != nil {
+	actor, err := actorID(ctx)
+	if err != nil {
 		return nil, toStatus(err)
 	}
 	id, err := parsePageID(req.GetId())
 	if err != nil {
+		return nil, toStatus(err)
+	}
+	// A page id is not a secret, so scoping the LIST is not enough.
+	if err := s.visible(ctx, actor, id); err != nil {
 		return nil, toStatus(err)
 	}
 	page, err := s.repo.Get(ctx, id)
@@ -321,7 +407,8 @@ func (s *Server) ListPages(ctx context.Context, req *documentv1.ListPagesRequest
 }
 
 func (s *Server) RenamePage(ctx context.Context, req *documentv1.RenamePageRequest) (*documentv1.Page, error) {
-	if _, err := actorID(ctx); err != nil {
+	actor, err := actorID(ctx)
+	if err != nil {
 		return nil, toStatus(err)
 	}
 	if err := validateTitle(req.GetTitle()); err != nil {
@@ -329,6 +416,18 @@ func (s *Server) RenamePage(ctx context.Context, req *documentv1.RenamePageReque
 	}
 	id, err := parsePageID(req.GetId())
 	if err != nil {
+		return nil, toStatus(err)
+	}
+	// A page id is not a secret, so scoping the LIST is not enough.
+	if err := s.visible(ctx, actor, id); err != nil {
+		return nil, toStatus(err)
+	}
+	// Visible is not the same as writable: a viewer may read this page and
+	// must not change it. can_apply cannot cover these — they are RPCs,
+	// not ops.
+	if page, err := s.repo.Get(ctx, id); err != nil {
+		return nil, toStatus(err)
+	} else if err := s.mayWrite(ctx, actor, page.SpaceID); err != nil {
 		return nil, toStatus(err)
 	}
 	page, err := s.repo.Rename(ctx, id, req.GetTitle())
@@ -339,11 +438,24 @@ func (s *Server) RenamePage(ctx context.Context, req *documentv1.RenamePageReque
 }
 
 func (s *Server) DeletePage(ctx context.Context, req *documentv1.DeletePageRequest) (*emptypb.Empty, error) {
-	if _, err := actorID(ctx); err != nil {
+	actor, err := actorID(ctx)
+	if err != nil {
 		return nil, toStatus(err)
 	}
 	id, err := parsePageID(req.GetId())
 	if err != nil {
+		return nil, toStatus(err)
+	}
+	// A page id is not a secret, so scoping the LIST is not enough.
+	if err := s.visible(ctx, actor, id); err != nil {
+		return nil, toStatus(err)
+	}
+	// Visible is not the same as writable: a viewer may read this page and
+	// must not change it. can_apply cannot cover these — they are RPCs,
+	// not ops.
+	if page, err := s.repo.Get(ctx, id); err != nil {
+		return nil, toStatus(err)
+	} else if err := s.mayWrite(ctx, actor, page.SpaceID); err != nil {
 		return nil, toStatus(err)
 	}
 	if err := s.repo.Delete(ctx, id); err != nil {
@@ -353,11 +465,24 @@ func (s *Server) DeletePage(ctx context.Context, req *documentv1.DeletePageReque
 }
 
 func (s *Server) ReparentPage(ctx context.Context, req *documentv1.ReparentPageRequest) (*documentv1.Page, error) {
-	if _, err := actorID(ctx); err != nil {
+	actor, err := actorID(ctx)
+	if err != nil {
 		return nil, toStatus(err)
 	}
 	id, err := parsePageID(req.GetId())
 	if err != nil {
+		return nil, toStatus(err)
+	}
+	// A page id is not a secret, so scoping the LIST is not enough.
+	if err := s.visible(ctx, actor, id); err != nil {
+		return nil, toStatus(err)
+	}
+	// Visible is not the same as writable: a viewer may read this page and
+	// must not change it. can_apply cannot cover these — they are RPCs,
+	// not ops.
+	if page, err := s.repo.Get(ctx, id); err != nil {
+		return nil, toStatus(err)
+	} else if err := s.mayWrite(ctx, actor, page.SpaceID); err != nil {
 		return nil, toStatus(err)
 	}
 
@@ -391,11 +516,16 @@ func (s *Server) ReparentPage(ctx context.Context, req *documentv1.ReparentPageR
 // pages carry no access control on this instance (PostgresRepo's own doc
 // comment).
 func (s *Server) ListBacklinks(ctx context.Context, req *documentv1.ListBacklinksRequest) (*documentv1.ListBacklinksResponse, error) {
-	if _, err := actorID(ctx); err != nil {
+	actor, err := actorID(ctx)
+	if err != nil {
 		return nil, toStatus(err)
 	}
 	id, err := parsePageID(req.GetPageId())
 	if err != nil {
+		return nil, toStatus(err)
+	}
+	// A page id is not a secret, so scoping the LIST is not enough.
+	if err := s.visible(ctx, actor, id); err != nil {
 		return nil, toStatus(err)
 	}
 	if _, err := s.repo.Get(ctx, id); err != nil {
@@ -421,11 +551,16 @@ func (s *Server) ListBacklinks(ctx context.Context, req *documentv1.ListBacklink
 // ListBlocks is ListBacklinks' own twin for docs.blocks — same existence
 // check, same "no ownership check on this instance" reasoning.
 func (s *Server) ListBlocks(ctx context.Context, req *documentv1.ListBlocksRequest) (*documentv1.ListBlocksResponse, error) {
-	if _, err := actorID(ctx); err != nil {
+	actor, err := actorID(ctx)
+	if err != nil {
 		return nil, toStatus(err)
 	}
 	id, err := parsePageID(req.GetPageId())
 	if err != nil {
+		return nil, toStatus(err)
+	}
+	// A page id is not a secret, so scoping the LIST is not enough.
+	if err := s.visible(ctx, actor, id); err != nil {
 		return nil, toStatus(err)
 	}
 	if _, err := s.repo.Get(ctx, id); err != nil {

@@ -30,3 +30,9 @@ DELETE FROM docs.space_members;
 
 -- name: CountSpaceMembers :one
 SELECT count(*) FROM docs.space_members;
+
+-- name: RoleInSpace :one
+-- The write check's lookup: what may this reader DO in this space. Absent
+-- means "not a member", which the caller turns into NOT_FOUND rather than
+-- PERMISSION_DENIED (docs/api/spaces.md §3).
+SELECT role FROM docs.space_members WHERE user_id = $1 AND space_id = $2;
