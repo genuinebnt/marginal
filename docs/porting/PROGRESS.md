@@ -5453,3 +5453,44 @@ the API, and that last step is unfinished — it is a badge, not a boundary,
 and it is written down rather than left to be rediscovered.
 
 **Full sweep: 124 ok. Six Go modules and `tsc`: clean.**
+
+### The badge was a CORS preflight, and a viewer is now told before they type
+
+**Two wrong diagnoses before the right one.** `div.bdg` was recorded first
+as "needs unread notifications" (a data condition), then as
+"notification-service still reads `X-Actor-Id`" (true, and fixed — a real
+authorization hole). Neither made the badge come back. The actual cause was
+the third: **the CORS preflight did not allow `Authorization`**, so the
+request never left the browser at all.
+
+That failure mode is worth naming. A rejected preflight is worse than a
+`401`: there is no response to inspect, nothing appears in the network tab's
+response list, and an inbox being refused looks *identical* to an empty one.
+It was found by listening for `requestfailed` rather than `response` — which
+is the diagnostic that should have come first, since "no request was made"
+and "the request was refused" are different problems that look the same from
+the screen.
+
+`§ 23` and `§ 04` are both at **missing 0 · property 0 · chrome text 0**.
+
+### A viewer is told, rather than discovering it
+
+`can_apply` refused a viewer's ops correctly and *silently* — the client
+logged the denial to the console and showed nothing. An edit that vanishes
+with no explanation is the worst version of a permission working properly.
+
+The snapshot frame now carries `your_role`, resolved at join and already in
+hand, so the editor says "you are a viewer in this page's space" **before**
+anything is typed. `can_apply` remains the authority: a client that ignored
+the hint would still be refused, and a client that trusted it *instead of*
+the server would be making an authorization decision in a browser. The
+denial path stays for exactly the case the hint cannot cover — a role
+changed mid-session — and shows the server's message verbatim, because
+there the client's own belief is the thing that was wrong.
+
+**One more flex blockification.** The notice's `<b>` was a direct child of
+`.note`, which is `display: flex` — so it became a flex item and the
+sentence broke across lines. The same rule that moved the peer caret in
+§ 04. Wrapped in one span.
+
+**Sweep: 125 ok**, including a new check that a viewer is actually told.

@@ -33,6 +33,20 @@ export interface PeerCursor {
 
 export interface CollabPage {
   state: ConnectionState;
+  /** What you may do on this page, from the snapshot (ADR-013 §3).
+   *  "" until the snapshot arrives. */
+  role: string;
+  /** Whether an op from you would be accepted.
+   *
+   *  A CONVENIENCE, not the authority: can_apply still decides, and a
+   *  client that trusted this instead of the server would be making an
+   *  authorization decision in a browser. Its job is to say "you are a
+   *  viewer here" before somebody types, rather than after their edit
+   *  silently fails to stick. */
+  canWrite: boolean;
+  /** The last op the server refused, for a screen to show. Cleared on the
+   *  next accepted op. */
+  denied: string | null;
   /** True once the initial "snapshot" frame has actually been processed —
    * distinct from state === "open", which only means the socket handshake
    * finished. blocks is meaningless (always []) until this is true, since
@@ -219,6 +233,8 @@ export function useCollabPage(pageId: string, actorId: string): CollabPage {
   const [ready, setReady] = useState(false);
   const [blocks, setBlocks] = useState<BlockView[]>([]);
   const [peers, setPeers] = useState<Set<string>>(new Set());
+  const [role, setRole] = useState("");
+  const [denied, setDenied] = useState<string | null>(null);
   const [cursors, setCursors] = useState<Map<string, PeerCursor>>(new Map());
 
   const orderRef = useRef<string[]>([]);
@@ -403,6 +419,8 @@ export function useCollabPage(pageId: string, actorId: string): CollabPage {
       const msg = JSON.parse(event.data as string) as ServerMessage;
       switch (msg.type) {
         case "snapshot": {
+          setRole(msg.your_role ?? "");
+          setDenied(null);
           orderRef.current = msg.snapshot.blocks.map((b) => b.id);
           liveRef.current = new Map(
             msg.snapshot.blocks.map((b) => [b.id, { parent: b.parent, kind: b.kind, text: b.text, marks: b.marks ?? [], boundaries: b.boundaries ?? null }]),
@@ -524,7 +542,11 @@ export function useCollabPage(pageId: string, actorId: string): CollabPage {
           break;
         }
         case "error":
+          // Surfaced, not just logged. A refused op that only reaches the
+          // console is an edit that vanishes with no explanation, which is
+          // the worst version of a permission working correctly.
           console.error("collab error:", msg.message);
+          setDenied(msg.message);
           break;
       }
     };
@@ -752,5 +774,5 @@ export function useCollabPage(pageId: string, actorId: string): CollabPage {
   const redo = useCallback(() => send({ type: "redo" }), [send]);
   const restoreTo = useCallback((toStep: number) => send({ type: "restore", to_step: toStep }), [send]);
 
-  return { state, ready, blocks, peers, cursors, ackP99, queued, attempt, retryAt, retryNow, setCursor, insertCompiled, setBlockText, setBlockContent, insertBlock, deleteBlock, setBlockKind, moveBlock, undo, redo, restoreTo };
+  return { state, role, canWrite: role === "editor" || role === "admin", denied, ready, blocks, peers, cursors, ackP99, queued, attempt, retryAt, retryNow, setCursor, insertCompiled, setBlockText, setBlockContent, insertBlock, deleteBlock, setBlockKind, moveBlock, undo, redo, restoreTo };
 }

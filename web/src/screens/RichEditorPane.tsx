@@ -821,6 +821,33 @@ export function RichEditorPane({
           </div>
         ))}
 
+        {collab.role !== "" && !collab.canWrite && (
+          // Said BEFORE anything is typed. can_apply refuses the op either
+          // way, and it used to refuse it silently — an edit that vanishes
+          // with no explanation is the worst version of a permission
+          // working correctly.
+          <div className="note" style={{ borderColor: "rgba(224,163,78,.35)", color: "#E0A34E" }}>
+            {/* One span, because .note is a flex container — an inline <b>
+                left loose in it becomes a flex item and the sentence breaks
+                across lines. The same blockification that moved the peer
+                caret earlier. */}
+            <span>
+              You are a <b style={{ fontWeight: 600 }}>viewer</b> in this page's space, so your
+              edits will not be saved. An admin of the space can change that on the{" "}
+              <a href="/spaces" style={{ color: "#E0A34E" }}>spaces</a> screen.
+            </span>
+          </div>
+        )}
+        {collab.denied && collab.canWrite && (
+          // A denial that arrives despite canWrite means the server refused
+          // something this client believed was allowed — a role changed
+          // mid-session, most likely. Worth showing verbatim rather than
+          // translating: the client's belief is the thing that was wrong.
+          <div className="note" style={{ borderColor: "rgba(224,163,78,.35)", color: "#E0A34E" }}>
+            <span>The server refused that edit: {collab.denied}</span>
+          </div>
+        )}
+
         <div className="note">
           Every block is its own live document — open this same page in a second tab (or ask
           someone else to open its "Copy link") to see block edits sync in real time. Select text

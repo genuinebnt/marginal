@@ -178,6 +178,14 @@ export function useLocalPage(): LocalPage {
 
   const api = useMemo<LocalPage>(() => ({
     state: "open",
+    // A scratchpad has no space and no roles — there is nobody to be a
+    // viewer to. "editor" rather than "" because the alternative would
+    // have the editor render read-only on a page that is nothing but
+    // yours, which would be a permission model invented for a page that
+    // has none.
+    role: "editor",
+    canWrite: true,
+    denied: rejected,
     ready: page !== null,
     blocks,
     peers: new Set<string>(),

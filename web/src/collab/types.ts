@@ -115,7 +115,10 @@ export interface CursorWire {
 }
 
 export type ServerMessage =
-  | { type: "snapshot"; snapshot: PageSnapshot; present?: string[]; cursors?: CursorWire[] }
+  // your_role: what this connection may do, resolved server-side at join
+  // (ADR-013 §3). Absent on an older server, which the client treats as
+  // "unknown" — and unknown must not be read as permission.
+  | { type: "snapshot"; snapshot: PageSnapshot; present?: string[]; cursors?: CursorWire[]; your_role?: string }
   | { type: "ack"; op: LoggedOp; boundaries?: AnchorRange }
   | { type: "broadcast"; op: LoggedOp; boundaries?: AnchorRange }
   | { type: "presence"; actor_id: string; joined: boolean }

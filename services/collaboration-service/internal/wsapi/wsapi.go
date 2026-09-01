@@ -105,6 +105,17 @@ type serverMessage struct {
 	Op         *oplog.LoggedOp     `json:"op,omitempty"`
 	Boundaries *anchor.AnchorRange `json:"boundaries,omitempty"`
 	Message    string              `json:"message,omitempty"`
+	// YourRole, on a "snapshot" frame: what this connection may do
+	// (ADR-013 §3), resolved at join and already in hand.
+	//
+	// Sent so a client can say "you are a viewer here" BEFORE someone
+	// types, rather than only refusing the op afterwards. can_apply
+	// remains the authority — this is the same answer, delivered early
+	// enough to be useful. A client that ignored it would still be
+	// refused; a client that trusted it INSTEAD of the server would be
+	// making an authorization decision in a browser, which is why the
+	// denial path stays.
+	YourRole string `json:"your_role,omitempty"`
 }
 
 // cursorWire is session.CursorEvent's wire shape — ActorID spelled out
@@ -255,7 +266,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	for i, c := range subscription.Cursors {
 		cursorWires[i] = toCursorWire(c)
 	}
-	sub.enqueue(serverMessage{Type: "snapshot", Snapshot: &subscription.Snapshot, Present: presentIDs, Cursors: cursorWires})
+	sub.enqueue(serverMessage{
+		Type: "snapshot", Snapshot: &subscription.Snapshot,
+		Present: presentIDs, Cursors: cursorWires, YourRole: role,
+	})
 
 	readLoop(ctx, conn, sess, sub, actorID, actorKind, subscription.ID)
 

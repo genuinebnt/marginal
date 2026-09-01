@@ -790,6 +790,31 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
         (trash.entries ?? []).filter(e => /^Saga probe/.test(e.page.title)).length >= 2,
         `${(trash.entries ?? []).filter(e => /^Saga probe/.test(e.page.title)).length} entries`);
 
+  // ── a viewer is told BEFORE they type ────────────────────────────────
+  //
+  // can_apply refuses a viewer's op either way; it used to refuse it
+  // silently, which is the worst version of a permission working correctly.
+  // The snapshot carries the role so the editor can say so up front.
+  const viewerTok = await fetch(`${GW}/auth/login`, {method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({email:'uidiff-peer@example.com',password:'uidiff-peer-123456'})})
+    .then(r => r.json()).then(d => d.access_token).catch(() => null);
+  if (viewerTok) {
+    const viewerSub = JSON.parse(Buffer.from(viewerTok.split('.')[1],'base64url')).sub;
+    const vp = await b.newPage({viewport:{width:1440,height:900}});
+    await vp.addInitScript((s) => {
+      try { localStorage.setItem('marginal.session', JSON.stringify(s)); } catch { /* private mode */ }
+    }, {actorId:viewerSub, accessToken:viewerTok, refreshToken:viewerTok});
+    await vp.goto(`${APP}/pages/${page.id}`, {waitUntil:'networkidle'});
+    const told = await vp.waitForFunction(
+      () => /will not be saved/.test(document.body.innerText),
+      null, { timeout: 20000 }).then(() => true).catch(() => false);
+    check('§04 a viewer is told their edits will not be saved', told);
+    await vp.close();
+  } else {
+    check('§04 a viewer is told their edits will not be saved', false, 'no viewer account');
+  }
+
   // ── § 13 TRACE (the scratchpad) ───────────────────────────────────────
   await go('/lab/trace', 3000);
   const blk = p.locator('[contenteditable="true"]').nth(1);
