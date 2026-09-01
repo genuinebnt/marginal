@@ -109,7 +109,15 @@ func withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Actor-Id, X-Actor-Kind")
+		// Authorization, since ADR-013 — without it the browser's preflight
+		// rejects every call and the request never leaves the page, which is
+		// worse than a 401: there is no response to inspect, so an inbox that
+		// is being refused looks identical to one that is empty.
+		//
+		// X-Actor-Id and X-Actor-Kind are gone: nothing reads them, and
+		// advertising a header the server ignores invites a client to keep
+		// sending it and believe it means something.
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return
