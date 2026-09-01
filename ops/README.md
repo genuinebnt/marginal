@@ -88,3 +88,24 @@ All nine wasm modules should answer `application/wasm`: documentcore,
 graph, diff, trie, syntax, mdc, sketch, netsim, bench. A missing one
 serves `index.html` instead, and the browser reports it as a bad magic
 word (`<!do`) rather than a 404.
+
+## After a rebase, force-recreate
+
+`docker compose up -d --build <service>` is not always enough once a branch
+has been rebased. Compose decides whether to *recreate* a container from its
+config and image id, and it can leave a container running on an image built
+from the pre-rebase source — so the service is running code that no longer
+exists in your tree.
+
+The symptom is a route that used to work returning **404**, or a fix you can
+see in the file having no effect. It reads exactly like a regression in the
+code you just wrote, which is what makes it expensive: a route added on
+`master` was 404ing here after a branch rebase, and it looked like the auth
+middleware had broken routing.
+
+```sh
+docker compose up -d --build --force-recreate <service>
+```
+
+Worth doing for every service whose source moved, not just the one being
+debugged.

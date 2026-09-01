@@ -30,12 +30,18 @@ export function refresh(refreshToken: string): Promise<TokenPair> {
   });
 }
 
-// decodeActorId reads the JWT's `sub` claim client-side — this app never
-// verifies the token itself (that's auth-service's job via its RS256
-// public key; a browser has no business re-deriving trust it was already
-// handed), it only needs the user id to attach as the X-Actor-Id header
-// on every other request per the repo-wide temporary auth stand-in
-// (pages.md § Actor identity).
+// decodeActorId reads the JWT's `sub` claim client-side, for the UI's own
+// use only — whose avatar is "you", which cursor is yours, which rows in the
+// audit log are your own.
+//
+// It is NOT how a request identifies itself. This value used to be sent as
+// the X-Actor-Id header and trusted by every service, which meant the
+// browser was choosing who it was; now the token itself goes on the wire and
+// the server derives `sub` from a checked signature (ADR-013 §1). The
+// difference matters even though both read the same claim: this one is
+// decoded without verification, and a value decoded without verification can
+// only ever be used for how a screen looks, never for what it is allowed to
+// do.
 export function decodeActorId(accessToken: string): string {
   const payload = accessToken.split(".")[1];
   const json = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));

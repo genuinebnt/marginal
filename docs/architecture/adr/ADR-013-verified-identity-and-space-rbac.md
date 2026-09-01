@@ -159,6 +159,20 @@ abuse — it is how browsers are expected to authenticate a socket, precisely
 because the constructor takes no headers — and the server echoes back only
 the `bearer` element, never the token.
 
+**A cold verifier fails closed, and that is a startup dependency worth
+naming.** Verification needs the JWKS, and a process that has just started
+has not fetched it yet. If `auth-service` is unreachable at that moment,
+every token is refused until it comes back — observed directly while
+building this, when a freshly recreated `collaboration-service` returned
+`401` to a perfectly good token.
+
+That is the correct direction to fail, and it is deliberately not softened.
+But it means `auth-service` being down takes *editing* down with it for any
+service restarted during the outage, where an already-warm one keeps working
+from its cache (which is what `TestAKnownKeyStillVerifiesWhenTheJWKSIsUnreachable`
+pins). The asymmetry is the thing to know: a running system survives an
+`auth-service` blip; a restarting one does not.
+
 **Every existing client call site changes.** `X-Actor-Id` is how the SPA, the
 seeder, `verify.js` and every smoke test currently identify themselves. All of
 them move to a bearer token. That is mechanical but broad, and it is the reason

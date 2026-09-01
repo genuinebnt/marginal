@@ -7,7 +7,7 @@
 // (the same convention its other instance-fact endpoints follow —
 // the gateway maps resource contracts, and none of these is a
 // resource).
-import { apiFetch } from "./http";
+import { accessToken, apiFetch } from "./http";
 import { COLLAB_URL, GATEWAY_URL } from "./config";
 
 export interface ServiceHealth {
@@ -98,7 +98,12 @@ export async function getAudit(cls: string, limit = 120): Promise<AuditReport> {
   const url = new URL(`${COLLAB_URL}/collab/audit`);
   url.searchParams.set("limit", String(limit));
   if (cls && cls !== "all") url.searchParams.set("class", cls);
-  const res = await fetch(url);
+  // collaboration-service verifies the token itself (ADR-013 §1) — this
+  // endpoint returns who edited what, so it is not public. Not routed
+  // through apiFetch because this service answers with a plain-text error
+  // body rather than the gateway's {error, message} shape.
+  const token = accessToken();
+  const res = await fetch(url, token ? { headers: { Authorization: `Bearer ${token}` } } : undefined);
   if (!res.ok) throw new Error((await res.text()).trim() || res.statusText);
   return res.json() as Promise<AuditReport>;
 }

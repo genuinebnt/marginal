@@ -5280,7 +5280,32 @@ it stops being true.
 end over authenticated sockets, `authverify` (12 tests, `-race -count=2`),
 `wsapi` (`-race`), and every touched module building and testing clean.
 
-**Not yet verified:** the full `verify.js` sweep, and the `/trace` boundary
-probe — the local Docker daemon went down mid-run (twice today; the second
-time while this was being written). Both are the first thing to run when it
-is back, before this reaches prod.
+**Verified since:** the `/trace` boundary — `no token 401 · real token 200 ·
+/collab/stats 200` (public, for § 02 HOME). And two client call sites that
+this change broke and the sweep caught:
+
+- `getAudit` used a bare `fetch` to `/collab/audit`, which is now protected.
+  § 18b's "rows from BOTH services are merged" went red because the collab
+  half came back `401` and the screen quietly showed only the auth half —
+  exactly the failure a merged view hides best.
+- `collabFetch` (trace/palimpsest/diff) needed the same.
+
+**Two false alarms worth recording, because both cost real time and neither
+was the code under test:**
+
+1. **A stale container.** `/discover?q=` — a route that exists only after
+   this branch was rebased onto master — returned `404`, and it read
+   exactly like the new auth middleware having broken routing. The gateway
+   was running an image built from the pre-rebase source, and
+   `docker compose up -d --build` did not recreate it; `--force-recreate`
+   did. Written into `ops/README.md`, since the symptom points squarely at
+   the wrong culprit.
+2. **Two sweeps racing.** A second `verify.js` was started while the first
+   was still alive, and they fought over the same corpus — four failures
+   that were neither real nor reproducible. One process at a time.
+
+**Still not verified:** a single clean full sweep, start to finish. Three
+attempts were cut short by the local Docker daemon going down (three times
+in one session; the last while writing this up). Everything else in this
+slice rests on unit tests, the probe matrices, and the seeder running end to
+end. **Nothing is deployed.**
