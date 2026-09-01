@@ -1,0 +1,99 @@
+// SpaceService — see docs/api/spaces.md, which this file matches
+// field-for-field. That doc is the source of truth for semantics; this
+// file is its wire encoding.
+//
+// Owned by auth-service because a membership is a statement about what a
+// USER may do (ADR-013 §2). document-service holds a read-model of this,
+// fed by the two events below — it decides what you can SEE; this service
+// decides what you can DO.
+syntax = "proto3";
+
+package marginal.auth.v1;
+
+option go_package = "marginal/auth-service/genproto/authv1";
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+service SpaceService {
+  // Every space the CALLER is in, with the caller's own role in each.
+  // Never every space that exists: that is an admin question, and
+  // answering it here would leak the existence of spaces you are not in
+  // — space names are chosen by people and often say what a team is doing.
+  rpc ListSpaces  (ListSpacesRequest)  returns (ListSpacesResponse);
+  rpc CreateSpace (CreateSpaceRequest) returns (Space);
+
+  // The three below need the caller to be an ADMIN of space_id. A space
+  // the caller is not in answers NOT_FOUND rather than PERMISSION_DENIED:
+  // 403 on a resource you cannot see confirms it exists, and is only safe
+  // once "it exists" is already known to you (docs/api/spaces.md §3).
+  rpc ListMembers (ListMembersRequest) returns (ListMembersResponse);
+  rpc GrantRole   (GrantRoleRequest)   returns (Membership);
+  rpc RevokeRole  (RevokeRoleRequest)  returns (google.protobuf.Empty);
+
+  // The whole membership set, for document-service's periodic reconcile
+  // against this source of truth (DATA_MODEL.md § docs.space_members).
+  // An event bus with no redelivery needs a floor under how wrong its
+  // projection can get. Not a user-facing call.
+  rpc ListAllMemberships (ListAllMembershipsRequest) returns (ListAllMembershipsResponse);
+}
+
+message Space {
+  string id      = 1; // UUIDv7
+  string name    = 2;
+  // The space every pre-v3.1.0 page was migrated into. It cannot be
+  // deleted — doing so would orphan every page written before spaces
+  // existed.
+  bool   is_default = 3;
+  string created_by = 4;
+  google.protobuf.Timestamp created_at = 5;
+
+  // What the CALLER may do here — not "the space's role", which is why the
+  // field is named this way. A client caching a field called `role`
+  // against a space id would be caching one person's answer under a key
+  // that suggests it is everyone's.
+  string your_role = 6;   // viewer | editor | admin
+  int32  members   = 7;
+}
+
+message Membership {
+  string user_id      = 1;
+  string space_id     = 2;
+  string role         = 3;
+  string display_name = 4; // joined from auth.users, for the screen
+  string email        = 5;
+  google.protobuf.Timestamp created_at = 6;
+}
+
+message ListSpacesRequest {}
+message ListSpacesResponse { repeated Space spaces = 1; }
+
+message CreateSpaceRequest {
+  string name = 1;
+  // The creator becomes its admin, always. A space created without one
+  // would be a space nobody can ever administer — see § 0's "a space
+  // always has at least one admin".
+}
+
+message ListMembersRequest { string space_id = 1; }
+message ListMembersResponse { repeated Membership members = 1; }
+
+message GrantRoleRequest {
+  string space_id = 1;
+  string user_id  = 2;
+  string role     = 3; // viewer | editor | admin
+  // An UPSERT: granting to someone who already has a role changes it.
+  // "Change Ada to viewer" and "add Ada as a viewer" are one intent, and
+  // two RPCs would make the client decide which case it is in.
+}
+
+message RevokeRoleRequest {
+  string space_id = 1;
+  string user_id  = 2;
+  // Removing the LAST admin is FAILED_PRECONDITION. Checked in the
+  // transaction rather than by a constraint: it is a claim about the set
+  // of remaining rows, which no row-level CHECK can express.
+}
+
+message ListAllMembershipsRequest {}
+message ListAllMembershipsResponse { repeated Membership memberships = 1; }

@@ -8,6 +8,14 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AuthMembership struct {
+	UserID    pgtype.UUID
+	SpaceID   pgtype.UUID
+	Role      string
+	GrantedBy pgtype.UUID
+	CreatedAt pgtype.Timestamptz
+}
+
 type AuthOutbox struct {
 	ID          pgtype.UUID
 	AggregateID pgtype.UUID
@@ -24,6 +32,14 @@ type AuthRefreshToken struct {
 	ParentID  pgtype.UUID
 	ExpiresAt pgtype.Timestamptz
 	RevokedAt pgtype.Timestamptz
+	CreatedAt pgtype.Timestamptz
+}
+
+type AuthSpace struct {
+	ID        pgtype.UUID
+	Name      string
+	IsDefault bool
+	CreatedBy pgtype.UUID
 	CreatedAt pgtype.Timestamptz
 }
 

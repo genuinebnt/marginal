@@ -138,6 +138,78 @@ func (q *Queries) CountActiveSessions(ctx context.Context) (int64, error) {
 	return count, err
 }
 
+const countAdmins = `-- name: CountAdmins :one
+SELECT count(*) FROM auth.memberships WHERE space_id = $1 AND role = 'admin'
+`
+
+// "A space always has at least one admin" is a claim about the SET of
+// remaining rows, so it is checked in the transaction rather than by a
+// constraint (DATA_MODEL.md says why a trigger is worse).
+func (q *Queries) CountAdmins(ctx context.Context, spaceID pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countAdmins, spaceID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const createSpace = `-- name: CreateSpace :one
+INSERT INTO auth.spaces (id, name, created_by) VALUES ($1, $2, $3)
+RETURNING id, name, is_default, created_by, created_at
+`
+
+type CreateSpaceParams struct {
+	ID        pgtype.UUID
+	Name      string
+	CreatedBy pgtype.UUID
+}
+
+func (q *Queries) CreateSpace(ctx context.Context, arg CreateSpaceParams) (AuthSpace, error) {
+	row := q.db.QueryRow(ctx, createSpace, arg.ID, arg.Name, arg.CreatedBy)
+	var i AuthSpace
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.IsDefault,
+		&i.CreatedBy,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const defaultSpace = `-- name: DefaultSpace :one
+SELECT id, name, is_default, created_by, created_at FROM auth.spaces WHERE is_default
+`
+
+func (q *Queries) DefaultSpace(ctx context.Context) (AuthSpace, error) {
+	row := q.db.QueryRow(ctx, defaultSpace)
+	var i AuthSpace
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.IsDefault,
+		&i.CreatedBy,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const deleteMembership = `-- name: DeleteMembership :execrows
+DELETE FROM auth.memberships WHERE user_id = $1 AND space_id = $2
+`
+
+type DeleteMembershipParams struct {
+	UserID  pgtype.UUID
+	SpaceID pgtype.UUID
+}
+
+func (q *Queries) DeleteMembership(ctx context.Context, arg DeleteMembershipParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteMembership, arg.UserID, arg.SpaceID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const findRefreshTokenByHash = `-- name: FindRefreshTokenByHash :one
 SELECT id, user_id, token_hash, parent_id, expires_at, revoked_at, created_at
 FROM auth.refresh_tokens
@@ -183,6 +255,23 @@ func (q *Queries) FindRefreshTokenRootID(ctx context.Context, id pgtype.UUID) (p
 	var rt_id pgtype.UUID
 	err := row.Scan(&rt_id)
 	return rt_id, err
+}
+
+const getSpace = `-- name: GetSpace :one
+SELECT id, name, is_default, created_by, created_at FROM auth.spaces WHERE id = $1
+`
+
+func (q *Queries) GetSpace(ctx context.Context, id pgtype.UUID) (AuthSpace, error) {
+	row := q.db.QueryRow(ctx, getSpace, id)
+	var i AuthSpace
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.IsDefault,
+		&i.CreatedBy,
+		&i.CreatedAt,
+	)
+	return i, err
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
@@ -320,6 +409,149 @@ func (q *Queries) InsertUser(ctx context.Context, arg InsertUserParams) (AuthUse
 	return i, err
 }
 
+const listAllMemberships = `-- name: ListAllMemberships :many
+SELECT m.user_id, m.space_id, m.role, m.created_at,
+       u.display_name, u.email
+FROM auth.memberships m
+JOIN auth.users u ON u.id = m.user_id
+ORDER BY m.space_id, m.user_id
+`
+
+type ListAllMembershipsRow struct {
+	UserID      pgtype.UUID
+	SpaceID     pgtype.UUID
+	Role        string
+	CreatedAt   pgtype.Timestamptz
+	DisplayName string
+	Email       string
+}
+
+// document-service's periodic reconcile. Ordered so a consumer can page
+// deterministically if this ever grows past one response.
+func (q *Queries) ListAllMemberships(ctx context.Context) ([]ListAllMembershipsRow, error) {
+	rows, err := q.db.Query(ctx, listAllMemberships)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAllMembershipsRow
+	for rows.Next() {
+		var i ListAllMembershipsRow
+		if err := rows.Scan(
+			&i.UserID,
+			&i.SpaceID,
+			&i.Role,
+			&i.CreatedAt,
+			&i.DisplayName,
+			&i.Email,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMembers = `-- name: ListMembers :many
+SELECT m.user_id, m.space_id, m.role, m.created_at,
+       u.display_name, u.email
+FROM auth.memberships m
+JOIN auth.users u ON u.id = m.user_id
+WHERE m.space_id = $1
+ORDER BY m.role, u.display_name
+`
+
+type ListMembersRow struct {
+	UserID      pgtype.UUID
+	SpaceID     pgtype.UUID
+	Role        string
+	CreatedAt   pgtype.Timestamptz
+	DisplayName string
+	Email       string
+}
+
+func (q *Queries) ListMembers(ctx context.Context, spaceID pgtype.UUID) ([]ListMembersRow, error) {
+	rows, err := q.db.Query(ctx, listMembers, spaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListMembersRow
+	for rows.Next() {
+		var i ListMembersRow
+		if err := rows.Scan(
+			&i.UserID,
+			&i.SpaceID,
+			&i.Role,
+			&i.CreatedAt,
+			&i.DisplayName,
+			&i.Email,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSpacesForUser = `-- name: ListSpacesForUser :many
+
+SELECT s.id, s.name, s.is_default, s.created_by, s.created_at,
+       m.role AS your_role,
+       (SELECT count(*) FROM auth.memberships WHERE space_id = s.id) AS members
+FROM auth.spaces s
+JOIN auth.memberships m ON m.space_id = s.id AND m.user_id = $1
+ORDER BY s.is_default DESC, s.created_at
+`
+
+type ListSpacesForUserRow struct {
+	ID        pgtype.UUID
+	Name      string
+	IsDefault bool
+	CreatedBy pgtype.UUID
+	CreatedAt pgtype.Timestamptz
+	YourRole  string
+	Members   int64
+}
+
+// ── spaces & memberships (v3.1.0, ADR-013) ───────────────────────────────
+// Only the spaces the caller is in. `your_role` is the caller's own role,
+// which is why this joins memberships rather than listing spaces and
+// looking roles up after: a space you are not in must not appear at all.
+func (q *Queries) ListSpacesForUser(ctx context.Context, userID pgtype.UUID) ([]ListSpacesForUserRow, error) {
+	rows, err := q.db.Query(ctx, listSpacesForUser, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListSpacesForUserRow
+	for rows.Next() {
+		var i ListSpacesForUserRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.IsDefault,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.YourRole,
+			&i.Members,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listUsers = `-- name: ListUsers :many
 SELECT id, email, display_name, cursor_color, created_at
 FROM auth.users
@@ -421,4 +653,63 @@ func (q *Queries) RevokeRefreshTokenChain(ctx context.Context, id pgtype.UUID) (
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const roleInSpace = `-- name: RoleInSpace :one
+SELECT role FROM auth.memberships WHERE user_id = $1 AND space_id = $2
+`
+
+type RoleInSpaceParams struct {
+	UserID  pgtype.UUID
+	SpaceID pgtype.UUID
+}
+
+// The authorization question, asked as one indexed lookup on the primary
+// key. Absent means "not a member", which callers turn into NOT_FOUND
+// rather than PERMISSION_DENIED (docs/api/spaces.md §3).
+func (q *Queries) RoleInSpace(ctx context.Context, arg RoleInSpaceParams) (string, error) {
+	row := q.db.QueryRow(ctx, roleInSpace, arg.UserID, arg.SpaceID)
+	var role string
+	err := row.Scan(&role)
+	return role, err
+}
+
+const upsertMembership = `-- name: UpsertMembership :one
+INSERT INTO auth.memberships (user_id, space_id, role, granted_by)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (user_id, space_id) DO UPDATE SET role = EXCLUDED.role, granted_by = EXCLUDED.granted_by
+RETURNING user_id, space_id, role, created_at
+`
+
+type UpsertMembershipParams struct {
+	UserID    pgtype.UUID
+	SpaceID   pgtype.UUID
+	Role      string
+	GrantedBy pgtype.UUID
+}
+
+type UpsertMembershipRow struct {
+	UserID    pgtype.UUID
+	SpaceID   pgtype.UUID
+	Role      string
+	CreatedAt pgtype.Timestamptz
+}
+
+// An upsert because "change Ada to viewer" and "add Ada as viewer" are one
+// intent (docs/api/spaces.md §1).
+func (q *Queries) UpsertMembership(ctx context.Context, arg UpsertMembershipParams) (UpsertMembershipRow, error) {
+	row := q.db.QueryRow(ctx, upsertMembership,
+		arg.UserID,
+		arg.SpaceID,
+		arg.Role,
+		arg.GrantedBy,
+	)
+	var i UpsertMembershipRow
+	err := row.Scan(
+		&i.UserID,
+		&i.SpaceID,
+		&i.Role,
+		&i.CreatedAt,
+	)
+	return i, err
 }

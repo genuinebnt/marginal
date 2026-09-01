@@ -145,3 +145,66 @@ UNION ALL
     ) recent
 )
 ORDER BY at DESC;
+
+-- ── spaces & memberships (v3.1.0, ADR-013) ───────────────────────────────
+
+-- name: ListSpacesForUser :many
+-- Only the spaces the caller is in. `your_role` is the caller's own role,
+-- which is why this joins memberships rather than listing spaces and
+-- looking roles up after: a space you are not in must not appear at all.
+SELECT s.id, s.name, s.is_default, s.created_by, s.created_at,
+       m.role AS your_role,
+       (SELECT count(*) FROM auth.memberships WHERE space_id = s.id) AS members
+FROM auth.spaces s
+JOIN auth.memberships m ON m.space_id = s.id AND m.user_id = $1
+ORDER BY s.is_default DESC, s.created_at;
+
+-- name: CreateSpace :one
+INSERT INTO auth.spaces (id, name, created_by) VALUES ($1, $2, $3)
+RETURNING id, name, is_default, created_by, created_at;
+
+-- name: GetSpace :one
+SELECT id, name, is_default, created_by, created_at FROM auth.spaces WHERE id = $1;
+
+-- name: DefaultSpace :one
+SELECT id, name, is_default, created_by, created_at FROM auth.spaces WHERE is_default;
+
+-- name: RoleInSpace :one
+-- The authorization question, asked as one indexed lookup on the primary
+-- key. Absent means "not a member", which callers turn into NOT_FOUND
+-- rather than PERMISSION_DENIED (docs/api/spaces.md §3).
+SELECT role FROM auth.memberships WHERE user_id = $1 AND space_id = $2;
+
+-- name: ListMembers :many
+SELECT m.user_id, m.space_id, m.role, m.created_at,
+       u.display_name, u.email
+FROM auth.memberships m
+JOIN auth.users u ON u.id = m.user_id
+WHERE m.space_id = $1
+ORDER BY m.role, u.display_name;
+
+-- name: ListAllMemberships :many
+-- document-service's periodic reconcile. Ordered so a consumer can page
+-- deterministically if this ever grows past one response.
+SELECT m.user_id, m.space_id, m.role, m.created_at,
+       u.display_name, u.email
+FROM auth.memberships m
+JOIN auth.users u ON u.id = m.user_id
+ORDER BY m.space_id, m.user_id;
+
+-- name: UpsertMembership :one
+-- An upsert because "change Ada to viewer" and "add Ada as viewer" are one
+-- intent (docs/api/spaces.md §1).
+INSERT INTO auth.memberships (user_id, space_id, role, granted_by)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (user_id, space_id) DO UPDATE SET role = EXCLUDED.role, granted_by = EXCLUDED.granted_by
+RETURNING user_id, space_id, role, created_at;
+
+-- name: DeleteMembership :execrows
+DELETE FROM auth.memberships WHERE user_id = $1 AND space_id = $2;
+
+-- name: CountAdmins :one
+-- "A space always has at least one admin" is a claim about the SET of
+-- remaining rows, so it is checked in the transaction rather than by a
+-- constraint (DATA_MODEL.md says why a trigger is worse).
+SELECT count(*) FROM auth.memberships WHERE space_id = $1 AND role = 'admin';
