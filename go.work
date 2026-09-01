@@ -3,6 +3,7 @@ go 1.25.7
 use (
 	./services/documentcore
 	./services/envconfig
+	./services/authverify
 	./services/outboxpoll
 	./services/graphalgo
 	./services/mdc

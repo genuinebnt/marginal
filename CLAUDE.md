@@ -253,7 +253,7 @@ open indefinitely (no idle-eviction), matching this repo's demo scale.
 | `deploy/terraform/README.md` | GCP IaC — what's provisioned, cost posture, known limitations, setup steps |
 | `docs/ui-mockups/` | Visual specs — the full set is the `v2`–`v4` acceptance bar, not just the editor/reader chrome (`RELEASES.md`) |
 | `docs/rust/README.md` | What's archived from the Rust attempt, and why |
-| `docs/architecture/adr/` | 001 scope · ~~002 Rust depth~~ · 003 Postgres · ~~004 SPA~~ · ~~005 Go reference~~ · 007 gRPC east-west · 008 GCP + Terraform · 009 scope expansion · 010 cost-bounded cloud posture · **011 Go+TS MVP, Rust port later** |
+| `docs/architecture/adr/` | 001 scope · ~~002 Rust depth~~ · 003 Postgres · ~~004 SPA~~ · ~~005 Go reference~~ · 007 gRPC east-west · 008 GCP + Terraform · 009 scope expansion · 010 cost-bounded cloud posture · **011 Go+TS MVP, Rust port later** · 012 SemVer branch releases · **013 verified identity, then space RBAC** |
 
 ---
 

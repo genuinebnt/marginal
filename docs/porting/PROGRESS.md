@@ -5129,3 +5129,83 @@ deploy — Compose tagged the built static image as `node:22-alpine`,
 replacing the real one on the host. Nothing failed at the time. The
 nightly reseed failed the next day with `sh: npm: not found`, twenty hours
 later and with no visible connection to the cause.
+||||||| parent of 6bb1f41 (auth: ADR-013, and a real token verifier)
+## `v3.1.0` part one: ADR-013 and a real token verifier (2026-09-01)
+
+Starting `v3.1.0` (Identity, Spaces & RBAC) surfaced a prerequisite the
+release plan had not named, so it got an ADR before any code.
+
+**Identity is currently asserted by the client and verified by nobody.**
+Every service learns who you are from a value you wrote yourself: the
+`X-Actor-Id` header on REST (whose own doc comment calls it "the temporary
+actor-identity stand-in… until real auth exists"), and `?actor_id=<uuid>`
+on the WebSocket. `auth-service` issues real RS256 JWTs and the SPA stores
+them — and **no service verifies one**. The browser decodes the token to
+read `sub` and then sends that as a plain string any client can change.
+
+That is survivable while `can_apply` returns `true` unconditionally and
+there is nothing to escalate *to*. It stops being survivable the moment
+roles exist: **a role check against an unverified identity is not an
+authorization system, it is a suggestion.** So `v3.1.0` is two parts, and
+the first is verified identity.
+
+`ADR-013` also settles the parts that were going to be decided by accident:
+
+- **The space is the permission boundary**, and a page belongs to exactly
+  one. Not per-page overrides — the moment a page can disagree with its
+  space, "who can read this" becomes a tree walk with inheritance rules.
+- **The role resolves once per WebSocket join, not per op.** `can_apply`
+  runs on every keystroke in a session that holds a rope in memory
+  precisely to avoid per-keystroke I/O. The staleness window that buys is
+  *stated and bounded* (a NATS revocation event closes affected
+  subscribers; a 5-minute TTL covers core NATS having no redelivery) rather
+  than papered over with a claim of immediacy this architecture cannot
+  honour.
+- **The gateway authenticates; the owning service enforces.** The
+  WebSocket is reached directly by design, so any scheme where only the
+  gateway checks is bypassed by connecting to the socket — which is the
+  path every mutation takes.
+
+### `marginal/authverify`
+
+Its own module, because two services need it and neither can import the
+other's `internal/`. Verification is local against auth-service's existing
+`GET /.well-known/jwks.json`; nothing asks auth-service to validate a token
+on the request path, which would put a second hop in front of every
+keystroke and make editing depend on auth-service being up.
+
+The interesting part is the two refresh bounds, which are in tension and
+were **found in tension by a test**:
+
+- An unknown `kid` must provoke a fetch — that is key rotation, and the
+  cache being fresh is exactly why the new key is not in it. The first
+  version keyed the refresh decision on the cache TTL alone, so a rotated
+  signing key was rejected until the TTL ran out: an outage for everyone
+  holding a new token. `TestANewSigningKeyIsPickedUpWithoutARestart`
+  caught it.
+- An unknown `kid` must **not** provoke a fetch per token, or a stream of
+  tokens with random kids turns this verifier into a load generator aimed
+  at auth-service.
+
+Resolved with two separate timestamps: `fetchedAt` bounds how stale the
+cache may be, `attemptedAt` bounds how often an unknown kid may provoke a
+fetch (30s). A rotation is picked up within thirty seconds rather than
+instantly, and the test says so rather than pretending otherwise.
+
+Twelve tests, `-race -count=2`, and they are adversarial because the code
+is: `alg: none`, HS256 forged with the public key as the secret, a token
+signed by a different key claiming a known `kid`, an expired token, a token
+with **no** `exp` (a permanent credential otherwise), a non-UUID subject, a
+flood of unknown kids, a JWKS that goes unreachable (a cached key must keep
+working — a blip in one service must not log everybody out of another), and
+an empty JWKS (a misconfiguration far more often than a genuine "no keys",
+so it must not evict the working one).
+
+`ErrUnauthenticated` is the only error the package returns. Which of those
+it was is a description of the server's key state, and answering it for
+free is how an attacker maps that state.
+
+**Next in this slice:** the gateway reads the bearer token and ignores
+`X-Actor-Id` entirely (a header read "only when the token is absent" is the
+same hole with an extra step), collaboration-service verifies a short-lived
+handshake ticket, and every client call site moves over.
