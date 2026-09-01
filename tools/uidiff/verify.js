@@ -790,6 +790,48 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
         (trash.entries ?? []).filter(e => /^Saga probe/.test(e.page.title)).length >= 2,
         `${(trash.entries ?? []).filter(e => /^Saga probe/.test(e.page.title)).length} entries`);
 
+  // ── the permission boundary, over the wire ──────────────────────────
+  //
+  // These exist because both holes they cover shipped: a scoped ListPages
+  // beside an unscoped GetPage (a page id is not a secret), and "writes go
+  // through can_apply" — which only sees ops, so a viewer could delete any
+  // page they could see. Neither was caught by a unit test, because neither
+  // service was wrong on its own.
+  const asUser = async (email, password) => fetch(`${GW}/auth/login`, {method:'POST',
+    headers:{'Content-Type':'application/json'}, body: JSON.stringify({email, password})})
+    .then(r => r.json()).then(d => d.access_token).catch(() => null);
+  const call = async (method, path, token, body) => (await fetch(`${GW}${path}`, {
+    method, headers: {'Content-Type':'application/json', Authorization:`Bearer ${token}`},
+    body: body ? JSON.stringify(body) : undefined })).status;
+
+  const viewerTok2 = await asUser('uidiff-peer@example.com', 'uidiff-peer-123456');
+  if (viewerTok2) {
+    const probe = await fetch(`${GW}/pages`, {method:'POST',
+      headers:{'Content-Type':'application/json', Authorization:`Bearer ${pair.access_token}`},
+      body: JSON.stringify({title:'permission probe — deleted by the gate'})}).then(r => r.json());
+
+    check('§23 a viewer may READ a page in their space',
+          (await call('GET', `/pages/${probe.id}`, viewerTok2)) === 200);
+    check('§23 a viewer may NOT create pages',
+          (await call('POST', '/pages', viewerTok2, {title:'viewer tried'})) === 403);
+    check('§23 a viewer may NOT delete a page they can see',
+          (await call('DELETE', `/pages/${probe.id}`, viewerTok2)) === 403);
+
+    // A page id is not a secret, so addressing one you cannot see must be
+    // refused — and refused as NOT FOUND, since a 403 would confirm it.
+    const strangerTok = await asUser('stranger@example.com', 'stranger-123456');
+    if (strangerTok) {
+      const got = await call('GET', `/pages/${probe.id}`, strangerTok);
+      check('§23 a non-member gets 404, not 403 — a 403 would confirm it exists',
+            got === 404, `got ${got}`);
+    }
+
+    check('§23 an admin may delete it',
+          (await call('DELETE', `/pages/${probe.id}`, pair.access_token)) === 204);
+  } else {
+    check('§23 the permission boundary holds over the wire', false, 'no viewer account');
+  }
+
   // ── § 23b PROFILE: every figure is a GROUP BY over the op log ────────
   const people = await fetch(`${GW}/admin/people`,
     { headers: { Authorization: `Bearer ${pair.access_token}` } })
