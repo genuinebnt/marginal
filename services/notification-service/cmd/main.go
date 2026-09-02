@@ -70,6 +70,14 @@ func run() error {
 	}
 	defer func() { _ = sub.Unsubscribe() }()
 
+	// v3.3.0's second topic. A separate subscription, so a decode failure
+	// on one subject cannot stop the other being delivered.
+	mentions, err := notify.SubscribeMentions(nc, repo)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = mentions.Unsubscribe() }()
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

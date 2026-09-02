@@ -805,6 +805,7 @@ is that redelivery and dead-lettering are scoped to the thing that actually fail
 | `docs.page_published` | `document-service` | `page_id` | publishing · search |
 | `collab.ops_flushed` | `collaboration-service` | `page_id` | **document-service** · history · search · diagnostics · analytics |
 | `auth.user_registered` | `auth-service` | `user_id` | notification |
+| `collab.comment_mentioned` | `collaboration-service` | `page_id` | **notification** (`v3.3.0`) |
 | `auth.user_updated` | `auth-service` | `user_id` | every service holding a `users` projection (§1) |
 | `auth.user_deactivated` | `auth-service` | `user_id` | document · notification · search |
 | `auth.role_granted` | `auth-service` | `user_id` | document (local permission read-model) |

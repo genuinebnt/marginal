@@ -33,17 +33,54 @@ type UserRegisteredEvent struct {
 	DisplayName string    `json:"display_name"`
 }
 
-// KindWelcome is the only notification kind this repo produces.
+// KindWelcome is the notification a registration produces.
 const KindWelcome = "welcome"
+
+// KindMention is what an @handle in a comment produces (v3.3.0).
+//
+// Second kind, and the first whose content is a POINTER: nothing about a
+// mention is copied here, because every part of it belongs to a service
+// that is allowed to change it — see MentionPointer.
+const KindMention = "mention"
+
+// MentionEvent is the NATS subject collaboration-service's outbox poller
+// publishes mentions to. Mirrored independently there (wsapi.MentionEvent),
+// the same two-matching-definitions convention SubjectUserRegistered
+// already uses.
+const MentionEvent = "collab.comment_mentioned"
+
+// MentionPointer is collab.comment_mentioned's payload: ids, and nothing
+// else.
+//
+// § 20 states the rule the absence of a `body` field here enforces: "A
+// notification is a pointer to an anchor, never a copy of the text. Open it
+// a week later and it still lands on the right words, wherever they moved."
+// A reader resolves the thread through the comments API, which reports
+// where the anchors point NOW and says plainly when they no longer resolve.
+type MentionPointer struct {
+	PageID    uuid.UUID `json:"page_id"`
+	BlockID   uuid.UUID `json:"block_id"`
+	ThreadID  uuid.UUID `json:"thread_id"`
+	CommentID uuid.UUID `json:"comment_id"`
+	ActorID   uuid.UUID `json:"actor_id"`
+	UserID    uuid.UUID `json:"user_id"`
+}
 
 type Notification struct {
 	ID            uuid.UUID
 	UserID        uuid.UUID
 	SourceEventID uuid.UUID
 	Kind          string
-	Message       string
-	ReadAt        *time.Time
-	CreatedAt     time.Time
+	// Empty for every pointer-shaped kind. A mention's sentence is
+	// assembled by the reader from ids, not stored pre-rendered here.
+	Message string
+	// Who acted. Nil for a kind nobody caused (welcome).
+	ActorID *uuid.UUID
+	// The pointer itself, passed through verbatim. Shaped by Kind:
+	// MentionPointer for KindMention, absent for KindWelcome.
+	Pointer   json.RawMessage
+	ReadAt    *time.Time
+	CreatedAt time.Time
 }
 
 // Repo is notify's only port — small, declared at its point of use
@@ -65,6 +102,11 @@ type Repo interface {
 	// redelivering the same event must not create a duplicate. Returns
 	// (false, nil) on a duplicate, not an error.
 	Create(ctx context.Context, userID, sourceEventID uuid.UUID, kind, message string) (created bool, err error)
+	// CreatePointer persists a notification whose content is a pointer
+	// rather than a sentence. Separate from Create rather than a fifth
+	// nullable argument to it: the two kinds have disjoint fields, and one
+	// call taking both would let a caller write a row that is neither.
+	CreatePointer(ctx context.Context, userID, sourceEventID, actorID uuid.UUID, kind string, pointer json.RawMessage) (created bool, err error)
 	ListForUser(ctx context.Context, userID uuid.UUID, limit int32) ([]Notification, error)
 	// MarkRead clears one row. Scoped by user as well as id — an id alone
 	// would be a bearer token for someone else's inbox. Reports how many
@@ -106,6 +148,30 @@ func (r *PostgresRepo) Create(ctx context.Context, userID, sourceEventID uuid.UU
 	}
 	if err != nil {
 		return false, fmt.Errorf("notify: create: %w", err)
+	}
+	return true, nil
+}
+
+func (r *PostgresRepo) CreatePointer(
+	ctx context.Context, userID, sourceEventID, actorID uuid.UUID, kind string, pointer json.RawMessage,
+) (bool, error) {
+	id, err := uuid.NewV7()
+	if err != nil {
+		return false, fmt.Errorf("notify: create pointer: generating id: %w", err)
+	}
+	_, err = r.q.InsertPointerNotification(ctx, notifyrepo.InsertPointerNotificationParams{
+		ID:            pgtype.UUID{Bytes: id, Valid: true},
+		UserID:        pgtype.UUID{Bytes: userID, Valid: true},
+		SourceEventID: pgtype.UUID{Bytes: sourceEventID, Valid: true},
+		Kind:          kind,
+		ActorID:       pgtype.UUID{Bytes: actorID, Valid: true},
+		Pointer:       pointer,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("notify: create pointer: %w", err)
 	}
 	return true, nil
 }
@@ -165,7 +231,34 @@ func notificationFromRow(row notifyrepo.NotifyNotification) Notification {
 		t := row.ReadAt.Time
 		n.ReadAt = &t
 	}
+	if row.ActorID.Valid {
+		a := uuid.UUID(row.ActorID.Bytes)
+		n.ActorID = &a
+	}
+	n.Pointer = row.Pointer
 	return n
+}
+
+// HandleMention decodes a collab.comment_mentioned payload and persists the
+// mention it points at. eventID is the publishing outbox row's own id — the
+// dedup key, exactly as for a registration.
+//
+// The payload is stored VERBATIM rather than re-marshalled from the decoded
+// struct: a field collaboration-service adds later must survive this hop
+// even before this service knows what it means. Only the two fields this
+// service must act on — who it is for, and who acted — are read out.
+func HandleMention(ctx context.Context, repo Repo, eventID uuid.UUID, payload []byte) error {
+	var p MentionPointer
+	if err := json.Unmarshal(payload, &p); err != nil {
+		return fmt.Errorf("notify: decoding %s payload: %w", MentionEvent, err)
+	}
+	if p.UserID == uuid.Nil {
+		// Refused rather than stored against the nil user, where it would
+		// be invisible to everyone and countable by nobody.
+		return fmt.Errorf("notify: %s carried no user_id", MentionEvent)
+	}
+	_, err := repo.CreatePointer(ctx, p.UserID, eventID, p.ActorID, KindMention, payload)
+	return err
 }
 
 // HandleUserRegistered decodes an auth.user_registered payload and

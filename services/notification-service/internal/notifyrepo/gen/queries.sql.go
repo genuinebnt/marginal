@@ -29,7 +29,7 @@ const insertNotification = `-- name: InsertNotification :one
 INSERT INTO notify.notifications (id, user_id, source_event_id, kind, message)
 VALUES ($1, $2, $3, $4, $5)
 ON CONFLICT (source_event_id) DO NOTHING
-RETURNING id, user_id, source_event_id, kind, message, read_at, created_at
+RETURNING id, user_id, source_event_id, kind, message, read_at, created_at, pointer, actor_id
 `
 
 type InsertNotificationParams struct {
@@ -60,12 +60,59 @@ func (q *Queries) InsertNotification(ctx context.Context, arg InsertNotification
 		&i.Message,
 		&i.ReadAt,
 		&i.CreatedAt,
+		&i.Pointer,
+		&i.ActorID,
+	)
+	return i, err
+}
+
+const insertPointerNotification = `-- name: InsertPointerNotification :one
+INSERT INTO notify.notifications (id, user_id, source_event_id, kind, message, actor_id, pointer)
+VALUES ($1, $2, $3, $4, '', $5, $6)
+ON CONFLICT (source_event_id) DO NOTHING
+RETURNING id, user_id, source_event_id, kind, message, read_at, created_at, pointer, actor_id
+`
+
+type InsertPointerNotificationParams struct {
+	ID            pgtype.UUID
+	UserID        pgtype.UUID
+	SourceEventID pgtype.UUID
+	Kind          string
+	ActorID       pgtype.UUID
+	Pointer       []byte
+}
+
+// The same idempotent insert, for a kind whose content is a POINTER rather
+// than a message. Two queries rather than one with nullable arguments: a
+// welcome has no actor and no pointer, a mention has no message, and a
+// single query taking all five would let a caller write a row that is
+// neither.
+func (q *Queries) InsertPointerNotification(ctx context.Context, arg InsertPointerNotificationParams) (NotifyNotification, error) {
+	row := q.db.QueryRow(ctx, insertPointerNotification,
+		arg.ID,
+		arg.UserID,
+		arg.SourceEventID,
+		arg.Kind,
+		arg.ActorID,
+		arg.Pointer,
+	)
+	var i NotifyNotification
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.SourceEventID,
+		&i.Kind,
+		&i.Message,
+		&i.ReadAt,
+		&i.CreatedAt,
+		&i.Pointer,
+		&i.ActorID,
 	)
 	return i, err
 }
 
 const listNotificationsForUser = `-- name: ListNotificationsForUser :many
-SELECT id, user_id, source_event_id, kind, message, read_at, created_at FROM notify.notifications
+SELECT id, user_id, source_event_id, kind, message, read_at, created_at, pointer, actor_id FROM notify.notifications
 WHERE user_id = $1
 ORDER BY created_at DESC
 LIMIT $2
@@ -93,6 +140,8 @@ func (q *Queries) ListNotificationsForUser(ctx context.Context, arg ListNotifica
 			&i.Message,
 			&i.ReadAt,
 			&i.CreatedAt,
+			&i.Pointer,
+			&i.ActorID,
 		); err != nil {
 			return nil, err
 		}

@@ -76,3 +76,43 @@ func (r *Resolver) Resolve(ctx context.Context, pageID, actorID uuid.UUID) (Role
 func withActor(ctx context.Context, actorID uuid.UUID) context.Context {
 	return metadata.AppendToOutgoingContext(ctx, "actor-id", actorID.String())
 }
+
+// Member is one person in a page's space, as much of them as a mention
+// needs: who to notify, and the name somebody would have typed.
+type Member struct {
+	UserID      uuid.UUID
+	DisplayName string
+}
+
+// Members returns everyone in the space the page belongs to.
+//
+// Scoped by the CALLER, deliberately: ListMembers answers for a space the
+// actor is in, so @-mentioning somebody can only ever reach people who
+// already share the space with the person writing. That is not a nicety —
+// without it, a comment body would be a way to send a notification to any
+// account on the instance, and the inbox's promise that it is worth
+// reading would last exactly as long as nobody noticed.
+func (r *Resolver) Members(ctx context.Context, pageID, actorID uuid.UUID) ([]Member, error) {
+	page, err := r.pages.GetPage(withActor(ctx, actorID), &documentv1.GetPageRequest{Id: pageID.String()})
+	if err != nil {
+		return nil, fmt.Errorf("roles: reading page's space: %w", err)
+	}
+	spaceID := page.GetSpaceId()
+	if spaceID == "" {
+		return nil, fmt.Errorf("roles: page %s reported no space", pageID)
+	}
+	resp, err := r.spaces.ListMembers(withActor(ctx, actorID), &authv1.ListMembersRequest{SpaceId: spaceID})
+	if err != nil {
+		return nil, fmt.Errorf("roles: listing space members: %w", err)
+	}
+	out := make([]Member, 0, len(resp.GetMembers()))
+	for _, m := range resp.GetMembers() {
+		id, err := uuid.Parse(m.GetUserId())
+		if err != nil {
+			// One unparseable id is not a reason to notify nobody.
+			continue
+		}
+		out = append(out, Member{UserID: id, DisplayName: m.GetDisplayName()})
+	}
+	return out, nil
+}

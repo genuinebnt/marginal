@@ -7,6 +7,17 @@ VALUES ($1, $2, $3, $4, $5)
 ON CONFLICT (source_event_id) DO NOTHING
 RETURNING *;
 
+-- name: InsertPointerNotification :one
+-- The same idempotent insert, for a kind whose content is a POINTER rather
+-- than a message. Two queries rather than one with nullable arguments: a
+-- welcome has no actor and no pointer, a mention has no message, and a
+-- single query taking all five would let a caller write a row that is
+-- neither.
+INSERT INTO notify.notifications (id, user_id, source_event_id, kind, message, actor_id, pointer)
+VALUES ($1, $2, $3, $4, '', $5, $6)
+ON CONFLICT (source_event_id) DO NOTHING
+RETURNING *;
+
 -- name: ListNotificationsForUser :many
 SELECT * FROM notify.notifications
 WHERE user_id = $1

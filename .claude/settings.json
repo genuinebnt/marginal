@@ -1,4 +1,10 @@
 {
+  "permissions": {
+    "defaultMode": "bypassPermissions",
+    "allow": [
+      "Bash(git status *)"
+    ]
+  },
   "hooks": {
     "UserPromptSubmit": [
       {

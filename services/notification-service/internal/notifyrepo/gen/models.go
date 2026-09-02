@@ -16,4 +16,6 @@ type NotifyNotification struct {
 	Message       string
 	ReadAt        pgtype.Timestamptz
 	CreatedAt     pgtype.Timestamptz
+	Pointer       []byte
+	ActorID       pgtype.UUID
 }

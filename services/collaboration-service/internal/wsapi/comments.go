@@ -1,12 +1,14 @@
 package wsapi
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -62,11 +64,16 @@ type commentJSON struct {
 // resolving an anchor means asking the live session for the page.
 type CommentsHandler struct {
 	q       *collabrepo.Queries
+	pool    *pgxpool.Pool
 	manager *session.Manager
+	// Nil is a supported state: a deployment without it still takes
+	// comments, it just cannot resolve @handles. That keeps the comment
+	// path from depending on two more services being reachable.
+	members MemberLister
 }
 
-func NewCommentsHandler(pool *pgxpool.Pool, m *session.Manager) *CommentsHandler {
-	return &CommentsHandler{q: collabrepo.New(pool), manager: m}
+func NewCommentsHandler(pool *pgxpool.Pool, m *session.Manager, members MemberLister) *CommentsHandler {
+	return &CommentsHandler{q: collabrepo.New(pool), pool: pool, manager: m, members: members}
 }
 
 func (h *CommentsHandler) Mount(mux *http.ServeMux, verifier TokenVerifier) {
@@ -194,22 +201,37 @@ func (h *CommentsHandler) open(w http.ResponseWriter, r *http.Request) {
 
 	threadID := uuid.Must(uuid.NewV7())
 	ctx := r.Context()
-	if _, err := h.q.CreateThread(ctx, collabrepo.CreateThreadParams{
-		ID: pgID(threadID), PageID: pgID(pageID), BlockID: pgID(blockID),
-		AnchorStart: body.AnchorStart, AnchorEnd: body.AnchorEnd,
-		Quoted: body.Quoted, CreatedBy: pgID(author),
-	}); err != nil {
-		slog.Error("wsapi: creating thread", "page_id", pageID, "err", err)
-		http.Error(w, "creating thread failed", http.StatusInternalServerError)
-		return
-	}
-	c, err := h.q.AddComment(ctx, collabrepo.AddCommentParams{
-		ID: pgID(uuid.Must(uuid.NewV7())), ThreadID: pgID(threadID),
-		AuthorID: pgID(author), Body: body.Body,
+	// Resolved BEFORE the transaction opens. Two gRPC calls held inside an
+	// open transaction would pin a connection for the length of somebody
+	// else's network, which is how a comment box becomes a way to exhaust
+	// the pool.
+	mentioned := h.mentionsIn(ctx, body.Body, pageID, author)
+
+	commentID := uuid.Must(uuid.NewV7())
+	c, err := inTx(ctx, h.pool, func(tx pgx.Tx) (collabrepo.CollabComment, error) {
+		q := collabrepo.New(tx)
+		if _, err := q.CreateThread(ctx, collabrepo.CreateThreadParams{
+			ID: pgID(threadID), PageID: pgID(pageID), BlockID: pgID(blockID),
+			AnchorStart: body.AnchorStart, AnchorEnd: body.AnchorEnd,
+			Quoted: body.Quoted, CreatedBy: pgID(author),
+		}); err != nil {
+			return collabrepo.CollabComment{}, err
+		}
+		c, err := q.AddComment(ctx, collabrepo.AddCommentParams{
+			ID: pgID(commentID), ThreadID: pgID(threadID),
+			AuthorID: pgID(author), Body: body.Body,
+		})
+		if err != nil {
+			return collabrepo.CollabComment{}, err
+		}
+		return c, writeMentionEvents(ctx, tx, mentioned, mentionPayload{
+			PageID: pageID, BlockID: blockID, ThreadID: threadID,
+			CommentID: commentID, ActorID: author,
+		})
 	})
 	if err != nil {
-		slog.Error("wsapi: adding first comment", "thread_id", threadID, "err", err)
-		http.Error(w, "adding comment failed", http.StatusInternalServerError)
+		slog.Error("wsapi: opening thread", "page_id", pageID, "err", err)
+		http.Error(w, "creating thread failed", http.StatusInternalServerError)
 		return
 	}
 	writeJSON(w, commentJSON{
@@ -237,9 +259,32 @@ func (h *CommentsHandler) reply(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "a comment needs a body", http.StatusBadRequest)
 		return
 	}
-	c, err := h.q.AddComment(r.Context(), collabrepo.AddCommentParams{
-		ID: pgID(uuid.Must(uuid.NewV7())), ThreadID: pgID(threadID),
-		AuthorID: pgID(author), Body: body.Body,
+	ctx := r.Context()
+	// A reply names its own page and block: the thread already knows both,
+	// and the notification is a pointer to the anchor, not to the thread.
+	t, err := h.q.GetThread(ctx, pgID(threadID))
+	if err != nil {
+		slog.Error("wsapi: reading thread to reply", "thread_id", threadID, "err", err)
+		http.Error(w, "no such thread", http.StatusNotFound)
+		return
+	}
+	pageID, blockID := uuid.UUID(t.PageID.Bytes), uuid.UUID(t.BlockID.Bytes)
+	mentioned := h.mentionsIn(ctx, body.Body, pageID, author)
+
+	commentID := uuid.Must(uuid.NewV7())
+	c, err := inTx(ctx, h.pool, func(tx pgx.Tx) (collabrepo.CollabComment, error) {
+		q := collabrepo.New(tx)
+		c, err := q.AddComment(ctx, collabrepo.AddCommentParams{
+			ID: pgID(commentID), ThreadID: pgID(threadID),
+			AuthorID: pgID(author), Body: body.Body,
+		})
+		if err != nil {
+			return collabrepo.CollabComment{}, err
+		}
+		return c, writeMentionEvents(ctx, tx, mentioned, mentionPayload{
+			PageID: pageID, BlockID: blockID, ThreadID: threadID,
+			CommentID: commentID, ActorID: author,
+		})
 	})
 	if err != nil {
 		slog.Error("wsapi: replying", "thread_id", threadID, "err", err)
@@ -303,4 +348,38 @@ func writeJSON(w http.ResponseWriter, v any) {
 	if err := json.NewEncoder(w).Encode(v); err != nil {
 		slog.Error("wsapi: encoding response", "err", err)
 	}
+}
+
+// mentionsIn resolves a body's @handles, or returns nil having said why.
+// A mention that cannot be resolved must never cost somebody their comment.
+func (h *CommentsHandler) mentionsIn(ctx context.Context, body string, pageID, author uuid.UUID) []uuid.UUID {
+	if h.members == nil {
+		return nil
+	}
+	users, err := resolveMentions(ctx, h.members, body, pageID, author)
+	if err != nil {
+		logMentionFailure(pageID, err)
+		return nil
+	}
+	return users
+}
+
+// inTx runs fn in a transaction, rolling back on error. Generic because the
+// two callers return different rows and neither should have to declare a
+// named result variable outside the closure to get at it.
+func inTx[T any](ctx context.Context, pool *pgxpool.Pool, fn func(pgx.Tx) (T, error)) (T, error) {
+	var zero T
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return zero, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	out, err := fn(tx)
+	if err != nil {
+		return zero, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return zero, err
+	}
+	return out, nil
 }
