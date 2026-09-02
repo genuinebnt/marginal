@@ -5683,3 +5683,51 @@ says so rather than claiming a fix it did not make.
 
 **Sweep: 136 ok**, including two checks that click the menu — the gesture
 nothing had ever tested.
+
+### 2026-09-02 — § 05's comments tab, and a pairing bug in the gate itself
+
+`v3.2.0`'s threads were real everywhere except the screen most likely to
+be read: the reader's inspector still said *"Comments are not built"* and
+drew a hardcoded `0` beside a page that had three. An honest empty state
+that has stopped being true is just a wrong one.
+
+The reader now lists the same threads the editor's rail does, over the
+same endpoint — quote, resolved anchor range, orphan state, authors.
+Read-only, and it says why rather than leaving the absence to be guessed
+at: this screen has editing off, a reply is an edit, and there is a link
+to the editor for anyone who wants to answer one.
+
+**Gate:** `node tools/uidiff/uidiff.js 05 "/read/{id}" "<a real page>"` →
+**missing 0 · property diffs 0 · chrome text diffs 0**, plus three new
+`verify.js` checks ordered *after* the editor's comment step, so they
+assert on the thread that step just opened instead of on a corpus fact.
+
+**The gate needed fixing to get there, and the first fix was wrong.**
+It reported four `justify-content: normal -> flex-start` diffs on
+`span.tg`. They were identical with the change stashed: § 05 draws `.tg`
+in three roles, the mockup's fictional page carries four own-tags where a
+real seeded page carries two, and every chip after that shifted — so a
+fixed-width co-occurrence chip paired against a plain one. The screen
+matched its mockup element for element; only the corpus was a different
+length, which the tool's own rule 2 already calls content rather than
+design.
+
+Pairing now groups by parent signature first and falls back to flat
+document order where no counterpart group exists. The **first** attempt
+kept the positional `[n]` in the parent key, which made an unrelated
+`div.bar[9]` on one side the same group as `div.bar[9]` on the other and
+paired § 04's READ against SHARE — a false positive traded for a false
+positive. Printing the two key lists side by side settled it in a single
+run; every other screen's counts came back byte-identical to their
+baseline afterwards. The recurring lesson holds: **measure the markup,
+do not reason about it.**
+
+Also reconciled `RELEASES.md`'s `v3.2.0` row against the mockups rather
+than against its own promise. **Reactions appear in no mockup section at
+all** — building them would mean inventing a screen, which is the one
+thing the mockup-is-the-spec rule exists to prevent, so they are dropped
+here pending a mockup. **@mentions are depicted**, but on the
+NOTIFICATIONS surface (§ 20, § 24c), not inside a thread; § 20's own
+caption argues for storing the anchor so *"opening a mention a week later
+lands on the right words"*, which is exactly the machinery this minor
+built. They move to `v3.3.0`, where the inbox that shows them lives.
