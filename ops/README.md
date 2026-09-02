@@ -109,3 +109,26 @@ docker compose up -d --build --force-recreate <service>
 
 Worth doing for every service whose source moved, not just the one being
 debugged.
+
+## A deploy that says it worked, and did not
+
+`ssh host 'nohup … & echo started'` reports that the **shell** ran, not that
+the build did. If the connection drops — or the remote shell exits before
+the backgrounded process is fully detached — the command still prints its
+success line and the deploy never happens.
+
+That is exactly how a security fix sat undeployed while the log said
+`SECURITY FIX DEPLOYED`: two `Connection closed by …` lines went past in the
+same output, and the confirmation was read instead of them.
+
+**Confirm from the far side, never from the exit line.** After any deploy:
+
+```sh
+ssh deploy@host 'cd ~/marginal && git log --oneline -1'   # is the commit there?
+ssh deploy@host 'pgrep -f "compose -f docker-compose.prod.yml up" >/dev/null \
+  && echo BUILDING || echo IDLE'                          # is it actually building?
+```
+
+and redirect the build's own output to a file on the host (`> /tmp/deploy.log
+2>&1 < /dev/null`) so there is something to read afterwards that the local
+shell did not write.
