@@ -909,6 +909,53 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
   await p.locator('.it', { hasText: 'KINDS' }).first().click(); await p.waitForTimeout(400);
   check('§13 KINDS counts the op kinds it emitted', /OP KINDS YOU PRODUCED/.test(await txt()) && /SetBlockContent|InsertBlock/.test(await txt()));
 
+  // ── § 04 comments: the block menu, and a thread that anchors ─────────
+  //
+  // This exists because adding ONE item to the block menu surfaced a bug
+  // that had been there since the backdrop was: the click-catcher was
+  // z-index 29 against the menu's own 20, so every click meant for an item
+  // hit the backdrop and closed the menu instead. Nothing caught it —
+  // no check had ever clicked a kind-menu item.
+  await go(`/pages/${page.id}`, 7000);
+  p.once('dialog', (d) => void d.accept('Does this still hold after a merge?'));
+  // Clear anything a previous step left open — a menu's backdrop would
+  // otherwise swallow the hover and this check would fail for a reason
+  // that has nothing to do with what it tests.
+  await p.keyboard.press('Escape');
+  await p.waitForTimeout(300);
+  const firstRow = p.locator('.block-row').first();
+  await firstRow.scrollIntoViewIfNeeded().catch(() => {});
+  await firstRow.hover();
+  await p.waitForTimeout(400);
+  // By TITLE, not by index: the two toolbar buttons overlap, so nth(1)
+  // gets intercepted by "+" on some rows and not others — which would be an
+  // intermittent failure rather than a finding.
+  // NOT force: a forced click dispatches at the element's centre, which the
+  // "+" button overlaps — so it opened the INSERT menu instead, which has
+  // no handle actions in it. The failure looked like "Comment is missing"
+  // and was actually "wrong menu".
+  await firstRow.locator('[title^="Drag to reorder"]').first().click();
+  await p.waitForTimeout(700);
+  const commentItem = p.locator('.palette-item', { hasText: 'Comment' });
+  const items = await p.locator('.palette-item').count();
+  // The diagnostic is part of the assertion on purpose. When this failed it
+  // reported "Comment is missing", and the truth was "wrong menu" — the
+  // click had opened the INSERT menu (14 items, no handle actions) rather
+  // than the handle menu (16, with them). An item count tells those apart
+  // at a glance; a bare boolean sent me looking in the wrong place twice.
+  check('§04 the block menu offers Comment', (await commentItem.count()) > 0,
+        `${items} items in the open menu`);
+  if (await commentItem.count()) {
+    // The click itself is the regression test: an intercepted one throws.
+    await commentItem.first().click({ timeout: 8000 }).catch(() => {});
+    await p.waitForTimeout(2500);
+    await p.locator('.it', { hasText: 'COMMENTS' }).first().click().catch(() => {});
+    const shown = await p.waitForFunction(
+      () => /chars \d+–\d+/.test(document.querySelector('.insp')?.textContent ?? ''),
+      null, { timeout: 15000 }).then(() => true).catch(() => false);
+    check('§04 a comment thread anchors to real characters', shown);
+  }
+
   console.log(errs.length ? `\nPAGE ERRORS: ${errs.slice(0,5).join(' | ')}` : '\nno page errors');
   if (errs.length) fails++;
   console.log(fails ? `\n${fails} FAILED` : '\nall checks passed');

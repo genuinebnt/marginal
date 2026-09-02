@@ -774,7 +774,14 @@ export function RichEditorPane({
 
         {kindMenu && (
           <>
-            <div style={{ position: "fixed", inset: 0, zIndex: 29 }} onClick={() => setKindMenu(null)} />
+            {/* The click-catcher, BELOW the menu it dismisses.
+                It was zIndex 29 against .slash's own z-index: 20, so it sat
+                ON TOP of the menu — every click meant for an item hit the
+                backdrop and closed the menu instead of choosing. The menu
+                had been unusable by pointer since the backdrop was added,
+                and nothing caught it because no check had ever clicked a
+                kind-menu item; adding one surfaced it immediately. */}
+            <div style={{ position: "fixed", inset: 0, zIndex: 19 }} onClick={() => setKindMenu(null)} />
             {/* Clamped to the viewport rather than placed blindly below the
                 handle. The menu grows as block kinds and actions are added,
                 and an unclamped one puts its LAST items — the destructive
@@ -786,16 +793,40 @@ export function RichEditorPane({
             <div
               className="slash"
               style={{
-                // The clamp has to leave room for the menu's OWN height,
-                // not just for its top edge — clamping the top alone still
-                // lets the bottom items fall off, which is the bug this is
-                // fixing and the one I first wrote again.
+                // Keeps a long menu on screen. This was NOT what hid the
+                // handle actions — they were below the menu's own scroll
+                // fold, a different axis entirely — but an unclamped menu
+                // does put its last items under the status bar, so it earns
+                // its place on its own.
                 top: Math.max(8, Math.min(kindMenu.top, window.innerHeight - MENU_MAX_HEIGHT - STATUS_BAR_GAP)),
                 left: kindMenu.left,
                 maxHeight: MENU_MAX_HEIGHT,
                 overflowY: "auto",
               }}
             >
+              {/* The ACTIONS first, above the kind list.
+
+                  They were last, below sixteen block kinds, inside a menu
+                  that scrolls — so Comment and Delete sat under the fold,
+                  reachable only by scrolling a container nobody would think
+                  to scroll. An affordance that renders, reports as present
+                  and cannot be reached is the worst of the three states one
+                  can be in. Putting the two things the handle menu is
+                  actually FOR ahead of the long tail of kinds fixes it
+                  without any positioning trick. */}
+              {kindMenu.mode === "handle" && (
+                <>
+                  <div className="palette-item" onClick={handleCommentFromMenu}>
+                    <span className="lead mono muted">❝</span>
+                    Comment
+                  </div>
+                  <div className="palette-item" onClick={handleDeleteFromMenu}>
+                    <span className="lead mono muted">×</span>
+                    Delete
+                  </div>
+                  <div className="menu-divider" />
+                </>
+              )}
               <div className="slash-h">
                 {kindMenu.containersOnly ? "WRAP IN" : "TURN INTO"}
               </div>
@@ -806,19 +837,6 @@ export function RichEditorPane({
                   <span className="keys">{CONTAINER_KEYS.has(k) ? "::" : "/"}</span>
                 </div>
               ))}
-              {kindMenu.mode === "handle" && (
-                <>
-                  <div className="menu-divider" />
-                  <div className="palette-item" onClick={handleCommentFromMenu}>
-                    <span className="lead mono muted">❝</span>
-                    Comment
-                  </div>
-                  <div className="palette-item" onClick={handleDeleteFromMenu}>
-                    <span className="lead mono muted">×</span>
-                    Delete
-                  </div>
-                </>
-              )}
             </div>
           </>
         )}
