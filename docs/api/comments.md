@@ -113,12 +113,19 @@ space may resolve any thread — resolution is housekeeping, not authorship.
 
 ## 4. Not in this version
 
-- **@mentions and notifications.** The parser is easy; deciding what a
-  mention *does* (notify how, digest when) is `v3.3.0`'s question and
-  answering it here would answer it twice.
-- **Reactions.** Same table shape, different noun, and no anchor at all —
-  they attach to a comment rather than to a range. Deliberately separate so
-  that the anchored half can be finished and used first.
+- **@mentions**, which move to `v3.3.0` — checked against the mockups
+  rather than assumed. They are depicted on the NOTIFICATIONS surface
+  (`§ 20`, `§ 24c`), not inside a comment thread, and § 20's own caption
+  makes the argument this API already implements: *"storing the anchor
+  means opening a mention a week later lands on the right words even after
+  everything moved"*. The anchoring is here; the inbox that shows a mention
+  is there.
+- **Reactions**, dropped from `v3.2.0` and needing a mockup first. They
+  appear in **no** mockup section, and the mockups are the acceptance bar
+  (`CLAUDE.md`) — so building them would mean inventing a screen, which is
+  the one thing that rule exists to prevent. The model is easy (a row
+  against a comment, no anchor at all); what does not exist is any
+  depiction of what it should look like or where it belongs.
 - **Comment-level permissions** beyond authorship. A thread visible to some
   members and not others is a second permission tier, and `ADR-013` ruled
   per-page overrides out for the same reason.
