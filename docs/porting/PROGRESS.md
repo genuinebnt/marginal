@@ -5643,3 +5643,43 @@ present, and cannot be clicked. That is worth preventing on its own.
 reopen, anchor survival) and the sweep at **134 ok**. **What is not:**
 opening a thread through the UI, which needs the probe question answered
 first.
+
+### Two real editor bugs, found by adding one menu item (2026-09-02)
+
+Neither had anything to do with comments. Adding a Comment action to the
+block handle menu surfaced both, and both had been there for a while.
+
+**1. The menu's backdrop was on top of the menu.** The click-catcher was
+`zIndex: 29` against `.slash`'s own `z-index: 20`, so it covered what it
+was meant to dismiss: every click aimed at an item hit the backdrop and
+closed the menu instead of choosing. The kind menu had been unusable by
+pointer since that backdrop was added. Nothing caught it because no check
+had ever clicked a kind-menu item.
+
+**2. Hidden toolbars still took clicks, and toolbars overlap.** A block
+row's toolbar is revealed with `opacity: 0 → 1`, and an `opacity: 0`
+element still receives pointer events. Blocks nest, and a nested row's
+toolbar sits one indent step (16px) right of its container's while being
+20px wide — so a container's drag handle sat underneath a descendant's
+"+". Measured: at the outer handle's own centre, the topmost element was
+another row's insert button. The right gesture opened the wrong menu, with
+nothing on screen to explain it.
+
+Fixed by pairing the fade with `pointer-events`, and by showing only the
+**innermost** hovered row's toolbar — `:hover` matches every ancestor of
+the pointer, so hovering a nested block was revealing two.
+
+**Three wrong diagnoses on the way, worth recording as a pattern.** I
+assumed in order: the menu overflowed the viewport (clamped it — three
+times); the item was outside the menu (it was inside, below its own scroll
+fold); the probe was clicking the wrong button (it was clicking the right
+one, which a *hidden* button covered). Every one of those was settled in
+seconds by measuring — `getBoundingClientRect`, `elementFromPoint`,
+`closest('.block-row')` — and none of them by reasoning about the markup.
+
+The clamp is kept anyway: an unclamped menu does put its last items under
+the status bar. But it was not what was wrong, and the comment on it now
+says so rather than claiming a fix it did not make.
+
+**Sweep: 136 ok**, including two checks that click the menu — the gesture
+nothing had ever tested.

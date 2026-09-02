@@ -230,10 +230,32 @@
   align-items: center;
   gap: 2px;
   opacity: 0;
+  /* Hidden means UNCLICKABLE, not just invisible.
+     opacity:0 alone still receives pointer events, and these toolbars
+     overlap: a nested row's sits 16px right and 2px down from its parent's,
+     directly over the parent's drag handle. So clicking a visible handle
+     could dispatch to the invisible "+" of another row — the wrong menu
+     opening from the right gesture, with nothing on screen to explain it. */
+  pointer-events: none;
   transition: opacity var(--dur-1) var(--ease);
 }
 .block-row:hover > .block-toolbar,
-.block-row:focus-within > .block-toolbar { opacity: 1; }
+.block-row:focus-within > .block-toolbar { opacity: 1; pointer-events: auto; }
+
+/* Only the INNERMOST hovered row shows its handle.
+   :hover matches every ancestor of the pointer, so hovering a nested block
+   revealed its own toolbar AND its parent's — and they overlap, because a
+   child's sits one indent step (16px) right of a parent's while being 20px
+   wide. The parent's handle ended up underneath the child's "+", so the
+   right gesture opened the wrong menu. */
+/* A DESCENDANT selector, not a child one: blocks nest more than one level
+   (a callout holding a list holding items), and the measured collision was
+   between a row and a row it merely contains — not its direct child. */
+.block-row:has(.block-row:hover) > .block-toolbar,
+.block-row:has(.block-row:focus-within) > .block-toolbar {
+  opacity: 0;
+  pointer-events: none;
+}
 
 /* § 04's bubble menu, raised by a selection. There is no persistent format
    toolbar: a top strip implies one document-wide edit surface, and this

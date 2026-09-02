@@ -923,7 +923,18 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
   // that has nothing to do with what it tests.
   await p.keyboard.press('Escape');
   await p.waitForTimeout(300);
-  const firstRow = p.locator('.block-row').first();
+  // A LEAF row. Blocks nest, and only the innermost hovered row shows its
+  // toolbar now — hovering a container reveals its child's handle, not its
+  // own, so targeting the first row in document order picks a container
+  // whose toolbar is (correctly) hidden.
+  // A leaf row WITH TEXT. A comment anchors to characters, so an empty
+  // block has nothing to anchor to and the editor says so with an alert —
+  // which the dialog handler below would swallow, leaving "no thread" as
+  // the symptom of "wrong block".
+  const firstRow = p.locator('.block-row:not(:has(.block-row))')
+    .filter({ has: p.locator('.editable') })
+    .filter({ hasNotText: /^\s*$/ })
+    .first();
   await firstRow.scrollIntoViewIfNeeded().catch(() => {});
   await firstRow.hover();
   await p.waitForTimeout(400);
