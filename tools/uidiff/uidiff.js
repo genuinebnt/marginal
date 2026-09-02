@@ -326,11 +326,13 @@ const SEED = {
   // reports the accent colour and the row's action button as defects.
   '20': async (p, ctx) => {
     await seedMention(ctx);
+    await seedInvite(ctx);
     await p.reload({ waitUntil: 'networkidle' });
     await p.waitForTimeout(1200);
   },
   '24c': async (p, ctx) => {                 // NOTIFICATIONS PANEL — the bell, opened
     await seedMention(ctx);
+    await seedInvite(ctx);
     await p.reload({ waitUntil: 'networkidle' });
     await p.waitForTimeout(600);
     const bell = p.locator('.icb').first();
@@ -349,6 +351,50 @@ const SEED = {
  * A list is duller and cannot be fooled by where the code lives.
  */
 const NEEDS_PEER = new Set(['04', '20', '24c']);
+
+/**
+ * Give the signed-in user a PENDING invitation, § 20's decision row.
+ *
+ * To a space of its own, never the default one: the demo account is
+ * already in that, and an invitation to somebody already inside is refused
+ * (correctly). The space is reused across runs rather than created each
+ * time, and a second invitation while one is open is a 409 that this seed
+ * ignores — the row it needs is already there.
+ *
+ * Nothing here accepts it. A diff is a picture of a screen at rest, and the
+ * state § 20 depicts is an invitation still waiting to be answered.
+ */
+async function seedInvite(ctx) {
+  if (!ctx.peerToken) return;
+  const H = { 'Content-Type': 'application/json', Authorization: `Bearer ${ctx.peerToken}` };
+  const jf = async (u, o) => fetch(u, o).then(r => r.json()).catch(() => null);
+  try {
+    const demo = await jf(`${GW}/auth/login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'ui-demo@example.com', password: 'ui-demo-password-123' }),
+    });
+    if (!demo?.access_token) return;
+    const demoId = JSON.parse(Buffer.from(demo.access_token.split('.')[1], 'base64url')).sub;
+
+    // The peer owns this space — whoever creates one is its first admin,
+    // which is the authority an invitation needs.
+    const mine = await jf(`${GW}/spaces`, { headers: H });
+    let space = (mine?.spaces ?? []).find(s => s.name === 'Research' && s.your_role === 'admin');
+    if (!space) {
+      space = await jf(`${GW}/spaces`, {
+        method: 'POST', headers: H, body: JSON.stringify({ name: 'Research' }),
+      });
+    }
+    if (!space?.id) return;
+    await fetch(`${GW}/spaces/${space.id}/invitations`, {
+      method: 'POST', headers: H,
+      body: JSON.stringify({ user_id: demoId, role: 'editor' }),
+    });
+    await new Promise(r => setTimeout(r, 1600));
+  } catch (e) {
+    console.error('seedInvite:', e.message);
+  }
+}
 
 /**
  * Make the signed-in user have a real mention, by having somebody else
@@ -674,6 +720,7 @@ async function main() {
     // sides go. A count difference is content, not design.
     const cls = sig.split('.').slice(1);
     if (cls.length === 1 && UTILITY.has(cls[0])) continue;   // presence only
+    const sameCount = els.length === hit.length;
     for (const [i, me, ae] of pairUp(els, hit)) {
       // Also matched on the tag + FIRST class, so a rule written for
       // `div.tr` covers `div.tr.tr-on` — a row does not stop being content
@@ -699,7 +746,21 @@ async function main() {
       // that the two corpora differ, which is the premise of the whole
       // tool rather than a defect in the screen.
       const label = (t) => (t || '').replace(/\s+\d+$/, '').trim();
-      if (me.text && ae.text && label(me.text) !== label(ae.text) && /^[A-Z0-9 ·⌘/&—+]+$/.test(me.text)) {
+      // And only when both sides have the SAME NUMBER of this thing.
+      //
+      // The rule the property comparison already states — "a count
+      // difference is content, not design" — applies at least as hard to
+      // text. § 20's mockup draws four rows (mention, proposal, check,
+      // invite); the app draws the two whose kinds have producers, so the
+      // third `.chip` on one side is a different row's button from the
+      // third on the other, and comparing them reported "DISMISS ->
+      // DECLINE" as though a label had been changed. Nothing was: two
+      // lists of different lengths have no third element in common.
+      //
+      // Fixed-length chrome — nav tabs, readout keys, inspector tabs — is
+      // unaffected, which is the text this check exists for.
+      if (sameCount && me.text && ae.text && label(me.text) !== label(ae.text)
+          && /^[A-Z0-9 ·⌘/&—+]+$/.test(me.text)) {
         textDiffs.push(`${sig}[${i}]  "${me.text}"  ->  "${ae.text}"`);
       }
     }

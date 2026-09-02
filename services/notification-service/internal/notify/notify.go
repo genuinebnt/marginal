@@ -43,6 +43,26 @@ const KindWelcome = "welcome"
 // that is allowed to change it — see MentionPointer.
 const KindMention = "mention"
 
+// KindInvite is a space invitation (v3.3.0, § 20's ACCEPT/DECLINE row).
+//
+// Pointer-shaped for the same reason a mention is: the space's name, the
+// inviter's name and the role are all owned elsewhere and may change
+// between the invitation and the reading of it. What is stored is the
+// invitation's id, which is also the thing the recipient answers with.
+const KindInvite = "invite"
+
+// InviteEvent is the subject auth-service publishes invitations on.
+const InviteEvent = "auth.member_invited"
+
+// InvitePointer is auth.member_invited's payload.
+type InvitePointer struct {
+	InvitationID uuid.UUID `json:"invitation_id"`
+	UserID       uuid.UUID `json:"user_id"`
+	SpaceID      uuid.UUID `json:"space_id"`
+	Role         string    `json:"role"`
+	InvitedBy    uuid.UUID `json:"invited_by"`
+}
+
 // MentionEvent is the NATS subject collaboration-service's outbox poller
 // publishes mentions to. Mirrored independently there (wsapi.MentionEvent),
 // the same two-matching-definitions convention SubjectUserRegistered
@@ -271,5 +291,20 @@ func HandleUserRegistered(ctx context.Context, repo Repo, eventID uuid.UUID, pay
 	}
 	message := fmt.Sprintf("Welcome to Marginal, %s!", evt.DisplayName)
 	_, err := repo.Create(ctx, evt.UserID, eventID, KindWelcome, message)
+	return err
+}
+
+// HandleInvite persists a space invitation. Same shape as HandleMention,
+// same dedup key, same verbatim payload — the only thing that differs is
+// which subject it came from and which kind it is stored as.
+func HandleInvite(ctx context.Context, repo Repo, eventID uuid.UUID, payload []byte) error {
+	var p InvitePointer
+	if err := json.Unmarshal(payload, &p); err != nil {
+		return fmt.Errorf("notify: decoding %s payload: %w", InviteEvent, err)
+	}
+	if p.UserID == uuid.Nil {
+		return fmt.Errorf("notify: %s carried no user_id", InviteEvent)
+	}
+	_, err := repo.CreatePointer(ctx, p.UserID, eventID, p.InvitedBy, KindInvite, payload)
 	return err
 }

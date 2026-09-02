@@ -102,3 +102,25 @@ func SubscribeMentions(nc *nats.Conn, repo Repo) (*nats.Subscription, error) {
 		}
 	})
 }
+
+// SubscribeInvites registers the auth.member_invited subscription (v3.3.0).
+//
+// A third subscription rather than a shared one with a switch: each has its
+// own payload and its own handler, and the only thing a merged version
+// would share is the word "subscribe". The core-NATS caveat applies here
+// too, and an invitation lost is somebody never learning they were given
+// access — the outbox row survives even when the delivery does not.
+func SubscribeInvites(nc *nats.Conn, repo Repo) (*nats.Subscription, error) {
+	return nc.Subscribe(InviteEvent, func(msg *nats.Msg) {
+		var evt wireEvent
+		if err := json.Unmarshal(msg.Data, &evt); err != nil {
+			slog.Error("notify: decoding "+InviteEvent+" envelope", "err", err)
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), handleEventTimeout)
+		defer cancel()
+		if err := HandleInvite(ctx, repo, evt.ID, evt.Payload); err != nil {
+			slog.Error("notify: handling "+InviteEvent, "event_id", evt.ID, "err", err)
+		}
+	})
+}

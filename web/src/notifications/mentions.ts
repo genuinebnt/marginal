@@ -33,8 +33,11 @@ export interface MentionContext {
   missing: boolean;
 }
 
+/** Narrowed on `kind`, not on which fields are present: two pointer shapes
+ *  now share one field name each way, and "has a page_id" would quietly
+ *  become the wrong test the moment a third kind does too. */
 function isMention(n: Notification): n is Notification & { pointer: MentionPointer } {
-  return n.kind === "mention" && Boolean(n.pointer?.page_id);
+  return n.kind === "mention" && n.pointer !== undefined;
 }
 
 /** A short, stable tag for a person whose name we could not resolve. Two

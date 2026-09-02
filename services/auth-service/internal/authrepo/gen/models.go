@@ -43,6 +43,17 @@ type AuthSpace struct {
 	CreatedAt pgtype.Timestamptz
 }
 
+type AuthSpaceInvitation struct {
+	ID          pgtype.UUID
+	SpaceID     pgtype.UUID
+	UserID      pgtype.UUID
+	Role        string
+	InvitedBy   pgtype.UUID
+	CreatedAt   pgtype.Timestamptz
+	RespondedAt pgtype.Timestamptz
+	Accepted    *bool
+}
+
 type AuthUser struct {
 	ID           pgtype.UUID
 	Email        string

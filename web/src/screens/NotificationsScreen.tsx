@@ -17,11 +17,13 @@
  * dropping four facets would make the inbox look complete instead of
  * one-fifth built.
  */
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useInbox } from "../notifications/NotificationsContext";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { replyToThread } from "../api/comments";
+import { listInvitations, respondToInvitation, type Invitation } from "../api/spaces";
+import type { InvitePointer } from "../api/notifications";
 import { useMentionContext } from "../notifications/mentions";
 import { KIND_TONE, ago } from "../notifications/NotificationsPanel";
 import {
@@ -37,7 +39,8 @@ const FACETS: Array<{ id: string; label: string; kinds: string[] | null }> = [
   { id: "mentions", label: "MENTIONS", kinds: ["mention"] },
   { id: "proposals", label: "PROPOSALS", kinds: null },
   { id: "checks", label: "CHECKS", kinds: null },
-  { id: "invites", label: "INVITES", kinds: null },
+  // Real since v3.3.0 — a space invitation (docs/api/spaces.md § 5).
+  { id: "invites", label: "INVITES", kinds: ["invite"] },
 ];
 
 export function NotificationsScreen() {
@@ -49,6 +52,17 @@ export function NotificationsScreen() {
   // itself carries only ids. See docs/api/notifications.md § 1.
   const mentions = useMentionContext(actorId, inbox.items);
   const [busy, setBusy] = useState<string | null>(null);
+  // The caller's PENDING invitations, which is what makes an invite row
+  // answerable: the notification carries the invitation's id, and this says
+  // whether it is still open and what it is for. An invitation that has
+  // been answered elsewhere therefore reads as answered here, rather than
+  // offering two buttons that would both fail.
+  const [invites, setInvites] = useState<Invitation[]>([]);
+  const loadInvites = useCallback(() => {
+    if (!actorId) return;
+    listInvitations(actorId).then((r) => setInvites(r.invitations)).catch(() => setInvites([]));
+  }, [actorId]);
+  useEffect(loadInvites, [loadInvites]);
   const [facet, setFacet] = useState("all");
   const [insTab, setInsTab] = useState<"delivery" | "muted">("delivery");
 
@@ -58,6 +72,23 @@ export function NotificationsScreen() {
     : active.kinds.length === 0
       ? inbox.items
       : inbox.items.filter((n) => active.kinds!.includes(n.kind));
+
+  /** ACCEPT and DECLINE are the two halves of § 20's "decision" row: the
+   *  act resolves the item, so the row clears without anybody marking it
+   *  read. Both are real — accepting grants the role, declining records
+   *  the refusal — which is why the list is reloaded afterwards rather
+   *  than assumed. */
+  const answerInvite = async (id: string, invitationId: string, accept: boolean) => {
+    if (!actorId) return;
+    setBusy(id);
+    try {
+      await respondToInvitation(actorId, invitationId, accept);
+      await inbox.markRead(id);
+      loadInvites();
+    } finally {
+      setBusy(null);
+    }
+  };
 
   /** § 20: "acting on an item clears it". A reply IS the act — the row is
    *  marked read because the thing it was asking for happened, not because
@@ -153,6 +184,9 @@ export function NotificationsScreen() {
               const tone = KIND_TONE[n.kind] ?? "#585550";
               const read = Boolean(n.read_at);
               const m = mentions.get(n.id);
+              const inv = n.kind === "invite"
+                ? invites.find((i) => i.id === (n.pointer as InvitePointer | undefined)?.invitation_id)
+                : undefined;
               return (
                 <div
                   key={n.id}
@@ -170,7 +204,25 @@ export function NotificationsScreen() {
                     {!read && <div className="ping" style={{ background: `${tone}80` }} />}
                   </div>
                   <div style={{ flex: 1 }}>
-                    {m ? (
+                    {inv ? (
+                      <>
+                        <div style={{ fontSize: 13.5, color: read ? "#9B968D" : "#E4E2DC" }}>
+                          <b style={{ fontWeight: 500 }}>{inv.invited_by_name}</b> invited you to{" "}
+                          <span style={{ color: read ? "#9B968D" : "#3FCFA8" }}>{inv.space_name}</span>
+                        </div>
+                        <div className="mono" style={{ fontSize: 10, color: "#585550", marginTop: 7 }}>
+                          {inv.role} role · {ago(n.created_at)}
+                        </div>
+                      </>
+                    ) : n.kind === "invite" ? (
+                      // The notification is here and the invitation is not
+                      // in the pending list — it was answered somewhere
+                      // else. Said, rather than drawing two buttons that
+                      // would both fail.
+                      <div style={{ fontSize: 12.5, color: "#8C8880" }}>
+                        An invitation you have already answered.
+                      </div>
+                    ) : m ? (
                       <>
                         <div style={{ fontSize: 13.5, color: read ? "#9B968D" : "#E4E2DC" }}>
                           <b style={{ fontWeight: 500 }}>{m.actorName}</b> mentioned you in{" "}
@@ -208,6 +260,24 @@ export function NotificationsScreen() {
                     )}
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
+                    {inv && (
+                      <>
+                        <span
+                          className="chip chip-t"
+                          style={{ cursor: busy === n.id ? "wait" : "pointer" }}
+                          onClick={() => void answerInvite(n.id, inv.id, true)}
+                        >
+                          ACCEPT
+                        </span>
+                        <span
+                          className="chip"
+                          style={{ cursor: busy === n.id ? "wait" : "pointer" }}
+                          onClick={() => void answerInvite(n.id, inv.id, false)}
+                        >
+                          DECLINE
+                        </span>
+                      </>
+                    )}
                     {m && (
                       <>
                         {/* § 20's design in one line: "acting on an item
@@ -230,7 +300,7 @@ export function NotificationsScreen() {
                         </span>
                       </>
                     )}
-                    {!read && !m && (
+                    {!read && !m && !inv && (
                       <span
                         className="chip chip-e"
                         style={{ cursor: "pointer" }}

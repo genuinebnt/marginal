@@ -200,9 +200,38 @@ the ADR is what a reviewer reads first.
 - **API keys** (`§ 18c`) — a second credential kind with its own lifetime and
   scoping. It needs this ADR's identity work to exist first, and then its own
   decision about what a key may do that a session may not.
-- **Invitations** — the flow (email? link? admin-adds-by-address?) is a product
-  decision that does not change the model above. Membership rows are the same
-  either way.
+- ~~**Invitations**~~ — **decided 2026-09-02, by the mockups rather than by
+  this ADR.** This section said the flow was "a product decision that does not
+  change the model above", which was true and also a way of not choosing. `§ 20`
+  chooses: *"Reiko invited you to Research · Editor role · 42 pages"* with
+  **ACCEPT** and **DECLINE**. That is admin-adds-by-identity producing a
+  **pending** state the recipient resolves — not an emailed link, and not an
+  immediate grant.
+
+  The model does change, in one specific way worth stating: **an invitation is
+  not a membership.** It lives in its own table, and `auth.memberships` gains
+  nothing. The alternative — a membership row with an `accepted_at` — would put
+  a nullable column on the hot path of every role check, where forgetting it
+  once means an un-accepted invitation silently grants access. A separate table
+  cannot be forgotten, because a role check that does not join it sees exactly
+  what it saw before this feature existed.
+
+  Consequences, in the same spirit as the rest of this ADR:
+
+  - **Accepting is the only thing that grants.** It performs the same
+    `GrantRole` an admin would, in one transaction with marking the invitation
+    answered, and emits the same `auth.role_granted` — so `document-service`'s
+    projection learns about it through the path it already has, not a second
+    one.
+  - **Declining stores the refusal rather than deleting the row.** A deleted
+    invitation is indistinguishable from one that was never sent, which makes
+    "why can't I see that space" unanswerable.
+  - **An invitation to somebody already in the space is refused**, not
+    silently upgraded. "Invite" and "change their role" are different intents
+    and an admin should not be able to perform the second by aiming at the
+    first.
+  - **Only an admin of that space may invite**, the same rule `GrantRole`
+    already enforces, checked in the same place.
 - **Per-page overrides.** Deliberately out. The moment a page can disagree with
   its space, "who can read this" becomes a tree walk with inheritance rules,
   and that is a substantially different system from the one decided here.

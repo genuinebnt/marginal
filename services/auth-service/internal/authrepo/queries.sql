@@ -217,3 +217,31 @@ SELECT count(*) FROM auth.memberships WHERE space_id = $1 AND role = 'admin';
 INSERT INTO auth.spaces (id, name, is_default, created_by)
 VALUES ($1, $2, TRUE, $3)
 RETURNING id, name, is_default, created_by, created_at;
+
+-- name: CreateInvitation :one
+-- The partial unique index (one pending per person per space) is what makes
+-- a double invite a conflict rather than two rows; the caller turns that
+-- into ALREADY_EXISTS.
+INSERT INTO auth.space_invitations (id, space_id, user_id, role, invited_by)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING *;
+
+-- name: GetInvitation :one
+SELECT * FROM auth.space_invitations WHERE id = $1;
+
+-- name: RespondToInvitation :one
+-- Answering is idempotent-safe by being CONDITIONAL: the WHERE clause means
+-- a second answer changes nothing and returns no row, which the caller
+-- reports as FAILED_PRECONDITION rather than pretending it worked.
+UPDATE auth.space_invitations
+SET responded_at = NOW(), accepted = $2
+WHERE id = $1 AND user_id = $3 AND responded_at IS NULL
+RETURNING *;
+
+-- name: ListPendingInvitationsForUser :many
+SELECT i.*, s.name AS space_name, u.display_name AS invited_by_name
+FROM auth.space_invitations i
+JOIN auth.spaces s ON s.id = i.space_id
+JOIN auth.users  u ON u.id = i.invited_by
+WHERE i.user_id = $1 AND i.responded_at IS NULL
+ORDER BY i.created_at DESC;

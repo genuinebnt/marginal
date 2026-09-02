@@ -322,6 +322,57 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
       check('§20 the MENTIONS facet selects mentions and drops the welcome',
             /mentioned you in/.test(filtered) && !/Welcome to Marginal/.test(filtered));
     }
+
+    // ── § 20 invitations: the decision row ──────────────────────────────
+    //
+    // One reused space, and the membership is handed back at the end, so
+    // this is repeatable: an invitation to somebody already inside is
+    // correctly refused, and a run that left the demo account a member
+    // would make the next run test nothing.
+    const mySpaces = await jf(`${GW}/spaces`, { headers: { Authorization: `Bearer ${peer}` } });
+    let space = (mySpaces?.spaces ?? []).find(x => x.name === 'Verify invites' && x.your_role === 'admin');
+    if (!space) {
+      space = await jf(`${GW}/spaces`, {
+        method: 'POST', headers: PH, body: JSON.stringify({ name: 'Verify invites' }),
+      });
+    }
+    const demoId = JSON.parse(Buffer.from(demo.split('.')[1], 'base64url').toString()).sub;
+    const invRes = await fetch(`${GW}/spaces/${space.id}/invitations`, {
+      method: 'POST', headers: PH, body: JSON.stringify({ user_id: demoId, role: 'editor' }),
+    });
+    check('§20 an admin can invite somebody outside the space', invRes.status === 201,
+          `HTTP ${invRes.status}`);
+
+    // The property the whole feature rests on, asserted over the wire.
+    const seen = await jf(`${GW}/spaces`, { headers: { Authorization: `Bearer ${demo}` } });
+    check('§20 an invitation grants nothing until it is accepted',
+          !(seen?.spaces ?? []).some(x => x.id === space.id));
+
+    const dup = await fetch(`${GW}/spaces/${space.id}/invitations`, {
+      method: 'POST', headers: PH, body: JSON.stringify({ user_id: demoId, role: 'editor' }),
+    });
+    check('§20 a second invitation conflicts rather than stacking', dup.status === 409,
+          `HTTP ${dup.status}`);
+
+    await p.waitForTimeout(2000);
+    await go('/notifications', 5000);
+    await p.locator('.sb', { hasText: 'INVITES' }).first().click().catch(() => {});
+    await p.waitForTimeout(800);
+    const inviteText = await txt();
+    check('§20 the invite row says who, which space, and what role',
+          /invited you to/.test(inviteText) && /Verify invites/.test(inviteText)
+          && /editor role/i.test(inviteText));
+
+    // The click is the test: ACCEPT must actually grant, not just clear.
+    await p.locator('.chip', { hasText: 'ACCEPT' }).first().click().catch(() => {});
+    await p.waitForTimeout(2500);
+    const now = await jf(`${GW}/spaces`, { headers: { Authorization: `Bearer ${demo}` } });
+    const joined = (now?.spaces ?? []).find(x => x.id === space.id);
+    check('§20 ACCEPT grants the role the invitation named',
+          joined?.your_role === 'editor', joined ? `role=${joined.your_role}` : 'not a member');
+
+    // Hand the membership back, so the next run starts where this one did.
+    await fetch(`${GW}/spaces/${space.id}/members/${demoId}`, { method: 'DELETE', headers: PH });
   }
 
   // ── § 23c TRASH ───────────────────────────────────────────────────────
@@ -784,10 +835,18 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
     const after = await inspector();
     if (after === before) deadTabs.push(`${route}:${tab}`);
     // And it must be able to come back — a one-way tab is half a control.
+    //
+    // Compared against the SECOND tab's content, not against the snapshot
+    // taken before any of this: several of these panels update themselves
+    // (Discover re-reports its index, the graph screens recompute), so
+    // "the text is not byte-identical to what it was ten seconds ago" was
+    // sometimes true of a tab that works perfectly. It failed on
+    // /graph/algorithms one run and /discover the next — the tell that it
+    // was measuring the clock rather than the control.
     const first = p.locator('.it').first();
     await first.click();
     await p.waitForTimeout(500);
-    if ((await inspector()) !== before) deadTabs.push(`${route}:${tab} NO RETURN`);
+    if ((await inspector()) === after) deadTabs.push(`${route}:${tab} NO RETURN`);
   }
   check('every inspector second tab changes the panel',
         deadTabs.length === 0, deadTabs.join(' · ') || `${tabbed.length} checked`);

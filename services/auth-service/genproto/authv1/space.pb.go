@@ -32,6 +32,323 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type Invitation struct {
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Id      string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	SpaceId string                 `protobuf:"bytes,2,opt,name=space_id,json=spaceId,proto3" json:"space_id,omitempty"`
+	// Denormalised for the row that renders this: § 20 shows the space's
+	// name and who sent it, and an inbox should not have to make two more
+	// calls to say a sentence.
+	SpaceName     string                 `protobuf:"bytes,3,opt,name=space_name,json=spaceName,proto3" json:"space_name,omitempty"`
+	UserId        string                 `protobuf:"bytes,4,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	Role          string                 `protobuf:"bytes,5,opt,name=role,proto3" json:"role,omitempty"`
+	InvitedBy     string                 `protobuf:"bytes,6,opt,name=invited_by,json=invitedBy,proto3" json:"invited_by,omitempty"`
+	InvitedByName string                 `protobuf:"bytes,7,opt,name=invited_by_name,json=invitedByName,proto3" json:"invited_by_name,omitempty"`
+	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	// Absent while pending. Present with `accepted` once answered — a
+	// DECLINE is recorded, not deleted, so "never sent" and "refused" stay
+	// distinguishable.
+	RespondedAt   *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=responded_at,json=respondedAt,proto3" json:"responded_at,omitempty"`
+	Accepted      bool                   `protobuf:"varint,10,opt,name=accepted,proto3" json:"accepted,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Invitation) Reset() {
+	*x = Invitation{}
+	mi := &file_space_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Invitation) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Invitation) ProtoMessage() {}
+
+func (x *Invitation) ProtoReflect() protoreflect.Message {
+	mi := &file_space_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Invitation.ProtoReflect.Descriptor instead.
+func (*Invitation) Descriptor() ([]byte, []int) {
+	return file_space_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *Invitation) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *Invitation) GetSpaceId() string {
+	if x != nil {
+		return x.SpaceId
+	}
+	return ""
+}
+
+func (x *Invitation) GetSpaceName() string {
+	if x != nil {
+		return x.SpaceName
+	}
+	return ""
+}
+
+func (x *Invitation) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+func (x *Invitation) GetRole() string {
+	if x != nil {
+		return x.Role
+	}
+	return ""
+}
+
+func (x *Invitation) GetInvitedBy() string {
+	if x != nil {
+		return x.InvitedBy
+	}
+	return ""
+}
+
+func (x *Invitation) GetInvitedByName() string {
+	if x != nil {
+		return x.InvitedByName
+	}
+	return ""
+}
+
+func (x *Invitation) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *Invitation) GetRespondedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.RespondedAt
+	}
+	return nil
+}
+
+func (x *Invitation) GetAccepted() bool {
+	if x != nil {
+		return x.Accepted
+	}
+	return false
+}
+
+type InviteMemberRequest struct {
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	SpaceId string                 `protobuf:"bytes,1,opt,name=space_id,json=spaceId,proto3" json:"space_id,omitempty"`
+	// Somebody who already has an account here. Inviting an address with no
+	// account needs email delivery and a signup that consumes a token —
+	// a different feature, and § 20 depicts neither.
+	UserId        string `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	Role          string `protobuf:"bytes,3,opt,name=role,proto3" json:"role,omitempty"` // viewer | editor | admin
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *InviteMemberRequest) Reset() {
+	*x = InviteMemberRequest{}
+	mi := &file_space_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InviteMemberRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InviteMemberRequest) ProtoMessage() {}
+
+func (x *InviteMemberRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_space_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InviteMemberRequest.ProtoReflect.Descriptor instead.
+func (*InviteMemberRequest) Descriptor() ([]byte, []int) {
+	return file_space_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *InviteMemberRequest) GetSpaceId() string {
+	if x != nil {
+		return x.SpaceId
+	}
+	return ""
+}
+
+func (x *InviteMemberRequest) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+func (x *InviteMemberRequest) GetRole() string {
+	if x != nil {
+		return x.Role
+	}
+	return ""
+}
+
+type RespondToInvitationRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	InvitationId  string                 `protobuf:"bytes,1,opt,name=invitation_id,json=invitationId,proto3" json:"invitation_id,omitempty"`
+	Accept        bool                   `protobuf:"varint,2,opt,name=accept,proto3" json:"accept,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RespondToInvitationRequest) Reset() {
+	*x = RespondToInvitationRequest{}
+	mi := &file_space_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RespondToInvitationRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RespondToInvitationRequest) ProtoMessage() {}
+
+func (x *RespondToInvitationRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_space_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RespondToInvitationRequest.ProtoReflect.Descriptor instead.
+func (*RespondToInvitationRequest) Descriptor() ([]byte, []int) {
+	return file_space_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *RespondToInvitationRequest) GetInvitationId() string {
+	if x != nil {
+		return x.InvitationId
+	}
+	return ""
+}
+
+func (x *RespondToInvitationRequest) GetAccept() bool {
+	if x != nil {
+		return x.Accept
+	}
+	return false
+}
+
+type ListInvitationsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListInvitationsRequest) Reset() {
+	*x = ListInvitationsRequest{}
+	mi := &file_space_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListInvitationsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListInvitationsRequest) ProtoMessage() {}
+
+func (x *ListInvitationsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_space_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListInvitationsRequest.ProtoReflect.Descriptor instead.
+func (*ListInvitationsRequest) Descriptor() ([]byte, []int) {
+	return file_space_proto_rawDescGZIP(), []int{3}
+}
+
+type ListInvitationsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Invitations   []*Invitation          `protobuf:"bytes,1,rep,name=invitations,proto3" json:"invitations,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListInvitationsResponse) Reset() {
+	*x = ListInvitationsResponse{}
+	mi := &file_space_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListInvitationsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListInvitationsResponse) ProtoMessage() {}
+
+func (x *ListInvitationsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_space_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListInvitationsResponse.ProtoReflect.Descriptor instead.
+func (*ListInvitationsResponse) Descriptor() ([]byte, []int) {
+	return file_space_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *ListInvitationsResponse) GetInvitations() []*Invitation {
+	if x != nil {
+		return x.Invitations
+	}
+	return nil
+}
+
 type Space struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	Id    string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"` // UUIDv7
@@ -54,7 +371,7 @@ type Space struct {
 
 func (x *Space) Reset() {
 	*x = Space{}
-	mi := &file_space_proto_msgTypes[0]
+	mi := &file_space_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -66,7 +383,7 @@ func (x *Space) String() string {
 func (*Space) ProtoMessage() {}
 
 func (x *Space) ProtoReflect() protoreflect.Message {
-	mi := &file_space_proto_msgTypes[0]
+	mi := &file_space_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -79,7 +396,7 @@ func (x *Space) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Space.ProtoReflect.Descriptor instead.
 func (*Space) Descriptor() ([]byte, []int) {
-	return file_space_proto_rawDescGZIP(), []int{0}
+	return file_space_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *Space) GetId() string {
@@ -145,7 +462,7 @@ type Membership struct {
 
 func (x *Membership) Reset() {
 	*x = Membership{}
-	mi := &file_space_proto_msgTypes[1]
+	mi := &file_space_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -157,7 +474,7 @@ func (x *Membership) String() string {
 func (*Membership) ProtoMessage() {}
 
 func (x *Membership) ProtoReflect() protoreflect.Message {
-	mi := &file_space_proto_msgTypes[1]
+	mi := &file_space_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -170,7 +487,7 @@ func (x *Membership) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Membership.ProtoReflect.Descriptor instead.
 func (*Membership) Descriptor() ([]byte, []int) {
-	return file_space_proto_rawDescGZIP(), []int{1}
+	return file_space_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *Membership) GetUserId() string {
@@ -223,7 +540,7 @@ type ListSpacesRequest struct {
 
 func (x *ListSpacesRequest) Reset() {
 	*x = ListSpacesRequest{}
-	mi := &file_space_proto_msgTypes[2]
+	mi := &file_space_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -235,7 +552,7 @@ func (x *ListSpacesRequest) String() string {
 func (*ListSpacesRequest) ProtoMessage() {}
 
 func (x *ListSpacesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_space_proto_msgTypes[2]
+	mi := &file_space_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -248,7 +565,7 @@ func (x *ListSpacesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSpacesRequest.ProtoReflect.Descriptor instead.
 func (*ListSpacesRequest) Descriptor() ([]byte, []int) {
-	return file_space_proto_rawDescGZIP(), []int{2}
+	return file_space_proto_rawDescGZIP(), []int{7}
 }
 
 type ListSpacesResponse struct {
@@ -260,7 +577,7 @@ type ListSpacesResponse struct {
 
 func (x *ListSpacesResponse) Reset() {
 	*x = ListSpacesResponse{}
-	mi := &file_space_proto_msgTypes[3]
+	mi := &file_space_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -272,7 +589,7 @@ func (x *ListSpacesResponse) String() string {
 func (*ListSpacesResponse) ProtoMessage() {}
 
 func (x *ListSpacesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_space_proto_msgTypes[3]
+	mi := &file_space_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -285,7 +602,7 @@ func (x *ListSpacesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSpacesResponse.ProtoReflect.Descriptor instead.
 func (*ListSpacesResponse) Descriptor() ([]byte, []int) {
-	return file_space_proto_rawDescGZIP(), []int{3}
+	return file_space_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ListSpacesResponse) GetSpaces() []*Space {
@@ -304,7 +621,7 @@ type CreateSpaceRequest struct {
 
 func (x *CreateSpaceRequest) Reset() {
 	*x = CreateSpaceRequest{}
-	mi := &file_space_proto_msgTypes[4]
+	mi := &file_space_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -316,7 +633,7 @@ func (x *CreateSpaceRequest) String() string {
 func (*CreateSpaceRequest) ProtoMessage() {}
 
 func (x *CreateSpaceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_space_proto_msgTypes[4]
+	mi := &file_space_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -329,7 +646,7 @@ func (x *CreateSpaceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateSpaceRequest.ProtoReflect.Descriptor instead.
 func (*CreateSpaceRequest) Descriptor() ([]byte, []int) {
-	return file_space_proto_rawDescGZIP(), []int{4}
+	return file_space_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *CreateSpaceRequest) GetName() string {
@@ -348,7 +665,7 @@ type ListMembersRequest struct {
 
 func (x *ListMembersRequest) Reset() {
 	*x = ListMembersRequest{}
-	mi := &file_space_proto_msgTypes[5]
+	mi := &file_space_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -360,7 +677,7 @@ func (x *ListMembersRequest) String() string {
 func (*ListMembersRequest) ProtoMessage() {}
 
 func (x *ListMembersRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_space_proto_msgTypes[5]
+	mi := &file_space_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -373,7 +690,7 @@ func (x *ListMembersRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListMembersRequest.ProtoReflect.Descriptor instead.
 func (*ListMembersRequest) Descriptor() ([]byte, []int) {
-	return file_space_proto_rawDescGZIP(), []int{5}
+	return file_space_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ListMembersRequest) GetSpaceId() string {
@@ -392,7 +709,7 @@ type ListMembersResponse struct {
 
 func (x *ListMembersResponse) Reset() {
 	*x = ListMembersResponse{}
-	mi := &file_space_proto_msgTypes[6]
+	mi := &file_space_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -404,7 +721,7 @@ func (x *ListMembersResponse) String() string {
 func (*ListMembersResponse) ProtoMessage() {}
 
 func (x *ListMembersResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_space_proto_msgTypes[6]
+	mi := &file_space_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -417,7 +734,7 @@ func (x *ListMembersResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListMembersResponse.ProtoReflect.Descriptor instead.
 func (*ListMembersResponse) Descriptor() ([]byte, []int) {
-	return file_space_proto_rawDescGZIP(), []int{6}
+	return file_space_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *ListMembersResponse) GetMembers() []*Membership {
@@ -438,7 +755,7 @@ type GrantRoleRequest struct {
 
 func (x *GrantRoleRequest) Reset() {
 	*x = GrantRoleRequest{}
-	mi := &file_space_proto_msgTypes[7]
+	mi := &file_space_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -450,7 +767,7 @@ func (x *GrantRoleRequest) String() string {
 func (*GrantRoleRequest) ProtoMessage() {}
 
 func (x *GrantRoleRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_space_proto_msgTypes[7]
+	mi := &file_space_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -463,7 +780,7 @@ func (x *GrantRoleRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GrantRoleRequest.ProtoReflect.Descriptor instead.
 func (*GrantRoleRequest) Descriptor() ([]byte, []int) {
-	return file_space_proto_rawDescGZIP(), []int{7}
+	return file_space_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *GrantRoleRequest) GetSpaceId() string {
@@ -497,7 +814,7 @@ type RevokeRoleRequest struct {
 
 func (x *RevokeRoleRequest) Reset() {
 	*x = RevokeRoleRequest{}
-	mi := &file_space_proto_msgTypes[8]
+	mi := &file_space_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -509,7 +826,7 @@ func (x *RevokeRoleRequest) String() string {
 func (*RevokeRoleRequest) ProtoMessage() {}
 
 func (x *RevokeRoleRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_space_proto_msgTypes[8]
+	mi := &file_space_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -522,7 +839,7 @@ func (x *RevokeRoleRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokeRoleRequest.ProtoReflect.Descriptor instead.
 func (*RevokeRoleRequest) Descriptor() ([]byte, []int) {
-	return file_space_proto_rawDescGZIP(), []int{8}
+	return file_space_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *RevokeRoleRequest) GetSpaceId() string {
@@ -547,7 +864,7 @@ type ListAllMembershipsRequest struct {
 
 func (x *ListAllMembershipsRequest) Reset() {
 	*x = ListAllMembershipsRequest{}
-	mi := &file_space_proto_msgTypes[9]
+	mi := &file_space_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -559,7 +876,7 @@ func (x *ListAllMembershipsRequest) String() string {
 func (*ListAllMembershipsRequest) ProtoMessage() {}
 
 func (x *ListAllMembershipsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_space_proto_msgTypes[9]
+	mi := &file_space_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -572,7 +889,7 @@ func (x *ListAllMembershipsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAllMembershipsRequest.ProtoReflect.Descriptor instead.
 func (*ListAllMembershipsRequest) Descriptor() ([]byte, []int) {
-	return file_space_proto_rawDescGZIP(), []int{9}
+	return file_space_proto_rawDescGZIP(), []int{14}
 }
 
 type ListAllMembershipsResponse struct {
@@ -584,7 +901,7 @@ type ListAllMembershipsResponse struct {
 
 func (x *ListAllMembershipsResponse) Reset() {
 	*x = ListAllMembershipsResponse{}
-	mi := &file_space_proto_msgTypes[10]
+	mi := &file_space_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -596,7 +913,7 @@ func (x *ListAllMembershipsResponse) String() string {
 func (*ListAllMembershipsResponse) ProtoMessage() {}
 
 func (x *ListAllMembershipsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_space_proto_msgTypes[10]
+	mi := &file_space_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -609,7 +926,7 @@ func (x *ListAllMembershipsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAllMembershipsResponse.ProtoReflect.Descriptor instead.
 func (*ListAllMembershipsResponse) Descriptor() ([]byte, []int) {
-	return file_space_proto_rawDescGZIP(), []int{10}
+	return file_space_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *ListAllMembershipsResponse) GetMemberships() []*Membership {
@@ -623,7 +940,33 @@ var File_space_proto protoreflect.FileDescriptor
 
 const file_space_proto_rawDesc = "" +
 	"\n" +
-	"\vspace.proto\x12\x10marginal.auth.v1\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xdb\x01\n" +
+	"\vspace.proto\x12\x10marginal.auth.v1\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xe0\x02\n" +
+	"\n" +
+	"Invitation\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x19\n" +
+	"\bspace_id\x18\x02 \x01(\tR\aspaceId\x12\x1d\n" +
+	"\n" +
+	"space_name\x18\x03 \x01(\tR\tspaceName\x12\x17\n" +
+	"\auser_id\x18\x04 \x01(\tR\x06userId\x12\x12\n" +
+	"\x04role\x18\x05 \x01(\tR\x04role\x12\x1d\n" +
+	"\n" +
+	"invited_by\x18\x06 \x01(\tR\tinvitedBy\x12&\n" +
+	"\x0finvited_by_name\x18\a \x01(\tR\rinvitedByName\x129\n" +
+	"\n" +
+	"created_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12=\n" +
+	"\fresponded_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\vrespondedAt\x12\x1a\n" +
+	"\baccepted\x18\n" +
+	" \x01(\bR\baccepted\"]\n" +
+	"\x13InviteMemberRequest\x12\x19\n" +
+	"\bspace_id\x18\x01 \x01(\tR\aspaceId\x12\x17\n" +
+	"\auser_id\x18\x02 \x01(\tR\x06userId\x12\x12\n" +
+	"\x04role\x18\x03 \x01(\tR\x04role\"Y\n" +
+	"\x1aRespondToInvitationRequest\x12#\n" +
+	"\rinvitation_id\x18\x01 \x01(\tR\finvitationId\x12\x16\n" +
+	"\x06accept\x18\x02 \x01(\bR\x06accept\"\x18\n" +
+	"\x16ListInvitationsRequest\"Y\n" +
+	"\x17ListInvitationsResponse\x12>\n" +
+	"\vinvitations\x18\x01 \x03(\v2\x1c.marginal.auth.v1.InvitationR\vinvitations\"\xdb\x01\n" +
 	"\x05Space\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1d\n" +
@@ -662,7 +1005,7 @@ const file_space_proto_rawDesc = "" +
 	"\auser_id\x18\x02 \x01(\tR\x06userId\"\x1b\n" +
 	"\x19ListAllMembershipsRequest\"\\\n" +
 	"\x1aListAllMembershipsResponse\x12>\n" +
-	"\vmemberships\x18\x01 \x03(\v2\x1c.marginal.auth.v1.MembershipR\vmemberships2\x9c\x04\n" +
+	"\vmemberships\x18\x01 \x03(\v2\x1c.marginal.auth.v1.MembershipR\vmemberships2\xbc\x06\n" +
 	"\fSpaceService\x12W\n" +
 	"\n" +
 	"ListSpaces\x12#.marginal.auth.v1.ListSpacesRequest\x1a$.marginal.auth.v1.ListSpacesResponse\x12L\n" +
@@ -671,7 +1014,10 @@ const file_space_proto_rawDesc = "" +
 	"\tGrantRole\x12\".marginal.auth.v1.GrantRoleRequest\x1a\x1c.marginal.auth.v1.Membership\x12I\n" +
 	"\n" +
 	"RevokeRole\x12#.marginal.auth.v1.RevokeRoleRequest\x1a\x16.google.protobuf.Empty\x12o\n" +
-	"\x12ListAllMemberships\x12+.marginal.auth.v1.ListAllMembershipsRequest\x1a,.marginal.auth.v1.ListAllMembershipsResponseB'Z%marginal/auth-service/genproto/authv1b\x06proto3"
+	"\x12ListAllMemberships\x12+.marginal.auth.v1.ListAllMembershipsRequest\x1a,.marginal.auth.v1.ListAllMembershipsResponse\x12S\n" +
+	"\fInviteMember\x12%.marginal.auth.v1.InviteMemberRequest\x1a\x1c.marginal.auth.v1.Invitation\x12a\n" +
+	"\x13RespondToInvitation\x12,.marginal.auth.v1.RespondToInvitationRequest\x1a\x1c.marginal.auth.v1.Invitation\x12f\n" +
+	"\x0fListInvitations\x12(.marginal.auth.v1.ListInvitationsRequest\x1a).marginal.auth.v1.ListInvitationsResponseB'Z%marginal/auth-service/genproto/authv1b\x06proto3"
 
 var (
 	file_space_proto_rawDescOnce sync.Once
@@ -685,45 +1031,59 @@ func file_space_proto_rawDescGZIP() []byte {
 	return file_space_proto_rawDescData
 }
 
-var file_space_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_space_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_space_proto_goTypes = []any{
-	(*Space)(nil),                      // 0: marginal.auth.v1.Space
-	(*Membership)(nil),                 // 1: marginal.auth.v1.Membership
-	(*ListSpacesRequest)(nil),          // 2: marginal.auth.v1.ListSpacesRequest
-	(*ListSpacesResponse)(nil),         // 3: marginal.auth.v1.ListSpacesResponse
-	(*CreateSpaceRequest)(nil),         // 4: marginal.auth.v1.CreateSpaceRequest
-	(*ListMembersRequest)(nil),         // 5: marginal.auth.v1.ListMembersRequest
-	(*ListMembersResponse)(nil),        // 6: marginal.auth.v1.ListMembersResponse
-	(*GrantRoleRequest)(nil),           // 7: marginal.auth.v1.GrantRoleRequest
-	(*RevokeRoleRequest)(nil),          // 8: marginal.auth.v1.RevokeRoleRequest
-	(*ListAllMembershipsRequest)(nil),  // 9: marginal.auth.v1.ListAllMembershipsRequest
-	(*ListAllMembershipsResponse)(nil), // 10: marginal.auth.v1.ListAllMembershipsResponse
-	(*timestamppb.Timestamp)(nil),      // 11: google.protobuf.Timestamp
-	(*emptypb.Empty)(nil),              // 12: google.protobuf.Empty
+	(*Invitation)(nil),                 // 0: marginal.auth.v1.Invitation
+	(*InviteMemberRequest)(nil),        // 1: marginal.auth.v1.InviteMemberRequest
+	(*RespondToInvitationRequest)(nil), // 2: marginal.auth.v1.RespondToInvitationRequest
+	(*ListInvitationsRequest)(nil),     // 3: marginal.auth.v1.ListInvitationsRequest
+	(*ListInvitationsResponse)(nil),    // 4: marginal.auth.v1.ListInvitationsResponse
+	(*Space)(nil),                      // 5: marginal.auth.v1.Space
+	(*Membership)(nil),                 // 6: marginal.auth.v1.Membership
+	(*ListSpacesRequest)(nil),          // 7: marginal.auth.v1.ListSpacesRequest
+	(*ListSpacesResponse)(nil),         // 8: marginal.auth.v1.ListSpacesResponse
+	(*CreateSpaceRequest)(nil),         // 9: marginal.auth.v1.CreateSpaceRequest
+	(*ListMembersRequest)(nil),         // 10: marginal.auth.v1.ListMembersRequest
+	(*ListMembersResponse)(nil),        // 11: marginal.auth.v1.ListMembersResponse
+	(*GrantRoleRequest)(nil),           // 12: marginal.auth.v1.GrantRoleRequest
+	(*RevokeRoleRequest)(nil),          // 13: marginal.auth.v1.RevokeRoleRequest
+	(*ListAllMembershipsRequest)(nil),  // 14: marginal.auth.v1.ListAllMembershipsRequest
+	(*ListAllMembershipsResponse)(nil), // 15: marginal.auth.v1.ListAllMembershipsResponse
+	(*timestamppb.Timestamp)(nil),      // 16: google.protobuf.Timestamp
+	(*emptypb.Empty)(nil),              // 17: google.protobuf.Empty
 }
 var file_space_proto_depIdxs = []int32{
-	11, // 0: marginal.auth.v1.Space.created_at:type_name -> google.protobuf.Timestamp
-	11, // 1: marginal.auth.v1.Membership.created_at:type_name -> google.protobuf.Timestamp
-	0,  // 2: marginal.auth.v1.ListSpacesResponse.spaces:type_name -> marginal.auth.v1.Space
-	1,  // 3: marginal.auth.v1.ListMembersResponse.members:type_name -> marginal.auth.v1.Membership
-	1,  // 4: marginal.auth.v1.ListAllMembershipsResponse.memberships:type_name -> marginal.auth.v1.Membership
-	2,  // 5: marginal.auth.v1.SpaceService.ListSpaces:input_type -> marginal.auth.v1.ListSpacesRequest
-	4,  // 6: marginal.auth.v1.SpaceService.CreateSpace:input_type -> marginal.auth.v1.CreateSpaceRequest
-	5,  // 7: marginal.auth.v1.SpaceService.ListMembers:input_type -> marginal.auth.v1.ListMembersRequest
-	7,  // 8: marginal.auth.v1.SpaceService.GrantRole:input_type -> marginal.auth.v1.GrantRoleRequest
-	8,  // 9: marginal.auth.v1.SpaceService.RevokeRole:input_type -> marginal.auth.v1.RevokeRoleRequest
-	9,  // 10: marginal.auth.v1.SpaceService.ListAllMemberships:input_type -> marginal.auth.v1.ListAllMembershipsRequest
-	3,  // 11: marginal.auth.v1.SpaceService.ListSpaces:output_type -> marginal.auth.v1.ListSpacesResponse
-	0,  // 12: marginal.auth.v1.SpaceService.CreateSpace:output_type -> marginal.auth.v1.Space
-	6,  // 13: marginal.auth.v1.SpaceService.ListMembers:output_type -> marginal.auth.v1.ListMembersResponse
-	1,  // 14: marginal.auth.v1.SpaceService.GrantRole:output_type -> marginal.auth.v1.Membership
-	12, // 15: marginal.auth.v1.SpaceService.RevokeRole:output_type -> google.protobuf.Empty
-	10, // 16: marginal.auth.v1.SpaceService.ListAllMemberships:output_type -> marginal.auth.v1.ListAllMembershipsResponse
-	11, // [11:17] is the sub-list for method output_type
-	5,  // [5:11] is the sub-list for method input_type
-	5,  // [5:5] is the sub-list for extension type_name
-	5,  // [5:5] is the sub-list for extension extendee
-	0,  // [0:5] is the sub-list for field type_name
+	16, // 0: marginal.auth.v1.Invitation.created_at:type_name -> google.protobuf.Timestamp
+	16, // 1: marginal.auth.v1.Invitation.responded_at:type_name -> google.protobuf.Timestamp
+	0,  // 2: marginal.auth.v1.ListInvitationsResponse.invitations:type_name -> marginal.auth.v1.Invitation
+	16, // 3: marginal.auth.v1.Space.created_at:type_name -> google.protobuf.Timestamp
+	16, // 4: marginal.auth.v1.Membership.created_at:type_name -> google.protobuf.Timestamp
+	5,  // 5: marginal.auth.v1.ListSpacesResponse.spaces:type_name -> marginal.auth.v1.Space
+	6,  // 6: marginal.auth.v1.ListMembersResponse.members:type_name -> marginal.auth.v1.Membership
+	6,  // 7: marginal.auth.v1.ListAllMembershipsResponse.memberships:type_name -> marginal.auth.v1.Membership
+	7,  // 8: marginal.auth.v1.SpaceService.ListSpaces:input_type -> marginal.auth.v1.ListSpacesRequest
+	9,  // 9: marginal.auth.v1.SpaceService.CreateSpace:input_type -> marginal.auth.v1.CreateSpaceRequest
+	10, // 10: marginal.auth.v1.SpaceService.ListMembers:input_type -> marginal.auth.v1.ListMembersRequest
+	12, // 11: marginal.auth.v1.SpaceService.GrantRole:input_type -> marginal.auth.v1.GrantRoleRequest
+	13, // 12: marginal.auth.v1.SpaceService.RevokeRole:input_type -> marginal.auth.v1.RevokeRoleRequest
+	14, // 13: marginal.auth.v1.SpaceService.ListAllMemberships:input_type -> marginal.auth.v1.ListAllMembershipsRequest
+	1,  // 14: marginal.auth.v1.SpaceService.InviteMember:input_type -> marginal.auth.v1.InviteMemberRequest
+	2,  // 15: marginal.auth.v1.SpaceService.RespondToInvitation:input_type -> marginal.auth.v1.RespondToInvitationRequest
+	3,  // 16: marginal.auth.v1.SpaceService.ListInvitations:input_type -> marginal.auth.v1.ListInvitationsRequest
+	8,  // 17: marginal.auth.v1.SpaceService.ListSpaces:output_type -> marginal.auth.v1.ListSpacesResponse
+	5,  // 18: marginal.auth.v1.SpaceService.CreateSpace:output_type -> marginal.auth.v1.Space
+	11, // 19: marginal.auth.v1.SpaceService.ListMembers:output_type -> marginal.auth.v1.ListMembersResponse
+	6,  // 20: marginal.auth.v1.SpaceService.GrantRole:output_type -> marginal.auth.v1.Membership
+	17, // 21: marginal.auth.v1.SpaceService.RevokeRole:output_type -> google.protobuf.Empty
+	15, // 22: marginal.auth.v1.SpaceService.ListAllMemberships:output_type -> marginal.auth.v1.ListAllMembershipsResponse
+	0,  // 23: marginal.auth.v1.SpaceService.InviteMember:output_type -> marginal.auth.v1.Invitation
+	0,  // 24: marginal.auth.v1.SpaceService.RespondToInvitation:output_type -> marginal.auth.v1.Invitation
+	4,  // 25: marginal.auth.v1.SpaceService.ListInvitations:output_type -> marginal.auth.v1.ListInvitationsResponse
+	17, // [17:26] is the sub-list for method output_type
+	8,  // [8:17] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_space_proto_init() }
@@ -737,7 +1097,7 @@ func file_space_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_space_proto_rawDesc), len(file_space_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   11,
+			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -78,6 +78,12 @@ func run() error {
 	}
 	defer func() { _ = mentions.Unsubscribe() }()
 
+	invites, err := notify.SubscribeInvites(nc, repo)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = invites.Unsubscribe() }()
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

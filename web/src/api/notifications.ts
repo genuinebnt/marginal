@@ -19,14 +19,27 @@ export interface MentionPointer {
   user_id: string;
 }
 
+/** An invitation notification's pointer. The invitation's own id is the
+ *  load-bearing field: it is what ACCEPT and DECLINE answer with, and the
+ *  only thing here not derivable from the rest. */
+export interface InvitePointer {
+  invitation_id: string;
+  user_id: string;
+  space_id: string;
+  role: string;
+  invited_by: string;
+}
+
 export interface Notification {
   id: string;
   kind: string;
   /** Empty for every pointer-shaped kind — see `pointer`. */
   message: string;
   actor_id?: string;
-  /** Shaped by `kind`: a MentionPointer when kind is "mention". */
-  pointer?: MentionPointer;
+  /** Shaped by `kind`: MentionPointer for "mention", InvitePointer for
+   *  "invite". Narrow it on `kind`, never on which fields happen to be
+   *  present. */
+  pointer?: MentionPointer | InvitePointer;
   read_at?: string;
   created_at: string;
 }
