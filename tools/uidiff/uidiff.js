@@ -523,6 +523,66 @@ async function main() {
     return out.length ? out.sort((x, y) => x.order - y.order) : null;
   };
 
+  /**
+   * Pair occurrences WITHIN a parent, not by flat index across the screen.
+   *
+   * Rule 2 pairs a bucket occurrence-by-occurrence in document order, which
+   * is right until one of those occurrences is a data-driven list. § 05 draws
+   * `.tg` in three roles — a page's own tags, a related card's tags, and the
+   * co-occurrence rows, which are fixed-width and left-aligned. The mockup's
+   * page has four own-tags; a real seeded page has two, and every chip after
+   * it shifted by two, so a co-occurrence chip paired against a plain one and
+   * reported `justify-content: normal -> flex-start` on four elements. The
+   * screen was correct and matched the mockup element for element; only the
+   * corpus was a different length, which rule 2 already calls content rather
+   * than design.
+   *
+   * So group both sides by parent signature first and pair inside each group.
+   * Elements whose parent has no counterpart group fall back to flat document
+   * order, which is exactly today's behaviour — this only refines the pairing
+   * where a refinement is available, so the nesting differences rule 2 was
+   * written for still pair as they did.
+   */
+  const parentOf = (e) => {
+    const seg = e.key.split('>');
+    // The positional [n] must come OFF. A key segment is `div.bar[9]`, and
+    // the mockup and the app number the same container differently whenever
+    // either side has one element more above it — so keeping the index made
+    // `div.bar[9]` on one side the SAME group as an unrelated `div.bar[9]`
+    // on the other, and paired § 04's READ against SHARE. Measured, not
+    // reasoned: the two keys were printed side by side.
+    return norm((seg[seg.length - 2] || '').replace(/\[\d+\]/g, ''));
+  };
+  const byParent = (list) => {
+    const g = new Map();
+    for (const e of list) {
+      const k = parentOf(e);
+      if (!g.has(k)) g.set(k, []);
+      g.get(k).push(e);
+    }
+    return g;
+  };
+  function pairUp(els, hit) {
+    const mp = byParent(els), ap = byParent(hit);
+    const pairs = [], mLeft = [], aLeft = [];
+    for (const [k, mine] of mp) {
+      const theirs = ap.get(k);
+      if (!theirs) { mLeft.push(...mine); continue; }
+      const n = Math.min(mine.length, theirs.length);
+      for (let i = 0; i < n; i++) pairs.push([mine[i], theirs[i]]);
+    }
+    for (const [k, theirs] of ap) if (!mp.has(k)) aLeft.push(...theirs);
+    mLeft.sort((x, y) => x.order - y.order);
+    aLeft.sort((x, y) => x.order - y.order);
+    for (let i = 0; i < Math.min(mLeft.length, aLeft.length); i++) {
+      pairs.push([mLeft[i], aLeft[i]]);
+    }
+    // Report in document order, so an index in the output still reads down
+    // the screen the way somebody looking at it would.
+    pairs.sort((x, y) => x[0].order - y[0].order);
+    return pairs.map(([m, a], i) => [i, m, a]);
+  }
+
   for (const [sig, els] of M) {
     if (IGNORED_MISSING.has(sig)) continue;
     const hit = Anorm.get(norm(sig)) || subsetMatch(sig);
@@ -531,9 +591,7 @@ async function main() {
     // sides go. A count difference is content, not design.
     const cls = sig.split('.').slice(1);
     if (cls.length === 1 && UTILITY.has(cls[0])) continue;   // presence only
-    const n = Math.min(els.length, hit.length);
-    for (let i = 0; i < n; i++) {
-      const me = els[i], ae = hit[i];
+    for (const [i, me, ae] of pairUp(els, hit)) {
       // Also matched on the tag + FIRST class, so a rule written for
       // `div.tr` covers `div.tr.tr-on` — a row does not stop being content
       // because it is the selected one.

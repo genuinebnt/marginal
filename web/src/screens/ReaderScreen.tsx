@@ -29,6 +29,7 @@ import { getPageSeries, type PageSeries } from "../api/series";
 import { getLinkGraph, graphNeighborhood, type GraphNeighborhood } from "../api/graph";
 import { pageLinkTarget, isPageLinkClick, titleSet } from "../collab/pagelinks";
 import { ReadingPath, SeriesBanner } from "../ui";
+import { listThreads, type Thread } from "../api/comments";
 
 type InspTab = "sidenotes" | "comments" | "backlinks";
 type Width = "S" | "M" | "L";
@@ -38,6 +39,15 @@ const MEASURE: Record<Width, number> = { S: 540, M: 660, L: 780 };
 
 /** Average adult reading speed. Used for "~n min left", nothing else. */
 const WORDS_PER_MINUTE = 220;
+
+/** Second use of the initials tag (InspectorRail has the first). Duplicated
+ *  rather than extracted, per the repo's own extract-on-the-third rule. */
+function readerActorTag(actorId: string): string {
+  let hash = 0;
+  for (let i = 0; i < actorId.length; i++) hash = (hash * 31 + actorId.charCodeAt(i)) | 0;
+  const a = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  return a[Math.abs(hash) % 26] + a[Math.abs(hash >> 5) % 26];
+}
 
 export function ReaderScreen() {
   const { id } = useParams();
@@ -57,6 +67,7 @@ export function ReaderScreen() {
    */
   const [allPages, setAllPages] = useState<Array<{ id: string; title: string }>>([]);
   const [page, setPage] = useState<Page | null>(null);
+  const [threads, setThreads] = useState<Thread[]>([]);
   const [backlinks, setBacklinks] = useState<Backlink[]>([]);
   const [width, setWidth] = useState<Width>("M");
   const [face, setFace] = useState<Face>("SERIF");
@@ -79,8 +90,15 @@ export function ReaderScreen() {
     getBacklinks(actorId, id).then((r) => setBacklinks(r.backlinks)).catch(() => setBacklinks([]));
     getPageSeries(actorId, id).then(setSeries).catch(() => setSeries(null));
     graphNeighborhood(actorId, id).then(setHood).catch(() => setHood(null));
+    // Threads are read straight from collaboration-service, the same place
+    // the editor's rail reads them. Failing quietly to an empty list is
+    // right here and only here: this is a READING screen, and a broken
+    // sidebar must not stand between somebody and the page's text.
+    listThreads(id).then((r) => setThreads(r.threads)).catch(() => setThreads([]));
     setLinkNote(null);
   }, [actorId, id]);
+
+  const openThreads = threads.filter((t) => !t.resolved_at).length;
 
   /** Live titles, so a [[link]] to a page nobody has written yet renders as
    *  the unwritten link it is rather than as a broken one. */
@@ -438,7 +456,12 @@ export function ReaderScreen() {
         <Inspector
           tabs={[
             { id: "sidenotes", label: "SIDENOTES" },
-            { id: "comments", label: <>COMMENTS <span style={{ color: "#A98CE8" }}>0</span></> },
+            {
+              id: "comments",
+              label: (
+                <>COMMENTS <span style={{ color: "#A98CE8" }}>{openThreads}</span></>
+              ),
+            },
             { id: "backlinks", label: "BACKLINKS" },
           ]}
           active={inspTab}
@@ -533,11 +556,57 @@ export function ReaderScreen() {
           )}
 
           {inspTab === "comments" && (
-            <div style={{ fontSize: 11.5, lineHeight: 1.7, color: "#585550" }}>
-              Comments are not built. A comment anchors to a range the way a mark does, and the
-              anchor has to survive every edit under it — which is a second use of RFC-002's
-              anchor machinery, not a text field beside the page. Drawn and reporting zero rather
-              than hidden, so the gap is visible.
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {threads.length === 0 && (
+                <div style={{ fontSize: 11.5, lineHeight: 1.7, color: "#585550" }}>
+                  No threads on this page. A thread is opened where the writing happens — select
+                  a block in the editor and use COMMENT.
+                </div>
+              )}
+              {threads.map((t) => (
+                <div key={t.id} style={{
+                  border: "1px solid rgba(255,255,255,.08)", padding: "10px 11px",
+                  background: t.resolved_at ? "transparent" : "rgba(122,168,232,.04)",
+                  opacity: t.resolved_at ? 0.65 : 1,
+                }}>
+                  <div className="mono" style={{
+                    fontSize: 10, color: t.orphaned ? "#E0A34E" : "#7AA8E8", marginBottom: 6,
+                  }}>
+                    {t.orphaned
+                      ? "the text this was about is gone"
+                      : `chars ${t.range?.start ?? 0}\u2013${t.range?.end ?? 0}`}
+                    {t.resolved_at && " \u00b7 resolved"}
+                  </div>
+                  <div style={{
+                    fontSize: 11.5, lineHeight: 1.5, color: "#8C8880", marginBottom: 8,
+                    borderLeft: "2px solid rgba(255,255,255,.12)", paddingLeft: 8,
+                  }}>
+                    {t.quoted || <i>(an empty block)</i>}
+                  </div>
+                  {t.comments.map((c) => (
+                    <div key={c.id} style={{ marginBottom: 7 }}>
+                      <span className="mono" style={{ fontSize: 9.5, color: "#585550" }}>
+                        {readerActorTag(c.author_id)}
+                      </span>
+                      <div style={{ fontSize: 12, lineHeight: 1.5, color: "#D2CFC8" }}>{c.body}</div>
+                    </div>
+                  ))}
+                </div>
+              ))}
+              <Rule />
+              <div style={{ fontSize: 11.5, lineHeight: 1.7, color: "#8C8880" }}>
+                Read-only here, and not because replying is unbuilt \u2014 this screen has editing
+                off, and a reply is an edit. It is the same thread the editor shows, over the
+                same endpoint;{" "}
+                <Link to={`/editor/${page?.id ?? ""}`} style={{ color: "#7AA8E8" }}>
+                  open this page in the editor
+                </Link>{" "}
+                to answer or resolve one.
+                <br /><br />
+                A thread is anchored, not positioned: it holds the identity of the characters it
+                was opened on, so it follows them when somebody types above. The quote never
+                changes \u2014 it is what was being discussed, not what the anchors point at now.
+              </div>
             </div>
           )}
 

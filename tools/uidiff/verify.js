@@ -965,6 +965,30 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
       () => /chars \d+–\d+/.test(document.querySelector('.insp')?.textContent ?? ''),
       null, { timeout: 15000 }).then(() => true).catch(() => false);
     check('§04 a comment thread anchors to real characters', shown);
+
+    // ── § 05: the reader shows the SAME thread ────────────────────────
+    //
+    // Ordered after the editor's, deliberately: it asserts on the thread
+    // the step above just opened, so it tests a screen fact rather than a
+    // corpus fact. A reader tab that reported 0 while a thread existed was
+    // exactly the stale empty state this replaced.
+    await go(`/read/${page.id}`, 6000);
+    await p.locator('.it', { hasText: 'COMMENTS' }).first().click().catch(() => {});
+    await p.waitForTimeout(600);
+    const readerText = await p.locator('.insp').first().textContent().catch(() => '');
+    check('§05 the reader lists the thread the editor opened',
+          /chars \d+–\d+/.test(readerText ?? ''),
+          (readerText ?? '').slice(0, 60).replace(/\s+/g, ' '));
+    // The tab's own count must move too: it is the number a reader sees
+    // before opening anything, and it read a hardcoded 0 until now.
+    const tabCount = await p.locator('.it', { hasText: 'COMMENTS' }).first()
+      .textContent().catch(() => '');
+    check('§05 and its tab counts them rather than reading 0',
+          /COMMENTS\s*[1-9]/.test(tabCount ?? ''), (tabCount ?? '').trim());
+    // Read-only is a decision here, not a gap — so it must SAY so, the same
+    // way every other honest limit on these screens does.
+    check('§05 and says why it cannot reply, rather than just not offering it',
+          /editing off|a reply is an edit/i.test(readerText ?? ''));
   }
 
   console.log(errs.length ? `\nPAGE ERRORS: ${errs.slice(0,5).join(' | ')}` : '\nno page errors');
