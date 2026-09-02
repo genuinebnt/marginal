@@ -19,6 +19,10 @@
  */
 import { useMemo, useState } from "react";
 import { useInbox } from "../notifications/NotificationsContext";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../auth/AuthContext";
+import { replyToThread } from "../api/comments";
+import { useMentionContext } from "../notifications/mentions";
 import { KIND_TONE, ago } from "../notifications/NotificationsPanel";
 import {
   Body, Inspector, Label, Main, Readout, Rule, Screen, StatusBar, SubBar,
@@ -29,7 +33,8 @@ import {
  *  `kinds` means "everything"; `null` means "nothing produces this yet". */
 const FACETS: Array<{ id: string; label: string; kinds: string[] | null }> = [
   { id: "all", label: "ALL", kinds: [] },
-  { id: "mentions", label: "MENTIONS", kinds: null },
+  // Real since v3.3.0 — an @handle in a comment (docs/api/notifications.md).
+  { id: "mentions", label: "MENTIONS", kinds: ["mention"] },
   { id: "proposals", label: "PROPOSALS", kinds: null },
   { id: "checks", label: "CHECKS", kinds: null },
   { id: "invites", label: "INVITES", kinds: null },
@@ -37,6 +42,13 @@ const FACETS: Array<{ id: string; label: string; kinds: string[] | null }> = [
 
 export function NotificationsScreen() {
   const inbox = useInbox();
+  const { session } = useAuth();
+  const actorId = session?.actorId ?? null;
+  const navigate = useNavigate();
+  // Every word of a mention row is fetched here, now — the notification
+  // itself carries only ids. See docs/api/notifications.md § 1.
+  const mentions = useMentionContext(actorId, inbox.items);
+  const [busy, setBusy] = useState<string | null>(null);
   const [facet, setFacet] = useState("all");
   const [insTab, setInsTab] = useState<"delivery" | "muted">("delivery");
 
@@ -46,6 +58,21 @@ export function NotificationsScreen() {
     : active.kinds.length === 0
       ? inbox.items
       : inbox.items.filter((n) => active.kinds!.includes(n.kind));
+
+  /** § 20: "acting on an item clears it". A reply IS the act — the row is
+   *  marked read because the thing it was asking for happened, not because
+   *  somebody acknowledged seeing it. */
+  const replyAndClear = async (id: string, threadId: string) => {
+    const body = window.prompt("Reply in this thread");
+    if (!body) return;
+    setBusy(id);
+    try {
+      await replyToThread(threadId, body);
+      await inbox.markRead(id);
+    } finally {
+      setBusy(null);
+    }
+  };
 
   /** How this inbox actually emptied, over its own rows. */
   const emptying = useMemo(() => {
@@ -125,6 +152,7 @@ export function NotificationsScreen() {
             {shown.map((n, i) => {
               const tone = KIND_TONE[n.kind] ?? "#585550";
               const read = Boolean(n.read_at);
+              const m = mentions.get(n.id);
               return (
                 <div
                   key={n.id}
@@ -142,14 +170,67 @@ export function NotificationsScreen() {
                     {!read && <div className="ping" style={{ background: `${tone}80` }} />}
                   </div>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 13.5, color: read ? "#9B968D" : "#E4E2DC" }}>{n.message}</div>
-                    <div className="mono" style={{ fontSize: 10, color: "#585550", marginTop: 7 }}>
-                      {n.kind} · {ago(n.created_at)}
-                      {read && " · cleared"}
-                    </div>
+                    {m ? (
+                      <>
+                        <div style={{ fontSize: 13.5, color: read ? "#9B968D" : "#E4E2DC" }}>
+                          <b style={{ fontWeight: 500 }}>{m.actorName}</b> mentioned you in{" "}
+                          <span style={{ color: read ? "#9B968D" : "#E8873C" }}>{m.pageTitle}</span>
+                        </div>
+                        {m.orphaned ? (
+                          // The anchor no longer resolves. Said outright,
+                          // because the alternative is quoting a ghost.
+                          <div style={{ fontSize: 12, color: "#E0A34E", marginTop: 6, lineHeight: 1.5 }}>
+                            the text this was written about has since been deleted
+                          </div>
+                        ) : (
+                          <div style={{
+                            fontSize: 12.5, lineHeight: 1.55, color: "#8C8880", marginTop: 6,
+                            borderLeft: "2px solid rgba(255,255,255,.12)", paddingLeft: 9,
+                          }}>
+                            {m.body || <i>(the comment is no longer readable)</i>}
+                          </div>
+                        )}
+                        <div className="mono" style={{ fontSize: 10, color: "#585550", marginTop: 7 }}>
+                          block {m.blockId.slice(0, 4)}
+                          {m.range && ` · chars ${m.range.start}\u2013${m.range.end}`}
+                          {" \u00b7 "}{ago(n.created_at)}
+                          {read && " \u00b7 cleared"}
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div style={{ fontSize: 13.5, color: read ? "#9B968D" : "#E4E2DC" }}>{n.message}</div>
+                        <div className="mono" style={{ fontSize: 10, color: "#585550", marginTop: 7 }}>
+                          {n.kind} · {ago(n.created_at)}
+                          {read && " · cleared"}
+                        </div>
+                      </>
+                    )}
                   </div>
-                  {!read && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
+                    {m && (
+                      <>
+                        {/* § 20's design in one line: "acting on an item
+                            clears it — there is no read button per row."
+                            So REPLY posts a real reply AND clears the row;
+                            it is not a second way to navigate. */}
+                        <span
+                          className="chip chip-e"
+                          style={{ cursor: busy === n.id ? "wait" : "pointer" }}
+                          onClick={() => void replyAndClear(n.id, m.threadId)}
+                        >
+                          REPLY
+                        </span>
+                        <span
+                          className="chip"
+                          style={{ cursor: "pointer" }}
+                          onClick={() => navigate(`/pages/${m.pageId}`)}
+                        >
+                          OPEN BLOCK
+                        </span>
+                      </>
+                    )}
+                    {!read && !m && (
                       <span
                         className="chip chip-e"
                         style={{ cursor: "pointer" }}
@@ -157,8 +238,8 @@ export function NotificationsScreen() {
                       >
                         MARK READ
                       </span>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               );
             })}

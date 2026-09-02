@@ -6,17 +6,19 @@
  * without a title bar saying so.
  *
  * What is real here and what is not, stated rather than implied. This repo
- * produces exactly one notification kind today — `welcome`, from
- * auth.user_registered, the one event topic Track 1 can emit (DATA_MODEL.md
- * §10). Mentions, assistant proposals, stale-fact alerts and space invites
- * each need a feature that does not exist yet, so their tabs are drawn and
- * report zero rather than being hidden: § 9.4's rule that a nav listing more
- * than exists must mark which is which. The alternative — inventing rows so
+ * produces two notification kinds: `welcome` (auth.user_registered) and,
+ * since `v3.3.0`, `mention` (collab.comment_mentioned — an @handle in a
+ * comment; docs/api/notifications.md). Assistant proposals and stale-fact
+ * alerts each still need a feature that does not exist yet, so their tabs
+ * are drawn and report zero rather than being hidden: § 9.4's rule that a
+ * nav listing more than exists must mark which is which. The alternative — inventing rows so
  * the panel looks busy — is the one thing this panel must not do, since the
  * whole claim of the screen is that an inbox empties by acting on real work.
  */
 import { Link } from "react-router-dom";
 import { useMemo, useState } from "react";
+import { useAuth } from "../auth/AuthContext";
+import { useMentionContext, type MentionContext } from "./mentions";
 import { useInbox } from "./NotificationsContext";
 import type { Notification } from "../api/notifications";
 
@@ -28,7 +30,7 @@ import type { Notification } from "../api/notifications";
  */
 const TABS: Array<{ id: string; label: string; tone: string; kinds: string[] | null }> = [
   { id: "needs", label: "NEEDS YOU", tone: "#E8873C", kinds: null },
-  { id: "mentions", label: "MENTIONS", tone: "#A98CE8", kinds: null },
+  { id: "mentions", label: "MENTIONS", tone: "#A98CE8", kinds: ["mention"] },
   { id: "checks", label: "CHECKS", tone: "#E0A34E", kinds: null },
   { id: "all", label: "ALL", tone: "#8C8880", kinds: [] },
 ];
@@ -55,8 +57,14 @@ export const KIND_TONE: Record<string, string> = {
 };
 
 export function NotificationRow({
-  n, onRead,
-}: { n: Notification; onRead: (id: string) => void }) {
+  n, onRead, context,
+}: {
+  n: Notification;
+  onRead: (id: string) => void;
+  /** Resolved at read time for a pointer-shaped kind. Absent for `welcome`,
+   *  whose whole content is its message. */
+  context?: MentionContext;
+}) {
   const tone = KIND_TONE[n.kind] ?? "#585550";
   const read = Boolean(n.read_at);
   return (
@@ -68,7 +76,24 @@ export function NotificationRow({
     }}>
       <span style={{ color: tone, fontSize: 13, width: 22, textAlign: "center" }}>◎</span>
       <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 12.5, lineHeight: 1.5, color: "#D2CFC8" }}>{n.message}</div>
+        {context ? (
+          <>
+            <div style={{ fontSize: 12.5, lineHeight: 1.5, color: "#D2CFC8" }}>
+              <b style={{ fontWeight: 500 }}>{context.actorName}</b> mentioned you on{" "}
+              <span style={{ color: "#E8873C" }}>{context.pageTitle}</span>
+            </div>
+            <div style={{
+              fontSize: 11.5, lineHeight: 1.5, marginTop: 5,
+              color: context.orphaned ? "#E0A34E" : "#8C8880",
+            }}>
+              {context.orphaned
+                ? "the text this was written about has since been deleted"
+                : context.body}
+            </div>
+          </>
+        ) : (
+          <div style={{ fontSize: 12.5, lineHeight: 1.5, color: "#D2CFC8" }}>{n.message}</div>
+        )}
         <div className="mono" style={{ fontSize: 10, color: "#585550", marginTop: 5 }}>
           {n.kind} · {ago(n.created_at)}{read ? " · read" : ""}
         </div>
@@ -90,6 +115,10 @@ export function NotificationRow({
 
 export function NotificationsPanel({ onClose }: { onClose: () => void }) {
   const inbox = useInbox();
+  const { session } = useAuth();
+  // Resolved only while the panel is open — this component mounts on the
+  // bell's click, so a closed panel costs nothing.
+  const mentions = useMentionContext(session?.actorId ?? null, inbox.items);
   const [tab, setTab] = useState("all");
 
   const counts = useMemo(() => {
@@ -179,7 +208,7 @@ export function NotificationsPanel({ onClose }: { onClose: () => void }) {
           <div style={{ padding: "16px 14px", fontSize: 11.5, color: "#E0A34E" }}>{inbox.error}</div>
         )}
         {shown.map((n) => (
-          <NotificationRow key={n.id} n={n} onRead={inbox.markRead} />
+          <NotificationRow key={n.id} n={n} onRead={inbox.markRead} context={mentions.get(n.id)} />
         ))}
       </div>
 

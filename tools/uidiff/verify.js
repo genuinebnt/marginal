@@ -24,6 +24,7 @@ const path = require('node:path');
 const REPO = path.resolve(__dirname, '..', '..');
 const { chromium } = require(path.join(REPO, 'tools', 'node_modules', 'playwright-core'));
 const COLLAB='http://localhost:8002';
+const NOTIF='http://localhost:8007';
 const GW='http://localhost:8000', APP='http://localhost:5173';
 let fails = 0;
 const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${name}${detail?'  '+detail:''}`); if(!ok) fails++; };
@@ -252,6 +253,76 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
   check('§24c the bell opens the panel', /INBOX/.test(await txt()));
   await p.getByText('open inbox →',{exact:true}).click(); await p.waitForTimeout(1500);
   check('§20 the panel links to the inbox', (await p.evaluate(()=>location.pathname)) === '/notifications');
+
+  // ── § 20 mentions ─────────────────────────────────────────────────────
+  //
+  // Written as a MENTION, not inserted as a row: what is being tested is
+  // the path from somebody typing a name to somebody else being told, and
+  // a hand-made notification row would pass while proving none of it.
+  {
+    const jf = (u, o) => fetch(u, o).then(r => r.json()).catch(() => null);
+    const token = async (email, password) => (await jf(`${GW}/auth/login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    }))?.access_token;
+    const peer = await token('uidiff-peer@example.com', 'uidiff-peer-123456');
+    const demo = await token('ui-demo@example.com', 'ui-demo-password-123');
+    const DH = { Authorization: `Bearer ${demo}` };
+    const PH = { 'Content-Type': 'application/json', Authorization: `Bearer ${peer}` };
+    const spaces = await jf(`${GW}/spaces`, { headers: DH });
+    const members = await jf(`${GW}/spaces/${spaces?.spaces?.[0]?.id}/members`, { headers: DH });
+    const me = (members?.members ?? []).find(m => m.email === 'ui-demo@example.com');
+    const pages = await jf(`${GW}/pages`, { headers: DH });
+    let thread = null;
+    for (const pg of pages?.pages ?? []) {
+      const t = await jf(`${COLLAB}/collab/pages/${pg.id}/comments`, { headers: PH });
+      if (t?.threads?.length) { thread = t.threads[0]; break; }
+    }
+    check('§20 a thread exists to mention somebody in', Boolean(thread && me));
+    if (thread && me) {
+      const handle = '@' + me.display_name.replace(/ /g, '');
+      const before = ((await jf(`${NOTIF}/notifications`, { headers: DH }))?.notifications ?? [])
+        .filter(n => n.kind === 'mention').length;
+      // The peer is a VIEWER. That is the case that was broken: resolving
+      // candidates through the admin-only member list meant only admins
+      // could mention anyone, silently.
+      const posted = await fetch(`${COLLAB}/collab/threads/${thread.id}/comments`, {
+        method: 'POST', headers: PH,
+        body: JSON.stringify({ body: `${handle} does the tiebreak still hold?` }),
+      });
+      // And a control in the same breath: an email address is not a mention.
+      await fetch(`${COLLAB}/collab/threads/${thread.id}/comments`, {
+        method: 'POST', headers: PH,
+        body: JSON.stringify({ body: 'write to someone@example.com about it' }),
+      });
+      await p.waitForTimeout(2200);
+      const after = ((await jf(`${NOTIF}/notifications`, { headers: DH }))?.notifications ?? [])
+        .filter(n => n.kind === 'mention');
+      check('§20 a viewer can mention somebody', posted.status === 200);
+      check('§20 the mention arrives, and an email address does not',
+            after.length === before + 1, `${before} -> ${after.length}`);
+      const newest = after[0];
+      check('§20 what is stored is a pointer, not a copy of the text',
+            Boolean(newest?.pointer?.thread_id) && !newest?.message,
+            newest ? `message=${JSON.stringify(newest.message)}` : 'no mention');
+
+      await go('/notifications', 5000);
+      const inbox = await txt();
+      check('§20 the inbox renders the mention as a sentence, resolved now',
+            /mentioned you in/.test(inbox), inbox.slice(0, 0));
+      check('§20 and shows the words, read back through the anchor',
+            /tiebreak still hold/.test(inbox));
+      // The facet must actually filter, not just be lit.
+      // .sb — the sub-bar facet, which is what § 20 draws these as.
+      // Clicking the wrong class made this fail as "the facet does not
+      // filter" when nothing had been clicked at all.
+      await p.locator('.sb', { hasText: 'MENTIONS' }).first().click().catch(() => {});
+      await p.waitForTimeout(700);
+      const filtered = await txt();
+      check('§20 the MENTIONS facet selects mentions and drops the welcome',
+            /mentioned you in/.test(filtered) && !/Welcome to Marginal/.test(filtered));
+    }
+  }
 
   // ── § 23c TRASH ───────────────────────────────────────────────────────
   await go('/trash', 6000);

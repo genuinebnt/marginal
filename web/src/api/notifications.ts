@@ -4,10 +4,29 @@
 import { NOTIFICATIONS_URL } from "./config";
 import { apiFetch } from "./http";
 
+/** A mention's whole content — ids, and nothing that can go stale.
+ *  docs/api/notifications.md § 1: a notification is a pointer to an anchor,
+ *  never a copy of the text. The words are read back through the comments
+ *  API at render time, which is also what makes "these words were deleted"
+ *  something the inbox can say rather than something it silently gets
+ *  wrong. */
+export interface MentionPointer {
+  page_id: string;
+  block_id: string;
+  thread_id: string;
+  comment_id: string;
+  actor_id: string;
+  user_id: string;
+}
+
 export interface Notification {
   id: string;
   kind: string;
+  /** Empty for every pointer-shaped kind — see `pointer`. */
   message: string;
+  actor_id?: string;
+  /** Shaped by `kind`: a MentionPointer when kind is "mention". */
+  pointer?: MentionPointer;
   read_at?: string;
   created_at: string;
 }

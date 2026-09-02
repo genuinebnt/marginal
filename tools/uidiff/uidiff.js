@@ -30,6 +30,7 @@ const { chromium } = require(path.join(REPO, 'tools', 'node_modules', 'playwrigh
 const MOCKUP = 'file://' + path.join(REPO, 'docs', 'ui-mockups', 'v2', 'index.html');
 const APP = 'http://localhost:5173';
 const GW = 'http://localhost:8000';
+const COLLAB = 'http://localhost:8002';
 
 /** The properties the design system actually fixes. Anything not here is
  *  either derived or deliberately free. */
@@ -318,12 +319,94 @@ const SEED = {
     await p.keyboard.type('rope');
     await p.waitForTimeout(1400);
   },
-  '24c': async (p) => {                      // NOTIFICATIONS PANEL — the bell, opened
+  // NOTIFICATIONS — § 20's first row is a MENTION, and a fresh inbox has
+  // only the welcome notification. So the peer mentions the signed-in user,
+  // exactly the way a person would: by typing their name into a comment.
+  // Without this the diff compares a welcome row against a mention row and
+  // reports the accent colour and the row's action button as defects.
+  '20': async (p, ctx) => {
+    await seedMention(ctx);
+    await p.reload({ waitUntil: 'networkidle' });
+    await p.waitForTimeout(1200);
+  },
+  '24c': async (p, ctx) => {                 // NOTIFICATIONS PANEL — the bell, opened
+    await seedMention(ctx);
+    await p.reload({ waitUntil: 'networkidle' });
+    await p.waitForTimeout(600);
     const bell = p.locator('.icb').first();
     if (await bell.count()) await bell.click();
-    await p.waitForTimeout(500);
+    await p.waitForTimeout(900);
   },
 };
+
+/**
+ * Which seeds need a second account signed in.
+ *
+ * This was a regex over the seed function's own SOURCE, looking for the
+ * word `peerActor`. It worked until a seed delegated to a helper — § 20's
+ * does — and then it silently supplied no peer at all, so the seed did
+ * nothing and the diff reported the un-seeded screen as a set of defects.
+ * A list is duller and cannot be fooled by where the code lives.
+ */
+const NEEDS_PEER = new Set(['04', '20', '24c']);
+
+/**
+ * Make the signed-in user have a real mention, by having somebody else
+ * write one. Not by inserting a row: the point of the notification is that
+ * it came from a comment, and a hand-made row would pass the diff while
+ * proving nothing about the path that produces one.
+ *
+ * Idempotent enough for repeated runs — a duplicate mention is another row,
+ * and the diff only ever looks at the first.
+ */
+async function seedMention(ctx) {
+  if (!ctx.peerToken) return;
+  const H = { 'Content-Type': 'application/json', Authorization: `Bearer ${ctx.peerToken}` };
+  const jf = async (u, o) => fetch(u, o).then(r => r.json()).catch(() => null);
+  try {
+    // The handle to type is the signed-in user's display name with the
+    // spaces taken out — matched by EMAIL, the one thing the harness knows
+    // about them for certain.
+    //
+    // Read with the DEMO user's own token, not the peer's: listing a
+    // space's members is admin-only, and the peer is a viewer. (The peer
+    // can still MENTION them — resolution goes through the internal
+    // membership listing, which is exactly the bug this seed surfaced.)
+    const demo = await jf(`${GW}/auth/login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'ui-demo@example.com', password: 'ui-demo-password-123' }),
+    });
+    if (!demo?.access_token) return;
+    const DH = { Authorization: `Bearer ${demo.access_token}` };
+    const spaces = await jf(`${GW}/spaces`, { headers: DH });
+    const sid = spaces?.spaces?.[0]?.id;
+    if (!sid) return;
+    const members = await jf(`${GW}/spaces/${sid}/members`, { headers: DH });
+    const me = (members?.members ?? []).find(m => m.email === 'ui-demo@example.com');
+    if (!me) { console.error('seedMention: could not read the demo display name'); return; }
+
+    // Any existing thread will do — a reply carries a mention as well as an
+    // opening comment does, and needs no anchors of its own.
+    const pages = await jf(`${GW}/pages`, { headers: { ...H, 'X-Actor-Id': ctx.peerActor } });
+    for (const pg of pages?.pages ?? []) {
+      const t = await jf(`${COLLAB}/collab/pages/${pg.id}/comments`, { headers: H });
+      const thread = t?.threads?.[0];
+      if (!thread) continue;
+      await fetch(`${COLLAB}/collab/threads/${thread.id}/comments`, {
+        method: 'POST', headers: H,
+        body: JSON.stringify({
+          body: `@${me.display_name.replace(/ /g, '')} does the tiebreak still hold `
+              + `if two actors share a Lamport stamp?`,
+        }),
+      });
+      // NATS, then the projection. Not instant, and not slow either.
+      await new Promise(r => setTimeout(r, 1600));
+      return;
+    }
+  } catch (e) {
+    console.error('seedMention:', e.message);
+  }
+}
 
 const EXTRACT = (props, chromeSel) => `(root) => {
   const out = [];
@@ -426,7 +509,7 @@ async function main() {
   // here" requires somebody else to be here.
   const ctx = { pageId: route.match(/[0-9a-f-]{36}/)?.[0] ?? null, peerActor: null, peerToken: null, sockets: [] };
   if (SEED[screen]) {
-    if (/\bpeerActor\b/.test(String(SEED[screen]))) {
+    if (NEEDS_PEER.has(screen)) {
       const peer = await fetch(`${GW}/auth/register`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: 'uidiff-peer@example.com', password: 'uidiff-peer-123456', display_name: 'Ada Devereux' }),
