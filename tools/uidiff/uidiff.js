@@ -328,7 +328,11 @@ const SEED = {
     await seedMention(ctx);
     await seedInvite(ctx);
     await p.reload({ waitUntil: 'networkidle' });
-    await p.waitForTimeout(1200);
+    // Long enough for the row fade-in to FINISH. The rows carry a
+    // staggered animation-delay, so a diff taken too early reports every
+    // one of them at opacity 0 — a measurement of the clock, not the
+    // design. It only surfaced once there were three rows to stagger.
+    await p.waitForTimeout(3000);
   },
   '24c': async (p, ctx) => {                 // NOTIFICATIONS PANEL — the bell, opened
     await seedMention(ctx);

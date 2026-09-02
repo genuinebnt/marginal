@@ -17,6 +17,12 @@ import (
 type PageTitle struct {
 	ID    uuid.UUID
 	Title string
+	// Which space it belongs to. The index itself is instance-wide —
+	// rebuilding one per member would be one BK-tree per person — so the
+	// scoping happens when it is QUERIED, and this is what makes that
+	// possible (v3.3.0; fuzzy suggestions previously named pages in
+	// spaces the asker is not in).
+	SpaceID uuid.UUID
 }
 
 // Suggestion is one fuzzy title match, with the real page it belongs to
@@ -40,26 +46,48 @@ type TitleIndex struct {
 	// are allowed (a DuplicateTitle diagnostic, not a constraint), so
 	// this is a slice, not a single id.
 	byTitle map[string][]uuid.UUID
+	// Which space each page is in, for the filter Suggest applies.
+	spaceOf map[uuid.UUID]uuid.UUID
 }
 
 // BuildTitleIndex inserts every page's title into a fresh BK-tree —
 // O(n · average-tree-depth) Levenshtein comparisons, run on Server's own
 // refresh cadence, never per search request.
 func BuildTitleIndex(pages []PageTitle) *TitleIndex {
-	idx := &TitleIndex{tree: &bktree.Tree{}, byTitle: make(map[string][]uuid.UUID, len(pages))}
+	idx := &TitleIndex{
+		tree: &bktree.Tree{}, byTitle: make(map[string][]uuid.UUID, len(pages)),
+		spaceOf: make(map[uuid.UUID]uuid.UUID, len(pages)),
+	}
 	for _, p := range pages {
 		idx.tree.Insert(p.Title)
 		idx.byTitle[p.Title] = append(idx.byTitle[p.Title], p.ID)
+		idx.spaceOf[p.ID] = p.SpaceID
 	}
 	return idx
 }
 
 // Suggest fans bktree.Tree.Query's own word matches back out to every
 // page currently holding that title.
-func (idx *TitleIndex) Suggest(query string, maxDistance int) []Suggestion {
+// visible is the caller's space set. Nil means "no filter" and is used
+// only by tests of the index itself; every RPC passes a real set, and an
+// EMPTY (non-nil) set yields nothing — the safe direction.
+func (idx *TitleIndex) Suggest(query string, maxDistance int, visible []uuid.UUID) []Suggestion {
+	var allowed map[uuid.UUID]bool
+	if visible != nil {
+		allowed = make(map[uuid.UUID]bool, len(visible))
+		for _, id := range visible {
+			allowed[id] = true
+		}
+	}
 	var out []Suggestion
 	for _, m := range idx.tree.Query(query, maxDistance) {
 		for _, id := range idx.byTitle[m.Word] {
+			// A title the asker may not see must not be suggested — the
+			// suggestion IS the title, so filtering afterwards in the
+			// client would be too late.
+			if allowed != nil && !allowed[idx.spaceOf[id]] {
+				continue
+			}
 			out = append(out, Suggestion{PageID: id, Title: m.Word, Distance: m.Distance})
 		}
 	}

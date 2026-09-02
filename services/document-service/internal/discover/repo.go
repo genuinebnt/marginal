@@ -24,6 +24,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"marginal/document-service/internal/discoverrepo/gen"
@@ -48,8 +49,12 @@ func NewPostgresRepo(pool *pgxpool.Pool) *PostgresRepo {
 	return &PostgresRepo{q: discoverrepo.New(pool)}
 }
 
-func (r *PostgresRepo) LoadCorpus(ctx context.Context) ([]Page, error) {
-	rows, err := r.q.ListPagesForDiscover(ctx)
+func (r *PostgresRepo) LoadCorpus(ctx context.Context, spaceIDs []uuid.UUID) ([]Page, error) {
+	scope := make([]pgtype.UUID, len(spaceIDs))
+	for i, id := range spaceIDs {
+		scope[i] = pgtype.UUID{Bytes: id, Valid: true}
+	}
+	rows, err := r.q.ListPagesForDiscover(ctx, scope)
 	if err != nil {
 		return nil, fmt.Errorf("discover: loading corpus: %w", err)
 	}

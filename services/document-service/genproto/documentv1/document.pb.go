@@ -758,10 +758,19 @@ func (x *ListSeriesResponse) GetSeries() []*SeriesSummary {
 }
 
 type CreatePageRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Title         string                 `protobuf:"bytes,1,opt,name=title,proto3" json:"title,omitempty"`
-	ParentId      *string                `protobuf:"bytes,2,opt,name=parent_id,json=parentId,proto3,oneof" json:"parent_id,omitempty"`
-	After         *string                `protobuf:"bytes,3,opt,name=after,proto3,oneof" json:"after,omitempty"`
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Title    string                 `protobuf:"bytes,1,opt,name=title,proto3" json:"title,omitempty"`
+	ParentId *string                `protobuf:"bytes,2,opt,name=parent_id,json=parentId,proto3,oneof" json:"parent_id,omitempty"`
+	After    *string                `protobuf:"bytes,3,opt,name=after,proto3,oneof" json:"after,omitempty"`
+	// Which space a ROOT page lands in. Absent means the default space,
+	// which is what every page did before v3.3.0 — spaces were enforced but
+	// no page could ever be created in one, which made a second space a
+	// container nothing could be put in.
+	//
+	// Ignored when parent_id is set: a child inherits its parent's space,
+	// because a tree whose permissions change partway down turns "who can
+	// read this" into a walk (ADR-013 § 2).
+	SpaceId       *string `protobuf:"bytes,4,opt,name=space_id,json=spaceId,proto3,oneof" json:"space_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -813,6 +822,13 @@ func (x *CreatePageRequest) GetParentId() string {
 func (x *CreatePageRequest) GetAfter() string {
 	if x != nil && x.After != nil {
 		return *x.After
+	}
+	return ""
+}
+
+func (x *CreatePageRequest) GetSpaceId() string {
+	if x != nil && x.SpaceId != nil {
+		return *x.SpaceId
 	}
 	return ""
 }
@@ -2554,14 +2570,16 @@ const file_document_proto_rawDesc = "" +
 	"\x05parts\x18\x06 \x03(\v2 .marginal.document.v1.SeriesPartR\x05partsB\b\n" +
 	"\x06_topic\"Q\n" +
 	"\x12ListSeriesResponse\x12;\n" +
-	"\x06series\x18\x01 \x03(\v2#.marginal.document.v1.SeriesSummaryR\x06series\"~\n" +
+	"\x06series\x18\x01 \x03(\v2#.marginal.document.v1.SeriesSummaryR\x06series\"\xab\x01\n" +
 	"\x11CreatePageRequest\x12\x14\n" +
 	"\x05title\x18\x01 \x01(\tR\x05title\x12 \n" +
 	"\tparent_id\x18\x02 \x01(\tH\x00R\bparentId\x88\x01\x01\x12\x19\n" +
-	"\x05after\x18\x03 \x01(\tH\x01R\x05after\x88\x01\x01B\f\n" +
+	"\x05after\x18\x03 \x01(\tH\x01R\x05after\x88\x01\x01\x12\x1e\n" +
+	"\bspace_id\x18\x04 \x01(\tH\x02R\aspaceId\x88\x01\x01B\f\n" +
 	"\n" +
 	"_parent_idB\b\n" +
-	"\x06_after\" \n" +
+	"\x06_afterB\v\n" +
+	"\t_space_id\" \n" +
 	"\x0eGetPageRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"\x8c\x01\n" +
 	"\x10ListPagesRequest\x12 \n" +

@@ -30,6 +30,9 @@ SELECT p.id,
 FROM docs.pages p
 LEFT JOIN docs.topics t ON t.id = p.topic_id
 WHERE p.deleted_at IS NULL
+  -- Scoped to the caller's spaces (v3.3.0); Discover ranked and named
+  -- pages from every space before it.
+  AND p.space_id = ANY($1::uuid[])
 `
 
 type ListPagesForDiscoverRow struct {
@@ -58,8 +61,8 @@ type ListPagesForDiscoverRow struct {
 // COALESCE, not a filter: a page with no blocks yet is still a page, and it
 // must appear in the corpus as a zero vector rather than vanish from
 // everyone's neighbour list without explanation.
-func (q *Queries) ListPagesForDiscover(ctx context.Context) ([]ListPagesForDiscoverRow, error) {
-	rows, err := q.db.Query(ctx, listPagesForDiscover)
+func (q *Queries) ListPagesForDiscover(ctx context.Context, spaceIds []pgtype.UUID) ([]ListPagesForDiscoverRow, error) {
+	rows, err := q.db.Query(ctx, listPagesForDiscover, spaceIds)
 	if err != nil {
 		return nil, err
 	}

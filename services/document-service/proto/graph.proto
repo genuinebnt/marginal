@@ -30,6 +30,14 @@ service GraphService {
   // outbound links only), and the ranked nearest ring, from one chosen
   // source page.
   rpc GraphNeighborhood(GraphNeighborhoodRequest) returns (GraphNeighborhoodResponse);
+
+  // ListDanglingLinks is every [[link]] whose target does not exist —
+  // § 20's CHECKS row, and RFC-003's DanglingPageLink over the same
+  // projection. Derived on every read rather than stored as a
+  // notification: a stored check goes stale the moment somebody creates
+  // the page, and an inbox row that has quietly become false is worse
+  // than no row at all.
+  rpc ListDanglingLinks(ListDanglingLinksRequest) returns (ListDanglingLinksResponse);
 }
 
 message GetLinkGraphRequest {}
@@ -222,3 +230,14 @@ message PathStep {
   // wondering where they were going.
   bool   destination = 4;
 }
+
+message ListDanglingLinksRequest {}
+
+message DanglingLink {
+  string target_title    = 1; // the [[title]] nobody has written yet
+  string from_page       = 2;
+  string from_page_title = 3;
+  string from_block      = 4;
+}
+
+message ListDanglingLinksResponse { repeated DanglingLink links = 1; }

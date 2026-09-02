@@ -140,3 +140,33 @@ the concrete argument for JetStream (a stream, a durable consumer, ack
 semantics) that this repo previously did not have. Recorded here rather
 than silently accepted. The outbox row is not deleted, so the evidence
 survives even when the delivery does not.
+
+---
+
+## 6. Checks are DERIVED, not stored (`v3.3.0`)
+
+`§ 20`'s CHECKS row — *"a check you opened is still unresolved: link to a
+page that does not exist yet"* — is the one row in this inbox that is not a
+notification at all. It is computed on every read from
+`GET /graph/dangling`, which is one indexed query over `docs.page_links`
+(`target_page IS NULL` is exactly a dangling link).
+
+That is deliberate, and it is the same argument § 1 makes one step
+further. A stored check goes stale the moment somebody creates the page:
+the row would sit in the inbox asserting something that has stopped being
+true, and clearing it would need either a second event or a sweep. Derived,
+**CREATE PAGE makes the row disappear because the check now passes** — not
+because anything cleared it. That is `§ 20`'s *"acting on an item clears
+it"* with no clearing machinery at all.
+
+The cost is stated on the row itself: it reads *"checked just now, not
+stored"*, and it carries no timestamp, because there is no moment at which
+it happened. It is appended below the stored rows rather than merged into
+them by time — a made-up `created_at` would also have sorted it above
+things that really did just happen.
+
+**IGNORE is per-viewer**, in that browser's `localStorage`. An ignored
+check is a statement about what one person wants to see, not about the
+workspace, and there is no per-user preference store for it to live in yet
+(`v3.3.0`'s remaining scope). Said plainly rather than implied to be
+shared.

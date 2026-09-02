@@ -23,6 +23,9 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { replyToThread } from "../api/comments";
 import { listInvitations, respondToInvitation, type Invitation } from "../api/spaces";
+import { listDanglingLinks, type DanglingLink } from "../api/graph";
+import { createPage } from "../api/pages";
+import type { Notification } from "../api/notifications";
 import type { InvitePointer } from "../api/notifications";
 import { useMentionContext } from "../notifications/mentions";
 import { KIND_TONE, ago } from "../notifications/NotificationsPanel";
@@ -38,7 +41,9 @@ const FACETS: Array<{ id: string; label: string; kinds: string[] | null }> = [
   // Real since v3.3.0 — an @handle in a comment (docs/api/notifications.md).
   { id: "mentions", label: "MENTIONS", kinds: ["mention"] },
   { id: "proposals", label: "PROPOSALS", kinds: null },
-  { id: "checks", label: "CHECKS", kinds: null },
+  // Real since v3.3.0, and unlike every other facet these rows are
+  // DERIVED rather than stored — see `checks` below.
+  { id: "checks", label: "CHECKS", kinds: ["check"] },
   // Real since v3.3.0 — a space invitation (docs/api/spaces.md § 5).
   { id: "invites", label: "INVITES", kinds: ["invite"] },
 ];
@@ -63,15 +68,79 @@ export function NotificationsScreen() {
     listInvitations(actorId).then((r) => setInvites(r.invitations)).catch(() => setInvites([]));
   }, [actorId]);
   useEffect(loadInvites, [loadInvites]);
+
+  /** § 20's CHECKS rows: `[[links]]` to pages nobody has written.
+   *
+   *  Computed on every load, never stored as notifications. A stored check
+   *  would go stale the moment somebody created the page — the row would
+   *  sit there asserting something that has stopped being true, which is
+   *  worse than not showing it. Deriving it means CREATE PAGE makes the
+   *  row disappear because the check passes now, not because anything
+   *  cleared it. That is § 20's "acting on an item clears it" with no
+   *  clearing machinery at all. */
+  const [checks, setChecks] = useState<DanglingLink[]>([]);
+  const [ignored, setIgnored] = useState<string[]>(() => {
+    // Per-viewer, and only per-viewer. An ignored check is a statement
+    // about what one person wants to see, not about the workspace — so it
+    // lives in this browser and the panel says so.
+    try { return JSON.parse(localStorage.getItem("marginal.ignoredChecks") ?? "[]"); }
+    catch { return []; }
+  });
+  const loadChecks = useCallback(() => {
+    if (!actorId) return;
+    listDanglingLinks(actorId).then((r) => setChecks(r.links)).catch(() => setChecks([]));
+  }, [actorId]);
+  useEffect(loadChecks, [loadChecks]);
+
+  const ignoreCheck = (title: string) => {
+    const next = [...ignored, title];
+    setIgnored(next);
+    try { localStorage.setItem("marginal.ignoredChecks", JSON.stringify(next)); } catch { /* private mode */ }
+  };
+  const createMissingPage = async (title: string) => {
+    if (!actorId) return;
+    setBusy(title);
+    try {
+      await createPage(actorId, title);
+      // Re-derived, not assumed: the row goes because the check passes.
+      loadChecks();
+    } finally {
+      setBusy(null);
+    }
+  };
+  const openChecks = useMemo(
+    () => checks.filter((c) => !ignored.includes(c.target_title)),
+    [checks, ignored],
+  );
   const [facet, setFacet] = useState("all");
   const [insTab, setInsTab] = useState<"delivery" | "muted">("delivery");
+
+  /** Derived rows, given the shape the list renders. They carry no id
+   *  from the server because they are not stored anywhere — the target
+   *  title is what identifies one. */
+  const checkRows: Notification[] = useMemo(
+    () => openChecks.map((c) => ({
+      id: `check:${c.target_title}`,
+      kind: "check",
+      message: "",
+      // A check has no moment it happened — it is a condition that is
+      // true right now. Giving it `Date.now()` would be a made-up
+      // timestamp that also sorts it above things that really did just
+      // happen, which is why these are appended rather than merged by
+      // time. The row says "checked just now, not stored" for the same
+      // reason.
+      created_at: "",
+    })),
+    [openChecks],
+  );
+  const allItems = useMemo(() => [...inbox.items, ...checkRows], [inbox.items, checkRows]);
 
   const active = FACETS.find((f) => f.id === facet)!;
   const shown = active.kinds === null
     ? []
     : active.kinds.length === 0
-      ? inbox.items
-      : inbox.items.filter((n) => active.kinds!.includes(n.kind));
+      ? allItems
+      : allItems.filter((n) => active.kinds!.includes(n.kind));
 
   /** ACCEPT and DECLINE are the two halves of § 20's "decision" row: the
    *  act resolves the item, so the row clears without anybody marking it
@@ -148,8 +217,8 @@ export function NotificationsScreen() {
           const n = f.kinds === null
             ? 0
             : f.kinds.length === 0
-              ? inbox.items.length
-              : inbox.items.filter((x) => f.kinds!.includes(x.kind)).length;
+              ? allItems.length
+              : allItems.filter((x) => f.kinds!.includes(x.kind)).length;
           return (
             <SubItem key={f.id} on={facet === f.id} onClick={() => setFacet(f.id)}>
               {f.label} · {n}
@@ -184,6 +253,9 @@ export function NotificationsScreen() {
               const tone = KIND_TONE[n.kind] ?? "#585550";
               const read = Boolean(n.read_at);
               const m = mentions.get(n.id);
+              const chk = n.kind === "check"
+                ? openChecks.find((c) => `check:${c.target_title}` === n.id)
+                : undefined;
               const inv = n.kind === "invite"
                 ? invites.find((i) => i.id === (n.pointer as InvitePointer | undefined)?.invitation_id)
                 : undefined;
@@ -204,7 +276,20 @@ export function NotificationsScreen() {
                     {!read && <div className="ping" style={{ background: `${tone}80` }} />}
                   </div>
                   <div style={{ flex: 1 }}>
-                    {inv ? (
+                    {chk ? (
+                      <>
+                        <div style={{ fontSize: 13.5, color: "#E4E2DC" }}>
+                          A check you opened is still unresolved
+                        </div>
+                        <div style={{ fontSize: 12.5, color: "#8C8880", marginTop: 6, lineHeight: 1.5 }}>
+                          Link to a page that does not exist yet —{" "}
+                          <span style={{ color: "#E8873C" }}>[[{chk.target_title}]]</span>
+                        </div>
+                        <div className="mono" style={{ fontSize: 10, color: "#585550", marginTop: 7 }}>
+                          in {chk.from_page_title} · checked just now, not stored
+                        </div>
+                      </>
+                    ) : inv ? (
                       <>
                         <div style={{ fontSize: 13.5, color: read ? "#9B968D" : "#E4E2DC" }}>
                           <b style={{ fontWeight: 500 }}>{inv.invited_by_name}</b> invited you to{" "}
@@ -260,6 +345,24 @@ export function NotificationsScreen() {
                     )}
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
+                    {chk && (
+                      <>
+                        <span
+                          className="chip chip-a"
+                          style={{ cursor: busy === chk.target_title ? "wait" : "pointer" }}
+                          onClick={() => void createMissingPage(chk.target_title)}
+                        >
+                          CREATE PAGE
+                        </span>
+                        <span
+                          className="chip"
+                          style={{ cursor: "pointer" }}
+                          onClick={() => ignoreCheck(chk.target_title)}
+                        >
+                          IGNORE
+                        </span>
+                      </>
+                    )}
                     {inv && (
                       <>
                         <span
@@ -300,7 +403,7 @@ export function NotificationsScreen() {
                         </span>
                       </>
                     )}
-                    {!read && !m && !inv && (
+                    {!read && !m && !inv && !chk && (
                       <span
                         className="chip chip-e"
                         style={{ cursor: "pointer" }}

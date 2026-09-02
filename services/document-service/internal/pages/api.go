@@ -278,6 +278,13 @@ func (s *Server) CreatePage(ctx context.Context, req *documentv1.CreatePageReque
 	// permission question is about the PARENT's space; a root page lands
 	// in the default one.
 	target := DefaultSpaceID
+	if req.SpaceId != nil && *req.SpaceId != "" {
+		id, err := uuid.Parse(*req.SpaceId)
+		if err != nil {
+			return nil, status.Error(codes.InvalidArgument, "pages: invalid space_id")
+		}
+		target = id
+	}
 	if parentID != nil {
 		parent, err := s.repo.Get(ctx, *parentID)
 		if err != nil {
@@ -294,6 +301,8 @@ func (s *Server) CreatePage(ctx context.Context, req *documentv1.CreatePageReque
 		Title:     req.GetTitle(),
 		ParentID:  parentID,
 		After:     after,
+		// Ignored by the repo when ParentID is set — the child inherits.
+		SpaceID: target,
 	})
 	if err != nil {
 		return nil, toStatus(err)

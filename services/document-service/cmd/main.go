@@ -109,7 +109,7 @@ func run() error {
 	grpcAddr := envconfig.EnvOr("DOCUMENT_SERVICE_GRPC_ADDR", ":9001")
 	httpAddr := envconfig.EnvOr("DOCUMENT_SERVICE_HTTP_ADDR", ":8001")
 
-	searchServer, err := search.NewServer(ctx, search.NewPostgresRepo(pool))
+	searchServer, err := search.NewServer(ctx, search.NewPostgresRepo(pool), spaces)
 	if err != nil {
 		return err
 	}
@@ -119,11 +119,11 @@ func run() error {
 	grpcServer := grpc.NewServer()
 	documentv1.RegisterPageServiceServer(grpcServer, pages.NewServer(pages.NewPostgresRepo(pool), spaces))
 	graphRepo := graph.NewPostgresRepo(pool)
-	documentv1.RegisterGraphServiceServer(grpcServer, graph.NewServer(graphRepo))
+	documentv1.RegisterGraphServiceServer(grpcServer, graph.NewServer(graphRepo, spaces))
 	// DiscoverService shares the graph repo: link distance is one of § 09's
 	// three signals, and it is the same BFS GraphService already runs over the
 	// same table — a second reader of one result, not a second implementation.
-	documentv1.RegisterDiscoverServiceServer(grpcServer, discover.NewServer(discover.NewPostgresRepo(pool), graphRepo))
+	documentv1.RegisterDiscoverServiceServer(grpcServer, discover.NewServer(discover.NewPostgresRepo(pool), graphRepo, spaces))
 	documentv1.RegisterSearchServiceServer(grpcServer, searchServer)
 	reflection.Register(grpcServer) // lets grpcurl/grpcui introspect without a .proto file, local dev only
 

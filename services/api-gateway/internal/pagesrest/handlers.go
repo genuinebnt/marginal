@@ -65,6 +65,8 @@ type createPageRequest struct {
 	Title    string  `json:"title"`
 	ParentID *string `json:"parent_id,omitempty"`
 	After    *string `json:"after,omitempty"`
+	// Which space a root page lands in; absent means the default one.
+	SpaceID *string `json:"space_id"`
 }
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
@@ -78,6 +80,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		Title:    body.Title,
 		ParentId: body.ParentID,
 		After:    body.After,
+		SpaceId:  body.SpaceID,
 	})
 	if err != nil {
 		apierror.WriteGRPCStatus(w, err)

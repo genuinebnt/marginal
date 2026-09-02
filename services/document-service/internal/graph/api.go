@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	documentv1 "marginal/document-service/genproto/documentv1"
@@ -15,15 +16,71 @@ import (
 // Server implements documentv1.GraphServiceServer over a *PostgresRepo —
 // proto <-> domain translation only; graphalgo has every
 // algorithm. See docs/api/graph.md.
-type Server struct {
-	documentv1.UnimplementedGraphServiceServer
-	repo *PostgresRepo
+// SpaceReader answers "which spaces is this caller in" — the same port
+// pages.Server takes, declared here at its own point of use.
+type SpaceReader interface {
+	SpacesFor(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, error)
 }
 
-func NewServer(repo *PostgresRepo) *Server { return &Server{repo: repo} }
+type Server struct {
+	documentv1.UnimplementedGraphServiceServer
+	repo   *PostgresRepo
+	spaces SpaceReader
+}
+
+func NewServer(repo *PostgresRepo, spaces SpaceReader) *Server {
+	return &Server{repo: repo, spaces: spaces}
+}
+
+// scope is every graph read's first step, and the reason this file changed
+// in v3.3.0: none of them had one. GetLinkGraph, AnalyzeGraph and
+// GraphNeighborhood each returned EVERY page title on the instance to
+// anybody who asked, including titles in spaces the caller is not a member
+// of — the same class of hole v3.1.0's audit found twice elsewhere, in a
+// service that had already been given the tool to avoid it.
+//
+// A caller with no spaces gets an empty graph, not the whole one.
+func (s *Server) scope(ctx context.Context) ([]uuid.UUID, error) { return ScopeFor(ctx, s.spaces) }
+
+// ScopeFor is the same resolution, exported for the other packages that
+// read across pages — discover and search both do, and both were missing
+// it. One implementation, so a future reader cannot be scoped "nearly".
+func ScopeFor(ctx context.Context, spaces SpaceReader) ([]uuid.UUID, error) {
+	actor, err := actorID(ctx)
+	if err != nil {
+		return nil, status.Error(codes.Unauthenticated, "graph: an actor id is required")
+	}
+	ids, err := spaces.SpacesFor(ctx, actor)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "graph: resolving visible spaces failed")
+	}
+	return ids, nil
+}
+
+// actorID mirrors pages.actorID — the same gRPC metadata key, read the
+// same way. Duplicated rather than exported across packages because it is
+// four lines and a shared one would make two unrelated packages share a
+// dependency for the sake of it.
+func actorID(ctx context.Context) (uuid.UUID, error) {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return uuid.UUID{}, errNoActor
+	}
+	values := md.Get("actor-id")
+	if len(values) == 0 || values[0] == "" {
+		return uuid.UUID{}, errNoActor
+	}
+	return uuid.Parse(values[0])
+}
+
+var errNoActor = status.Error(codes.Unauthenticated, "graph: missing actor id")
 
 func (s *Server) GetLinkGraph(ctx context.Context, _ *documentv1.GetLinkGraphRequest) (*documentv1.LinkGraph, error) {
-	g, err := s.repo.LoadGraph(ctx)
+	spaceIDs, err := s.scope(ctx)
+	if err != nil {
+		return nil, err
+	}
+	g, err := s.repo.LoadGraph(ctx, spaceIDs)
 	if err != nil {
 		return nil, status.Error(codes.Internal, "graph: loading link graph failed")
 	}
@@ -44,7 +101,11 @@ func (s *Server) GetLinkGraph(ctx context.Context, _ *documentv1.GetLinkGraphReq
 }
 
 func (s *Server) AnalyzeGraph(ctx context.Context, _ *documentv1.AnalyzeGraphRequest) (*documentv1.GraphAnalysis, error) {
-	g, err := s.repo.LoadGraph(ctx)
+	spaceIDs, err := s.scope(ctx)
+	if err != nil {
+		return nil, err
+	}
+	g, err := s.repo.LoadGraph(ctx, spaceIDs)
 	if err != nil {
 		return nil, status.Error(codes.Internal, "graph: loading link graph failed")
 	}
@@ -162,7 +223,11 @@ func (s *Server) GraphNeighborhood(ctx context.Context, req *documentv1.GraphNei
 	}
 	source := graphalgo.NodeID(req.SourcePageId)
 
-	g, err := s.repo.LoadGraph(ctx)
+	spaceIDs, err := s.scope(ctx)
+	if err != nil {
+		return nil, err
+	}
+	g, err := s.repo.LoadGraph(ctx, spaceIDs)
 	if err != nil {
 		return nil, status.Error(codes.Internal, "graph: loading link graph failed")
 	}
@@ -250,4 +315,23 @@ func (s *Server) GraphNeighborhood(ctx context.Context, req *documentv1.GraphNei
 		ShortestPath:       shortest,
 		PathExists:         pathExists,
 	}, nil
+}
+
+func (s *Server) ListDanglingLinks(ctx context.Context, _ *documentv1.ListDanglingLinksRequest) (*documentv1.ListDanglingLinksResponse, error) {
+	spaceIDs, err := s.scope(ctx)
+	if err != nil {
+		return nil, err
+	}
+	links, err := s.repo.DanglingLinks(ctx, spaceIDs)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "graph: loading dangling links failed")
+	}
+	out := make([]*documentv1.DanglingLink, 0, len(links))
+	for _, l := range links {
+		out = append(out, &documentv1.DanglingLink{
+			TargetTitle: l.TargetTitle, FromPage: l.FromPage.String(),
+			FromPageTitle: l.FromPageTitle, FromBlock: l.FromBlock.String(),
+		})
+	}
+	return &documentv1.ListDanglingLinksResponse{Links: out}, nil
 }

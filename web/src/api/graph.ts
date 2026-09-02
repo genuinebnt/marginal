@@ -140,3 +140,17 @@ export function graphNeighborhood(
   if (targetPageId) url.searchParams.set("to", targetPageId);
   return apiFetch<GraphNeighborhood>(url.toString(), { actorId });
 }
+
+/** A `[[link]]` whose target page does not exist — § 20's CHECKS row.
+ *  Derived on every read, never stored: a stored check goes stale the
+ *  moment somebody creates the page. */
+export interface DanglingLink {
+  target_title: string;
+  from_page: string;
+  from_page_title: string;
+  from_block: string;
+}
+
+export function listDanglingLinks(actorId: string): Promise<{ links: DanglingLink[] }> {
+  return apiFetch(`${GATEWAY_URL}/graph/dangling`, { actorId });
+}
