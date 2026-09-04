@@ -11,6 +11,16 @@
  * thread may be orphaned — and both are reported rather than smoothed over.
  * An inbox that quietly renders a stale quote is worse than one that says
  * the words are gone.
+ *
+ * KNOWN COST, stated rather than discovered later: resolving a mention is
+ * `listSpaces` → `listMembers` per space → `getPage` + `listThreads` per
+ * unique page. That is O(spaces + pages) requests before the first row can
+ * be drawn, and it grows with the account rather than with the inbox. It is
+ * fine at this repo's scale and it is the wrong shape at any other — the
+ * fix, when it is needed, is a single endpoint that resolves a batch of
+ * pointers server-side, not a cache in front of this. Found because a test
+ * that waited a fixed five seconds for the row started failing
+ * intermittently once the account belonged to several spaces.
  */
 import { useEffect, useState } from "react";
 import { getPage } from "../api/pages";

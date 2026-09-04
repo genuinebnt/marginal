@@ -65,6 +65,15 @@ different:
 | `welcome` | the sentence | absent | It is about nothing that can change |
 | `mention` | empty | `MentionPointer` | Every part of it is owned elsewhere |
 
+**The cost of that is real and is the pointer design's one drawback.**
+Resolving a mention client-side is one `listSpaces`, one `listMembers` per
+space, and one `getPage` + `listThreads` per unique page — `O(spaces +
+pages)` requests before the first row draws, growing with the account rather
+than with the inbox. Acceptable at this scale, wrong at any larger one; the
+fix is a single endpoint that resolves a batch of pointers server-side, not
+a client-side cache, because a cache would reintroduce exactly the staleness
+the pointer exists to avoid.
+
 A client renders a `mention` by resolving its pointer:
 `GET /collab/pages/{page_id}/comments` for the thread (which carries the
 live anchor range and the `orphaned` flag), `GET /pages/{page_id}` for the

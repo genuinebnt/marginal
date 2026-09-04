@@ -403,6 +403,14 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
             newest ? `message=${JSON.stringify(newest.message)}` : 'no mention');
 
       await go('/notifications', 5000);
+      // A mention row is assembled from ids at read time, and the chain is
+      // listSpaces → listMembers per space → getPage + listThreads per
+      // page. Its cost therefore grows with how many spaces the account is
+      // in, and a fixed wait that was ample on a fresh instance was not on
+      // one with several. Wait for the row, not for a duration.
+      await p.waitForFunction(
+        () => /mentioned you in/.test(document.body.innerText),
+        null, { timeout: 20000 }).catch(() => {});
       const inbox = await txt();
       check('§20 the inbox renders the mention as a sentence, resolved now',
             /mentioned you in/.test(inbox), inbox.slice(0, 0));
