@@ -27,6 +27,7 @@ ExecStart=/usr/bin/docker run --rm \
     -w /repo/tools \
     -e SEED_GATEWAY_URL=http://marginal-api-gateway:8000 \
     -e SEED_COLLAB_URL=ws://marginal-collaboration-service:8002 \
+    -e SEED_NOTIFY_URL=http://marginal-notification-service:8007 \
     -e SEED_EMAIL=${SEED_EMAIL} \
     -e SEED_PASSWORD=${SEED_PASSWORD} \
     node:22-alpine \

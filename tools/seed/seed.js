@@ -38,6 +38,11 @@ const GW = process.env.SEED_GATEWAY_URL || 'http://localhost:8000';
 const COLLAB = process.env.SEED_COLLAB_URL || 'ws://localhost:8002';
 // The same service over plain HTTP — comments are REST, the op stream is not.
 const COLLAB_HTTP = (process.env.SEED_COLLAB_URL || 'ws://localhost:8002').replace(/^ws/, 'http');
+// notification-service is reached DIRECTLY, like collaboration-service — it is
+// not behind the gateway. Its own variable, not the gateway's URL with the
+// port swapped: that works on localhost and resolves to the wrong CONTAINER
+// on a compose network, where each service is its own host.
+const NOTIFY = process.env.SEED_NOTIFY_URL || 'http://localhost:8007';
 const SEED_EMAIL = process.env.SEED_EMAIL || 'ui-demo@example.com';
 const SEED_PASSWORD = process.env.SEED_PASSWORD || 'ui-demo-password-123';
 
@@ -115,7 +120,7 @@ async function seedNotifications(token, idByTitle) {
   // an inbox that can be emptied from outside is not a record of anything —
   // so without this a re-seeded demo shows forty unread mentions from
   // corpora that no longer exist.
-  await fetch(`${GW.replace(':8000', ':8007')}/notifications/read-all`, {
+  await fetch(`${NOTIFY}/notifications/read-all`, {
     method: 'POST', headers: { Authorization: `Bearer ${token}` },
   }).catch(() => {});
 
