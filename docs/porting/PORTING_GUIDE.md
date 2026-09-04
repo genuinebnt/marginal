@@ -1,19 +1,34 @@
 # Porting Guide — how the future Rust port should approach this codebase
 
+> **Read this once, then work from `RUST_PORTING_HANDBOOK.md`.** That
+> document is the single source of truth for the port: the data model, the
+> crate layout, every algorithm explained, the Rust patterns, the
+> microservice and gRPC concerns, the security model and the tests that
+> prove it, the wasm boundary, and a stage-by-stage order with checkpoints
+> (its Part 30). This guide is the orientation layer — what the system is,
+> what state it is in, and what to expect. It does not repeat the handbook.
+
 This was first written while only `documentcore` existed (Phase C of the
 original Go+TS plan). It's now rewritten against the actual state of the
 finished Track 1 MVP — read `docs/porting/PROGRESS.md` for the chronological
-blow-by-blow; this doc is the orientation layer on top of that, kept short on
-purpose. The actual port happens in a new, separate repo (`ADR-011`) — this
-guide is what that repo's first sessions should read before touching any code.
+blow-by-blow. The actual port happens in a new, separate repo (`ADR-011`),
+**one major version at a time** (`ADR-012`): `v1` is a porting unit, `v2` is
+the next, and so on. Do not try to port the whole of `master` at once.
 
 ## Status, as of the end of the Go+TS build
 
 **Track 1 (Documents → Auth → Collaboration) is feature-complete, end to
-end** — not a skeleton, not a subset. All five services run together via
+end** — not a skeleton, not a subset. **Six** services run together via
 `docker compose up --build`: `document-service`, `auth-service`,
-`collaboration-service`, `notification-service`, `api-gateway`, each with its
-own Postgres, plus Redis and NATS. The frontend (`web/`) is a real block
+`collaboration-service`, `notification-service`, `diagnostics-service`
+(stateless, no database of its own) and `api-gateway`, each of the first
+four with its own Postgres, plus Redis and NATS.
+
+**Development continued well past the MVP** — `v2.x` added the graph
+explorer, diagnostics, revision history and diff, search, and trash; `v3.x`
+added verified identity and space RBAC, anchored comments, and the
+notification inbox (mentions, invitations, derived checks). `RELEASES.md` is
+the map. Each **major** version is its own porting unit. The frontend (`web/`) is a real block
 editor — drag-to-reorder, slash menu, inline marks with a bubble menu, live
 presence, live cursor tracking, backlinks, a nested page tree — not mockup
 screens. `CLAUDE.md`'s own "Track 1 editor is feature-complete" section and
@@ -27,9 +42,14 @@ plain text); mark/cursor offsets are UTF-16 JS indices client-side, not the
 byte offsets the Go backend persists (identical for ASCII, wrong for
 multi-byte text); `session.Manager` never idle-evicts a session; a
 `code_block`'s cursor has no precise on-screen position (no
-`getClientRects()` equivalent for a `<textarea>`). Each is a small, bounded,
-already-named decision — port them as decisions, not accidents rediscovered
-later.
+`getClientRects()` equivalent for a `<textarea>`); core NATS has no
+redelivery, so an event published while a consumer is down is lost — which
+now matters, because a lost mention is somebody never learning they were
+asked a question; the audit log has no `prev_hash` chain and says so rather
+than implying tamper evidence; notifications have no retention policy and
+the list is capped at 50. Each is a small, bounded, already-named decision
+— **port them as decisions, not as accidents rediscovered later**, and fix
+them as a second commit if you fix them at all (handbook 0.1).
 
 ## The one fact that changes how you read this guide
 
@@ -200,3 +220,40 @@ proves the JSON bridge end-to-end against the real compiled `.wasm` binary
 the live product. The port should preserve the boundary but shouldn't
 assume porting it also means porting a live wasm call path that doesn't
 exist yet.
+
+**That caveat applies to `documentcore` only.** Eight other wasm modules
+*are* load-bearing today — the graph layout and Voronoi, the LCS diff, the
+`[[` autocomplete trie, the code lexer, the three sketches, the network
+simulator, the benchmark, and the markdown compiler. Every one of them is a
+screen that stops working if its module does not load, and the harness
+asserts that each is really wasm rather than a JavaScript fallback.
+
+---
+
+## Where to go from here
+
+This guide ends where the work begins. From this point, work from
+**`RUST_PORTING_HANDBOOK.md`**, which is the single source of truth for the
+port:
+
+| If you want | Read |
+|---|---|
+| The overall shape and what does not move | Part 0 |
+| The Cargo workspace, crate list, dependency choices | Part 1 |
+| Every table, column and projection | Parts 2, 21 |
+| The document model, grammar, and op ISA | Parts 3–6 |
+| Anchors — the idea the editor rests on | Part 7 |
+| The two services with real difficulty | Parts 8, 9 |
+| An algorithm, explained rather than named | Parts 10–14, 25–28 |
+| Async, cancellation safety, shared state | Part 15 |
+| Rust idioms and the Go→Rust table | Part 16 |
+| The wasm boundary in practice | Part 17 |
+| Services, config, health, retries, the outbox | Part 19 |
+| gRPC, status codes, metadata | Part 20 |
+| Identity, authorization, and the `Scope` type | Part 22 |
+| Security tests worth writing | Part 23 |
+| 29 bugs this system has already shipped | Part 24 |
+| Deployment and observability | Part 29 |
+| **The order to actually do it in** | **Part 30** |
+| What the frontend expects, and the gate | Part 31 |
+| A file-by-file map of where everything lands | Part 32 |

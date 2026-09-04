@@ -170,3 +170,27 @@ check is a statement about what one person wants to see, not about the
 workspace, and there is no per-user preference store for it to live in yet
 (`v3.3.0`'s remaining scope). Said plainly rather than implied to be
 shared.
+
+---
+
+## 7. Known gap: no retention policy
+
+Notifications accumulate forever. Nothing deletes them, `GET /notifications`
+returns the newest **50**, and there is no endpoint that removes a row —
+deliberately, since an inbox that can be emptied from outside is not a
+record of anything.
+
+The consequence is small today and worth naming before it is not:
+
+- Past 50 rows, **a count is no longer a way to detect a new
+  notification.** A test that counted mentions before and after silently
+  stopped working when an instance crossed the limit; the fix was to assert
+  on the newest row's id instead.
+- The seeder marks everything read before seeding, so a re-seeded demo
+  shows a believable inbox rather than a wall of stale rows. That is a
+  presentation fix, not a retention policy.
+
+What a real policy would need: an age or count bound per user, applied by a
+periodic job, with read rows expiring sooner than unread ones — and a
+decision about whether an *unread* notification may ever be deleted. It
+should not be, which is what makes the bound hard rather than obvious.

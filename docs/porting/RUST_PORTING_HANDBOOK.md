@@ -78,6 +78,7 @@
 | 28 | Benchmarking honestly | 17 |
 | 29 | Configuration, deployment, and observability | 19 |
 | 30 | The order of work, with checkpoints | all |
+| 31 | The frontend contract, and how the port is judged | 17, 20 |
 
 ---
 
@@ -85,9 +86,12 @@
 
 ## 0.1 What moves and what does not
 
-**Moves to Rust.** Every Go module in `services/`, without exception:
-`documentcore`, `graphalgo`, `textdiff`, `semantic`, `outboxpoll`,
-`envconfig`, and the five services that use them.
+**Moves to Rust.** Every Go module in `services/`, without exception — the
+nine pure algorithm crates (`documentcore`, `graphalgo`, `textdiff`,
+`semantic`, `sketch`, `syntax`, `netsim`, `bench`, `mdc`), the two shared
+utility modules (`outboxpoll`, `authverify`), and the six services that use
+them. `envconfig` is deleted rather than ported (1.3). Part 32 has the
+file-by-file map.
 
 **Never moves.** `web/` — the TypeScript/HTML/CSS frontend. It is the
 permanent visual harness the Rust backend is checked against (`ADR-012`), and
@@ -97,11 +101,22 @@ that screen is done. This is the single most valuable property of the whole
 arrangement: **you have a working oracle for every feature, all the way
 through the UI, for free.**
 
-**Moves, but rewritten rather than translated.** The wasm entrypoints
-(`cmd/wasm`, `cmd/graphwasm`, `cmd/diffwasm`, `cmd/triewasm`). Go's
-`syscall/js` and Rust's `wasm-bindgen` are different enough that a
+**Moves, but rewritten rather than translated.** All nine wasm entrypoints.
+Go's `syscall/js` and Rust's `wasm-bindgen` are different enough that a
 line-by-line port is worse than a re-derivation from the same JSON contract.
 The contract is what is stable — see Part 17.
+
+**Moves, but should be reconsidered on the way.** Three things the Go
+implementation does in a way it has explicitly recorded as a compromise:
+
+| Thing | The compromise | Where to decide |
+|---|---|---|
+| Core NATS, no redelivery | A mention lost while `notification-service` is down is somebody never learning they were asked a question | 19.7 |
+| `Manager` never idle-evicts a session | Fine at demo scale; unbounded memory at any other | 8.1 |
+| The audit log has no `prev_hash` chain | It says so on the screen rather than implying tamper evidence it lacks | 24 |
+
+Port each as it is, then fix it deliberately as a second change. Doing both
+at once means a bug in the fix is indistinguishable from a bug in the port.
 
 ## 0.2 The one thing to internalise before starting
 
@@ -493,6 +508,80 @@ being the source of truth.
 In Rust this means: **never** `#[serde(deny_unknown_fields)]` on an op type.
 Unknown fields are a future version speaking, and dropping them is correct
 where erroring is not.
+
+## 2.7 The full table inventory
+
+`DATA_MODEL.md` is the authority. This is the checklist, so nothing is
+discovered late.
+
+**`docs` — owned by `document-service`**
+
+| Table | Notes for the port |
+|---|---|
+| `pages` | `path LTREE`, `sort_key TEXT`, `space_id NOT NULL`, `deleted_at`, `lifecycle_state`, generated `search_vector` |
+| `blocks` | **projection** of `collab.ops`. `content JSONB`, generated `search_vector` |
+| `page_links` | **projection**. `target_page NULL` = dangling — this column *is* § 20's CHECKS row and RFC-003's `DanglingPageLink` |
+| `topics`, `page_tags` | classification; `page_tags` is the tag cloud's source |
+| `reading_positions` | per user per page; view state, never model state |
+| `space_members` | **projection** of `auth.memberships`; read path only, never the write path |
+
+**`collab` — owned by `collaboration-service`**
+
+| Table | Notes |
+|---|---|
+| `ops` | the append-only log. `page_id NOT NULL` — which is why cross-page aggregation has no owner today (see `v4.5.0`'s gating ADR) |
+| `outbox` | one row per flushed op, written in the op's transaction |
+| `comment_threads` | `block_id`, `anchor_start JSONB`, `anchor_end JSONB`, `quoted TEXT`, `resolved_at` |
+| `comments` | `thread_id`, `author_id`, `body`, `edited_at` |
+
+`quoted` is captured when the thread opens and **never updated**. It is not
+a cache of what the anchors resolve to; it is what was being discussed. The
+distinction is the whole design (Part 8.8).
+
+**`auth` — owned by `auth-service`**
+
+| Table | Notes |
+|---|---|
+| `users` | `password_hash` is an Argon2id **PHC string** — algorithm, parameters and salt in one column, so parameters can be upgraded without a migration |
+| `refresh_tokens` | rotation, revocation |
+| `spaces`, `memberships` | the role lives on the membership, never on the user |
+| `space_invitations` | **not** a membership. `responded_at`/`accepted` are `Option`; a partial unique index enforces one *pending* invitation per person per space |
+| `outbox` | `auth.user_registered`, `role_granted`, `role_revoked`, `member_invited` |
+
+**`notify` — owned by `notification-service`**
+
+| Column | Notes |
+|---|---|
+| `source_event_id UNIQUE` | the dedup key — NATS is at-least-once |
+| `kind` | `TEXT` with an open set, deliberately not an ENUM: extending a CHECK-less TEXT column is ordinary DDL, extending an ENUM is a special-cased transaction |
+| `message` | the whole content for `welcome`; **empty** for every pointer-shaped kind |
+| `actor_id`, `pointer JSONB` | who acted, and ids only — never a copy of any text |
+
+The `message`/`pointer` split is the schema-level expression of § 20's rule:
+a notification is a pointer to an anchor, never a copy of the text. A stored
+sentence freezes the display name, the page title, and the words — three
+things owned by other services and allowed to change. **Model it as an enum
+in Rust and the ambiguity disappears:**
+
+```rust,ignore
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum NotificationBody {
+    Welcome { message: String },
+    Mention { page: PageId, block: BlockId, thread: ThreadId, comment: CommentId, actor: UserId },
+    Invite  { invitation: InvitationId, space: SpaceId, role: Role, invited_by: UserId },
+}
+```
+
+The Go version cannot express this and carries two nullable columns plus a
+convention. **This is one of the clearest wins available in the port** — the
+enum makes "a mention with a message" and "a welcome with a pointer"
+unrepresentable.
+
+One kind is deliberately absent from that enum: **a CHECK is derived, never
+stored.** It is recomputed on every read from `page_links` where
+`target_page IS NULL`, because a stored check goes stale the moment somebody
+creates the page. See `docs/api/notifications.md` § 6.
 
 ---
 
@@ -1308,6 +1397,84 @@ typing, or exhaust the server's memory.
 8. `presence_reports_a_reader_who_never_edits` (C8.5)
 9. `goleak_equivalent`: no task outlives a closed session — in Rust, assert
    the `JoinSet` drains
+
+## 8.7 The server actor id — read this before writing a single line
+
+**This is the highest-value paragraph in Part 8**, because the bug it
+describes shipped, survived review, and was found only in production.
+
+The service assigns `CharId`s (Part 7) on behalf of the server for every
+character it materialises during a **replay** — opening a session, building
+a trace, restoring to a revision, building a palimpsest. Those ids embed an
+actor:
+
+```rust,ignore
+struct CharId { actor: ActorId, lamport: u64, offset: u32 }
+```
+
+The Go implementation generated that actor **fresh at every process start**.
+Everything worked, because within one process the ids were consistent. Then
+the service restarted, a replay assigned *different* `CharId`s to the same
+historical inserts, and every anchor stored in an earlier process failed to
+resolve:
+
+> `anchor refers to an item this text never saw`
+
+Every comment, every restore, every palimpsest on every page written before
+the restart. Silent until somebody opened one.
+
+**The rule:**
+
+```rust,ignore
+// MUST be stable across restarts. Configurable only so a future
+// multi-instance deployment can give each process its own tag; the DEFAULT
+// must be a fixed constant, not a fresh id.
+let server_actor: ActorId = cfg.server_actor.unwrap_or(ActorId::SERVER);
+```
+
+There was never a uniqueness problem for the fresh value to solve — this is
+a one-writer-per-page service, so two processes never assign the same
+actor's ids concurrently. There was only a stability problem it was
+silently causing.
+
+**The test (Part 24.2 #6):** write an op, resolve an anchor, **restart the
+process**, resolve the same anchor again. It must still resolve. Almost no
+unit test catches this, because almost no unit test restarts anything.
+
+## 8.8 What else the session owns
+
+Two surfaces the port must not accidentally move elsewhere:
+
+**The role directory.** `can_apply(page, op, actor)` is RFC-002 §5's single
+authorization chokepoint, and it must stay synchronous and pure — it reads a
+directory populated when the connection joined, never a database. Role
+resolution happens **before the upgrade**, so a refusal is an HTTP status
+rather than a socket that opens and immediately closes:
+
+```rust,ignore
+// In the upgrade handler, before accepting:
+let role = resolver.resolve(page, actor).await?;   // 404 / 403 here
+if !role.can_read() { return Err(Status::not_found()) }
+let socket = ws.on_upgrade(...);
+```
+
+An absent directory entry means "no", not "assume the usual". A resolver
+failure is **not** a role — a service that fails open turns an auth-service
+blip into an escalation for everyone connecting during it.
+
+**Comment threads.** They live here, not in `document-service`, for one
+reason: a thread's extent is an `AnchorRange`, and only whatever holds the
+block's live rope can resolve it. And they are **not ops** — a comment
+changes neither the block tree nor any text, so putting one in the op log
+would put it in the document's undo stack, where one ⌘Z too many silently
+retracts somebody's remark.
+
+An anchor that no longer resolves makes the thread **orphaned**, which is an
+*answer* (`{ range: null, orphaned: true }`, HTTP 200), not an error. The
+thread is still returned: deleting somebody's remark because somebody else
+edited a sentence is a worse failure than an untidy list, and a comment
+about text that no longer exists is frequently the most interesting one
+there.
 
 **Before:** *Rust Atomics and Locks* ch. 1–4 for why `Mutex<T>` and `RwLock<T>`
 mean what they mean here; *Crust of Rust: "Channels"* for the actor shape.
@@ -2651,6 +2818,37 @@ enforced rule rather than an aspiration.
 5. **Fuzz the parser.** `cargo-fuzz` over `parse()`, with the two invariants
    P5.2 (always advances) and P5.5 (bounded nesting) as the oracle. This is
    the one place untrusted input reaches an algorithm.
+6. **A test waits on the thing it asserts on.** Never on a proxy for it —
+   not a fixed sleep, not "the network went quiet", not "some page has a
+   comment on it". Every one of those has produced a false failure here,
+   and one of them (`networkidle`, in an app that polls every 30 seconds)
+   killed three whole sweeps after 120 passing checks.
+7. **A test produces its own preconditions.** A check that needs a deleted
+   page deletes one; a check that needs a comment thread opens one. The
+   alternative is a suite that passes only against a corpus that happens to
+   have drifted the right way, and then fails the day somebody reseeds.
+8. **One sweep at a time.** Two concurrent browser-driven runs produce
+   phantom failures, and a racing run's output is not evidence. This cost
+   an hour of chasing four defects that were one crash.
+
+### 18.1b The three kinds of test, and what each is for
+
+| Kind | Runs | Catches | Cannot catch |
+|---|---|---|---|
+| Unit / property | no infrastructure | algorithm errors, law violations | anything about wiring |
+| Integration (`testcontainers`) | real Postgres + NATS | SQL, transactions, projections, redelivery | anything about the browser |
+| Browser-driven (`verify.js`) | the whole stack | **the gap between two correct services** | anything not on a screen |
+
+The third row is the one people cut, and it is the one that found both
+authorization holes in this system — because in each case *neither service
+was wrong on its own*. `document-service` correctly refused a page outside
+your spaces; `collaboration-service` correctly enforced ops. The hole was
+between them, and only a real request could stand in that gap.
+
+It is also the row that catches **a control that renders but does nothing**,
+which no DOM diff can see: a segmented control with one live option and two
+decorative ones passes every markup comparison ever written. Click every
+control the screen draws; assert it changes something.
 
 ## 18.2 The order
 
@@ -4320,4 +4518,251 @@ The acceptance bar is not "the tests pass". It is:
 
 The frontend is the permanent visual harness precisely so this comparison is
 possible. If a screen differs, the port is wrong — not the screen.
+
+---
+
+# Part 31 — The frontend contract, and how the port is judged
+
+The TypeScript frontend is not part of the port. It is the **instrument the
+port is measured with**, and that only works if the contract between them is
+written down. This part is that contract.
+
+## 31.1 Why it never moves
+
+Three reasons, in order of weight:
+
+1. **A constant harness makes the comparison meaningful.** If both halves
+   change, a screen that renders differently proves nothing. With the
+   frontend fixed, any difference is the backend's.
+2. **The view layer has no algorithmic content to learn from.** Porting it
+   would be weeks of JSX for no insight, and this port exists to be
+   instructive.
+3. **It is already the acceptance bar.** `docs/ui-mockups/v2/index.html` is
+   the spec; the frontend is the built form of it; `uidiff` compares them.
+   That machinery works today and costs nothing to keep.
+
+## 31.2 What the backend owes the frontend
+
+Everything below is a contract the Rust services must satisfy byte for byte.
+None of it is negotiable without changing the frontend, which is not allowed.
+
+**REST shapes.** `docs/api/*.md` §2 in each file. Field names, nesting,
+optionality. `serde` makes these easy to get subtly wrong:
+
+```rust,ignore
+#[derive(serde::Serialize)]
+#[serde(rename_all = "snake_case")]     // the wire is snake_case, always
+struct PageJson {
+    id: String,                          // a STRING on the wire, not a Uuid struct
+    parent_id: Option<String>,           // null, never absent
+    #[serde(skip_serializing_if = "Option::is_none")]
+    read_at: Option<String>,             // absent, never null
+}
+```
+
+**The `null` vs absent distinction is real and the frontend depends on it.**
+`parent_id: null` means "a root page"; a missing `parent_id` would be
+`undefined` in TypeScript and take a different branch. Go's
+`omitempty` and Rust's `skip_serializing_if` do not have the same defaults —
+**check every field against the running Go service** rather than against the
+struct definition.
+
+**Error shape.** One shape, everywhere the gateway answers:
+
+```json
+{ "error": "not_found", "message": "page not found" }
+```
+
+with the HTTP status carrying the machine-readable half. Two exceptions the
+frontend already knows about and must keep working:
+
+- `collaboration-service`'s plain-HTTP debug routes return a **plain-text**
+  error body, which is why `web/src/api/history.ts` has its own `collabFetch`
+  rather than using the shared `apiFetch`. Preserve that, or change both.
+- `notification-service` returns the shared JSON shape.
+
+**Timestamps** are RFC 3339 with a `Z`, serialised as strings.
+
+**The WebSocket wire format** is `docs/api/collaboration.md`, and it is the
+strictest contract in the system: the browser applies ops optimistically and
+reconciles against acks, so a field renamed here is a document that silently
+diverges rather than an error.
+
+**The wasm bridge** is Part 17: JSON in, `{value|error}` out, same function
+names, same argument shapes.
+
+## 31.3 What the frontend owes the backend
+
+Two things, and they are worth restating because they are load-bearing for
+the whole architecture:
+
+1. **The UI never mutates the document tree.** Every change is an `Op` sent
+   to the server. There is no local edit path, no optimistic tree mutation
+   that is not an op, and no "just this one field" exception. If the port
+   ever finds a screen writing state directly, that is a bug in the screen.
+2. **The view layer never computes what a Rust crate could.** It draws what
+   was computed. The rule is enforced by the harness check that asserts
+   every module the SPA loads is really wasm — a screen that quietly fell
+   back to a JavaScript reimplementation would pass every visual diff.
+
+## 31.4 The gate, in full
+
+Two tools, and a screen is not done until both are satisfied.
+
+**`uidiff` — structure and computed style.**
+
+```sh
+node tools/uidiff/uidiff.js <section> <route> [pageTitle]
+```
+
+It walks the mockup and the running screen in parallel and reports `MISSING`,
+`CHROME TEXT`, and `PROPERTIES`. **All three must be zero.** Screenshots hide
+whole missing regions — several rounds of eyeballing "looked fine" while an
+inspector was not rendering at all.
+
+Three things it deliberately does not do, each learned from a false
+positive:
+
+- It skips elements with no class (their signature matches thousands of
+  unrelated nodes).
+- It pairs occurrences **within a parent**, not by flat index across the
+  screen — otherwise a data-driven list of a different length slides every
+  later element against the wrong counterpart.
+- It compares chrome text **only when both sides have the same number** of
+  that element. A count difference is content, not design.
+
+**`verify` — behaviour.**
+
+```sh
+node tools/uidiff/verify.js
+```
+
+It drives every control on every built screen and asserts that the thing it
+is supposed to change actually changed. This is the half a DOM diff cannot
+do, and it is where the interesting failures are.
+
+**For the port specifically**, `verify` is the acceptance test for a whole
+service: point the frontend at the Rust backend and run it. It exercises
+real auth, real ops over a real WebSocket, real projections, real
+authorization across service boundaries. A green sweep against the Rust
+stack is a stronger statement than any unit suite.
+
+## 31.5 Seeding, and why the corpus is part of the contract
+
+`tools/seed/seed.js` writes the demo corpus **through the public API** —
+pages over REST, blocks and character history over the real WebSocket,
+notifications by writing a comment that contains an `@handle` and by issuing
+a real invitation. Nothing is inserted directly into a table.
+
+That is not fastidiousness. A seeder that writes rows directly would produce
+a corpus the application could not have produced, and every test that ran
+against it would be testing a fiction. It is also, in practice, an
+end-to-end test of the write path that runs every time anybody sets the
+project up.
+
+**Keep it working during the port.** It is the fastest way to find out that
+a newly-ported service's write path disagrees with the old one: seed against
+Rust, and the first divergence shows up as a page that will not create or a
+history that will not replay.
+
+---
+
+# Part 32 — Appendix: the file-by-file map
+
+Where each Go source area lands. Use it to check nothing has been forgotten;
+the ordering within each service is roughly the order to port it in.
+
+## `documentcore/` → `crates/documentcore/`
+
+| Go | Rust | Part |
+|---|---|---|
+| `page.go` | `page.rs` — `Page`, `apply`, the one mutation path | 3 |
+| `block.go` | `block.rs` — `Block`, `BlockKind` as an enum | 3.2 |
+| `operation.go` | `op.rs` — the ISA, `invert` | 6 |
+| `history.go` | `history.rs` — undo groups, per-actor stacks | 6.3 |
+| `inline.go` | `inline.rs` — marks, and the last-write-wins tradeoff | 3.3 |
+
+## `collaboration-service/`
+
+| Go | Rust | Part |
+|---|---|---|
+| `internal/doctext` | `text/` — the rope | 7 |
+| `internal/anchor` | `anchor/` — `Anchor`, `CharId` | 7 |
+| `internal/rope` | folded into `text/` | 7 |
+| `internal/oplog` | `oplog/` | 6 |
+| `internal/opstore` | `store/` — sqlx, dedup on op id | 21 |
+| `internal/wal` | `wal/` | 8.2 |
+| `internal/flush` | `flush/` | 8.2 |
+| `internal/session` | `session/` — **the actor** | 8.4 |
+| `internal/pageop` | `pageop/` — the two op tiers | 6.1 |
+| `internal/ops` | `ops/` | 6 |
+| `internal/palimpsest` | `palimpsest/` — replays BOTH tiers | 13 |
+| `internal/roles` | `roles/` — the directory + resolver | 8.8, 22.3 |
+| `internal/mention` | `mention/` — the handle grammar | 23.2 F |
+| `internal/wsapi` | `ws/` — handler, comments, profile, trace, diff | 8.3 |
+| `internal/outbox` | uses `marginal-outbox` | 19.7 |
+
+## `document-service/`
+
+| Go | Rust | Part |
+|---|---|---|
+| `internal/pages` | `pages/` — CRUD, `visible`, `may_write` | 9, 22.3 |
+| `internal/pagerepo` | inside `pages/` — sqlx | 21 |
+| `internal/blockproj` | `projection/` — consumes `collab.ops_flushed` | 9.2, 21.5 |
+| `internal/graph` + `graphrepo` | `graph/` — **takes a `Scope`** | 10, 22.4 |
+| `internal/search` + `searchrepo` | `search/` — FTS, BK-tree, **`Scope`** | 11 |
+| `internal/trie`, `internal/bktree` | `trie/`, `bktree/` — module-local | 11 |
+| `internal/discover` + `discoverrepo` | `discover/` — **`Scope`** | 12 |
+| `internal/spaceproj` + `spacerepo` | `spaces/` — the membership projection | 21.5 |
+| `internal/pagesaga` | `saga/` — the delete saga | 9.3 |
+| `internal/sortkey` | `sortkey/` | 2.4 |
+| `internal/opscript` | test support | 18 |
+| `cmd/wasm`, `cmd/*wasm` | `crates/*/src/wasm.rs` | 17 |
+
+## `auth-service/`
+
+| Go | Rust | Part |
+|---|---|---|
+| `internal/domain` | `domain/` | 2.2 |
+| `internal/passwordhash` | `password/` — Argon2id, PHC | 21.2 |
+| `internal/keys` | `keys/` — RS256 + JWKS publication | 22.1 |
+| `internal/sessions` | `sessions/` — refresh rotation | 22 |
+| `internal/lockout`, `internal/blocklist` | `lockout/`, `blocklist/` | 23 |
+| `internal/spaces` | `spaces/` — roles, **invitations** | 22.3 |
+| `internal/users` | `users/` | — |
+| `internal/api` | `api/` — the gRPC servers | 20 |
+
+## The rest
+
+| Go | Rust | Part |
+|---|---|---|
+| `authverify/` | `crates/authverify/` — **port the tests first** | 22.2 |
+| `envconfig/` | *deleted* | 1.3 |
+| `outboxpoll/` | `crates/outbox/` — a generic `Poller<C, M, B>` | 1.4 |
+| `notification-service/internal/notify` | `notify/` — three subscriptions, one enum body | 2.7 |
+| `diagnostics-service/internal/analyzers` | `analyzers/` — nine pure functions | 14 |
+| `diagnostics-service/internal/facts` | `facts/` — the dependency DAG | 14 |
+| `api-gateway/internal/*rest` | `routes/` — one module per resource | 20.5 |
+| `api-gateway/internal/authmw` | `middleware/auth.rs` — **allowlist** | 23.2 B |
+| `api-gateway/internal/apierror` | `error.rs` — the one status table | 20.3 |
+
+## Not ported, deliberately
+
+| Area | Why |
+|---|---|
+| `web/` | The harness. Part 31 |
+| `tools/uidiff/`, `tools/seed/` | Node, and they test the port rather than being part of it |
+| `docs/ui-mockups/` | The spec |
+| `deploy/terraform/` | Unchanged; it provisions infrastructure, not code |
+
+## A closing note on scope
+
+If, while porting, you find yourself wanting a feature the Go side does not
+have — JetStream instead of core NATS, session eviction, a `prev_hash` chain
+on the audit log — **write it down and finish the port first.** Each of
+those is a real gap this repo has recorded honestly, and each is a better
+second commit than a confounding variable in the first. The port is
+finished when the frontend cannot tell the difference; improvements are what
+comes after, and they are much easier to evaluate against a baseline that
+already works.
 

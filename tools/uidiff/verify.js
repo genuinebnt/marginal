@@ -312,8 +312,14 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
     check('§20 a thread exists to mention somebody in', Boolean(thread && me));
     if (thread && me) {
       const handle = '@' + me.display_name.replace(/ /g, '');
-      const before = ((await jf(`${NOTIF}/notifications`, { headers: DH }))?.notifications ?? [])
-        .filter(n => n.kind === 'mention').length;
+      // The NEWEST mention's id, not a count. GET /notifications is capped
+      // at 50 rows, so once an instance has more than that, a new mention
+      // pushes an old one out and the count is unchanged — the check then
+      // fails against working code. Asserting on the row itself is both
+      // stricter and immune to the limit.
+      const newestMention = async () => ((await jf(`${NOTIF}/notifications`, { headers: DH }))
+        ?.notifications ?? []).find(n => n.kind === 'mention')?.id ?? null;
+      const before = await newestMention();
       // The peer is a VIEWER. That is the case that was broken: resolving
       // candidates through the admin-only member list meant only admins
       // could mention anyone, silently.
@@ -327,12 +333,20 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
         body: JSON.stringify({ body: 'write to someone@example.com about it' }),
       });
       await p.waitForTimeout(2200);
-      const after = ((await jf(`${NOTIF}/notifications`, { headers: DH }))?.notifications ?? [])
+      const all = ((await jf(`${NOTIF}/notifications`, { headers: DH }))?.notifications ?? [])
         .filter(n => n.kind === 'mention');
+      const after = await newestMention();
       check('§20 a viewer can mention somebody', posted.status === 200);
-      check('§20 the mention arrives, and an email address does not',
-            after.length === before + 1, `${before} -> ${after.length}`);
-      const newest = after[0];
+      check('§20 the mention arrives', after !== null && after !== before,
+            `${String(before).slice(0, 8)} -> ${String(after).slice(0, 8)}`);
+      // The email-address control, asserted separately: the second comment
+      // must not have produced a THIRD row. Checked by counting the two
+      // newest rather than by a total, for the same limit reason.
+      const twoNewest = all.slice(0, 2).map(n => n.id);
+      check('§20 and an email address does not',
+            twoNewest[0] === after && twoNewest[1] === before,
+            `${twoNewest.map(x => String(x).slice(0, 8)).join(',')}`);
+      const newest = all[0];
       check('§20 what is stored is a pointer, not a copy of the text',
             Boolean(newest?.pointer?.thread_id) && !newest?.message,
             newest ? `message=${JSON.stringify(newest.message)}` : 'no mention');
