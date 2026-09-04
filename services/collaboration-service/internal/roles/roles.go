@@ -63,6 +63,18 @@ const DefaultTTL = 5 * time.Minute
 type entry struct {
 	role     Role
 	resolved time.Time
+	// conns is how many live connections this (page, actor) has.
+	//
+	// It exists because Clear used to delete the entry outright, and one
+	// person may hold several connections to the same page — two browser
+	// tabs is the ordinary case, and a reconnect is the common one. The
+	// FIRST connection to close then revoked the role the others were
+	// still using, and every subsequent op came back "denied by
+	// can_apply". It was found on a brand-new page, where React's
+	// development double-mount opens a socket, drops it, and opens a
+	// second: the first one's cleanup wiped the second one's grant, so a
+	// freshly created page could not be typed into at all.
+	conns int
 }
 
 // Directory is the per-connection role cache. One per process.
@@ -91,18 +103,35 @@ func New(opts ...Option) *Directory {
 	return d
 }
 
-// Set records a role resolved at join.
+// Set records a role resolved at join, and counts the connection.
+//
+// A second connection for the same (page, actor) refreshes the role and
+// increments the count rather than replacing the entry — the role is
+// re-resolved per join, so the newest answer is the right one to keep.
 func (d *Directory) Set(page, actor uuid.UUID, role Role) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	d.by[key{page, actor}] = entry{role: role, resolved: d.now()}
+	k := key{page, actor}
+	e := d.by[k]
+	d.by[k] = entry{role: role, resolved: d.now(), conns: e.conns + 1}
 }
 
-// Clear forgets one connection's role, on disconnect.
+// Clear drops ONE connection, and forgets the role only when the last one
+// goes. Not a delete: see entry.conns for the bug that made this necessary.
 func (d *Directory) Clear(page, actor uuid.UUID) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	delete(d.by, key{page, actor})
+	k := key{page, actor}
+	e, ok := d.by[k]
+	if !ok {
+		return
+	}
+	if e.conns <= 1 {
+		delete(d.by, k)
+		return
+	}
+	e.conns--
+	d.by[k] = e
 }
 
 // Revoke forgets every entry for an actor, across all pages — what

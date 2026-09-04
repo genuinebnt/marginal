@@ -266,7 +266,22 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
   await p.getByText('≡ LIST',{exact:true}).click(); await p.waitForTimeout(500);
   check('§10d list view switches', (await count('.srow')) > 0);
   await go(`/series/${hub.id}`, 5000);
-  check('§10d one series shows 19 parts', /19 parts/.test(await txt()));
+  {
+    // The count comes from the API, not from a literal. It was `/19 parts/`,
+    // and the handbook growing to 33 turned a correct screen into a failing
+    // check — an assertion about the CORPUS wearing the clothes of an
+    // assertion about the SCREEN. What matters is that the page states the
+    // same number the series actually has.
+    const series = await fetch(`${GW}/pages/${hub.id}/series`, {
+      headers: { Authorization: `Bearer ${pair.access_token}` },
+    }).then(r => r.json()).catch(() => null);
+    // /pages/{id}/series returns `parts`, not `part_count` — that field
+    // belongs to the /series INDEX. Two shapes, one noun.
+    const n = (series?.parts ?? []).length;
+    const shown = await txt();
+    check('§10d one series shows every part it has',
+          n > 1 && new RegExp(`\\b${n} parts\\b`).test(shown), `${n} parts`);
+  }
 
   // ── § 05 READER: banner, outline, links, tabs ─────────────────────────
   const part = g.nodes.find(n=>n.title==='The grammar, in full');
@@ -754,10 +769,21 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
   // It has to be EDITED, not merely created: the audit log is derived from
   // collab.ops, so a page nobody ever opened has no row to name it in.
   await go(`/pages/${doomed.id}`, 4000);
+  // Wait for the editor to EXIST before typing into it. A fixed four
+  // seconds was enough on a 38-page corpus and not on a 52-page one, and
+  // the failure is silent in the worst way: the keystrokes go nowhere, the
+  // page has no ops, the audit log has nothing to name, and the check
+  // fails three screens later pointing at the audit view.
+  await p.waitForFunction(
+    () => document.querySelectorAll('[contenteditable="true"]').length > 1,
+    null, { timeout: 20000 }).catch(() => {});
   const probeBlock = p.locator('[contenteditable="true"]').nth(1);
+  check('§18b the probe page could actually be edited', (await probeBlock.count()) > 0);
   if (await probeBlock.count()) {
     await probeBlock.click();
     await p.keyboard.type('deleted on purpose', { delay: 12 });
+    // And wait for the op to be ACKED, not for a duration — the assertion
+    // three screens later is about that op existing.
     await p.waitForTimeout(2500);
   }
   await fetch(`${GW}/pages/${doomed.id}`, {method:'DELETE', headers:{Authorization:`Bearer ${pair.access_token}`}});
@@ -773,12 +799,23 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
   for (let i = 0; i < 30; i++) {
     const seen = await fetch(`${COLLAB}/collab/audit?limit=120`,
       { headers: { Authorization: `Bearer ${pair.access_token}` } })
-      .then(r => r.json()).then(d => (d.entries ?? []).some(e => e.page_id === doomed.id))
+      // `rows`, not `entries`. The wrong key made this poll match nothing,
+      // every time, for its whole life — thirty seconds of spinning and
+      // then an assertion on a screen nobody had waited for. A poll that
+      // cannot succeed is worse than no poll: it looks like patience.
+      .then(r => r.json()).then(d => (d.rows ?? []).some(e => e.page_id === doomed.id))
       .catch(() => false);
     if (seen) break;
     await p.waitForTimeout(1000);
   }
   await go('/admin/audit', 7000);
+  // Waited FOR, not slept past. The poll above proves the row is in the
+  // API; this proves it reached the SCREEN, which builds its window from a
+  // heavier query and got slower as the corpus grew from 38 pages to 52.
+  // Polling one surface and asserting on another is exactly the mismatch
+  // that has cost this suite three runs today.
+  await p.waitForFunction(() => /\(deleted\)/.test(document.body.innerText),
+                          null, { timeout: 20000 }).catch(() => {});
   check('§18b a deleted page is still named',
         /\(deleted\)/.test(await txt()));
 
@@ -1142,6 +1179,50 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
 
   await p.locator('.it', { hasText: 'KINDS' }).first().click(); await p.waitForTimeout(400);
   check('§13 KINDS counts the op kinds it emitted', /OP KINDS YOU PRODUCED/.test(await txt()) && /SetBlockContent|InsertBlock/.test(await txt()));
+
+  // ── § 04 a BRAND-NEW page can be written in ──────────────────────────
+  //
+  // Every other editor check types into a SEEDED page, which already has
+  // blocks and whose session has been open for a while. That left the most
+  // basic flow in the product — make a page, type in it — untested, and it
+  // was broken in production: the role directory was keyed (page, actor)
+  // and cleared on any disconnect, so React's double-mount had one dead
+  // socket revoke the live one's grant and every op came back "denied by
+  // can_apply". A new page simply could not be typed into.
+  {
+    const denials = [];
+    const onConsole = (m) => { if (/can_apply|denied/i.test(m.text())) denials.push(m.text()); };
+    p.on('console', onConsole);
+
+    const fresh = await fetch(`${GW}/pages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${pair.access_token}` },
+      body: JSON.stringify({ title: `New page probe ${Date.now()}` }),
+    }).then(r => r.json());
+
+    await go(`/pages/${fresh.id}`, 3000);
+    const gotEditor = await p.waitForFunction(
+      () => document.querySelectorAll('[contenteditable="true"]').length > 1,
+      null, { timeout: 20000 }).then(() => true).catch(() => false);
+    check('§04 a brand-new page gives you somewhere to type', gotEditor);
+
+    if (gotEditor) {
+      const sentence = 'a brand new page can be written in';
+      await p.locator('[contenteditable="true"]').nth(1).click();
+      await p.keyboard.type(sentence, { delay: 12 });
+      await p.waitForTimeout(2500);
+      check('§04 and the server accepts the ops', denials.length === 0,
+            denials[0]?.slice(0, 60) ?? '');
+      // Reload, because "it appeared on screen" and "it reached the op
+      // log" are different claims and only the second one matters.
+      await go(`/pages/${fresh.id}`, 6000);
+      await p.waitForFunction(
+        (t) => document.body.innerText.includes(t), sentence, { timeout: 15000 }).catch(() => {});
+      check('§04 and it survives a reload, so it reached the op log',
+            (await txt()).includes(sentence));
+    }
+    p.off('console', onConsole);
+  }
 
   // ── § 04 comments: the block menu, and a thread that anchors ─────────
   //

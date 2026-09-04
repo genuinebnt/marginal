@@ -145,3 +145,47 @@ func TestConcurrentReadsAndWrites(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// Two connections, one person, one page — two browser tabs, or a reconnect.
+// Closing one must not revoke the other.
+//
+// This shipped broken: Clear deleted the (page, actor) entry outright, so
+// the first connection to close took everybody's grant with it and every
+// later op was refused by can_apply. It was found on a brand-new page,
+// where React's development double-mount opens a socket, drops it, and
+// opens a second — the dead one's cleanup wiped the live one's role, and a
+// freshly created page could not be typed into at all.
+func TestClosingOneConnectionKeepsAnotherAlive(t *testing.T) {
+	d := New()
+	page, actor := uuid.New(), uuid.New()
+
+	d.Set(page, actor, Editor)
+	d.Set(page, actor, Editor) // a second tab
+	d.Clear(page, actor)       // the first one closes
+
+	if !d.CanApply(page, actor) {
+		t.Fatal("closing one connection revoked the other's role")
+	}
+
+	d.Clear(page, actor) // and now the last one
+	if d.CanApply(page, actor) {
+		t.Fatal("the role outlived the last connection")
+	}
+}
+
+// Clearing an actor who was never there must not underflow into a state
+// that resurrects a role.
+func TestClearingAnUnknownConnectionIsHarmless(t *testing.T) {
+	d := New()
+	page, actor := uuid.New(), uuid.New()
+
+	d.Clear(page, actor)
+	if d.CanApply(page, actor) {
+		t.Fatal("clearing an absent entry granted a role")
+	}
+	d.Set(page, actor, Viewer)
+	d.Clear(page, actor)
+	if d.CanApply(page, actor) {
+		t.Fatal("role survived its only connection closing")
+	}
+}

@@ -3832,6 +3832,7 @@ are proven to be reachable. Write them **before** the code they test.
 | 12 | Four cross-page readers unscoped (graph, search, discover, suggest) | Part 23.2 C, with its positive half |
 | 13 | The space filter shipped with the space id left at its zero value in one construction site, so the feature returned nothing at all | The positive assertion in the same test |
 | 14 | `ListMembers` is admin-only, so mention resolution silently worked for admins only | Resolve a mention **as a viewer** |
+| 14b | **The role directory was keyed `(page, actor)` and `Clear` deleted it, so ANY disconnect revoked every other connection's grant.** Two tabs, or one reconnect, and every op came back `denied by can_apply` — a brand-new page could not be typed into at all | Open two connections for one actor+page, close one, assert the other can still apply. Refcount the connections; forget the role only when the last one goes |
 | 15 | Migration created a default space with no admin | Assert the invariant at the end of the migration |
 | 16 | A new registration joins as viewer, so a fresh install had nobody who could write | First registration bootstraps as admin; assert on an empty database |
 
@@ -3859,6 +3860,7 @@ These are not Rust bugs, but the *harness* stays, so the lessons do:
 | 27 | A check waited on `networkidle` in an app that polls every 30s | **Wait on what you assert on**, never on a proxy for it |
 | 28 | A check asserted on a corpus fact ("some page has a thread") that a reseed removed | Produce your own precondition |
 | 29 | Two test sweeps running concurrently produced four phantom failures | One sweep at a time; a racing run's output is not evidence |
+| 29b | **Every editor test typed into a SEEDED page**, so "create a page and type in it" — the product's core flow — was untested and shipped broken | Test the empty case explicitly. A fixture that is always pre-populated hides every bug that only affects the first interaction |
 | 30 | **The browser crashed and the sweep exited 0 with no output**, so three runs that stopped at 73 of 140 checks were reported as passes | A harness whose failure mode is a silent pass is worse than no harness. Assert on the *shape* of a successful run — it printed a summary, it ran N checks — not merely on the exit code |
 
 ## 24.6 The meta-lesson

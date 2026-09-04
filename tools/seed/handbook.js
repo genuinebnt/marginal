@@ -60,6 +60,20 @@ const META = [
   { n: 16, title: 'Errors, and the Rust idiom table',          topic: 'operations', tags: ['rust', 'errors', 'idiom'] },
   { n: 17, title: 'The wasm boundary',                         topic: 'interface',  tags: ['wasm', 'rust', 'boundary'] },
   { n: 18, title: 'Testing strategy and the order of work',    topic: 'operations',  tags: ['testing', 'porting', 'rust'] },
+  { n: 19, title: 'Microservices: the parts that are not the algorithm', topic: 'operations', tags: ['microservices', 'architecture', 'rust'] },
+  { n: 20, title: 'gRPC, in Rust',                             topic: 'protocol',   tags: ['grpc', 'tonic', 'rust'] },
+  { n: 21, title: 'Persistence: sqlx, transactions, and the projection rule', topic: 'storage', tags: ['postgres', 'sqlx', 'transactions'] },
+  { n: 22, title: 'Identity, authorization, and the rule that gets broken quietly', topic: 'operations', tags: ['auth', 'rbac', 'security'] },
+  { n: 23, title: 'Security testing: what to actually test',   topic: 'operations', tags: ['security', 'testing'] },
+  { n: 24, title: 'The bug catalogue',                         topic: 'operations', tags: ['testing', 'bugs', 'review'] },
+  { n: 25, title: 'Sketches: HyperLogLog, Count-Min, t-digest', topic: 'research',  tags: ['sketches', 'algorithms', 'probabilistic'] },
+  { n: 26, title: 'The markdown compiler, and the lexer',      topic: 'interface',  tags: ['compilers', 'parsing', 'lexer'] },
+  { n: 27, title: 'The network simulator: TP1, Merkle, the causal DAG, LSM', topic: 'protocol', tags: ['crdt', 'ot', 'simulation'] },
+  { n: 28, title: 'Benchmarking honestly',                     topic: 'research',   tags: ['benchmark', 'performance'] },
+  { n: 29, title: 'Configuration, deployment, and observability', topic: 'operations', tags: ['deployment', 'observability'] },
+  { n: 30, title: 'The order of work, with checkpoints',       topic: 'operations', tags: ['porting', 'planning'] },
+  { n: 31, title: 'The frontend contract, and how the port is judged', topic: 'interface', tags: ['frontend', 'testing'] },
+  { n: 32, title: 'Appendix: the file-by-file map',            topic: 'operations', tags: ['porting', 'reference'] },
 ];
 
 const HUB = 'The Rust Porting Handbook';
@@ -226,7 +240,7 @@ function seriesPages() {
     topic: 'operations',
     tags: ['rust', 'porting', 'handbook'],
     blocks: [
-      ['p', 'A module-by-module scaffold for hand-porting Marginals Go backend to Rust. Nineteen parts, each self-contained enough to be worked in isolation, ordered so the invariants land before the code that has to hold them.'],
+      ['p', `A module-by-module scaffold for hand-porting Marginals Go backend to Rust. ${META.length} parts, each self-contained enough to be worked in isolation, ordered so the invariants land before the code that has to hold them. Read Part 30 for the order to actually do it in.`],
       ['callout', 'info', 'This is not a translation of the Go code and contains no finished Rust implementations. Types, signatures, invariants, algorithms in pseudocode, and the test list that proves each one — the format .agents/agents.md §2 specifies, applied to every module at once so the shape of the whole port is visible before the first cargo new.'],
       ['h2', 'The series'],
       ['ol', META.map((m) => `Part ${m.n} — [[${m.title}]]`)],
@@ -242,7 +256,15 @@ function seriesPages() {
     const n = Number(parts[k]);
     const body = parts[k + 1];
     const meta = META.find((m) => m.n === n);
-    if (!meta) continue;
+    if (!meta) {
+      // Loud, because silent was wrong. The handbook grew from 19 parts to
+      // 33 and every new one was dropped here without a word — the site
+      // kept serving the old series and looked, correctly, like nothing had
+      // changed. A seeder that quietly ignores its own source is worse than
+      // one that fails.
+      console.warn(`  handbook: Part ${n} has no META entry — SKIPPED. Add one.`);
+      continue;
+    }
 
     // Drop the part's own title line, which became the page title.
     const md2 = body.split('\n').slice(1).join('\n');
