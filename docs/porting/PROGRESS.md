@@ -5790,3 +5790,61 @@ there, both the same lesson: chrome text was compared across lists of
 different lengths, and the § 20 diff was taken before the rows' staggered
 fade-in had finished (three rows at `opacity: 0`, a measurement of the
 clock rather than the design).
+
+### 2026-09-04 — the handbook becomes the port's single source of truth
+
+`RUST_PORTING_HANDBOOK.md` went from 19 parts to 32, roughly doubling in
+size. The gap it closed was not depth on the algorithms — that was already
+there — but **everything that is not the algorithm**: how a service starts
+and stops, how gRPC status codes map, how authorization is structured, what
+to test for security, how to deploy, and the order to do it all in.
+
+New parts: 19 microservices · 20 gRPC in Rust · 21 persistence · 22
+identity and authorization · 23 security testing · 24 the bug catalogue ·
+25 sketches · 26 the compiler and lexer · 27 the network simulator · 28
+benchmarking · 29 deployment and observability · 30 the order of work with
+checkpoints · 31 the frontend contract · 32 the file-by-file map.
+
+Deepened: Part 0 (what should be reconsidered rather than ported as-is),
+Part 1 (workspace manifest, lints, the crates deliberately NOT used), Part 2
+(the full table inventory, and notification bodies as a tagged enum), Part 8
+(the server-actor stability rule; what else the session owns), Part 10 (the
+graph algorithms explained rather than named), Part 11 (the two scoping
+invariants), Part 12 (how HNSW actually works, including the neighbour-
+selection heuristic that separates 95% recall from 60%), Part 15
+(cancellation safety, the three options for shared state, backpressure),
+Part 17 (all nine wasm modules, `panic = "abort"`, what wasm cannot do),
+Part 18 (the three kinds of test and what each cannot catch).
+
+Two parts are worth singling out because they exist only because of what
+this codebase got wrong:
+
+**Part 24** is a catalogue of 29 defects that actually shipped here, each
+with the test that catches it — sorted, at the end, into the three buckets
+they fall into. Almost all of them are (1) a check that waits on or asserts
+on something other than the thing it is checking, (2) a rule that exists but
+is not applied at one of its call sites, or (3) a value that must be stable
+and was not.
+
+**Part 22.4** turns bucket 2 into a type. `Scope` is a newtype holding the
+caller's visible space set, constructible only by resolving it, and required
+by every cross-page query — so a reader that forgets to scope does not
+compile. That is the answer to the leak found two days ago, and the
+strongest single argument for doing the port in Rust at all.
+
+`PORTING_GUIDE.md` was rewritten to be the orientation layer it claims to
+be: it now says six services rather than five, records the gaps added since
+(no NATS redelivery, no audit `prev_hash`, no notification retention), and
+ends with a table pointing at the right handbook part for whatever you are
+about to do.
+
+**Also:** the seeder now produces one of every notification kind through the
+real endpoints — a comment carrying an `@handle`, a genuine pending
+invitation, a trashed page — and marks the existing inbox read first, so a
+re-seeded demo shows a believable inbox. Two bugs found writing it: the
+first page it chose to delete was the parent of a 19-part series, and the
+second was the last part *of* that series. `GET /notifications` is also
+capped at 50 rows with nothing ever deleting one, which means a **count**
+stopped being able to detect a new notification — recorded in
+`docs/api/notifications.md` § 7 as the missing retention policy, and the
+affected check now asserts on the newest row's id instead.
