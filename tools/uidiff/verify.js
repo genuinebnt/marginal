@@ -50,7 +50,25 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
   }, {actorId:sub,accessToken:pair.access_token,refreshToken:pair.refresh_token});
   await p.goto(APP+'/',{waitUntil:'domcontentloaded'});
 
-  const go = async (route, wait=6000) => { await p.goto(APP+route,{waitUntil:'networkidle'}); await p.waitForTimeout(wait); };
+  // domcontentloaded, NOT networkidle, and a navigation failure is a
+  // reported check rather than the end of the run.
+  //
+  // The inbox polls every 30s, so an authenticated page never reliably has
+  // a quiet network — `networkidle` waits for a condition this app does not
+  // guarantee. It killed three sweeps at /trash after 120 passing checks,
+  // and because the throw escaped the loop the whole run ended with no
+  // summary: I read "4 FAILED" from a truncated tail and went looking for
+  // four defects that were one crash. The explicit settle below is what the
+  // checks actually depend on.
+  const go = async (route, wait=6000) => {
+    try {
+      await p.goto(APP+route,{waitUntil:'domcontentloaded'});
+    } catch (e) {
+      check(`navigation to ${route} succeeds`, false, e.message.split('\n')[0]);
+      return;
+    }
+    await p.waitForTimeout(wait);
+  };
   const txt = () => p.evaluate(()=>document.body.innerText);
   const count = (sel) => p.evaluate(s=>document.querySelectorAll(s).length, sel);
 
@@ -205,6 +223,13 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
   check('§05 series banner with prev/next', /Part\s+\d+\s+of/.test(await txt()));
   check('§05 IN THIS PAGE, no "(empty)" rows', (await count('.oi')) > 0 && !/\(empty\)/.test(await txt()));
   check('§05 marks and page links render', (await count('.pl')) > 0);
+  // Highlighting is Go compiled to wasm, so it lands after the module
+  // loads rather than with the markup. Waited FOR, not slept past — the
+  // fixed delay that replaced `networkidle` was long enough most runs and
+  // not all of them, which is the definition of a flake.
+  await p.waitForFunction(
+    () => document.querySelectorAll('.blk-code pre span').length > 10,
+    null, { timeout: 15000 }).catch(() => {});
   check('§05 code blocks are highlighted', (await p.evaluate(()=>document.querySelectorAll('.blk-code pre span').length)) > 10);
   await p.locator('.it', { hasText: 'BACKLINKS' }).first().click(); await p.waitForTimeout(400);
   check('§05 inspector tabs switch', /BACKLINKS ·/.test(await txt()));
@@ -214,6 +239,12 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
 
   // ── § 04 EDITOR: rail, banner, read switch ────────────────────────────
   await go(`/pages/${page.id}`, 8000);
+  // The rail loads its children lazily and then reveals the open page, so
+  // the row can appear well after the document does. Same reasoning as
+  // § 05's highlighting above.
+  await p.waitForFunction(
+    () => document.querySelectorAll('.tr-on').length === 1,
+    null, { timeout: 15000 }).catch(() => {});
   check('§04 rail reveals the open page', (await count('.tr-on')) === 1);
   check('§04 rail draws depth guides', (await count('.tr-guide')) > 0);
   check('§04 rail shows a part count', (await count('.tr-parts')) > 0);
@@ -999,7 +1030,7 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
     await vp.addInitScript((s) => {
       try { localStorage.setItem('marginal.session', JSON.stringify(s)); } catch { /* private mode */ }
     }, {actorId:viewerSub, accessToken:viewerTok, refreshToken:viewerTok});
-    await vp.goto(`${APP}/pages/${page.id}`, {waitUntil:'networkidle'});
+    await vp.goto(`${APP}/pages/${page.id}`, {waitUntil:'domcontentloaded'});
     const told = await vp.waitForFunction(
       () => /will not be saved/.test(document.body.innerText),
       null, { timeout: 20000 }).then(() => true).catch(() => false);

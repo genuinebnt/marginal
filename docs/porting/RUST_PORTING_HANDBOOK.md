@@ -10,8 +10,30 @@
 >
 > **How to read it.** `docs/porting/PORTING_GUIDE.md` is the orientation
 > layer — read that first, once. This is the reference you keep open. Each
-> part is self-contained enough to be worked in isolation, and Part 18 gives
-> the order that minimises rework.
+> part is self-contained enough to be worked in isolation, and **Part 30 is
+> the one to follow literally**: it gives the stage-by-stage order with a
+> checkpoint after each, chosen so that every stage is verifiable on its own
+> and nothing is built before what it depends on.
+>
+> **The five parts to read before writing any code:** 0 (what moves), 1
+> (the workspace), 22 (authorization — where every security bug in this
+> system has been), 24 (the bug catalogue — tests that are proven reachable)
+> and 30 (the order). Everything else can be read when you reach it.
+>
+> **Three claims this handbook makes that are worth arguing with, because
+> they shape everything else:**
+>
+> 1. **The frontend never moves.** TypeScript, HTML and CSS stay exactly as
+>    they are, and they are the harness the Rust backend is judged against.
+>    A screen that renders differently means the port is wrong.
+> 2. **The algorithm is always in Rust, never re-implemented in
+>    TypeScript** — server-side, or compiled to wasm when it must run
+>    against live client state. The view layer only draws what was computed.
+> 3. **Where the port can turn a discipline into a type, it should.** The
+>    worked example is `Scope` in Part 22.4: a rule that was documented,
+>    reviewed, and still forgotten in four places becomes a parameter that
+>    cannot be defaulted, and the compiler enumerates the call sites. That
+>    is the strongest reason to do this in Rust at all.
 >
 > **What it is not.** It is not a Rust tutorial, and it does not re-explain
 > the product. `RFC-001` (document model), `RFC-002` (operation model),
@@ -44,6 +66,18 @@
 | 16 | Errors, and the Rust idiom table | all |
 | 17 | The wasm boundary | 3, 10 |
 | 18 | Testing strategy and the order of work | all |
+| 19 | Microservices: the parts that are not the algorithm | 1 |
+| 20 | gRPC, in Rust | 19 |
+| 21 | Persistence: sqlx, transactions, projections | 2 |
+| 22 | Identity, authorization, and the rule that gets broken quietly | 19, 21 |
+| 23 | Security testing: what to actually test | 22 |
+| 24 | The bug catalogue: tests this system has already earned | all |
+| 25 | Sketches: HyperLogLog, Count–Min, t-digest | 1 |
+| 26 | The markdown compiler, and the lexer | 5 |
+| 27 | The network simulator: TP1, Merkle, the causal DAG, LSM | 6, 15 |
+| 28 | Benchmarking honestly | 17 |
+| 29 | Configuration, deployment, and observability | 19 |
+| 30 | The order of work, with checkpoints | all |
 
 ---
 
@@ -143,6 +177,12 @@ be portable — so this is mechanical.
 | `marginal/graphalgo` | `marginal-graphalgo` | lib, no I/O |
 | `marginal/textdiff` | `marginal-textdiff` | lib, no I/O |
 | `marginal/semantic` | `marginal-semantic` | lib, no I/O |
+| `marginal/sketch` | `marginal-sketch` | lib, no I/O |
+| `marginal/syntax` | `marginal-syntax` | lib, no I/O |
+| `marginal/netsim` | `marginal-netsim` | lib, no I/O |
+| `marginal/bench` | `marginal-bench` | lib, no I/O |
+| `marginal/mdc` | `marginal-mdc` | lib, no I/O |
+| `marginal/authverify` | `marginal-authverify` | lib, one HTTP fetch |
 | `marginal/outboxpoll` | `marginal-outbox` | lib, needs a `Pool` |
 | `marginal/envconfig` | *delete it* | see 1.3 |
 | `document-service` | `marginal-document-service` | bin |
@@ -152,10 +192,62 @@ be portable — so this is mechanical.
 | `diagnostics-service` | `marginal-diagnostics-service` | bin |
 | `api-gateway` | `marginal-gateway` | bin |
 
-**The four `no I/O` crates are the port's centre of gravity.** They hold
+**The nine `no I/O` crates are the port's centre of gravity.** They hold
 every algorithm, they have no async, no database, no network — and they are
 therefore the crates where Rust's type system buys the most and costs the
 least. Port them first (Part 18).
+
+## 1.1b The workspace manifest
+
+```toml
+# Cargo.toml at the repo root
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+edition = "2021"
+rust-version = "1.79"          # pin it; MSRV drift is a lead's problem
+license = "MIT"
+
+# One version per dependency, for the whole workspace. Two crates on two
+# versions of `uuid` is a type mismatch that reads like a compiler bug.
+[workspace.dependencies]
+uuid       = { version = "1", features = ["v7", "serde"] }
+serde      = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror  = "2"
+anyhow     = "1"
+tokio      = { version = "1", features = ["rt-multi-thread", "macros", "signal", "sync", "time"] }
+tonic      = "0.12"
+prost      = "0.13"
+sqlx       = { version = "0.8", features = ["runtime-tokio", "postgres", "uuid", "time", "json", "macros", "migrate"] }
+axum       = "0.7"
+tracing    = "0.1"
+proptest   = "1"
+```
+
+Each crate then writes `uuid = { workspace = true }`. This is not tidiness:
+it is what stops `documentcore`'s `Uuid` and `document-service`'s `Uuid`
+being different types.
+
+**Lints, workspace-wide, from day one:**
+
+```toml
+[workspace.lints.rust]
+unsafe_code = "forbid"          # nothing here needs it
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "deny"            # in library crates especially — see 17.4
+expect_used = "warn"
+```
+
+`unsafe_code = "forbid"` is worth stating loudly: **this entire system has
+no reason to use `unsafe`.** If a profile later says a hot loop needs it,
+that is a deliberate, reviewed exception in one crate, not a workspace
+default.
 
 ## 1.2 Dependency choices, and the argument for each
 
@@ -174,6 +266,23 @@ least. Port them first (Part 18).
 | Tests | stdlib + `testify` | stdlib + `pretty_assertions` | |
 | Property tests | `pgregory.net/rapid` | `proptest` | The Go side already has property tests; they port almost directly. |
 | Containers in tests | `testcontainers-go` | `testcontainers-rs` | Never mock Postgres. |
+| Fuzzing | `go test -fuzz` | `cargo-fuzz` (libFuzzer) | The Go side fuzzes the mention parser and the lexers; both port directly. |
+| Password hashing | `argon2id` | `argon2` | Same PHC string format, so **existing hashes verify unchanged** — the users table needs no migration. |
+| JWT / JWKS | hand-rolled + `jose` | `jsonwebtoken` | Verify locally, never an RPC per request. Part 22.1. |
+| Benchmarks (CI) | `testing.B` | `criterion` | Proper statistics. The in-browser benchmark needs its own harness (Part 28). |
+| wasm | `syscall/js` | `wasm-bindgen` | Rewrite the entrypoints; do not port them. Part 17.2. |
+| Time | `time.Time` | `time::OffsetDateTime` | `chrono` also fine; pick one workspace-wide. **`std::time::Instant` panics under wasm** (17.5). |
+| Float ordering | ad hoc | `ordered_float` | `f32` is not `Ord`; the HNSW heaps need a total order (12.1b). |
+
+### Crates deliberately NOT used
+
+| Tempting | Why not |
+|---|---|
+| `diesel` / `sea-orm` | LTREE, JSONB, generated `tsvector`, partial unique indexes, `FOR UPDATE SKIP LOCKED`. Every one is a fight with an ORM and a line of SQL. |
+| `rayon` in the algorithm crates | They must compile to wasm, which has no threads (17.5). |
+| `async-trait` on internal traits | Only needed where a trait object crosses an await. Prefer generic bounds (Part 16's PORT-NOTE); `tonic` brings its own. |
+| `lazy_static` | `std::sync::OnceLock` / `LazyLock`. |
+| A DI framework | The composition happens in `main.rs`, explicitly, in about forty lines. Look at any of the Go `cmd/main.go` files: that wiring is the whole "container". |
 
 ## 1.3 Delete `envconfig`
 
@@ -1398,6 +1507,133 @@ fn adjacency(g: &Graph) -> Adjacency<'_>;
 | `neighbour_majority` | vote over the Delaunay dual | what the REGION is about |
 | `layout_tick` | force-directed step | the drawing itself |
 
+## 10.2b The algorithms, explained
+
+A table is a checklist, not an explanation. Each of these has a shape worth
+understanding before you write it, because the Rust version differs from the
+textbook one in a specific way.
+
+### Components (flood fill)
+
+Repeatedly: take an unvisited node, BFS the undirected adjacency, mark
+everything reached as one component. `O(V + E)`.
+
+The only subtlety is the one in 10.1 — **isolated nodes are components of
+size one**, and they are the interesting answer here (an orphan page). A
+version that iterates edges rather than nodes silently reports fewer
+components than exist.
+
+### Cycle detection (three-colour DFS)
+
+White = unvisited, grey = on the current stack, black = finished. A grey
+node reached again is a **back edge**, and the cycle is the stack slice from
+that node to the top.
+
+Returning the *path* rather than a boolean is the whole point: the UI shows
+the loop. In Rust the recursive form risks stack overflow on a deep tree, so
+write it iteratively with an explicit stack of `(node, child_index)` — the
+same shape you need for `topological_sort` anyway.
+
+```rust,ignore
+enum Colour { White, Grey, Black }
+// stack: Vec<(NodeId, usize)>  — node plus how many of its children are done
+```
+
+### Tarjan (strongly connected components)
+
+One DFS, two numbers per node: `index` (discovery order) and `lowlink` (the
+smallest index reachable from its subtree, including one back edge). When
+`lowlink == index`, pop the stack down to that node — that is one SCC.
+
+Why it is here and `components` is too: **undirected reachability answers
+"can I get there", SCC answers "can I get there and back"**. On a wiki those
+are very different claims about a set of pages.
+
+### Kahn (topological sort) and layers
+
+Kahn: repeatedly emit any node with in-degree zero, decrement its
+successors. If the queue empties with nodes remaining, there is a cycle —
+which is why `detect_cycle` and this share a code path in spirit.
+
+`layers` then levels the result: a node's layer is `1 + max(layer of its
+predecessors)`. That is a *longest*-path computation, and it is what makes
+the answer "what can be read in parallel" rather than "one valid order".
+
+### Brandes (betweenness centrality)
+
+The one algorithm here that is genuinely subtle. Naively, betweenness needs
+all-pairs shortest paths and their counts — `O(V³)`. Brandes computes it in
+`O(VE)` by running one BFS per source and then accumulating *dependencies*
+backwards:
+
+1. BFS from `s`, recording for each `v`: distance, predecessor list, and
+   `sigma[v]` = number of shortest paths from `s` to `v`.
+2. Walk the nodes in **reverse** BFS order, accumulating
+   `delta[v] += (sigma[v]/sigma[w]) * (1 + delta[w])` for each `w` whose
+   predecessor is `v`.
+3. Add `delta[v]` to `betweenness[v]` for every `v != s`.
+
+The insight is that the dependency of `s` on `v` decomposes recursively over
+the shortest-path DAG, so one backward pass replaces the pairwise sum.
+
+Why the product owns it: **degree does not find bridges.** A page with three
+links can be the only path between two clusters, and that page is the one
+whose deletion splits the workspace.
+
+### Newman's modularity Q
+
+`Q = Σ_c (e_c / m − (d_c / 2m)²)` where `e_c` is edges inside community `c`,
+`d_c` the total degree of its members, `m` the edge count.
+
+It scores a partition that is **declared** (the topic each page was tagged
+with) against the wiring. High Q means the topics match how pages actually
+link; low Q means the taxonomy and the reality disagree — which is a
+finding, not a bug.
+
+### Betti numbers over GF(2)
+
+`b0` = connected components. `b1` = independent cycles = `E − V + b0` for a
+graph. The interesting one needs the triangle boundary map: build the
+1-skeleton, find all 3-cliques, and compute the rank of the boundary matrix
+∂₂ over GF(2) by Gaussian elimination with XOR.
+
+`b1 = dim(ker ∂₁) − rank(∂₂)`. In practice: **a mutual-citation triangle is
+filled in and does not count as a hole; a genuine ring of four or more pages
+does.** That distinction is why this is here rather than a cycle count.
+
+Over GF(2) every operation is a XOR of bit rows, so use `Vec<u64>` bitsets
+and `rank` becomes a tight loop. This is one of the few places in the port
+where a small amount of bit-fiddling buys a large constant factor.
+
+### Convex hull (monotone chain) and Voronoi/Delaunay
+
+Hull: sort by `(x, y)`, build lower and upper chains, keeping a turn
+direction via the cross product sign. `O(n log n)`, and the sort dominates.
+
+Voronoi here is computed by **half-plane clipping**, not Fortune's sweep: for
+each site, start with the viewport rectangle and clip it by the perpendicular
+bisector against every other site. `O(n²)` per frame, which is fine for
+tens of pages and is dramatically easier to get right. Delaunay is taken as
+the dual (two sites are Delaunay-adjacent iff their Voronoi cells share an
+edge).
+
+**Be honest about the complexity choice in a comment.** A reader who knows
+Fortune's algorithm will assume you did not, unless you say you chose not to.
+
+### The force-directed layout tick
+
+One step of Fruchterman–Reingold: repulsion between every pair
+(`k²/d`), attraction along edges (`d²/k`), then a cooling factor.
+
+**It must be seeded and deterministic.** A layout that differs per run makes
+every screenshot, every diff and every test unreproducible. Seed a small PRNG
+explicitly (`rand::rngs::SmallRng::seed_from_u64`) rather than using the
+thread RNG.
+
+The tick is a pure function `(positions, graph) -> positions`, which is what
+lets it run in wasm and be tested without a browser.
+
+
 ## 10.3 The traps, one per algorithm
 
 **Three-colour DFS, not a visited set.** A diamond (A→B, A→C, B→D, C→D)
@@ -1505,6 +1741,14 @@ include it in an `INSERT`.
 an event stream. A status bar admitting "index may lag" is more trustworthy
 than one implying a transaction it does not have.
 
+**Invariant F11.3 — every full-text query takes a `Scope`** (Part 22.4).
+This is not a general principle restated; it is the specific bug this
+service shipped. `SearchPageTitles` and `SearchBlockText` were unscoped, so
+a search returned hits — **with `ts_headline` snippets, which are page
+content** — from every space on the instance. Both queries now carry
+`AND space_id = ANY($scope)`, and the Rust version should make the scope a
+parameter that cannot be omitted rather than a filter that can be forgotten.
+
 ## 11.2 BK-tree — "did you mean"
 
 A metric tree over edit distance. Every node's children are bucketed by their
@@ -1525,14 +1769,25 @@ impl BkTree {
 `|d(q,n) - d(n,c)| <= d(q,c)`. That bound is what lets whole subtrees be
 skipped, and it is the only reason the structure beats a linear scan.
 
-**Invariant F11.3 — the metric must actually be a metric.** Levenshtein is.
+**Invariant F11.4 — the index is instance-wide, so the FILTER is at query
+time.** One BK-tree per member would be one index per person. The tree
+therefore holds every title and each entry carries its page's space, and
+`search` takes the caller's `Scope`. A suggestion *is* a title, so filtering
+in the client is already too late.
+
+The Go fix shipped with the space id left at its zero value in one of two
+construction sites, and every suggestion was filtered out — a total outage
+of the feature. **Test the allow as well as the deny**: a filter that
+returns nothing to everybody passes every leak test ever written.
+
+**Invariant F11.5 — the metric must actually be a metric.** Levenshtein is.
 Damerau-Levenshtein with unrestricted transpositions is **not** (it violates
 the triangle inequality), and using it silently makes the pruning wrong —
 results just quietly go missing. If you want transpositions, use the
 *optimal string alignment* variant and know that it is a metric only for
 adjacent transpositions.
 
-**Invariant F11.4 — results are sorted by distance, then lexicographically.**
+**Invariant F11.6 — results are sorted by distance, then lexicographically.**
 Determinism (I0.6): a "did you mean" that reorders between identical queries
 is one nobody trusts.
 
@@ -1570,11 +1825,11 @@ impl Trie {
 **`BTreeMap`, not `HashMap`.** Completions come out in a deterministic order
 for free, which is I0.6 and matters when the list is drawn under a caret.
 
-**Invariant F11.5 — matching is case-insensitive and the STORED key is
+**Invariant F11.7 — matching is case-insensitive and the STORED key is
 normalised, but the DISPLAYED title is the original.** Lowercasing on the way
 in and rendering the lowercase form is the bug you ship on day one.
 
-**Invariant F11.6 — completion is bounded.** A prefix of `""` must not walk
+**Invariant F11.8 — completion is bounded.** A prefix of `""` must not walk
 the whole trie. Cap the traversal, not just the result.
 
 **DSA.** LeetCode: *208. Implement Trie*, *[**closest**] 642. Design Search
@@ -1628,6 +1883,112 @@ silently corrupted. `Vector::normalize` must check.
 **Invariant V12.2 — `Corpus` owns IDF, so `embed` hangs off it.** IDF is a
 property of the *collection*. A free `embed(text)` function is a signature
 that cannot be correct.
+
+## 12.1b How HNSW actually works
+
+Read this before writing the struct. HNSW is easy to implement *nearly*
+correctly, and a nearly-correct one returns plausible neighbours while
+quietly having 60% recall.
+
+**The problem.** Given a query vector, find the `k` nearest of `N` vectors
+without comparing against all `N`.
+
+**The idea, in three moves.**
+
+1. **A navigable small world.** Build a graph where each vector is a node
+   linked to some of its near neighbours. Greedy descent — repeatedly step
+   to whichever neighbour is closer to the query — converges to a local
+   minimum that is usually the true nearest neighbour, *if* the graph has
+   both short-range links (precision) and long-range links (escape from
+   local minima).
+
+2. **Layers, for the long-range part.** Assign each node a maximum layer
+   from a geometric distribution: layer 0 holds everything, layer 1 holds
+   ~1/M of it, layer 2 ~1/M², and so on. Search starts at the top layer,
+   greedily descends to the closest node there, drops a layer, repeats. The
+   upper layers are a coarse map — a few long hops get you into the right
+   region, and layer 0 does the fine-grained work. This is a skip list
+   generalised to a metric space, and the analogy is exact enough to be
+   worth keeping in mind.
+
+3. **A beam, not a single path.** Pure greedy descent gets stuck. At layer 0
+   the search keeps a candidate set of size `ef` (a min-heap by distance)
+   and a result set of size `ef` (a max-heap), expanding the closest
+   unexplored candidate until the closest remaining candidate is farther
+   than the worst result. `ef` is the accuracy dial: larger `ef` costs more
+   distance computations and finds more of the true neighbours.
+
+**Insertion** does the same search to find `ef_construction` candidates at
+each layer from the new node's top layer down, then connects the node to `M`
+of them — and here is the part implementations get wrong.
+
+**The heuristic neighbour selection.** Do *not* simply take the `M` closest
+candidates. Doing so makes every node in a dense cluster link only to
+others in that cluster, and the graph loses the long edges that make it
+navigable. Instead, walk candidates nearest-first and keep a candidate `c`
+only if it is closer to the new node than to **any already-selected
+neighbour**:
+
+```rust,ignore
+fn select_neighbours(&self, base: &Vector, candidates: &[Candidate], m: usize) -> Vec<usize> {
+    let mut chosen: Vec<usize> = Vec::with_capacity(m);
+    for c in candidates.iter() {            // sorted nearest-first
+        if chosen.len() >= m { break }
+        // Keep it only if it is not "dominated" by something already chosen:
+        // if some chosen neighbour is closer to c than base is, then c is
+        // reachable through that neighbour and this edge is redundant.
+        let dominated = chosen.iter().any(|&q| dist(&self.nodes[q].vec, &c.vec) < c.dist);
+        if !dominated { chosen.push(c.idx) }
+    }
+    chosen
+}
+```
+
+This is what preserves diversity of direction, and it is the difference
+between 95% recall and 60%.
+
+**Bidirectional linking, and pruning.** After connecting the new node to its
+chosen neighbours, add the reverse edges. That can push a neighbour over
+`Mmax` (`Mmax0` at layer 0, conventionally `2M`), so re-run the same
+heuristic on that neighbour's edge list to prune it back. Skipping this step
+makes hub nodes accumulate hundreds of edges and search time degrade toward
+linear.
+
+**Filtering.** When the caller restricts to a topic or a tag, filter **during
+descent**, not afterwards. Post-filtering asks for `k` and then discards
+most of them, so the answer is short or empty; filter-during-descent keeps
+walking until it has `k` that pass. The cost is that a very selective filter
+can make the graph effectively disconnected — so bound the work and say when
+you gave up.
+
+**Complexity.** Search is `O(log N)` hops with `ef` distance computations
+per layer, in practice a few hundred comparisons for `N` in the millions.
+Build is `N` insertions each costing a search.
+
+**Measure recall on every query.** The crate runs a brute-force scan
+alongside and reports recall@k. That is the entire reason to trust the
+screen, and it costs `O(N)` on a corpus of this size — trivial. Keep it, and
+keep it *on*, not behind a debug flag:
+
+```rust,ignore
+pub struct SearchResult {
+    pub neighbours: Vec<Neighbour>,
+    /// Measured against a brute-force scan, this query, right now.
+    pub recall_at_k: f32,
+}
+```
+
+**Rust-specific notes.**
+- Seed the layer-assignment RNG explicitly (`Lcg` in the Go version). An
+  index that differs run to run is untestable.
+- `Vec<Vec<usize>>` for per-layer neighbours is fine; do not reach for an
+  arena until a profile says so.
+- The distance function is a dot product over `[f32; 256]`. Write it as a
+  plain loop and let LLVM autovectorise; check the assembly before hand-
+  writing SIMD, and if you do, keep the scalar version as the test oracle.
+- **`f32` comparison in a heap needs a total order.** `f32` is not `Ord`.
+  Use `ordered_float::NotNan` or compare with `partial_cmp().unwrap()` only
+  after V12.1 guarantees no NaN can exist.
 
 ## 12.2 HNSW
 
@@ -1904,6 +2265,173 @@ its mutation synchronously after the await, never across one.
 flush, then exit. With a timeout, after which exit anyway — an unbounded
 drain is a service that cannot be restarted.
 
+## 15.3 Cancellation safety, in detail
+
+A15.4 deserves its own section, because it is the rule with no Go equivalent
+and the one that produces bugs that survive code review.
+
+**What actually happens.** A Rust future makes progress only when polled. If
+the thing polling it stops — a `select!` branch loses the race, a timeout
+fires, the caller drops the future — the future is **dropped where it
+stands**, at its last `.await`. Everything after that point never runs.
+
+Go has no analogue. A goroutine blocked on a channel receive inside
+`select` is not unwound when another case wins; it simply stays blocked
+until it is cancelled explicitly, and the code after the receive still runs
+when it eventually returns.
+
+**The dangerous shape:**
+
+```rust,ignore
+// WRONG. If `shutdown` wins, `apply` has already mutated the session
+// but `journal` never runs, and the WAL is now behind the memory state.
+loop {
+    tokio::select! {
+        Some(op) = rx.recv() => {
+            session.apply(op).await;          // ← mutation
+            wal.journal(&op).await;           // ← may never run
+        }
+        _ = shutdown.cancelled() => break,
+    }
+}
+```
+
+**The fix is structural, not careful.** Do the awaits *before* the mutation,
+and make the mutation synchronous:
+
+```rust,ignore
+loop {
+    tokio::select! {
+        Some(op) = rx.recv() => {
+            // Journal first: an op in the WAL that was never applied is
+            // recoverable by replay; an op applied but never journalled is
+            // lost state. Order the failure so the survivable one is
+            // possible and the unsurvivable one is not.
+            wal.journal(&op).await?;
+            session.apply(op);                 // ← no .await, cannot be torn
+        }
+        _ = shutdown.cancelled() => break,
+    }
+}
+```
+
+**The rule to write on the wall:** *between the first mutation of shared
+state and the end of the operation, there must be no `.await`.* If you
+cannot arrange that, hold the state in a task that owns it and send it a
+message instead (15.4).
+
+**Which primitives are cancellation-safe** matters and is documented per
+API. Safe: `tokio::sync::mpsc::Receiver::recv`, `broadcast::recv`,
+`Notify::notified`. **Not** safe in general: anything you wrote yourself
+that mutates before awaiting, and `AsyncReadExt::read_exact` (it can consume
+bytes and then be dropped, losing them). When in doubt, wrap the operation
+in `tokio::spawn` and await the `JoinHandle` — a spawned task is not
+cancelled by the caller's drop, which converts a correctness problem into a
+resource problem you can bound.
+
+## 15.4 Shared mutable state: the three options, and when each is right
+
+This decision recurs throughout the port, so make it deliberately.
+
+**Option A — `Arc<Mutex<T>>`.** Simple, and correct when the critical
+section is short and does no I/O.
+
+```rust,ignore
+// Fine: a pure in-memory lookup.
+let dir = Arc::new(Mutex::new(RoleDirectory::default()));
+```
+
+Use `parking_lot::Mutex` or `std::sync::Mutex` for these, **not**
+`tokio::sync::Mutex` — an async mutex is for holding a lock across an
+`.await`, which the previous section just told you not to do. If you find
+yourself needing `tokio::sync::Mutex`, that is usually the signal to use
+Option C.
+
+**Option B — `RwLock`, only with evidence.** Reads must genuinely dominate
+and the critical section must be long enough for the extra bookkeeping to
+pay. For a `HashMap` lookup it is usually slower than a `Mutex`. Measure.
+
+**Option C — an actor task that owns the state.** No lock at all: one task
+owns the value, everyone else sends messages.
+
+```rust,ignore
+enum SessionMsg {
+    Apply { op: Op, reply: oneshot::Sender<Result<Ack, DomainError>> },
+    Snapshot { reply: oneshot::Sender<Snapshot> },
+    Close,
+}
+
+// One task per page. The Page is not Send-shared; it is OWNED here.
+tokio::spawn(async move {
+    let mut page = Page::new();
+    while let Some(msg) = rx.recv().await { /* ... */ }
+});
+```
+
+**This is the right shape for `collaboration-service`'s sessions**, and it is
+a better fit than the Go original's `Manager` + mutex, because:
+
+- The invariant "one writer per page" becomes structural rather than
+  conventional.
+- Ops for one page are serialised by the channel, which is exactly the
+  ordering the op log needs.
+- `Page` never has to be `Sync`, so it can hold `Rc`-flavoured internals if
+  the rope wants them.
+- Backpressure is expressible: a bounded channel that is full is a client
+  that is sending faster than the document can absorb, and that is
+  information, not an error.
+
+The cost is that every read becomes a message round-trip. For the snapshot
+path that is fine; for a hot read you would keep an `Arc<ArcSwap<Snapshot>>`
+the actor publishes into.
+
+## 15.5 Backpressure, concretely
+
+Three queues in this system, three policies, and each must be *chosen*:
+
+| Queue | Bound | When full |
+|---|---|---|
+| Per-connection outbound broadcast | 64 messages | **Drop the subscriber.** It reconnects and gets a fresh snapshot — cheaper and more correct than buffering unboundedly for a client that has stalled |
+| Per-page inbound ops | 256 | Apply backpressure to the socket read: stop reading, let TCP's window do the work |
+| Outbox poller batch | 100 rows/tick | Not a queue — a claim size. Tune by measuring lag |
+
+**The general rule: never buffer on behalf of a consumer that is not
+keeping up.** Either drop with a defined recovery (the first row) or push
+back to the producer (the second). Growing a buffer converts a slow consumer
+into an OOM.
+
+## 15.6 The `Send` bound problem
+
+`#[tonic::async_trait]` requires futures to be `Send`, which means every
+value held across an `.await` in a handler must be `Send`. This bites in two
+predictable places:
+
+1. **`Rc` or `RefCell` in a domain type.** Keep them out of anything a
+   handler touches; use them only inside a single-threaded actor
+   (`tokio::task::spawn_local` on a `LocalSet`) or not at all.
+2. **`MutexGuard` held across an await.** The compiler error names the
+   guard, and the fix is always the same: end the scope before the await.
+
+```rust,ignore
+// The idiom that fixes it, and reads better anyway:
+let role = { dir.lock().role_for(page, actor) };   // guard dropped here
+send_ack(role).await;
+```
+
+## 15.7 Testing concurrency
+
+- `tokio::test` with `start_paused = true` for anything time-dependent —
+  it makes `sleep` instantaneous and deterministic, which is the only way
+  to test a poller's cadence without a slow test.
+- `loom` for the genuinely lock-free parts. There are few here; do not use
+  it where a `Mutex` is the design.
+- **The Go project ran `-race` and `goleak` on every concurrent test.** The
+  Rust equivalents are: the type system for the first (mostly), and for the
+  second, a `JoinSet` whose `is_empty()` you assert after shutdown.
+- Property-test the transform (Part 27.1) with thousands of seeded
+  interleavings. That is where concurrency bugs in this system actually
+  live — not in the locking, but in the merge.
+
 **Before:** *Rust Atomics and Locks* ch. 1–3; *Crust of Rust: "Channels"* and
 *"Atomics"*. For A15.4 specifically, read the `tokio::select!` documentation
 on cancellation safety in full — it is short and it is load-bearing.
@@ -1997,6 +2525,112 @@ recording in `BENCHMARKS.md`.
 same signatures. If a screen needs editing to accommodate the Rust build,
 the boundary was not the boundary.
 
+## 17.3 The nine modules, and what each one costs
+
+The Go build ships nine wasm modules totalling roughly 28 MB uncompressed.
+That is the single worst number in the project, and it is a straightforward
+consequence of Go's runtime being linked into every one of them.
+
+| Module | Crate | What the browser needs it for |
+|---|---|---|
+| `documentcore` | `documentcore` | the editor core — apply, invert, history |
+| `graphwasm` | `graphalgo` | seeded layout, Voronoi, hulls, territories |
+| `diffwasm` | `textdiff` | LCS table + traceback for the revision diff |
+| `triewasm` | `trie` | `[[` autocomplete |
+| `syntaxwasm` | `syntax` | code-block highlighting, nine languages |
+| `sketchwasm` | `sketch` | HLL / Count–Min / t-digest, recomputed per keystroke |
+| `netsimwasm` | `netsim` | the OT simulation and its four lenses |
+| `benchwasm` | `bench` | the in-browser benchmark |
+| `mdcwasm` | `mdc` | the markdown compiler |
+
+In Rust each of these is a `cdylib` with `wasm-bindgen`, and there is no
+runtime to carry. Expect single-digit megabytes total, and **record the
+before/after in `BENCHMARKS.md`** — this is one of the few places the port
+produces a headline number.
+
+```toml
+[lib]
+crate-type = ["cdylib", "rlib"]     # rlib so the native tests still compile
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"                     # no unwinding tables in the browser
+strip = true
+```
+
+Then `wasm-opt -Oz` on the output. `wasm-pack build --target web` does most
+of this for you; the manual `wasm-bindgen` + `wasm-opt` path is worth
+knowing because it is what a build script ends up doing.
+
+## 17.4 Panics, and why `panic = "abort"` needs a decision
+
+With `panic = "abort"`, a Rust panic in wasm traps and the module is
+**poisoned** — every subsequent call fails. That is worse than the Go
+behaviour, where a panicking goroutine could be recovered.
+
+So: **no panics across the boundary.** Every exported function returns the
+`{value, error}` envelope, and the internal code returns `Result`. The
+entrypoint is the place where `Result` becomes JSON:
+
+```rust,ignore
+#[wasm_bindgen]
+pub fn diff_lines(req_json: &str) -> String {
+    match run(req_json) {
+        Ok(v)  => serde_json::json!({ "value": v }).to_string(),
+        Err(e) => serde_json::json!({ "error": e.to_string() }).to_string(),
+    }
+}
+
+fn run(req_json: &str) -> anyhow::Result<DiffResponse> { /* no unwrap, no expect */ }
+```
+
+Add `console_error_panic_hook` in debug builds only — it makes a
+development panic legible, and it is dead weight in release.
+
+**Grep the wasm crates for `unwrap`, `expect`, indexing, and integer
+division before shipping.** A slice index out of range is a panic, and in
+wasm a panic is an outage of that feature until the page reloads.
+
+## 17.5 What wasm cannot do, and where that bites here
+
+- **No threads** (without `SharedArrayBuffer` and cross-origin isolation,
+  which this app does not have). Everything is single-threaded; do not
+  reach for `rayon` in a crate that must compile to wasm.
+- **No sockets, no filesystem.** Which is fine: nothing in these nine crates
+  does I/O, by design (19.2). If one starts to, the wasm build breaks first
+  and the error will be confusing.
+- **No sampling profiler.** Which is why `bench` walks instrumented spans
+  rather than sampling (Part 28.3).
+- **A coarsened clock.** `performance.now()` is quantised, so single
+  operations cannot be timed directly — hence batch calibration (28.2).
+- **`std::time::Instant` panics on `wasm32-unknown-unknown`.** Use
+  `web_sys::window().performance()` behind a `#[cfg(target_arch = "wasm32")]`
+  shim, and keep the native path for tests. This is the single most common
+  "it compiled and then exploded in the browser" cause.
+
+```rust,ignore
+#[cfg(target_arch = "wasm32")]
+fn now_ms() -> f64 { web_sys::window().unwrap().performance().unwrap().now() }
+#[cfg(not(target_arch = "wasm32"))]
+fn now_ms() -> f64 { std::time::Instant::now().elapsed().as_secs_f64() * 1000.0 }
+```
+
+## 17.6 Testing the wasm crates
+
+Test them **natively**. `cargo test` on `x86_64` exercises the same code, is
+faster, and gives you a debugger. Use `wasm-bindgen-test` only for the thin
+entrypoint layer — the JSON envelope, the error path — and run it in
+headless Chrome in CI.
+
+The harness already checks the thing that matters most, and the port
+inherits it: `verify.js` asserts that **every module the SPA loads is really
+wasm** (nine checked). A screen that silently fell back to a JavaScript
+reimplementation would pass every visual diff, and that check is what makes
+"the algorithm is Go/Rust, never a second implementation in TypeScript" an
+enforced rule rather than an aspiration.
+
 ---
 
 # Part 18 — Testing strategy and the order of work
@@ -2071,3 +2705,1619 @@ decision, dated, with the argument. Especially the ones where the Rust
 version *diverges* — every divergence is either an improvement worth naming
 or a bug worth catching, and six months later you cannot tell which from the
 code alone.
+
+---
+
+# Part 19 — Microservices: the parts that are not the algorithm
+
+Parts 3–14 are the interesting half of the port. This part is the half that
+decides whether the interesting half ever runs. It is deliberately blunt:
+almost none of it is a design question, and treating it as one is how a port
+spends three weeks on a service registry it does not need.
+
+## 19.1 What a service is here, and what it is not
+
+`ADR-001`'s rule, unchanged by the port: **a service exists only if it
+differs in scaling profile, state, failure mode, or deploy cadence.** Owning
+a different noun is not sufficient. Six services survive that test:
+
+| Service | Why it is separate | Port difficulty |
+|---|---|---|
+| `document-service` | Stateless, read-heavy, owns `docs` | Medium — most surface area |
+| `collaboration-service` | **Stateful.** Scales on connection count, not request rate | **Hardest.** Part 8 |
+| `auth-service` | Distinct security surface; different deploy cadence | Medium |
+| `notification-service` | Fails independently; nothing degrades if it dies | Easy — do this first |
+| `diagnostics-service` | Can die without touching editing | Easy, and no database |
+| `api-gateway` | The only process that knows where everything is | Easy, but do it early |
+
+The one that matters: **`collaboration-service` is the only stateful one.**
+Everything else can be killed and restarted mid-request and lose nothing but
+that request. That asymmetry should be visible in the Rust code — it is the
+only crate that owns a long-lived in-memory structure keyed by document, and
+the only one where "which instance handles this connection" is a question.
+
+## 19.2 One binary per service, one crate per binary
+
+```
+crates/
+  document-service/     src/main.rs  + src/{pages,blocks,graph,search,discover}/
+  collaboration-service/
+  auth-service/
+  notification-service/
+  diagnostics-service/
+  api-gateway/
+  documentcore/         lib only
+  graphalgo/  textdiff/  semantic/  sketch/  syntax/  netsim/  bench/
+```
+
+The library crates have no `main.rs` and no `tokio` dependency. That is not
+tidiness — it is what keeps them compilable to wasm (Part 17). The moment
+`graphalgo` grows a `tokio::spawn`, the browser build dies, and the error
+will be about `mio` rather than about the mistake.
+
+**Enforce it in `Cargo.toml`, not by intention:**
+
+```toml
+# crates/graphalgo/Cargo.toml
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+# No tokio. No sqlx. No tonic. If you need one of those here,
+# the code is in the wrong crate.
+```
+
+## 19.3 Configuration
+
+Go has `envconfig` (`EnvOr`, `RequiredEnv`). Rust should **delete it** and
+use `figment` or plain `envy` with a `#[derive(Deserialize)]` struct per
+service:
+
+```rust
+#[derive(Debug, serde::Deserialize)]
+pub struct Config {
+    pub database_url: String,
+    #[serde(default = "default_grpc_addr")]
+    pub grpc_addr: SocketAddr,
+    #[serde(default = "default_http_addr")]
+    pub http_addr: SocketAddr,
+    pub nats_url: Option<String>,
+    #[serde(default = "default_jwks_url")]
+    pub auth_jwks_url: String,
+}
+
+fn default_grpc_addr() -> SocketAddr { "0.0.0.0:9001".parse().unwrap() }
+```
+
+Why a struct rather than scattered `env::var` calls: **the service fails at
+startup with one message naming every missing variable**, instead of failing
+on the first request that happens to touch the third one. The Go version
+reads them one at a time in `run()` and is slightly worse for it.
+
+Secrets come from the environment only. Never a file in the repo, never a
+default. `database_url` has no default on purpose: a service that silently
+starts against `localhost` in production is worse than one that refuses.
+
+## 19.4 Startup order and graceful shutdown
+
+Every `main.rs` has the same shape. Write it once, copy it five times —
+this is TEDIUM-RULE territory, not a design exercise:
+
+```rust
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();
+    let cfg: Config = envy::from_env().context("reading configuration")?;
+
+    // 1. Migrations BEFORE anything serves. A service that accepts a
+    //    request against an un-migrated schema returns a confusing 500
+    //    rather than failing to start, which is the wrong failure.
+    let pool = PgPoolOptions::new().max_connections(16).connect(&cfg.database_url).await?;
+    sqlx::migrate!("./migrations").run(&pool).await.context("migrating")?;
+
+    // 2. Long-lived background work, each with its own cancellation.
+    let shutdown = CancellationToken::new();
+    let outbox = tokio::spawn(outbox::run(pool.clone(), nats.clone(), shutdown.clone()));
+
+    // 3. Servers.
+    let grpc = tonic::transport::Server::builder()
+        .add_service(PageServiceServer::new(pages))
+        .serve_with_shutdown(cfg.grpc_addr, shutdown.clone().cancelled_owned());
+    let http = axum::serve(listener, health_router())
+        .with_graceful_shutdown(shutdown.clone().cancelled_owned());
+
+    // 4. One signal handler cancels everything.
+    tokio::select! {
+        r = grpc => r?,
+        r = http => r?,
+        _ = signal::ctrl_c() => shutdown.cancel(),
+    }
+    outbox.await??;
+    Ok(())
+}
+```
+
+**The ordering is load-bearing.** Migrations before listeners; listeners
+before the process reports healthy; cancellation token shared by everything
+so one `Ctrl-C` unwinds all of it.
+
+`collaboration-service` has one extra step, and it is the one that will bite:
+**flush every open session's WAL before the process exits.** The Go version
+does this in a `defer manager.CloseAll()`. In Rust it belongs *after* the
+`select!`, not in a `Drop` impl — `Drop` cannot be async, and the flush needs
+the pool.
+
+## 19.5 Health probes, and what "healthy" is allowed to mean
+
+Two endpoints, both plain HTTP, never gRPC:
+
+- `GET /health` — the process is up and can serve. **Does not touch the
+  database.** A liveness probe that checks Postgres restarts every service in
+  the cluster when Postgres blips, which converts a degraded system into an
+  outage.
+- `GET /ready` — the dependencies this service cannot work without are
+  reachable. This one *may* touch the database.
+
+The Go version has only `/health` and returns `ok` unconditionally. That is
+honest at this repo's scale and the port may keep it, but the distinction
+above is worth writing down before somebody "improves" the probe.
+
+`api-gateway`'s `GET /admin/health` is a different thing entirely: it fans
+out to every service's probe concurrently and reports up/down/timeout with
+latency. In Rust that is a `futures::future::join_all` over a `Vec<Future>`
+with a per-probe `tokio::time::timeout`, and **the timeout must be shorter
+than the caller's own** or the admin screen hangs on the slowest dead
+service.
+
+## 19.6 Timeouts, retries, and the two things that make retries dangerous
+
+Every outbound call gets a deadline. In `tonic` that is per-request:
+
+```rust
+let mut req = tonic::Request::new(GetPageRequest { id: id.to_string() });
+req.set_timeout(Duration::from_secs(2));
+```
+
+**Retry only what is idempotent.** In this system:
+
+| Call | Retryable? | Why |
+|---|---|---|
+| `GetPage`, `ListPages`, any read | Yes | Pure |
+| `CreatePage` | **No** — unless the id is client-generated | Two pages, one intent |
+| `Append` (op log) | **Yes** | Deduplicated on op id — see below |
+| `GrantRole` | Yes | Upsert by (user, space) |
+| `RespondToInvitation` | **No** | The second answer is refused by design |
+
+The op-log append is the interesting one, and it is the pattern to copy
+everywhere else: **the client generates the id, the server deduplicates on
+it.** `opstore.Append` writes `ON CONFLICT (id) DO NOTHING` and reports
+"already there" as success. That is what makes an at-least-once transport
+safe, and it is a property of the *schema*, not of the retry loop.
+
+## 19.7 The outbox, and why it is not a queue
+
+Every service that must publish an event writes it **in the same
+transaction as the state change**:
+
+```rust
+let mut tx = pool.begin().await?;
+sqlx::query!("INSERT INTO collab.ops (...) VALUES (...)").execute(&mut *tx).await?;
+sqlx::query!("INSERT INTO collab.outbox (id, aggregate_id, event_type, payload)
+              VALUES ($1, $2, $3, $4)", ...).execute(&mut *tx).await?;
+tx.commit().await?;
+```
+
+A separate poller claims rows with `FOR UPDATE SKIP LOCKED`, publishes, and
+marks them published. `SKIP LOCKED` is what lets two pollers run without
+either blocking or double-publishing.
+
+**The property this buys:** there is no interleaving in which the state
+change is durable and the event is lost. There *is* an interleaving where
+the event is published twice (publish succeeded, mark failed) — which is why
+every consumer deduplicates on the outbox row id.
+
+**The property it does not buy:** delivery. Core NATS has no redelivery and
+delivers nothing to a subscriber that is down. The outbox row survives, so
+the evidence exists, but nothing replays it. The Go code says this in
+`internal/notify`'s doc comment and `docs/api/notifications.md` § 5 gives the
+concrete case where it now matters (a lost mention is somebody never
+learning they were asked a question). **The Rust port is the right moment to
+fix it** — `async-nats` supports JetStream, and the change is a durable
+stream plus an explicit `ack()` per message. If you do fix it, delete the
+apologetic comments rather than leaving them to confuse the next reader.
+
+## 19.8 Service-to-service identity
+
+Today every east-west call carries `actor-id` in gRPC metadata, set by
+whichever service is acting on a user's behalf, and **the receiving service
+trusts it**. That is safe only because nothing but the gateway and the other
+services can reach those ports.
+
+Two things to preserve exactly:
+
+1. **`created_by` is never a request field.** It comes from the metadata.
+   A client that can name its own author can forge authorship.
+2. **`ListAllMemberships` is the one call with no per-space authorization**,
+   because there is no single space to authorize it against. It is
+   service-to-service. If the port ever exposes it through the gateway, that
+   is a breach, not a feature.
+
+If the port hardens this, the shape is mTLS or a service token — but it is
+out of scope for the port itself, and doing it halfway (a shared secret in
+an env var, checked in three of six services) is worse than the current
+honest "the network is the boundary".
+
+---
+
+# Part 20 — gRPC, in Rust
+
+## 20.1 The toolchain
+
+| Go | Rust |
+|---|---|
+| `protoc` + `protoc-gen-go` + `protoc-gen-go-grpc` | `tonic-build` in `build.rs` |
+| `buf` (unused here; there is a `scripts/gen-proto.sh`) | `tonic-build`, or `buf` with the `prost` plugin |
+| generated into `genproto/` and committed | generated into `OUT_DIR`, **not** committed |
+
+```rust
+// crates/document-service/build.rs
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    tonic_build::configure()
+        .build_server(true)
+        .build_client(true)
+        // The gateway is a separate crate and needs the client stubs.
+        .compile_protos(&["proto/document.proto", "proto/graph.proto"], &["proto"])?;
+    Ok(())
+}
+```
+
+**The one structural difference from Go:** the Go repo puts generated code
+at `genproto/` *outside* `internal/`, specifically so `api-gateway` (a
+separate module) can import the client stubs. Rust has no `internal/` rule,
+so this problem disappears — but you still have to decide who owns the
+`.proto` files. Keep them where they are, in the owning service's crate, and
+let dependents depend on that crate:
+
+```toml
+# crates/api-gateway/Cargo.toml
+[dependencies]
+document-service = { path = "../document-service", default-features = false, features = ["client"] }
+```
+
+Gate the server half behind a feature so the gateway does not compile
+`sqlx`, the migrations, and the whole service to get a client stub.
+
+## 20.2 Implementing a service
+
+```rust
+#[tonic::async_trait]
+impl PageService for PageServer {
+    async fn get_page(
+        &self,
+        request: Request<GetPageRequest>,
+    ) -> Result<Response<Page>, Status> {
+        let actor = actor_id(&request)?;              // metadata, never a field
+        let id: PageId = request.get_ref().id.parse()
+            .map_err(|_| Status::invalid_argument("pages: invalid id"))?;
+        self.visible(actor, id).await?;               // authorization, one place
+        let page = self.repo.get(id).await.map_err(to_status)?;
+        Ok(Response::new(page.into()))
+    }
+}
+```
+
+Three rules, all of them lifted from bugs this codebase actually had:
+
+1. **Parse into a newtype at the boundary.** `PageId(Uuid)`, not `String`,
+   and not `Uuid`. The proto is stringly-typed; the domain must not be.
+2. **Authorization is a separate, named call, not an inlined condition.**
+   `visible()` and `may_write()` are the only two, and every RPC calls one of
+   them. Part 22 explains why this is worth being rigid about.
+3. **One `to_status` function.** Scattered `map_err(|e| Status::internal(..))`
+   is how `PermissionDenied` became a 500 in the Go version — "you may not"
+   rendered as "the server is broken".
+
+## 20.3 Status codes, and the 404-vs-403 decision
+
+This is not a style question; it is an information-disclosure decision, and
+the Go code has it right:
+
+```rust
+fn to_status(err: DomainError) -> Status {
+    match err {
+        // Not a member of the space: NOT_FOUND. A 403 on a resource you
+        // cannot see confirms it exists, and space and page names say what
+        // people are working on.
+        DomainError::NotAMember   => Status::not_found("not found"),
+        // A member without the rank: PERMISSION_DENIED is safe here,
+        // because "it exists" is already known to you.
+        DomainError::InsufficientRole => Status::permission_denied("your role does not allow that"),
+        DomainError::NotFound     => Status::not_found("not found"),
+        DomainError::InvalidTitle(_) => Status::invalid_argument(err.to_string()),
+        DomainError::LastAdmin    => Status::failed_precondition("a space must keep at least one admin"),
+        DomainError::AlreadyMember => Status::already_exists("already a member"),
+        DomainError::Conflict     => Status::aborted("version conflict"),
+        // Everything else is internal, and the message must not leak the
+        // underlying error.
+        e => { tracing::error!(error = ?e, "internal"); Status::internal("internal error") }
+    }
+}
+```
+
+And at the gateway, one mapping from `Status` to HTTP:
+
+| `tonic::Code` | HTTP |
+|---|---|
+| `InvalidArgument` | 400 |
+| `Unauthenticated` | 401 |
+| `PermissionDenied` | 403 |
+| `NotFound` | 404 |
+| `AlreadyExists`, `Aborted`, `FailedPrecondition` | 409 |
+| `Unavailable`, `DeadlineExceeded` | 503 / 504 |
+| everything else | 500 |
+
+**Test this table.** The Go port shipped a gateway that mapped five codes
+and fell through to 500 for the sixth; the symptom was a working permission
+check that looked like a crash.
+
+## 20.4 Metadata and interceptors
+
+```rust
+/// The actor, from metadata. Never from a request field.
+fn actor_id<T>(req: &Request<T>) -> Result<UserId, Status> {
+    req.metadata()
+        .get("actor-id")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.parse().ok())
+        .map(UserId)
+        .ok_or_else(|| Status::unauthenticated("an actor id is required"))
+}
+```
+
+Resist the urge to make this an interceptor that stuffs the actor into
+`Extensions`. It reads better, but it makes "which RPCs require an actor"
+invisible, and this codebase has already shipped one RPC that forgot to
+check. An explicit call at the top of each handler is four characters longer
+and impossible to omit silently.
+
+**Outbound**, the actor travels the same way:
+
+```rust
+fn with_actor<T>(mut req: Request<T>, actor: UserId) -> Request<T> {
+    req.metadata_mut().insert("actor-id", actor.to_string().parse().unwrap());
+    req
+}
+```
+
+The Go version had a real bug here worth not repeating: a two-hop call set
+the actor on the second hop only, and every join failed `UNAUTHENTICATED` —
+correctly. **Set it on every hop.**
+
+## 20.5 What stays REST
+
+`api-gateway` translates REST to gRPC and does nothing else, with three
+deliberate exceptions:
+
+- `GET /admin/health` — the fan-out (19.5). Not a shim; the gateway is the
+  only process that knows where everything lives.
+- **`collaboration-service`'s WebSocket is reached directly.** A persistent
+  connection is not a request/response resource, and proxying it would put a
+  stateful hop in front of a stateful service.
+- **`collaboration-service`'s debug reads** (`/trace`, `/palimpsest`,
+  `/diff`, `/collab/stats`) and `notification-service`'s `/notifications`
+  are served directly too — they are instance facts, not resources.
+
+Keep this. The temptation in a rewrite is to put everything behind the
+gateway "for consistency", which adds a hop, a translation, and a second
+place for the auth decision to be made differently.
+
+---
+
+# Part 21 — Persistence: sqlx, transactions, and the projection rule
+
+## 21.1 The choice, and why it is not an ORM
+
+Go uses `pgx` + `sqlc`: hand-written SQL, generated types, compile-time
+checking against a real schema. **The Rust equivalent is `sqlx` with
+`query!`/`query_as!`, and the reasoning transfers exactly** — both check the
+SQL against the database at build time, and neither invents queries.
+
+```rust
+let row = sqlx::query_as!(
+    PageRow,
+    r#"SELECT id, title, parent_id, space_id, path, sort_key, deleted_at
+       FROM docs.pages WHERE id = $1 AND deleted_at IS NULL"#,
+    id.0,
+)
+.fetch_optional(&self.pool)
+.await?;
+```
+
+Do **not** reach for SeaORM or Diesel here. The schema uses `LTREE`, `JSONB`,
+generated `tsvector` columns, `websearch_to_tsquery`, partial unique
+indexes, and `FOR UPDATE SKIP LOCKED`. Every one of those is a fight with an
+ORM and a one-liner in SQL.
+
+`sqlx` needs either a live database at build time or a committed
+`.sqlx/` offline cache. **Commit the cache** — CI should not need Postgres to
+type-check, and `cargo sqlx prepare` is one command.
+
+## 21.2 The hard columns
+
+| Column | Postgres | Rust |
+|---|---|---|
+| `id` | `UUID` (v7, app-generated) | `Uuid`, wrapped in a newtype |
+| `path` | `LTREE` | `String` — sqlx has no LTREE type; the Go side overrides it to `string` too |
+| `content` | `JSONB` | `sqlx::types::Json<BlockContent>` |
+| `sort_key` | `TEXT` | `SortKey(String)` — see 2.4; **never** a float |
+| `search_vector` | generated `tsvector` | never selected; only matched |
+| `anchor_start` / `anchor_end` | `JSONB` | `Json<Anchor>` |
+| `read_at`, `deleted_at` | `TIMESTAMPTZ NULL` | `Option<OffsetDateTime>` |
+| `accepted` | `BOOLEAN NULL` | `Option<bool>` — three states, and the third is "unanswered" |
+
+The last row is a trap worth naming. `space_invitations.accepted` is
+`Option<bool>`: `None` = pending, `Some(false)` = declined, `Some(true)` =
+accepted. A port that models it as `bool` silently turns every pending
+invitation into a declined one.
+
+## 21.3 Identifiers: v7, application-side, always
+
+Every id in this system is generated by the application, never by
+`DEFAULT uuidv7()`. Two reasons, both still true in Rust:
+
+1. The code needs the id **before** the insert — to write the outbox row in
+   the same transaction, to return it, to log it.
+2. PG18's native `uuidv7()` is not available on Cloud SQL.
+
+```rust
+// uuid = { version = "1", features = ["v7", "serde"] }
+let id = Uuid::now_v7();
+```
+
+v7 rather than v4 because it is time-ordered, which keeps B-tree inserts
+sequential and makes `ORDER BY id` a usable proxy for creation order.
+
+## 21.4 Transactions, and the shape that keeps them short
+
+```rust
+pub async fn respond(&self, caller: UserId, id: InvitationId, accept: bool)
+    -> Result<Invitation, DomainError>
+{
+    // Everything that needs the network happens BEFORE the transaction.
+    let members = self.spaces.members(space).await?;
+
+    let mut tx = self.pool.begin().await?;
+    let inv = answer(&mut tx, id, caller, accept).await?;
+    if accept {
+        upsert_membership(&mut tx, inv.user, inv.space, inv.role).await?;
+        write_role_event(&mut tx, &inv).await?;
+    }
+    tx.commit().await?;
+    Ok(inv)
+}
+```
+
+**The rule the Go version learned the hard way: never hold a transaction
+across a network call.** Two gRPC calls inside an open transaction pin a
+connection for the duration of somebody else's network, and a comment box
+becomes a way to exhaust the pool. Resolve first, then open.
+
+Rust makes the discipline easier to state: if a `&mut Transaction` is in
+scope, no `.await` on anything but the database is allowed. There is no
+compiler check for that — write it in a comment where it matters.
+
+## 21.5 The projection rule
+
+Three tables in this system are **projections**, not sources of truth:
+
+| Projection | Source of truth | Fed by |
+|---|---|---|
+| `docs.blocks` | `collab.ops` | `collab.ops_flushed` |
+| `docs.page_links` | `collab.ops` (block text) | same consumer |
+| `docs.space_members` | `auth.memberships` | `auth.role_granted` / `_revoked`, plus a periodic reconcile |
+
+Rules that must survive the port:
+
+1. **A projection is never a second writer.** If `docs.blocks` disagrees
+   with a replay of `collab.ops`, the ops win and the projection is wrong.
+2. **Replay must reproduce it.** This is a testable property, and Part 18's
+   test list has it: replay the log into an empty page, compare to the
+   projection, assert equality.
+3. **The write path does not read the projection.** `can_apply` reads the
+   role directory, not `docs.space_members`, precisely because the
+   projection can be stale. A stale read on the read path is a slightly old
+   list; a stale read on the write path is an authorization decision made
+   from out-of-date facts.
+4. **An event bus with no redelivery needs a floor.** Hence the periodic
+   reconcile against `ListAllMemberships`. Keep it; it is the only thing
+   bounding how wrong the projection can get.
+
+## 21.6 Migrations
+
+`sqlx::migrate!` embeds them in the binary and runs them at startup, which
+matches the Go/goose behaviour. Keep the numbering and keep them additive.
+
+Two lessons already paid for:
+
+- **A migration can create a state the rules forbid.** `00002` created the
+  default space and its memberships; the rule "a space must keep at least
+  one admin" was written, tested, and correct, and the data still reached a
+  state it forbids — because the migration ran before anything checked.
+  `00003` exists to promote the founder. **When you write a migration that
+  creates rows the domain has invariants about, assert the invariant at the
+  end of the migration.**
+- **Down migrations are for development.** Nothing in production runs them.
+  Write them anyway; they document what the up migration did.
+
+## 21.7 Pooling and the numbers that matter
+
+```rust
+PgPoolOptions::new()
+    .max_connections(16)
+    .acquire_timeout(Duration::from_secs(3))
+    .connect(&url).await?
+```
+
+`acquire_timeout` is the one people forget. Without it, pool exhaustion
+manifests as requests that hang forever rather than as an error you can see
+in a metric. Three seconds turns a resource problem into a visible 503.
+
+---
+
+# Part 22 — Identity, authorization, and the rule that gets broken quietly
+
+This part is longer than its subject looks, because **every security bug
+this codebase has had was in this area, and none of them were in the
+cryptography.**
+
+## 22.1 The identity chain
+
+```
+browser ──JWT (RS256)──▶ api-gateway ──actor-id metadata──▶ services
+                    │
+                    └──▶ collaboration-service (WebSocket, NOT proxied)
+```
+
+- `auth-service` signs RS256 and publishes JWKS at
+  `/.well-known/jwks.json`.
+- **Every entry point verifies locally against JWKS.** Never an RPC per
+  request to ask "is this token good".
+- The actor is the token's `sub` claim. Never a header the client controls,
+  never a query parameter, never a request field.
+
+In Rust: `jsonwebtoken` for verification, plus a small cache in front of the
+JWKS fetch. The Go implementation (`services/authverify`) is 200 lines and
+worth reading before writing the Rust one, because its cache has a subtlety:
+
+```rust
+struct Cache {
+    keys: HashMap<String, DecodingKey>,
+    fetched_at: Instant,    // bounds how STALE the cache may be
+    attempted_at: Instant,  // bounds how OFTEN an unknown kid may provoke a fetch
+}
+const MIN_REFRESH_INTERVAL: Duration = Duration::from_secs(30);
+```
+
+**Two timestamps, not one.** With one, either rotated keys are rejected
+until the TTL expires, or an attacker floods you with unknown `kid` values
+and each one triggers a fetch. The Go version shipped the first bug and the
+fix is the second field.
+
+## 22.2 The adversarial test list — write these first
+
+This is the one place in the port where tests come before the
+implementation. All twelve exist in Go and all twelve must pass in Rust:
+
+1. `alg: none` — rejected.
+2. **HS256 forged using the RSA public key as the HMAC secret** — rejected.
+   This is the classic JWT attack and a naive verifier accepts it.
+3. A token signed by a foreign key that claims a known `kid` — rejected.
+4. Expired — rejected.
+5. **No `exp` claim at all** — rejected. (A library that treats a missing
+   claim as "no expiry" is a library that issues immortal tokens.)
+6. `sub` that is not a UUID — rejected.
+7. Unknown `kid` flood — at most one fetch per `MIN_REFRESH_INTERVAL`.
+8. JWKS unreachable at startup — the verifier **fails closed**, refusing
+   every token, rather than starting permissive.
+9. Empty JWKS — same.
+10. Rotated key — accepted after at most one refresh interval.
+11. Valid token — accepted, and yields the right `sub`.
+12. `X-Actor-Id` header present alongside a valid token — **the header is
+    ignored**, not merely deprioritised.
+
+Run them under `-race`/`loom`-style concurrency and twice (`-count=2` in Go;
+in Rust, a test that exercises the cache twice) so cache state carries.
+
+## 22.3 The authorization model
+
+Two questions, two functions, and they are not interchangeable:
+
+```rust
+/// READ: is this page inside any space the actor is in?
+/// A page outside every one of them is NOT_FOUND, never 403.
+async fn visible(&self, actor: UserId, page: PageId) -> Result<(), DomainError>;
+
+/// WRITE: does the actor hold at least `min` in this page's space?
+/// Non-member → NOT_FOUND. Member without the rank → PERMISSION_DENIED.
+async fn may_write(&self, actor: UserId, space: SpaceId, min: Role) -> Result<(), DomainError>;
+```
+
+Roles are ranked (`viewer < editor < admin`) and the rank comparison lives
+in one place. A space must keep at least one admin, and **that rule applies
+to demotion as much as to removal** — an admin demoting themselves while
+they are the only one leaves the same unadministrable space.
+
+For the write path *inside a live session*, `can_apply(page, op, actor)` is
+the single chokepoint (RFC-002 §5). It reads a role directory resolved once
+per join, not per op. That is a deliberate staleness window, and it must be
+stated rather than discovered: a role revoked mid-session takes effect on
+the next join.
+
+## 22.4 The failure mode to design against: the reader nobody scoped
+
+**This is the most valuable page in this part.** In September 2026 an audit
+of this codebase found that `PageService` was correctly space-scoped and
+**four cross-page readers were not**:
+
+| Reader | What leaked |
+|---|---|
+| `GetLinkGraph` / `AnalyzeGraph` / `GraphNeighborhood` | every page title on the instance |
+| `Search` | full-text hits **with `ts_headline` snippets** — page content |
+| `Discover` | ranked and named related pages from every space |
+| `SuggestTitles` | fuzzy title matches from every space |
+
+None of these was a bug in a permission check. **Each was the absence of
+one**, in code written before spaces existed and never revisited when they
+arrived. `pages.Server` had `visible()` from the start and the other three
+packages simply never grew one.
+
+Three structural lessons for the port:
+
+1. **A per-entity check does not scope a list.** "Can this actor read page
+   X" and "which pages may this actor see" are different questions, and a
+   codebase that only answers the first will leak through every aggregate.
+2. **Make the scope a required parameter, not an optional filter.** The Rust
+   fix should be a type:
+
+   ```rust
+   /// Proof that a caller's visible space set has been resolved.
+   /// Every cross-page query takes one. There is no Default.
+   pub struct Scope(Vec<SpaceId>);
+
+   impl Scope {
+       pub async fn for_actor(spaces: &impl SpaceReader, actor: UserId) -> Result<Self, DomainError>;
+       pub fn as_slice(&self) -> &[SpaceId] { &self.0 }
+   }
+
+   pub async fn load_graph(&self, scope: &Scope) -> Result<LinkGraph, Error>;
+   pub async fn search(&self, q: &str, scope: &Scope) -> Result<Vec<Hit>, Error>;
+   ```
+
+   With `Scope` un-constructible except through `for_actor`, a query that
+   forgets to scope **does not compile**. That is the single biggest
+   security win available in this port, and it is free.
+3. **An empty scope must yield nothing, not everything.** `space_id =
+   ANY($1)` with an empty array returns zero rows, which is the safe
+   direction. A hand-rolled "if the list is empty, skip the filter"
+   optimisation inverts it.
+
+## 22.5 Instance-wide indexes need query-time filtering
+
+`SuggestTitles` reads a BK-tree rebuilt on a cadence. **One index per member
+would be one index per person**, so the index stays instance-wide and the
+filter is applied when it is queried:
+
+```rust
+pub fn suggest(&self, q: &str, max_distance: usize, scope: &Scope) -> Vec<Suggestion> {
+    self.tree.query(q, max_distance).into_iter()
+        .flat_map(|m| self.by_title[&m.word].iter().map(move |&id| (id, m.clone())))
+        .filter(|(id, _)| scope.contains(self.space_of[id]))   // ← the whole point
+        .map(|(id, m)| Suggestion { page: id, title: m.word, distance: m.distance })
+        .collect()
+}
+```
+
+The index therefore has to carry each page's space. The Go fix shipped with
+that field left at its zero value in one of two construction sites, and
+every suggestion was filtered out — a total outage of the feature, caught by
+the browser-driving test rather than by any unit test, because the unit test
+built the index by hand and the bug was in the loader.
+
+**Test both the deny and the allow.** A filter that rejects everything
+passes every "does not leak" test ever written.
+
+## 22.6 Cross-cutting: what an error message may say
+
+- A resource you cannot see: `NOT_FOUND`, and the message must not
+  distinguish "does not exist" from "not yours".
+- Three separate conditions on invitations — already answered, not yours,
+  no such id — return **one** error, deliberately, so the response cannot be
+  used as an oracle for whether an invitation exists.
+- Internal errors log the detail and return "internal error". The Go code
+  does this; a port that helpfully includes the SQL in the response has
+  handed over the schema.
+
+---
+
+# Part 23 — Security testing: what to actually test
+
+Part 22 says what the model is. This part says how to attack it, because a
+port that re-implements the model and never tests the attacks has copied the
+shape of the security and none of it.
+
+## 23.1 The threat model, in one table
+
+| Actor | Can reach | Should be able to |
+|---|---|---|
+| Anonymous | `POST /auth/{register,login,refresh}`, `GET /health`, `§ 02` home, `GET /collab/stats` | Nothing else. Not one page title. |
+| Authenticated, no space | everything requiring a token | See nothing. Empty lists, not errors. |
+| Viewer | their spaces | Read. **Not** write, not delete, not invite. |
+| Editor | their spaces | Read + write. **Not** manage members. |
+| Admin | their spaces | Everything in *those spaces*. Not other spaces. |
+| Another service | east-west ports | Whatever it needs; the network is the boundary. |
+
+`GET /collab/stats` being public is deliberate and worth re-deciding
+consciously in the port: it reports sessions open, ops flushed, queue depth.
+"How busy is this server" is not a secret; "what does this page say" is.
+
+## 23.2 The tests that must exist
+
+Group them by the property, not by the endpoint.
+
+**A. Authentication (Part 22.2's twelve).** Non-negotiable, and they belong
+in the `authverify` crate's own test module so they run without a server.
+
+**B. Every entry point requires a token.**
+
+```rust
+#[tokio::test]
+async fn every_route_refuses_an_anonymous_caller() {
+    for (method, path) in ROUTES_REQUIRING_AUTH {
+        let res = call(method, path, NoToken).await;
+        assert!(matches!(res.status(), 401 | 404), "{method} {path} answered {}", res.status());
+    }
+}
+```
+
+Maintain `ROUTES_REQUIRING_AUTH` as a list next to the router, and make the
+allowlist of public routes explicit and short. The Go gateway does exactly
+this: a method+path allowlist, everything else authenticated. **An
+allowlist, never a denylist** — a route added tomorrow is protected by
+default.
+
+**C. Horizontal access control — the one that actually breaks.** For every
+read that can return more than one entity:
+
+```rust
+#[tokio::test]
+async fn a_cross_page_reader_never_names_a_page_outside_your_spaces() {
+    let (ivy, ivy_space) = register_with_own_space().await;
+    let page = create_page(&ivy, ivy_space, "Secret rope internals").await;
+    let other = register().await;               // no shared space
+
+    assert!( graph(&ivy).await.contains_title("Secret rope internals"));
+    assert!(!graph(&other).await.contains_title("Secret rope internals"));
+    assert!(!search(&other, "Secret rope").await.contains_title(..));
+    assert!(!suggest(&other, "Secret rop").await.contains_title(..));
+    assert!(!discover(&other).await.contains_title(..));
+}
+```
+
+Note the first assertion. **A filter that returns nothing to everybody
+passes every leak test**, and that is precisely the bug the Go fix shipped
+with (Part 22.5). The positive case is half the test.
+
+Write this once per *reader*, not once per endpoint, and add a line the day
+a new cross-page reader appears.
+
+**D. Vertical access control.** For each role, the boundary of what it may
+do:
+
+- viewer may READ a page in their space
+- viewer may **not** create
+- viewer may **not** delete a page they can see
+- non-member gets **404, not 403** — a 403 confirms it exists
+- admin may delete it
+
+The Go version has these five as browser-driven checks, and they caught a
+real hole: `can_apply` only sees *ops*, and page lifecycle RPCs (delete,
+rename, reparent) are not ops — so a viewer could `DELETE` a page and get
+`204`. **Any authorization chokepoint has a blind spot shaped like the calls
+that do not go through it.** Enumerate them.
+
+**E. Ownership of an answerable thing.** Invitations are the model: only the
+invited may answer, only once, and a wrong id / somebody else's id / an
+already-answered id are indistinguishable in the response.
+
+**F. Input that is not text.** Fuzz every parser that touches untrusted
+input:
+
+```rust
+// cargo-fuzz, or `proptest` for the cheaper version
+fuzz_target!(|data: &str| {
+    let _ = mention::parse(data);        // must not panic, must stay normalised
+    let _ = markdown::compile(data);     // must round-trip: concat(tokens) == source
+    let _ = syntax::lex(data);           // same invariant
+});
+```
+
+The mention parser is small and adversarial in an interesting way: the
+grammar decides who gets notified, so a sloppy one is a notification-spam
+primitive. 21 million executions found nothing in the Go version; that is a
+reasonable bar.
+
+**G. Resource exhaustion.**
+
+- Body size limits on every POST. `axum::extract::DefaultBodyLimit`.
+- A cap on ops per WebSocket message and messages per second per connection.
+- `acquire_timeout` on the pool (21.7), so exhaustion is a 503 not a hang.
+- **The unbounded thing in this system is `Manager`'s session map** — it
+  keeps every session open indefinitely, with no idle eviction. That is
+  stated as a known limit at demo scale. If the port is meant to run
+  anywhere real, this is where to fix it, and the fix has a subtlety:
+  evicting a session must flush its WAL first.
+
+**H. Injection.** `sqlx`'s macros parameterise everything, so classic SQLi
+is structurally excluded — but `ts_headline` output is **HTML with `<b>`
+tags in it**, rendered into the search results page. That is the one place
+where a page's own content becomes markup. Test it:
+
+```rust
+#[tokio::test]
+async fn a_snippet_cannot_inject_markup() {
+    create_page_containing("<img src=x onerror=alert(1)> rope").await;
+    let hit = search("rope").await.first();
+    assert!(!hit.snippet.contains("onerror"));   // escaped, or stripped
+}
+```
+
+The frontend renders snippets with `dangerouslySetInnerHTML`-equivalent
+behaviour to get the bold spans. Either escape everything except the tags
+`ts_headline` itself inserts, or render the match spans structurally instead
+of as HTML. **Decide this consciously in the port.**
+
+## 23.3 How to run them
+
+- Unit + property + fuzz: `cargo test`, `cargo fuzz`, no infrastructure.
+- Integration: `testcontainers` for Postgres and NATS. **Never mock
+  infrastructure** — the same rule the Go side has. A mocked Postgres cannot
+  tell you that `FOR UPDATE SKIP LOCKED` does what you think.
+- End-to-end authorization: drive the real HTTP surface with two or three
+  real accounts. The Go repo's `tools/uidiff/verify.js` does this from a
+  browser and found holes that no unit test could, because **both services
+  were individually correct and the gap was between them.**
+
+## 23.4 What a review should look for
+
+A short list, ordered by how often it has actually been wrong here:
+
+1. A new cross-page read with no `Scope` parameter.
+2. A new RPC that does not call `visible()` or `may_write()`.
+3. A new write path that does not go through `can_apply`.
+4. An error that distinguishes "does not exist" from "not yours".
+5. A `403` where the caller cannot see the resource at all.
+6. An `unwrap()` on anything derived from a request.
+7. A token check that is skipped for a "debug" endpoint.
+8. A projection consulted on the write path.
+
+---
+
+# Part 24 — The bug catalogue: test cases this system has already earned
+
+Every entry below is a defect that shipped in the Go implementation and was
+found afterwards. They are the highest-value tests in the port, because they
+are proven to be reachable. Write them **before** the code they test.
+
+## 24.1 Document model and ops
+
+| # | Bug | The test |
+|---|---|---|
+| 1 | Converting a block kind lost its text | Convert paragraph→heading→quote; assert content survives each hop |
+| 2 | A restore replayed the log but skipped the unrecorded seed block, so the editor inserted one and the log grew (`1/1 → 0/2`) | `restore_to(v)` then assert op count is exactly `v` |
+| 3 | Marks are whole-block last-write-wins; concurrent edits to a marked block silently lose one | Assert the tradeoff explicitly so it cannot regress into a surprise |
+| 4 | Mark offsets are UTF-16 (JS) while the core persists bytes | A mark over `"café"` and over an emoji; assert the resolved range |
+| 5 | `content_version` not bumped on a schema change | Load a v1 document with a v2 binary; assert refusal, not silent misparse |
+
+## 24.2 Anchors and history
+
+| # | Bug | The test |
+|---|---|---|
+| 6 | **`serverActor` was generated fresh per process start.** Every replay after a restart produced different `ItemId`s, and every anchor resolution against persisted history failed with "anchor refers to an item this text never saw" | Restart the service between writing and resolving an anchor. This is *the* highest-value test in the whole system |
+| 7 | `palimpsest::build` replayed only the character tier, but sessions seed ropes from block ops → 500 | Build a palimpsest for a block whose text arrived inside its `InsertBlock` |
+| 8 | A `SetBlockContent` reseed must tombstone every live char and insert the new ones | Assert `stored == live + tombstoned` after a reseed |
+| 9 | An orphaned anchor is an *answer*, not an error | Delete the anchored text; assert `orphaned: true` and a 200 |
+
+## 24.3 Authorization
+
+| # | Bug | The test |
+|---|---|---|
+| 10 | A scoped list beside an unscoped `GetPage` | Fetch a page by id from outside your spaces; assert 404 |
+| 11 | `can_apply` only sees ops, so a viewer could `DELETE` a page (204) | Viewer deletes; assert refusal |
+| 12 | Four cross-page readers unscoped (graph, search, discover, suggest) | Part 23.2 C, with its positive half |
+| 13 | The space filter shipped with the space id left at its zero value in one construction site, so the feature returned nothing at all | The positive assertion in the same test |
+| 14 | `ListMembers` is admin-only, so mention resolution silently worked for admins only | Resolve a mention **as a viewer** |
+| 15 | Migration created a default space with no admin | Assert the invariant at the end of the migration |
+| 16 | A new registration joins as viewer, so a fresh install had nobody who could write | First registration bootstraps as admin; assert on an empty database |
+
+## 24.4 Services, transport, and the gateway
+
+| # | Bug | The test |
+|---|---|---|
+| 17 | `PermissionDenied` unmapped at the gateway → 500 | A table test over every `Code` → HTTP status |
+| 18 | **CORS preflight rejected `Authorization`**, so an authenticated fetch never reached the handler — and the symptom looked like a data problem | Assert `OPTIONS` returns the header; in the browser, listen for `requestfailed`, not `response` |
+| 19 | The actor was set on the second gRPC hop only; every join failed `UNAUTHENTICATED` | A two-hop call under a non-admin actor |
+| 20 | A comment's mention resolution held two gRPC calls inside an open transaction | Assert no `await` on a non-database future while a `Transaction` is live (review rule; also visible as pool exhaustion under load) |
+
+## 24.5 Frontend and the harness
+
+These are not Rust bugs, but the *harness* stays, so the lessons do:
+
+| # | Bug | The lesson |
+|---|---|---|
+| 21 | A rail section never rendered; eyeballing missed it repeatedly | Diff the DOM against the mockup; `missing` must be 0 |
+| 22 | A control rendered but did nothing | Click every control; assert it changes something |
+| 23 | Hidden toolbars still took clicks (`opacity: 0` is still a hit target) | `pointer-events: none` with the opacity, and a probe that clicks through |
+| 24 | A menu's backdrop sat above the menu (`z-index` 29 vs 20) | Measure with `elementFromPoint`, do not reason about stacking |
+| 25 | A flex column with `max-height` shrank its children instead of scrolling | `flex: none` on the rows; measure the row height |
+| 26 | Peer carets rendered at the end of the article | Viewport coordinates need a positioned ancestor |
+| 27 | A check waited on `networkidle` in an app that polls every 30s | **Wait on what you assert on**, never on a proxy for it |
+| 28 | A check asserted on a corpus fact ("some page has a thread") that a reseed removed | Produce your own precondition |
+| 29 | Two test sweeps running concurrently produced four phantom failures | One sweep at a time; a racing run's output is not evidence |
+
+## 24.6 The meta-lesson
+
+Sort the list above by cause and almost all of it falls into three buckets:
+
+1. **A check that waits on, or asserts on, something other than the thing it
+   is checking.** (27, 28, 18, 21, 22)
+2. **A rule that exists but is not applied at one of its call sites.**
+   (10, 11, 12, 14, 15, 19)
+3. **A value that must be stable and was not.** (6, 13, 2)
+
+Bucket 2 is the one a type system can fix, and Part 22.4's `Scope` newtype is
+the worked example: make the rule a parameter that cannot be defaulted, and
+the compiler enumerates the call sites for you. **Where the port can convert
+a discipline into a type, it should.** That is the strongest argument for
+doing this in Rust at all.
+
+---
+
+# Part 25 — Sketches: HyperLogLog, Count–Min, t-digest
+
+`marginal-sketch` is a small crate with an unusually strong claim attached
+to it: **every sketch returns its exact answer beside its estimate.** A
+sketch that hides its error is indistinguishable from a wrong number, and
+the screen built on this crate (`§ 12`) exists to make that visible.
+
+Port this crate early. It is self-contained, has no I/O, compiles to wasm,
+and every one of its properties is testable without a server.
+
+## 25.1 HyperLogLog — counting distinct things in a fixed space
+
+**The problem.** How many distinct actors edited this workspace? An exact
+answer needs a set, and a set grows with the data.
+
+**The idea.** Hash each item to a uniform 64-bit value. Use the first `p`
+bits to pick one of `m = 2^p` registers; count the leading zeros of the rest
+and keep the maximum per register. A register whose maximum run of leading
+zeros is `k` suggests roughly `2^k` distinct items landed in it — because
+seeing `k` zeros has probability `2^-k`. Averaging over `m` registers with
+the *harmonic* mean damps the outliers that would otherwise dominate.
+
+```rust,ignore
+pub struct HyperLogLog { p: u8, registers: Vec<u8> }   // m = 1 << p
+
+impl HyperLogLog {
+    pub fn add(&mut self, item: &str) {
+        let h = hash64(item);
+        let idx = (h >> (64 - self.p)) as usize;
+        let rest = (h << self.p) | (1 << (self.p - 1));   // guard the shift
+        let rank = rest.leading_zeros() as u8 + 1;
+        self.registers[idx] = self.registers[idx].max(rank);
+    }
+
+    pub fn estimate(&self) -> f64 {
+        let m = self.registers.len() as f64;
+        let sum: f64 = self.registers.iter().map(|&r| 2f64.powi(-(r as i32))).sum();
+        let raw = ALPHA_M * m * m / sum;
+        // Small-range correction: with few items most registers are 0, and
+        // the raw estimator is badly biased there. Linear counting is exact
+        // enough in that regime and the crossover is the standard 2.5m.
+        let zeros = self.registers.iter().filter(|&&r| r == 0).count() as f64;
+        if raw <= 2.5 * m && zeros > 0.0 { m * (m / zeros).ln() } else { raw }
+    }
+}
+```
+
+**Standard error is `1.04 / sqrt(m)`.** With 64 registers that is ±13%,
+which is why the screen draws the estimate *against its own bound* rather
+than as a number.
+
+**Port notes.**
+- `leading_zeros()` on `0` is 64, which would make one unlucky hash claim an
+  absurd rank. The `| (1 << (p-1))` guard above is not decoration.
+- Registers are `u8`; a rank cannot exceed 64.
+- Merging two HLLs is a per-register `max`. That is the property that makes
+  them useful across shards, and it is worth a test even if nothing merges
+  yet.
+- **Test that a duplicate does not move the estimate** and a new item does.
+  Those two assertions catch almost every implementation error.
+
+## 25.2 Count–Min — frequency, never underestimated
+
+**The problem.** How many times did page X appear in the stream, in fixed
+space, with no per-key allocation?
+
+**The idea.** `d` independent hash functions, each indexing a row of `w`
+counters. To add, increment one counter per row. To query, take the
+**minimum** across rows. Collisions can only ever add to a counter, so the
+minimum is an over-estimate — never an under-estimate.
+
+```rust,ignore
+pub struct CountMin { w: usize, d: usize, counts: Vec<u32> }   // d rows × w cols
+
+impl CountMin {
+    pub fn add(&mut self, key: &str, n: u32) {
+        for row in 0..self.d {
+            let i = self.index(row, key);
+            self.counts[row * self.w + i] += n;
+        }
+    }
+    pub fn estimate(&self, key: &str) -> u32 {
+        (0..self.d).map(|row| self.counts[row * self.w + self.index(row, key)])
+                   .min().unwrap_or(0)
+    }
+}
+```
+
+**The guarantee**: with `w = ⌈e/ε⌉` and `d = ⌈ln(1/δ)⌉`, the estimate
+exceeds the truth by more than `ε·N` with probability at most `δ`.
+
+**The property to test, and to display**: `estimate(k) >= exact(k)` for every
+`k`. One-sided error is the whole contract, and a test that only checks
+"close enough" would pass an implementation that sometimes undercounts —
+which would be a different, useless data structure.
+
+The `4 × 24` shape in the Go version is deliberately small so the screen can
+*draw every counter*. Keep it configurable, keep the default small, and say
+why in a comment.
+
+## 25.3 t-digest — quantiles without keeping the data
+
+**The problem.** What is the p99 of these latencies? Exact quantiles need
+every sample; a histogram needs its buckets chosen in advance, and the
+interesting part of a latency distribution is exactly where fixed buckets
+are worst.
+
+**The idea.** Keep a set of *centroids* (mean, count). Merge new points into
+the nearest centroid, but bound each centroid's size by a **scale function**
+of its quantile position: centroids near the median may be large, centroids
+near 0 and 1 must stay tiny. So the tails keep resolution and the middle
+compresses.
+
+```rust,ignore
+pub struct TDigest { centroids: Vec<Centroid>, count: u64, compression: f64 }
+struct Centroid { mean: f64, count: u64 }
+
+// k(q) = compression * (asin(2q - 1) / π + 0.5) is the usual scale;
+// what matters is that it is steep at the tails and flat in the middle.
+```
+
+Merging: sort the buffered points, walk the centroids in order accumulating
+`q`, and fold a point into the current centroid while its resulting count
+stays under the size the scale function permits at that `q`; otherwise start
+a new centroid.
+
+**Why this and not a fixed histogram**: the p99 of a latency series is the
+number people act on, and a fixed histogram either wastes buckets where
+nothing happens or bins the tail so coarsely the answer is a bucket
+boundary.
+
+**Port notes.**
+- The accuracy claim is relative to the *quantile*, not the value, and it is
+  strongest at the extremes. Test with a known distribution and assert the
+  error bound, not an exact value.
+- Keep a `Vec<f64>` of raw samples alongside in debug/test builds so the
+  exact quantile is computable and the screen can show both. That is the
+  crate's whole editorial stance.
+
+## 25.4 The `analyze` entry point
+
+One function takes an event stream and returns all three answers plus the
+exact ones. Its signature is the crate's contract with the wasm bridge:
+
+```rust,ignore
+#[derive(serde::Serialize)]
+pub struct Analysis {
+    pub distinct_actors: Estimate<u64>,      // { estimate, exact, error_bound }
+    pub page_counts: Vec<Estimate<u32>>,
+    pub latency_quantiles: Vec<Quantile>,    // { q, estimate, exact }
+    pub malformed_lines: usize,              // counted, never fatal
+}
+```
+
+**A malformed line is counted, not fatal.** The screen feeds this from an
+editable text box, so a half-typed line is the *normal* state, and a parser
+that throws makes the panel flicker to an error on every keystroke.
+
+---
+
+# Part 26 — The markdown compiler, and the lexer
+
+Two crates, one invariant, and it is the most useful invariant in the whole
+system to state as a test.
+
+## 26.1 The invariant
+
+```
+concat(tokens) == source
+```
+
+For the lexer (`marginal-syntax`, nine languages) this is literal: every
+byte of the input appears in exactly one token, in order, including
+whitespace and unrecognised characters. For the markdown compiler
+(`mdc`) the equivalent is that the token stream round-trips.
+
+**Why this rather than "it highlights correctly":** "correctly" needs a
+reference implementation to compare against, and there is none. Round-trip
+is checkable in one line, catches every dropped-character bug, and is
+exactly the property a syntax highlighter must have to be safe to render.
+
+```rust,ignore
+proptest! {
+    #[test]
+    fn lexing_never_loses_a_byte(src in ".{0,4000}") {
+        let joined: String = lex(&src, Lang::Rust).iter().map(|t| t.text.as_str()).collect();
+        prop_assert_eq!(joined, src);
+    }
+}
+```
+
+## 26.2 The lexer's shape
+
+A lexer is a state machine, so it is Go today and Rust tomorrow — never
+TypeScript. Per language: a set of keyword sets, comment syntaxes, string
+delimiters (with their escape rules), and number formats.
+
+```rust,ignore
+pub enum TokenKind { Plain, Keyword, Type, Str, Number, Comment, Punct }
+pub struct Token { pub kind: TokenKind, pub text: String }
+```
+
+In Rust, prefer `&'a str` slices over owned `String`s in the token — the
+whole point is that they partition the source:
+
+```rust,ignore
+pub struct Token<'a> { pub kind: TokenKind, pub text: &'a str }
+```
+
+This makes the round-trip invariant *structural*: the tokens are literally
+slices of the input, so losing a byte requires losing a slice. Only own the
+strings at the wasm boundary, where they must be serialised anyway.
+
+**Traps, all of them real:**
+- Nested block comments (Rust allows them; C does not). Track depth.
+- Raw strings with variable hash counts (`r##"…"##`).
+- A string that never closes, and a comment that never closes. Both must
+  terminate at EOF and produce a token, not loop.
+- Multi-byte characters. Index by `char_indices()`, never by `usize` on a
+  `&[u8]` you then slice.
+
+## 26.3 The markdown compiler
+
+`mdc` is the paste pipeline of Part 5 in library form: lex → parse → lower →
+emit. Two properties beyond the round-trip:
+
+1. **An unclosed fence reports rather than failing.** The screen's input is
+   a live editor, so an incomplete document is the normal state. Return a
+   diagnostic alongside a best-effort tree; never `Err`.
+2. **Chars and bytes diverge, and the divergence is named.** The compiler
+   reports both counts, because a port that conflates them is the source of
+   the offset bugs in Part 24.1. Rust makes this easier to get right and
+   just as easy to get wrong: `s.len()` is bytes, `s.chars().count()` is
+   chars, and the editor's marks are UTF-16 code units. **Three different
+   numbers. Name which one every API means.**
+
+---
+
+# Part 27 — The network simulator: TP1, Merkle, the causal DAG, LSM
+
+`marginal-netsim` is a *simulation*, and the screen says so. The real engine
+is `collaboration-service`; this crate is the deterministic, re-runnable
+version of one bad network, so the algorithms can be watched rather than
+asserted about.
+
+Port it after Part 8, because it re-uses the same op types, and port it at
+all because it is the single best test harness for the transform.
+
+## 27.1 TP1, and what convergence actually requires
+
+Operational transformation's first transport property:
+
+> For any two concurrent operations `a` and `b` on the same state,
+> `apply(apply(s, a), transform(b, a)) == apply(apply(s, b), transform(a, b))`.
+
+That is: two replicas that receive the same pair of operations in different
+orders end up in the same state.
+
+For insert/delete on a linear sequence, the transform is a position
+adjustment:
+
+```rust,ignore
+fn transform(op: Op, against: Op) -> Op {
+    match (op, against) {
+        (Insert { pos: p, .. }, Insert { pos: q, .. }) if q < p => Insert { pos: p + 1, .. },
+        // The tie. Both inserted at the same position; SOMETHING must break
+        // it, and it must be the same something on both replicas.
+        (Insert { pos: p, actor: a, .. }, Insert { pos: q, actor: b, .. }) if q == p && b < a =>
+            Insert { pos: p + 1, .. },
+        (Insert { pos: p, .. }, Delete { pos: q, .. }) if q < p => Insert { pos: p - 1, .. },
+        (Delete { pos: p, .. }, Insert { pos: q, .. }) if q <= p => Delete { pos: p + 1, .. },
+        (Delete { pos: p, .. }, Delete { pos: q, .. }) if q < p => Delete { pos: p - 1, .. },
+        // Both deleted the same character. The second is a no-op, not an error.
+        (Delete { pos: p, .. }, Delete { pos: q, .. }) if q == p => Op::Noop,
+        (op, _) => op,
+    }
+}
+```
+
+**The tiebreak is the whole algorithm.** Two inserts at the same position
+must be ordered by something total and agreed — actor id, here. Get that
+wrong and the replicas diverge by one character, forever, and the symptom
+appears minutes later as unrelated corruption.
+
+**The test that matters** is not "transform returns the right number". It is
+the property:
+
+```rust,ignore
+proptest! {
+    #[test]
+    fn tp1_holds(ops in vec(any_op(), 0..40), seed: u64) {
+        let (a, b) = two_replicas_receiving_in_different_orders(ops, seed);
+        prop_assert_eq!(a.text(), b.text());
+    }
+}
+```
+
+Run it with thousands of seeded interleavings. This is the single highest-
+value property test in the port.
+
+## 27.2 Prediction and rollback
+
+The client applies its own op immediately (prediction), then reconciles when
+the server's ordering arrives: rewind to the last confirmed state, replay the
+server's ops, then replay its own pending ops transformed against them.
+
+The simulation makes the wire visible — RTT and loss are sliders, and the
+intent ledger records what each op *meant* so that "converged" and "did what
+the person wanted" can be told apart. **Turn the transform off and the
+replicas still converge structurally** (same length, same tree) while the
+ledger flags that the intent was violated. That distinction is the reason the
+screen exists, and it is worth preserving exactly.
+
+## 27.3 Merkle comparison (AHU-flavoured)
+
+To ask "do these two replicas agree" without shipping the document: hash
+each node bottom-up, `hash(node) = H(kind ‖ content ‖ hash(child₁) ‖ …)`, and
+compare roots. Equal roots ⇒ equal trees (to the collision bound). Unequal
+⇒ descend into the children whose hashes differ, so a diff costs `O(depth ×
+branching)` rather than `O(size)`.
+
+The AHU part is canonical *labelling*: children must be hashed in a
+canonical order so that two structurally identical trees hash identically
+regardless of construction history. For an ordered document tree, document
+order *is* the canonical order — which makes this simpler here than in the
+general case, and worth a comment saying so.
+
+## 27.4 The causal DAG and its longest chain
+
+Each op names the ops it saw (`parents`). That is a DAG, and:
+
+- **Concurrency** is exactly "neither is an ancestor of the other".
+- The **longest chain** is the critical path of causality, computed by DP
+  over a topological order: `depth(v) = 1 + max(depth(parents))`.
+
+The number is interesting because it separates "forty edits happened" from
+"forty edits happened *in sequence*, each having seen the last".
+
+## 27.5 The LSM shape model
+
+Not a storage engine — a model of one, over the op log: a memtable that
+fills, flushes to a level-0 file, and compacts into larger levels. It reports
+**write amplification**: total bytes written to disk ÷ bytes of logical data.
+
+The reason it is in this product at all: the op log *is* an LSM-shaped
+workload (append-only, never updated in place, read by replay), and drawing
+it that way explains why the WAL and the flush pipeline are shaped as they
+are. Port it as a pure function over `Vec<Op>` returning a level structure,
+and keep it deterministic.
+
+---
+
+# Part 28 — Benchmarking honestly
+
+`marginal-bench` exists because "fast" is a claim, and the screen that shows
+it (`§ 16`) must be able to say how it knows.
+
+## 28.1 Clock resolution comes first
+
+Before timing anything, measure the clock:
+
+```rust,ignore
+fn clock_resolution() -> Duration {
+    let mut min = Duration::MAX;
+    for _ in 0..1000 {
+        let a = Instant::now();
+        let b = loop { let b = Instant::now(); if b > a { break b } };
+        min = min.min(b - a);
+    }
+    min
+}
+```
+
+In a browser this matters enormously: `performance.now()` is deliberately
+coarsened (and jittered) as a Spectre mitigation, so single-operation timings
+are meaningless. **The screen states the clock it was quantised by**, which
+is the honest version of a benchmark number.
+
+## 28.2 Batch calibration — `testing.B`'s trick
+
+If one operation is faster than the clock, time `n` of them and divide.
+Choose `n` by doubling until the batch takes comfortably longer than the
+resolution:
+
+```rust,ignore
+let mut n = 1;
+while time_batch(n) < resolution * 100 { n *= 2; }
+```
+
+This is exactly what Go's `testing.B` does and for exactly the same reason.
+Say so in a comment; a reader who recognises it will trust the rest.
+
+## 28.3 Percentiles, buckets, and the flame graph
+
+- **Log-spaced buckets.** Latency spans orders of magnitude; linear buckets
+  put every interesting value in the first one.
+- **Nearest-rank percentiles**, not interpolation. `p99` of 100 samples is
+  the 99th sorted sample — a value that actually occurred. Interpolating
+  invents a number nothing measured.
+- **The flame graph is walked from instrumented spans, not sampled.** There
+  is no sampling profiler in wasm; inventing stacks would be exactly the
+  dishonesty the screen argues against. So the crate carries explicit span
+  enter/exit, and the graph is only as detailed as the instrumentation.
+
+## 28.4 The workloads must be real paths
+
+Four workloads, each a real function from this codebase: `Page::apply`,
+`mdc::compile`, `netsim::run`, and the semantic tokenise+embed. Not
+synthetic loops. The number is only interesting because it is *about this
+codebase*, measured where the reader is sitting.
+
+**Port note.** `criterion` is the right tool for the developer-facing
+benchmarks (`cargo bench`), and it does the statistics properly. But the
+in-browser benchmark cannot use it — it needs the crate's own harness
+compiled to wasm. Keep both: `criterion` for the CI number, this crate for
+the screen.
+
+---
+
+# Part 29 — Configuration, deployment, and observability
+
+## 29.1 The ports-and-adapters rule, restated for Rust
+
+`CLOUD_PORTABILITY.md`'s rule: **every external dependency sits behind a
+small interface declared at its point of use.** In Go that is a
+three-method interface in the consuming package. In Rust it is a trait in
+the consuming module, and — per Part 16's PORT-NOTE — a **generic bound**,
+not `dyn`, wherever the implementation is known statically.
+
+```rust,ignore
+// In the module that USES it, not in a `ports` module.
+pub trait EventBus {
+    async fn publish(&self, subject: &str, payload: &[u8]) -> Result<(), BusError>;
+}
+
+pub struct Poller<B: EventBus> { bus: B, pool: PgPool }
+```
+
+The adapters that exist: Postgres (sqlx), NATS (`async-nats`), Redis,
+object storage. Each has exactly one production implementation and one test
+double. That is the shape a generic bound is for.
+
+**What this buys, concretely**: local dev runs NATS and MinIO in Docker;
+cloud runs Pub/Sub and Cloud Storage. Neither the algorithm crates nor the
+domain modules know which.
+
+## 29.2 The compose stack
+
+Six services, one database each, plus Redis and NATS. That is not
+microservice theatre — **database-per-service is what makes the boundaries
+real**, and the moment two services share a schema the boundary is a
+convention rather than a constraint.
+
+Keep in the port:
+- One Postgres per service, each with its own credentials.
+- The frontend dev server in the same compose file, so `docker compose up
+  --build` is the entire local setup.
+- **The production compose file is standalone, not an override.** Merging
+  the base and an override "looks right and breaks the site": the base's web
+  service is a Vite dev server whose `image:` and `command:` survive the
+  merge and get applied to the built static image, which has no npm. It
+  restart-loops on `sh: npm: not found`, every HTML route 502s, and the wasm
+  files keep returning 200 — the confusing part, since the reverse proxy is
+  up and only the container behind it is gone.
+
+## 29.3 Deployment, and the failure that matters
+
+A deploy that reports success and did nothing is worse than one that fails
+loudly. This has happened here: an `ssh 'nohup … & echo started'` printed a
+success banner while two `Connection closed` lines scrolled past, and
+production ran the vulnerable commit for another hour.
+
+**The rule: verify from the far side.** After deploying, ask the remote what
+it is running, and check the artefact, not the process:
+
+```sh
+ssh deploy@host 'cd ~/app && git log --oneline -1 && docker compose ps'
+curl -s https://app.example/assets/index-*.js | grep -c 'a-string-only-the-new-code-has'
+```
+
+Three related traps, all paid for:
+- `git checkout -qb X || git checkout X` silently lands on a stale
+  pre-existing branch when the first form fails.
+- `docker compose up --build` builds an image but does **not** necessarily
+  recreate a running container; add `--force-recreate` after a rebase.
+- Building with a merged compose file retags the base image
+  (`node:22-alpine`) with your build, which then breaks something unrelated
+  hours later.
+
+## 29.4 Observability
+
+Deferred in the Go repo; the port should not defer it, because it is cheaper
+to add while the code is being written than afterwards.
+
+```rust,ignore
+tracing_subscriber::registry()
+    .with(EnvFilter::from_default_env())
+    .with(tracing_subscriber::fmt::layer().json())
+    .with(tracing_opentelemetry::layer().with_tracer(tracer))
+    .init();
+```
+
+- **`tracing`, not `log`.** Spans, not lines: a request that crosses four
+  services is only legible as a trace.
+- **Propagate the trace context through gRPC metadata**, and through the
+  outbox payload — an event published now and consumed later belongs to the
+  request that caused it, and losing that link is the usual reason async
+  systems are hard to debug.
+- **Cardinality discipline.** Never a page id or a user id as a metric
+  label. They belong in span attributes, which are sampled; a metric label
+  is multiplied by every series forever.
+- The four numbers this system already knows how to report, and should
+  export as metrics: outbox depth, op-log lag, sessions open, ops flushed
+  per second.
+
+## 29.5 Cost posture
+
+The Go repo's cloud plan is two-tier and deliberately cheap: scale-to-zero
+services, one small Postgres per service, no always-on cluster. Keep that
+shape in the port and keep the reasoning visible, because the natural
+gravity of a rewrite is toward a managed everything.
+
+The one exception is `collaboration-service`: **it is stateful and holds
+WebSockets, so it cannot scale to zero** and its instance count is a
+function of concurrent connections. That asymmetry drives the whole
+deployment topology and should be stated wherever the topology is described.
+
+---
+
+# Part 30 — The order of work, with checkpoints
+
+This is the part to follow literally. The ordering is not arbitrary: each
+step is checkable on its own, and each one's dependencies are already done.
+
+## Stage 0 — Scaffolding (a day)
+
+Cargo workspace, one crate per Part-19 row, `rustfmt.toml`, `clippy.toml`
+with `-D warnings` in CI, `cargo-deny` for licences and advisories.
+`docker-compose.yml` copied across unchanged — the databases and the bus do
+not care what language talks to them.
+
+**Checkpoint:** `cargo build --workspace` succeeds and produces six binaries
+that start, serve `/health`, and exit cleanly on `Ctrl-C`.
+
+## Stage 1 — The pure crates (a week)
+
+In this order, because each is independently testable and none has I/O:
+
+1. `graphalgo` (Part 10) — the easiest, and the algorithms are self-checking.
+2. `textdiff` (Part 13) — LCS table + traceback, one property test.
+3. `syntax` (Part 26) — the round-trip invariant is the test.
+4. `sketch` (Part 25) — estimate-vs-exact is the test.
+5. `semantic` (Part 12) — recall measured against brute force is the test.
+
+**Checkpoint:** every crate has its property tests, and `cargo test
+--workspace` is green with no service running. Port the Go golden vectors in
+`testdata/` verbatim and make them pass — they are the contract.
+
+## Stage 2 — `documentcore` (a week)
+
+The block tree, the op ISA, `apply`, `invert`. Part 3, Part 6.
+
+**Checkpoint:** the golden vectors in `testdata/document-core/*.json` pass
+unchanged, and the round-trip property (`apply` then `invert` restores the
+tree) holds under `proptest` for random op sequences.
+
+This is the crate everything else depends on. Do not move on while any
+golden vector is skipped.
+
+## Stage 3 — `notification-service` (two days)
+
+The smallest complete service: one table, one NATS consumer, three HTTP
+routes. It exercises the whole vertical — config, pool, migrations, outbox
+consumption, HTTP, JWT verification — at the smallest possible size.
+
+**Checkpoint:** register a user through the real `auth-service` (still Go!)
+and see a welcome notification appear in the Rust service. **Cross-language
+running is the point** — it proves the wire contracts are actually
+compatible, and it lets you port one service at a time.
+
+## Stage 4 — `auth-service` (a week)
+
+Identity first, per `ADR-013`. Argon2id (`argon2` crate), RS256 + JWKS
+(`jsonwebtoken`), sessions, spaces, roles, invitations.
+
+**Checkpoint:** Part 22.2's twelve adversarial tests pass, and the Go
+services accept tokens issued by the Rust `auth-service`. That is the real
+proof: JWKS is a contract, not an implementation detail.
+
+## Stage 5 — `document-service` (two to three weeks)
+
+The largest surface. Sub-order: pages → blocks projection → graph → search →
+discover → trash/saga.
+
+**Checkpoint, and do not skip it:** the `Scope` newtype from Part 22.4
+exists before the first cross-page reader is written, and Part 23.2's
+horizontal-access test (with its positive half) passes.
+
+## Stage 6 — `collaboration-service` (three weeks, and the hard one)
+
+Rope, anchors, the session, the WAL, the flush pipeline, the WebSocket, the
+role directory, comments.
+
+Sub-order matters here:
+1. `doctext` rope + anchors, tested alone (Part 7).
+2. Session state machine, driven by a script of ops, no network.
+3. WAL and flush, with a crash injected between write and flush.
+4. The WebSocket, last.
+
+**Checkpoints:** the `serverActor` stability test (Part 24.2 #6) —
+restart the process between writing and resolving an anchor. The TP1
+property test (Part 27.1). A replay of `collab.ops` reproduces
+`docs.blocks` exactly (Part 21.5 rule 2).
+
+## Stage 7 — `api-gateway` and `diagnostics-service` (a week)
+
+Both thin. The gateway is REST↔gRPC translation plus the health fan-out;
+diagnostics is nine pure analyzers over a gRPC client.
+
+**Checkpoint:** the frontend — unchanged, still TypeScript — runs against
+the all-Rust backend, and `tools/uidiff/verify.js` passes in full.
+
+## Stage 8 — wasm (a week)
+
+`wasm-bindgen` for the four entrypoints, `wasm-opt -Oz`, and a measurement
+of the resulting bundle. The Go build ships ~28 MB across nine modules;
+Rust should be dramatically smaller, and **measuring it is part of the
+deliverable** — it is one of the few places where the port has a number to
+show for itself.
+
+## The final checkpoint
+
+The acceptance bar is not "the tests pass". It is:
+
+> **`tools/uidiff/uidiff.js` reports `missing 0 · property 0 · chrome text 0`
+> on every screen, and `tools/uidiff/verify.js` passes, against the Rust
+> backend, with the TypeScript frontend unchanged.**
+
+The frontend is the permanent visual harness precisely so this comparison is
+possible. If a screen differs, the port is wrong — not the screen.
+

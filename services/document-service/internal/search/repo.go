@@ -87,7 +87,7 @@ func (r *PostgresRepo) ListPageTitles(ctx context.Context) ([]PageTitle, error) 
 	}
 	titles := make([]PageTitle, len(rows))
 	for i, row := range rows {
-		titles[i] = PageTitle{ID: uuid.UUID(row.ID.Bytes), Title: row.Title}
+		titles[i] = PageTitle{ID: uuid.UUID(row.ID.Bytes), Title: row.Title, SpaceID: uuid.UUID(row.SpaceID.Bytes)}
 	}
 	return titles, nil
 }
