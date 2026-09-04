@@ -3859,6 +3859,7 @@ These are not Rust bugs, but the *harness* stays, so the lessons do:
 | 27 | A check waited on `networkidle` in an app that polls every 30s | **Wait on what you assert on**, never on a proxy for it |
 | 28 | A check asserted on a corpus fact ("some page has a thread") that a reseed removed | Produce your own precondition |
 | 29 | Two test sweeps running concurrently produced four phantom failures | One sweep at a time; a racing run's output is not evidence |
+| 30 | **The browser crashed and the sweep exited 0 with no output**, so three runs that stopped at 73 of 140 checks were reported as passes | A harness whose failure mode is a silent pass is worse than no harness. Assert on the *shape* of a successful run — it printed a summary, it ran N checks — not merely on the exit code |
 
 ## 24.6 The meta-lesson
 

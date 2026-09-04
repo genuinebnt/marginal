@@ -296,6 +296,14 @@ actually changed. Add a check when you add a control. It found a 500 on
 `GET .../trace` that no unit test and no DOM diff could have — the editor
 never replays, so only Trace and History exercised the path that was broken.
 
+**Read the summary line, not the exit code.** A run that finishes prints
+either `all checks passed` or `N FAILED`, and it runs ~140 checks. If you
+see neither line, the sweep did not finish — for a while a crashed browser
+made it exit **0 with no output at all**, so three runs that stopped at 73
+checks were reported as successes. It now says `BROWSER CRASHED` and exits
+1, but the habit is the safeguard: check the line count and the summary.
+Two sweeps running at once also produce phantom failures; run one.
+
 ---
 
 ## Architecture Rules (summary)

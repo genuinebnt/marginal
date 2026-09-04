@@ -37,7 +37,25 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
   const page = g.nodes.find(n=>n.title==='The document block model');
   const hub  = g.nodes.find(n=>n.title==='The Rust Porting Handbook');
 
-  const b = await chromium.launch({channel:'chrome'});
+  const b = await chromium.launch({
+    channel: 'chrome',
+    // The lab screens run nine wasm modules and re-run some of them on
+    // every control change. Chrome's renderer was dying partway through
+    // § 14 without these.
+    args: ['--disable-dev-shm-usage', '--disable-gpu', '--js-flags=--max-old-space-size=2048'],
+  });
+
+  // A CRASHED BROWSER MUST NOT LOOK LIKE A PASS.
+  //
+  // When the browser dies, every pending Playwright promise stalls, nothing
+  // is left on the event loop, and node exits **0 with no output at all**.
+  // Three sweeps ended that way and were reported as successes by their
+  // wrappers; only counting the lines showed they had stopped at 73 of 140.
+  // A gate whose failure mode is a silent pass is worse than no gate.
+  b.on('disconnected', () => {
+    console.log('\nBROWSER CRASHED — the sweep did not finish. This is a FAILURE, not a pass.');
+    process.exit(1);
+  });
   const p = await b.newPage({viewport:{width:1440,height:900}});
   const errs=[]; p.on('pageerror',e=>errs.push(e.message));
   // addInitScript, not goto-then-evaluate: the session has to be in storage
