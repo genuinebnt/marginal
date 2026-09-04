@@ -53,11 +53,44 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
   // wrappers; only counting the lines showed they had stopped at 73 of 140.
   // A gate whose failure mode is a silent pass is worse than no gate.
   b.on('disconnected', () => {
-    console.log('\nBROWSER CRASHED — the sweep did not finish. This is a FAILURE, not a pass.');
+    // An EXPECTED disconnect is the normal end of a run: the summary has
+    // been printed and we are closing the browser on purpose. Without this
+    // guard the handler fires during that close and reports a green sweep
+    // as a failure — the exact inverse of the bug it was added for, and a
+    // reminder that a guard is code too.
+    if (global.__finished) return;
+    console.log('\nBROWSER DISCONNECTED — the sweep did not finish. FAILURE, not a pass.');
+    process.exit(1);
+  });
+
+  // The catch-all, and the one that actually works.
+  //
+  // `disconnected` fires only if the BROWSER process dies. A renderer
+  // crash, or any other path that empties the event loop with promises
+  // still pending, exits 0 silently — which is what happened three times
+  // before this existed. So: record that the summary was reached, and on
+  // exit, say so if it was not. This catches every silent-exit cause
+  // regardless of which one it was.
+  global.__finished = false;
+  process.on('exit', (code) => {
+    if (!global.__finished) {
+      console.log(`\nSWEEP DID NOT FINISH — exited early (code ${code}) without a summary.`);
+      console.log('This is a FAILURE. Re-run; if it repeats at the same check, that check is the cause.');
+      process.exitCode = 1;
+    }
+  });
+  process.on('unhandledRejection', (e) => {
+    console.log(`\nUNHANDLED REJECTION: ${e && e.message ? e.message.split('\n')[0] : e}`);
     process.exit(1);
   });
   const p = await b.newPage({viewport:{width:1440,height:900}});
   const errs=[]; p.on('pageerror',e=>errs.push(e.message));
+  // A renderer crash. Distinct from browser disconnect, and the more likely
+  // of the two on the lab screens.
+  p.on('crash', () => {
+    console.log('\nPAGE CRASHED — the sweep did not finish. FAILURE, not a pass.');
+    process.exit(1);
+  });
   // addInitScript, not goto-then-evaluate: the session has to be in storage
   // BEFORE the app's own scripts read it. Setting it afterwards raced a
   // redirect to /login — the evaluate landed mid-navigation and died with
@@ -1186,6 +1219,7 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
 
   console.log(errs.length ? `\nPAGE ERRORS: ${errs.slice(0,5).join(' | ')}` : '\nno page errors');
   if (errs.length) fails++;
+  global.__finished = true;
   console.log(fails ? `\n${fails} FAILED` : '\nall checks passed');
   await b.close();
   process.exit(fails ? 1 : 0);
