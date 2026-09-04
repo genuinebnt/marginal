@@ -12,6 +12,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"marginal/document-service/internal/graphrepo/gen"
@@ -60,12 +61,16 @@ func NewPostgresRepo(pool *pgxpool.Pool) *PostgresRepo {
 // a page with zero links still needs to appear as a Graph node (so
 // orphan detection can see it sitting alone), which an INNER JOIN against
 // page_links would silently drop.
-func (r *PostgresRepo) LoadGraph(ctx context.Context) (LinkGraph, error) {
-	pageRows, err := r.q.ListPagesForGraph(ctx)
+// spaceIDs is REQUIRED, not optional: every query below filters on it, and
+// an empty slice yields an empty graph rather than the whole instance —
+// which is the safe direction for a mistake to fail in.
+func (r *PostgresRepo) LoadGraph(ctx context.Context, spaceIDs []uuid.UUID) (LinkGraph, error) {
+	scope := pgUUIDs(spaceIDs)
+	pageRows, err := r.q.ListPagesForGraph(ctx, scope)
 	if err != nil {
 		return LinkGraph{}, fmt.Errorf("graph: loading pages: %w", err)
 	}
-	linkRows, err := r.q.ListResolvedLinksForGraph(ctx)
+	linkRows, err := r.q.ListResolvedLinksForGraph(ctx, scope)
 	if err != nil {
 		return LinkGraph{}, fmt.Errorf("graph: loading links: %w", err)
 	}
@@ -107,4 +112,37 @@ func (r *PostgresRepo) LoadGraph(ctx context.Context) (LinkGraph, error) {
 	}
 
 	return g, nil
+}
+
+// pgUUIDs converts a space set for the ANY(...) predicate every query in
+// this package now carries.
+func pgUUIDs(ids []uuid.UUID) []pgtype.UUID {
+	out := make([]pgtype.UUID, len(ids))
+	for i, id := range ids {
+		out[i] = pgtype.UUID{Bytes: id, Valid: true}
+	}
+	return out
+}
+
+// DanglingLink is one [[link]] whose target does not exist — § 20's check.
+type DanglingLink struct {
+	TargetTitle   string
+	FromPage      uuid.UUID
+	FromPageTitle string
+	FromBlock     uuid.UUID
+}
+
+func (r *PostgresRepo) DanglingLinks(ctx context.Context, spaceIDs []uuid.UUID) ([]DanglingLink, error) {
+	rows, err := r.q.ListDanglingLinks(ctx, pgUUIDs(spaceIDs))
+	if err != nil {
+		return nil, fmt.Errorf("graph: loading dangling links: %w", err)
+	}
+	out := make([]DanglingLink, 0, len(rows))
+	for _, l := range rows {
+		out = append(out, DanglingLink{
+			TargetTitle: l.TargetTitle, FromPage: uuid.UUID(l.FromPage.Bytes),
+			FromPageTitle: l.FromPageTitle, FromBlock: uuid.UUID(l.FromBlock.Bytes),
+		})
+	}
+	return out, nil
 }

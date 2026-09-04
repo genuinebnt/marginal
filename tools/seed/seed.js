@@ -36,6 +36,8 @@ const CONTENT = CORPUS[which]();
 //   SEED_EMAIL=... SEED_PASSWORD=... node tools/seed/seed.js all
 const GW = process.env.SEED_GATEWAY_URL || 'http://localhost:8000';
 const COLLAB = process.env.SEED_COLLAB_URL || 'ws://localhost:8002';
+// The same service over plain HTTP — comments are REST, the op stream is not.
+const COLLAB_HTTP = (process.env.SEED_COLLAB_URL || 'ws://localhost:8002').replace(/^ws/, 'http');
 const SEED_EMAIL = process.env.SEED_EMAIL || 'ui-demo@example.com';
 const SEED_PASSWORD = process.env.SEED_PASSWORD || 'ui-demo-password-123';
 
@@ -92,6 +94,136 @@ async function makeEditor(token, targetToken) {
   });
   if (!r.ok) console.log(`  (second actor stays a viewer: ${r.status} — needs an admin token)`);
   return r.ok;
+}
+
+/**
+ * A mention and an invitation, addressed to the seeding account.
+ *
+ * Best-effort throughout: a failure here logs and continues, because a
+ * corpus without an inbox is still a corpus. Every step goes through the
+ * public API.
+ */
+async function seedNotifications(token, idByTitle) {
+  const sub = (t) => JSON.parse(Buffer.from(t.split('.')[1], 'base64url')).sub;
+  const jf = (u, o) => fetch(u, o).then((r) => r.json()).catch(() => null);
+  const me = sub(token);
+  const H = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+
+  // Everything already in the inbox is marked read first, so the rows this
+  // seeds are the only UNREAD ones. Notifications are not cleared with the
+  // pages — there is no delete endpoint and there should not be one, since
+  // an inbox that can be emptied from outside is not a record of anything —
+  // so without this a re-seeded demo shows forty unread mentions from
+  // corpora that no longer exist.
+  await fetch(`${GW.replace(':8000', ':8007')}/notifications/read-all`, {
+    method: 'POST', headers: { Authorization: `Bearer ${token}` },
+  }).catch(() => {});
+
+  const other = await secondActor();
+  if (!other) { console.log('  notifications: SKIPPED (no second actor)'); return; }
+  const PH = { 'Content-Type': 'application/json', Authorization: `Bearer ${other}` };
+
+  // The handle somebody would type for the seeding account: their display
+  // name with the spaces removed (docs/api/notifications.md § 4).
+  const DEFAULT_SPACE = '00000000-0000-7000-8000-00000000d0c5';
+  const members = await jf(`${GW}/spaces/${DEFAULT_SPACE}/members`, { headers: H });
+  const mine = (members?.members ?? []).find((m) => m.user_id === me);
+  if (!mine) { console.log('  notifications: SKIPPED (cannot read own display name)'); return; }
+  const handle = `@${mine.display_name.replace(/ /g, '')}`;
+
+  // A MENTION. It needs a thread, and a thread needs a block with text in
+  // it — a comment anchors to characters, so an empty block has nothing to
+  // anchor to.
+  //   Block ids come over the WebSocket, not REST: docs.blocks has no REST
+  //   projection, because a block's live state belongs to the session that
+  //   holds it. Same snapshot reviseBlockText above reads.
+  const pageId = idByTitle.get('Anchors vs offsets') ?? [...idByTitle.values()][0];
+  const block = await firstTextBlock(token, pageId);
+  if (block) {
+    const opened = await fetch(`${COLLAB_HTTP}/collab/pages/${pageId}/comments`, {
+      method: 'POST', headers: PH,
+      body: JSON.stringify({
+        block_id: block.id, anchor_start: null, anchor_end: null,
+        quoted: (block.text ?? '').slice(0, 60),
+        body: `${handle} does the tiebreak still hold if two actors share a Lamport stamp?`,
+      }),
+    });
+    console.log(`  mention: ${opened.ok ? 'from ' + (await secondActorName(other)) : 'FAILED ' + opened.status}`);
+  } else {
+    console.log('  mention: SKIPPED (no block with text)');
+  }
+
+  // An INVITATION, to a space the seeding account is not in — one it is
+  // already in would be refused, correctly.
+  const theirs = await jf(`${GW}/spaces`, { headers: PH });
+  let space = (theirs?.spaces ?? []).find((x) => x.name === 'Research' && x.your_role === 'admin');
+  if (!space) {
+    space = await jf(`${GW}/spaces`, {
+      method: 'POST', headers: PH, body: JSON.stringify({ name: 'Research' }),
+    });
+  }
+  if (space?.id) {
+    const r = await fetch(`${GW}/spaces/${space.id}/invitations`, {
+      method: 'POST', headers: PH, body: JSON.stringify({ user_id: me, role: 'editor' }),
+    });
+    // 409 means one is already pending, which is the state we wanted.
+    console.log(`  invitation: ${r.ok || r.status === 409 ? 'pending to Research' : 'FAILED ' + r.status}`);
+  }
+
+  // A DELETED page, so § 23c's trash and § 18b's audit have one.
+  //
+  // A LEAF, and not a series parent. The first version took the last page
+  // in the list, which was "The Rust Porting Handbook" — the parent of a
+  // 19-part series, whose deletion cascades to every part and takes § 10d
+  // with it. Which page it is still does not matter; that it has nothing
+  // hanging off it does.
+  // Leafness comes from CONTENT, not from GET /pages — that route lists
+  // ROOTS only, so every row it returns looks parentless and the first
+  // version of this happily deleted the 19-part handbook.
+  // A ROOT leaf: no children of its own, and no parent either. The second
+  // version picked a leaf with a parent and happened to take the last part
+  // of the 19-part handbook series with it, so § 10d then counted 18.
+  // Deleting a page that belongs to a series changes what that series is.
+  const parents = new Set(CONTENT.map((c) => c.parent).filter(Boolean));
+  const hasParent = new Set(CONTENT.filter((c) => c.parent).map((c) => c.title));
+  const victimTitle = [...idByTitle.keys()].reverse()
+    .find((t) => !parents.has(t) && !hasParent.has(t));
+  const victimId = victimTitle && idByTitle.get(victimTitle);
+  if (victimId) {
+    const r = await fetch(`${GW}/pages/${victimId}`, { method: 'DELETE', headers: H });
+    console.log(`  trashed: ${r.ok ? victimTitle : 'FAILED ' + r.status}`);
+  }
+}
+
+/** The first top-level block on a page that actually has text in it —
+ *  read from the collaboration snapshot, since blocks have no REST route.
+ *  A comment anchors to characters, so an empty block cannot carry one. */
+async function firstTextBlock(token, pageId) {
+  const ws = new WebSocket(`${COLLAB}/collab/pages/${pageId}`, ['bearer', token]);
+  let found = null;
+  await new Promise((resolve) => {
+    ws.on('message', (raw) => {
+      const m = JSON.parse(raw.toString());
+      if (m.type !== 'snapshot') return;
+      const blocks = (m.snapshot?.blocks ?? m.blocks ?? []).filter((b) => !b.parent);
+      for (const b of blocks) {
+        const text = b.content?.text ?? b.text ?? '';
+        if (text.length > 20) { found = { id: b.id, text }; break; }
+      }
+      resolve();
+    });
+    ws.on('error', resolve);
+    setTimeout(resolve, 8000);
+  });
+  try { ws.close(); } catch { /* already gone */ }
+  return found;
+}
+
+async function secondActorName(token) {
+  try {
+    const claims = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
+    return claims.name ?? 'the second actor';
+  } catch { return 'the second actor'; }
 }
 
 async function login() {
@@ -385,6 +517,20 @@ async function reviseBlockText(token, pageId, blockIndex, revisions) {
     });
   }
   console.log(`  resume positions: ${resumable.length}`);
+
+  // 6. One of every notification kind § 20 can actually produce, so the
+  //    inbox and the bell have real rows rather than a welcome and nothing.
+  //
+  //    Through the real paths, like everything else here: a comment
+  //    containing an @handle, and a genuine pending invitation. Writing
+  //    rows into notify.notifications directly would seed a table this app
+  //    does not otherwise write, and would prove nothing about the two
+  //    services that produce them.
+  //
+  //    The fourth kind — a CHECK — is not seeded at all, because it cannot
+  //    be: checks are derived on every read from `[[links]]` whose target
+  //    does not exist, and the corpus above already contains those.
+  await seedNotifications(token, idByTitle);
 
   console.log(`seeded ${CONTENT.length} pages (${which})`);
 })().catch((e) => { console.error('FAILED:', e.message); process.exit(1); });

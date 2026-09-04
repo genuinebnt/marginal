@@ -181,6 +181,45 @@ func (q *Queries) CreateDefaultSpace(ctx context.Context, arg CreateDefaultSpace
 	return i, err
 }
 
+const createInvitation = `-- name: CreateInvitation :one
+INSERT INTO auth.space_invitations (id, space_id, user_id, role, invited_by)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, space_id, user_id, role, invited_by, created_at, responded_at, accepted
+`
+
+type CreateInvitationParams struct {
+	ID        pgtype.UUID
+	SpaceID   pgtype.UUID
+	UserID    pgtype.UUID
+	Role      string
+	InvitedBy pgtype.UUID
+}
+
+// The partial unique index (one pending per person per space) is what makes
+// a double invite a conflict rather than two rows; the caller turns that
+// into ALREADY_EXISTS.
+func (q *Queries) CreateInvitation(ctx context.Context, arg CreateInvitationParams) (AuthSpaceInvitation, error) {
+	row := q.db.QueryRow(ctx, createInvitation,
+		arg.ID,
+		arg.SpaceID,
+		arg.UserID,
+		arg.Role,
+		arg.InvitedBy,
+	)
+	var i AuthSpaceInvitation
+	err := row.Scan(
+		&i.ID,
+		&i.SpaceID,
+		&i.UserID,
+		&i.Role,
+		&i.InvitedBy,
+		&i.CreatedAt,
+		&i.RespondedAt,
+		&i.Accepted,
+	)
+	return i, err
+}
+
 const createSpace = `-- name: CreateSpace :one
 INSERT INTO auth.spaces (id, name, created_by) VALUES ($1, $2, $3)
 RETURNING id, name, is_default, created_by, created_at
@@ -284,6 +323,26 @@ func (q *Queries) FindRefreshTokenRootID(ctx context.Context, id pgtype.UUID) (p
 	var rt_id pgtype.UUID
 	err := row.Scan(&rt_id)
 	return rt_id, err
+}
+
+const getInvitation = `-- name: GetInvitation :one
+SELECT id, space_id, user_id, role, invited_by, created_at, responded_at, accepted FROM auth.space_invitations WHERE id = $1
+`
+
+func (q *Queries) GetInvitation(ctx context.Context, id pgtype.UUID) (AuthSpaceInvitation, error) {
+	row := q.db.QueryRow(ctx, getInvitation, id)
+	var i AuthSpaceInvitation
+	err := row.Scan(
+		&i.ID,
+		&i.SpaceID,
+		&i.UserID,
+		&i.Role,
+		&i.InvitedBy,
+		&i.CreatedAt,
+		&i.RespondedAt,
+		&i.Accepted,
+	)
+	return i, err
 }
 
 const getSpace = `-- name: GetSpace :one
@@ -529,6 +588,59 @@ func (q *Queries) ListMembers(ctx context.Context, spaceID pgtype.UUID) ([]ListM
 	return items, nil
 }
 
+const listPendingInvitationsForUser = `-- name: ListPendingInvitationsForUser :many
+SELECT i.id, i.space_id, i.user_id, i.role, i.invited_by, i.created_at, i.responded_at, i.accepted, s.name AS space_name, u.display_name AS invited_by_name
+FROM auth.space_invitations i
+JOIN auth.spaces s ON s.id = i.space_id
+JOIN auth.users  u ON u.id = i.invited_by
+WHERE i.user_id = $1 AND i.responded_at IS NULL
+ORDER BY i.created_at DESC
+`
+
+type ListPendingInvitationsForUserRow struct {
+	ID            pgtype.UUID
+	SpaceID       pgtype.UUID
+	UserID        pgtype.UUID
+	Role          string
+	InvitedBy     pgtype.UUID
+	CreatedAt     pgtype.Timestamptz
+	RespondedAt   pgtype.Timestamptz
+	Accepted      *bool
+	SpaceName     string
+	InvitedByName string
+}
+
+func (q *Queries) ListPendingInvitationsForUser(ctx context.Context, userID pgtype.UUID) ([]ListPendingInvitationsForUserRow, error) {
+	rows, err := q.db.Query(ctx, listPendingInvitationsForUser, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListPendingInvitationsForUserRow
+	for rows.Next() {
+		var i ListPendingInvitationsForUserRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.SpaceID,
+			&i.UserID,
+			&i.Role,
+			&i.InvitedBy,
+			&i.CreatedAt,
+			&i.RespondedAt,
+			&i.Accepted,
+			&i.SpaceName,
+			&i.InvitedByName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSpacesForUser = `-- name: ListSpacesForUser :many
 
 SELECT s.id, s.name, s.is_default, s.created_by, s.created_at,
@@ -636,6 +748,38 @@ WHERE id = ANY($1::uuid[])
 func (q *Queries) MarkOutboxEventsPublished(ctx context.Context, ids []pgtype.UUID) error {
 	_, err := q.db.Exec(ctx, markOutboxEventsPublished, ids)
 	return err
+}
+
+const respondToInvitation = `-- name: RespondToInvitation :one
+UPDATE auth.space_invitations
+SET responded_at = NOW(), accepted = $2
+WHERE id = $1 AND user_id = $3 AND responded_at IS NULL
+RETURNING id, space_id, user_id, role, invited_by, created_at, responded_at, accepted
+`
+
+type RespondToInvitationParams struct {
+	ID       pgtype.UUID
+	Accepted *bool
+	UserID   pgtype.UUID
+}
+
+// Answering is idempotent-safe by being CONDITIONAL: the WHERE clause means
+// a second answer changes nothing and returns no row, which the caller
+// reports as FAILED_PRECONDITION rather than pretending it worked.
+func (q *Queries) RespondToInvitation(ctx context.Context, arg RespondToInvitationParams) (AuthSpaceInvitation, error) {
+	row := q.db.QueryRow(ctx, respondToInvitation, arg.ID, arg.Accepted, arg.UserID)
+	var i AuthSpaceInvitation
+	err := row.Scan(
+		&i.ID,
+		&i.SpaceID,
+		&i.UserID,
+		&i.Role,
+		&i.InvitedBy,
+		&i.CreatedAt,
+		&i.RespondedAt,
+		&i.Accepted,
+	)
+	return i, err
 }
 
 const revokeAllRefreshTokensForUser = `-- name: RevokeAllRefreshTokensForUser :execrows

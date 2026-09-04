@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	documentv1 "marginal/document-service/genproto/documentv1"
+	"marginal/document-service/internal/graph"
 )
 
 // DefaultRefreshInterval is how often Server rebuilds its in-memory
@@ -28,7 +29,8 @@ const DefaultRefreshInterval = 30 * time.Second
 // for anything that isn't the database of record.
 type Server struct {
 	documentv1.UnimplementedSearchServiceServer
-	repo *PostgresRepo
+	repo   *PostgresRepo
+	spaces graph.SpaceReader
 
 	idx atomic.Pointer[TitleIndex]
 
@@ -41,8 +43,8 @@ type Server struct {
 // request after startup already has real suggestions, not an empty
 // index) and returns a Server; call Start to begin the background
 // refresh loop.
-func NewServer(ctx context.Context, repo *PostgresRepo) (*Server, error) {
-	s := &Server{repo: repo}
+func NewServer(ctx context.Context, repo *PostgresRepo, spaces graph.SpaceReader) (*Server, error) {
+	s := &Server{repo: repo, spaces: spaces}
 	if err := s.refresh(ctx); err != nil {
 		return nil, err
 	}
@@ -98,7 +100,13 @@ func (s *Server) Search(ctx context.Context, req *documentv1.SearchRequest) (*do
 		return &documentv1.SearchResponse{Hits: []*documentv1.SearchHit{}}, nil
 	}
 
-	hits, err := s.repo.SearchFullText(ctx, req.GetQuery())
+	// A snippet is page CONTENT, so this is scoped like every other read
+	// (v3.3.0 — it was not, and returned hits from every space).
+	spaceIDs, err := graph.ScopeFor(ctx, s.spaces)
+	if err != nil {
+		return nil, err
+	}
+	hits, err := s.repo.SearchFullText(ctx, req.GetQuery(), spaceIDs)
 	if err != nil {
 		slog.Error("search: full-text search failed", "err", err)
 		return nil, status.Error(codes.Internal, "search: search failed")
@@ -119,7 +127,7 @@ func (s *Server) Search(ctx context.Context, req *documentv1.SearchRequest) (*do
 	return &documentv1.SearchResponse{Hits: out}, nil
 }
 
-func (s *Server) SuggestTitles(_ context.Context, req *documentv1.SuggestTitlesRequest) (*documentv1.SuggestTitlesResponse, error) {
+func (s *Server) SuggestTitles(ctx context.Context, req *documentv1.SuggestTitlesRequest) (*documentv1.SuggestTitlesResponse, error) {
 	if req.GetQuery() == "" {
 		return &documentv1.SuggestTitlesResponse{Suggestions: []*documentv1.TitleSuggestion{}}, nil
 	}
@@ -133,7 +141,11 @@ func (s *Server) SuggestTitles(_ context.Context, req *documentv1.SuggestTitlesR
 		return &documentv1.SuggestTitlesResponse{Suggestions: []*documentv1.TitleSuggestion{}}, nil
 	}
 
-	suggestions := idx.Suggest(req.GetQuery(), maxDistance)
+	spaceIDs, err := graph.ScopeFor(ctx, s.spaces)
+	if err != nil {
+		return nil, err
+	}
+	suggestions := idx.Suggest(req.GetQuery(), maxDistance, spaceIDs)
 	out := make([]*documentv1.TitleSuggestion, len(suggestions))
 	for i, sug := range suggestions {
 		out[i] = &documentv1.TitleSuggestion{PageId: sug.PageID.String(), Title: sug.Title, Distance: int32(sug.Distance)}

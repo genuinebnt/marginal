@@ -36,7 +36,55 @@ service SpaceService {
   // An event bus with no redelivery needs a floor under how wrong its
   // projection can get. Not a user-facing call.
   rpc ListAllMemberships (ListAllMembershipsRequest) returns (ListAllMembershipsResponse);
+
+  // Invitations (v3.3.0, ADR-013's now-decided flow; docs/api/spaces.md §5).
+  //
+  // An invitation is NOT a membership: it lives in its own table, and
+  // accepting one is what performs the grant. That split is deliberate —
+  // a membership carrying an "accepted" flag would put the invitation on
+  // the hot path of every role check in the system.
+  rpc InviteMember         (InviteMemberRequest)         returns (Invitation);
+  rpc RespondToInvitation  (RespondToInvitationRequest)  returns (Invitation);
+  // The caller's own pending invitations. Scoped by their token, never by
+  // a parameter — a user_id argument here would be somebody else's inbox.
+  rpc ListInvitations      (ListInvitationsRequest)      returns (ListInvitationsResponse);
 }
+
+message Invitation {
+  string id       = 1;
+  string space_id = 2;
+  // Denormalised for the row that renders this: § 20 shows the space's
+  // name and who sent it, and an inbox should not have to make two more
+  // calls to say a sentence.
+  string space_name      = 3;
+  string user_id         = 4;
+  string role            = 5;
+  string invited_by      = 6;
+  string invited_by_name = 7;
+  google.protobuf.Timestamp created_at   = 8;
+  // Absent while pending. Present with `accepted` once answered — a
+  // DECLINE is recorded, not deleted, so "never sent" and "refused" stay
+  // distinguishable.
+  google.protobuf.Timestamp responded_at = 9;
+  bool accepted = 10;
+}
+
+message InviteMemberRequest {
+  string space_id = 1;
+  // Somebody who already has an account here. Inviting an address with no
+  // account needs email delivery and a signup that consumes a token —
+  // a different feature, and § 20 depicts neither.
+  string user_id  = 2;
+  string role     = 3; // viewer | editor | admin
+}
+
+message RespondToInvitationRequest {
+  string invitation_id = 1;
+  bool   accept        = 2;
+}
+
+message ListInvitationsRequest {}
+message ListInvitationsResponse { repeated Invitation invitations = 1; }
 
 message Space {
   string id      = 1; // UUIDv7

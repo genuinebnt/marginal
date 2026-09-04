@@ -29,12 +29,15 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	SpaceService_ListSpaces_FullMethodName         = "/marginal.auth.v1.SpaceService/ListSpaces"
-	SpaceService_CreateSpace_FullMethodName        = "/marginal.auth.v1.SpaceService/CreateSpace"
-	SpaceService_ListMembers_FullMethodName        = "/marginal.auth.v1.SpaceService/ListMembers"
-	SpaceService_GrantRole_FullMethodName          = "/marginal.auth.v1.SpaceService/GrantRole"
-	SpaceService_RevokeRole_FullMethodName         = "/marginal.auth.v1.SpaceService/RevokeRole"
-	SpaceService_ListAllMemberships_FullMethodName = "/marginal.auth.v1.SpaceService/ListAllMemberships"
+	SpaceService_ListSpaces_FullMethodName          = "/marginal.auth.v1.SpaceService/ListSpaces"
+	SpaceService_CreateSpace_FullMethodName         = "/marginal.auth.v1.SpaceService/CreateSpace"
+	SpaceService_ListMembers_FullMethodName         = "/marginal.auth.v1.SpaceService/ListMembers"
+	SpaceService_GrantRole_FullMethodName           = "/marginal.auth.v1.SpaceService/GrantRole"
+	SpaceService_RevokeRole_FullMethodName          = "/marginal.auth.v1.SpaceService/RevokeRole"
+	SpaceService_ListAllMemberships_FullMethodName  = "/marginal.auth.v1.SpaceService/ListAllMemberships"
+	SpaceService_InviteMember_FullMethodName        = "/marginal.auth.v1.SpaceService/InviteMember"
+	SpaceService_RespondToInvitation_FullMethodName = "/marginal.auth.v1.SpaceService/RespondToInvitation"
+	SpaceService_ListInvitations_FullMethodName     = "/marginal.auth.v1.SpaceService/ListInvitations"
 )
 
 // SpaceServiceClient is the client API for SpaceService service.
@@ -59,6 +62,17 @@ type SpaceServiceClient interface {
 	// An event bus with no redelivery needs a floor under how wrong its
 	// projection can get. Not a user-facing call.
 	ListAllMemberships(ctx context.Context, in *ListAllMembershipsRequest, opts ...grpc.CallOption) (*ListAllMembershipsResponse, error)
+	// Invitations (v3.3.0, ADR-013's now-decided flow; docs/api/spaces.md §5).
+	//
+	// An invitation is NOT a membership: it lives in its own table, and
+	// accepting one is what performs the grant. That split is deliberate —
+	// a membership carrying an "accepted" flag would put the invitation on
+	// the hot path of every role check in the system.
+	InviteMember(ctx context.Context, in *InviteMemberRequest, opts ...grpc.CallOption) (*Invitation, error)
+	RespondToInvitation(ctx context.Context, in *RespondToInvitationRequest, opts ...grpc.CallOption) (*Invitation, error)
+	// The caller's own pending invitations. Scoped by their token, never by
+	// a parameter — a user_id argument here would be somebody else's inbox.
+	ListInvitations(ctx context.Context, in *ListInvitationsRequest, opts ...grpc.CallOption) (*ListInvitationsResponse, error)
 }
 
 type spaceServiceClient struct {
@@ -129,6 +143,36 @@ func (c *spaceServiceClient) ListAllMemberships(ctx context.Context, in *ListAll
 	return out, nil
 }
 
+func (c *spaceServiceClient) InviteMember(ctx context.Context, in *InviteMemberRequest, opts ...grpc.CallOption) (*Invitation, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Invitation)
+	err := c.cc.Invoke(ctx, SpaceService_InviteMember_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *spaceServiceClient) RespondToInvitation(ctx context.Context, in *RespondToInvitationRequest, opts ...grpc.CallOption) (*Invitation, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Invitation)
+	err := c.cc.Invoke(ctx, SpaceService_RespondToInvitation_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *spaceServiceClient) ListInvitations(ctx context.Context, in *ListInvitationsRequest, opts ...grpc.CallOption) (*ListInvitationsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListInvitationsResponse)
+	err := c.cc.Invoke(ctx, SpaceService_ListInvitations_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // SpaceServiceServer is the server API for SpaceService service.
 // All implementations must embed UnimplementedSpaceServiceServer
 // for forward compatibility.
@@ -151,6 +195,17 @@ type SpaceServiceServer interface {
 	// An event bus with no redelivery needs a floor under how wrong its
 	// projection can get. Not a user-facing call.
 	ListAllMemberships(context.Context, *ListAllMembershipsRequest) (*ListAllMembershipsResponse, error)
+	// Invitations (v3.3.0, ADR-013's now-decided flow; docs/api/spaces.md §5).
+	//
+	// An invitation is NOT a membership: it lives in its own table, and
+	// accepting one is what performs the grant. That split is deliberate —
+	// a membership carrying an "accepted" flag would put the invitation on
+	// the hot path of every role check in the system.
+	InviteMember(context.Context, *InviteMemberRequest) (*Invitation, error)
+	RespondToInvitation(context.Context, *RespondToInvitationRequest) (*Invitation, error)
+	// The caller's own pending invitations. Scoped by their token, never by
+	// a parameter — a user_id argument here would be somebody else's inbox.
+	ListInvitations(context.Context, *ListInvitationsRequest) (*ListInvitationsResponse, error)
 	mustEmbedUnimplementedSpaceServiceServer()
 }
 
@@ -178,6 +233,15 @@ func (UnimplementedSpaceServiceServer) RevokeRole(context.Context, *RevokeRoleRe
 }
 func (UnimplementedSpaceServiceServer) ListAllMemberships(context.Context, *ListAllMembershipsRequest) (*ListAllMembershipsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListAllMemberships not implemented")
+}
+func (UnimplementedSpaceServiceServer) InviteMember(context.Context, *InviteMemberRequest) (*Invitation, error) {
+	return nil, status.Error(codes.Unimplemented, "method InviteMember not implemented")
+}
+func (UnimplementedSpaceServiceServer) RespondToInvitation(context.Context, *RespondToInvitationRequest) (*Invitation, error) {
+	return nil, status.Error(codes.Unimplemented, "method RespondToInvitation not implemented")
+}
+func (UnimplementedSpaceServiceServer) ListInvitations(context.Context, *ListInvitationsRequest) (*ListInvitationsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListInvitations not implemented")
 }
 func (UnimplementedSpaceServiceServer) mustEmbedUnimplementedSpaceServiceServer() {}
 func (UnimplementedSpaceServiceServer) testEmbeddedByValue()                      {}
@@ -308,6 +372,60 @@ func _SpaceService_ListAllMemberships_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SpaceService_InviteMember_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(InviteMemberRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SpaceServiceServer).InviteMember(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SpaceService_InviteMember_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SpaceServiceServer).InviteMember(ctx, req.(*InviteMemberRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SpaceService_RespondToInvitation_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RespondToInvitationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SpaceServiceServer).RespondToInvitation(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SpaceService_RespondToInvitation_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SpaceServiceServer).RespondToInvitation(ctx, req.(*RespondToInvitationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SpaceService_ListInvitations_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListInvitationsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SpaceServiceServer).ListInvitations(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SpaceService_ListInvitations_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SpaceServiceServer).ListInvitations(ctx, req.(*ListInvitationsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // SpaceService_ServiceDesc is the grpc.ServiceDesc for SpaceService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -338,6 +456,18 @@ var SpaceService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListAllMemberships",
 			Handler:    _SpaceService_ListAllMemberships_Handler,
+		},
+		{
+			MethodName: "InviteMember",
+			Handler:    _SpaceService_InviteMember_Handler,
+		},
+		{
+			MethodName: "RespondToInvitation",
+			Handler:    _SpaceService_RespondToInvitation_Handler,
+		},
+		{
+			MethodName: "ListInvitations",
+			Handler:    _SpaceService_ListInvitations_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

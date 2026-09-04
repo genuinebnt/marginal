@@ -12,20 +12,26 @@ import (
 )
 
 const listPageTitlesForIndex = `-- name: ListPageTitlesForIndex :many
-SELECT id, title
+SELECT id, title, space_id
 FROM docs.pages
 WHERE deleted_at IS NULL
 `
 
 type ListPageTitlesForIndexRow struct {
-	ID    pgtype.UUID
-	Title string
+	ID      pgtype.UUID
+	Title   string
+	SpaceID pgtype.UUID
 }
 
 // Every live page's id/title — internal/search's own BK-tree rebuild
 // reads this on its refresh cadence (NOT on every request: the whole
 // point of a rebuilt-periodically index, search.html's own admitted
 // "may lag the write path").
+// NOT space-scoped, and that is correct: this feeds the BK-tree index,
+// which is rebuilt once per cadence rather than per caller. The scoping
+// happens where the index is QUERIED, against the asker's own spaces —
+// see internal/search. An index built per space would be one index per
+// member of the instance.
 func (q *Queries) ListPageTitlesForIndex(ctx context.Context) ([]ListPageTitlesForIndexRow, error) {
 	rows, err := q.db.Query(ctx, listPageTitlesForIndex)
 	if err != nil {
@@ -35,7 +41,7 @@ func (q *Queries) ListPageTitlesForIndex(ctx context.Context) ([]ListPageTitlesF
 	var items []ListPageTitlesForIndexRow
 	for rows.Next() {
 		var i ListPageTitlesForIndexRow
-		if err := rows.Scan(&i.ID, &i.Title); err != nil {
+		if err := rows.Scan(&i.ID, &i.Title, &i.SpaceID); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -56,10 +62,16 @@ SELECT
 FROM docs.blocks b
 JOIN docs.pages p ON p.id = b.page_id
 WHERE p.deleted_at IS NULL
+  AND p.space_id = ANY($2::uuid[])
   AND b.search_vector @@ websearch_to_tsquery('english', $1::text)
 ORDER BY rank DESC
 LIMIT 20
 `
+
+type SearchBlockTextParams struct {
+	Query    string
+	SpaceIds []pgtype.UUID
+}
 
 type SearchBlockTextRow struct {
 	PageID    pgtype.UUID
@@ -73,8 +85,8 @@ type SearchBlockTextRow struct {
 // needs. ts_headline builds the <b>...</b>-wrapped snippet directly —
 // search.html's own "the snippet shows why it matched," computed once
 // here rather than re-deriving match spans client-side.
-func (q *Queries) SearchBlockText(ctx context.Context, query string) ([]SearchBlockTextRow, error) {
-	rows, err := q.db.Query(ctx, searchBlockText, query)
+func (q *Queries) SearchBlockText(ctx context.Context, arg SearchBlockTextParams) ([]SearchBlockTextRow, error) {
+	rows, err := q.db.Query(ctx, searchBlockText, arg.Query, arg.SpaceIds)
 	if err != nil {
 		return nil, err
 	}
@@ -103,10 +115,16 @@ const searchPageTitles = `-- name: SearchPageTitles :many
 SELECT id, title, ts_rank(search_vector, websearch_to_tsquery('english', $1::text)) AS rank
 FROM docs.pages
 WHERE deleted_at IS NULL
+  AND space_id = ANY($2::uuid[])
   AND search_vector @@ websearch_to_tsquery('english', $1::text)
 ORDER BY rank DESC
 LIMIT 20
 `
+
+type SearchPageTitlesParams struct {
+	Query    string
+	SpaceIds []pgtype.UUID
+}
 
 type SearchPageTitlesRow struct {
 	ID    pgtype.UUID
@@ -121,8 +139,11 @@ type SearchPageTitlesRow struct {
 // ts_rank against docs.pages' own GENERATED ALWAYS tsvector column
 // (migration 00004) — transactionally consistent with title, never
 // stale the way the BK-tree title index deliberately can be.
-func (q *Queries) SearchPageTitles(ctx context.Context, query string) ([]SearchPageTitlesRow, error) {
-	rows, err := q.db.Query(ctx, searchPageTitles, query)
+// Scoped to the caller's spaces (v3.3.0). It was not: a full-text search
+// returned hits from every space on the instance, which is a worse leak
+// than the graph's titles because a snippet is the CONTENT.
+func (q *Queries) SearchPageTitles(ctx context.Context, arg SearchPageTitlesParams) ([]SearchPageTitlesRow, error) {
+	rows, err := q.db.Query(ctx, searchPageTitles, arg.Query, arg.SpaceIds)
 	if err != nil {
 		return nil, err
 	}

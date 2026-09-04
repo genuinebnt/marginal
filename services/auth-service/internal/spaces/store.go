@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -80,6 +81,85 @@ func (s *PostgresStore) Delete(ctx context.Context, userID, spaceID uuid.UUID) e
 		return fmt.Errorf("spaces: deleting membership: %w", err)
 	}
 	return nil
+}
+
+func invitationFrom(r authrepo.AuthSpaceInvitation) Invitation {
+	inv := Invitation{
+		ID: uuid.UUID(r.ID.Bytes), SpaceID: uuid.UUID(r.SpaceID.Bytes),
+		UserID: uuid.UUID(r.UserID.Bytes), Role: Role(r.Role),
+		InvitedBy: uuid.UUID(r.InvitedBy.Bytes), CreatedAt: r.CreatedAt.Time,
+	}
+	if r.RespondedAt.Valid {
+		t := r.RespondedAt.Time
+		inv.RespondedAt = &t
+	}
+	if r.Accepted != nil {
+		inv.Accepted = *r.Accepted
+	}
+	return inv
+}
+
+func (s *PostgresStore) CreateInvitation(
+	ctx context.Context, id, spaceID, userID, invitedBy uuid.UUID, role Role,
+) (Invitation, error) {
+	row, err := s.q.CreateInvitation(ctx, authrepo.CreateInvitationParams{
+		ID: pgUUID(id), SpaceID: pgUUID(spaceID), UserID: pgUUID(userID),
+		Role: string(role), InvitedBy: pgUUID(invitedBy),
+	})
+	if err != nil {
+		// The partial unique index (one PENDING per person per space) makes
+		// a double invite a conflict rather than a second row.
+		if isUniqueViolation(err) {
+			return Invitation{}, ErrAlreadyInvited
+		}
+		return Invitation{}, fmt.Errorf("spaces: creating invitation: %w", err)
+	}
+	return invitationFrom(row), nil
+}
+
+func (s *PostgresStore) Answer(
+	ctx context.Context, id, userID uuid.UUID, accept bool,
+) (Invitation, bool, error) {
+	row, err := s.q.RespondToInvitation(ctx, authrepo.RespondToInvitationParams{
+		ID: pgUUID(id), UserID: pgUUID(userID), Accepted: &accept,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		// Nothing open, and belonging to this caller, with that id. Not an
+		// error here — Respond turns it into one answer for all three cases
+		// so that a probe cannot tell them apart.
+		return Invitation{}, false, nil
+	}
+	if err != nil {
+		return Invitation{}, false, fmt.Errorf("spaces: answering invitation: %w", err)
+	}
+	return invitationFrom(row), true, nil
+}
+
+func (s *PostgresStore) Pending(ctx context.Context, userID uuid.UUID) ([]Invitation, error) {
+	rows, err := s.q.ListPendingInvitationsForUser(ctx, pgUUID(userID))
+	if err != nil {
+		return nil, fmt.Errorf("spaces: listing invitations: %w", err)
+	}
+	out := make([]Invitation, 0, len(rows))
+	for _, r := range rows {
+		inv := invitationFrom(authrepo.AuthSpaceInvitation{
+			ID: r.ID, SpaceID: r.SpaceID, UserID: r.UserID, Role: r.Role,
+			InvitedBy: r.InvitedBy, CreatedAt: r.CreatedAt,
+			RespondedAt: r.RespondedAt, Accepted: r.Accepted,
+		})
+		// The two joined columns § 20's row needs to say its sentence.
+		inv.SpaceName, inv.InvitedByName = r.SpaceName, r.InvitedByName
+		out = append(out, inv)
+	}
+	return out, nil
+}
+
+// isUniqueViolation isolates the one Postgres error code this package has
+// a rule for. 23505 is a CONFLICT with an existing row, which here means
+// exactly one thing — there is already a pending invitation.
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
 
 // Service is the transactional wrapper: it runs a rule from spaces.go and
@@ -165,4 +245,53 @@ func (s *Service) inTx(ctx context.Context, fn func(*authrepo.Queries) error) er
 		return fmt.Errorf("spaces: committing: %w", err)
 	}
 	return nil
+}
+
+// Invite records an invitation and publishes auth.member_invited, atomically
+// — the same pairing Grant and Revoke have, for the same reason.
+func (s *Service) Invite(
+	ctx context.Context, caller, spaceID, target uuid.UUID, role Role,
+) (Invitation, error) {
+	var inv Invitation
+	err := s.inTx(ctx, func(q *authrepo.Queries) error {
+		var err error
+		inv, err = Invite(ctx, NewPostgresStore(q), caller, spaceID, target, role)
+		if err != nil {
+			return err
+		}
+		return outbox.WriteInviteEvent(ctx, q, outbox.InvitePayload{
+			InvitationID: inv.ID, UserID: inv.UserID, SpaceID: inv.SpaceID,
+			Role: string(inv.Role), InvitedBy: inv.InvitedBy, InvitedAt: time.Now().UTC(),
+		})
+	})
+	return inv, err
+}
+
+// Respond answers an invitation, and on ACCEPT writes the membership and
+// publishes auth.role_granted in the same transaction.
+//
+// The event is the same one an admin's Grant publishes, deliberately:
+// document-service's projection learns about an accepted invitation through
+// the path it already has, rather than needing a second consumer that would
+// have to be kept in agreement with the first.
+func (s *Service) Respond(
+	ctx context.Context, caller, invitationID uuid.UUID, accept bool,
+) (Invitation, error) {
+	var inv Invitation
+	err := s.inTx(ctx, func(q *authrepo.Queries) error {
+		var err error
+		inv, err = Respond(ctx, NewPostgresStore(q), caller, invitationID, accept)
+		if err != nil || !accept {
+			return err
+		}
+		return outbox.WriteRoleEvent(ctx, q, outbox.EventRoleGranted, outbox.RolePayload{
+			UserID: inv.UserID, SpaceID: inv.SpaceID, Role: string(inv.Role),
+			GrantedAt: time.Now().UTC(),
+		})
+	})
+	return inv, err
+}
+
+func (s *Service) PendingInvitations(ctx context.Context, userID uuid.UUID) ([]Invitation, error) {
+	return NewPostgresStore(authrepo.New(s.pool)).Pending(ctx, userID)
 }

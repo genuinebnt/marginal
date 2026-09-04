@@ -24,12 +24,13 @@ import (
 // implementation of it.
 type Server struct {
 	documentv1.UnimplementedDiscoverServiceServer
-	repo  *PostgresRepo
-	graph *graph.PostgresRepo
+	repo   *PostgresRepo
+	graph  *graph.PostgresRepo
+	spaces graph.SpaceReader
 }
 
-func NewServer(repo *PostgresRepo, graphRepo *graph.PostgresRepo) *Server {
-	return &Server{repo: repo, graph: graphRepo}
+func NewServer(repo *PostgresRepo, graphRepo *graph.PostgresRepo, spaces graph.SpaceReader) *Server {
+	return &Server{repo: repo, graph: graphRepo, spaces: spaces}
 }
 
 func (s *Server) Near(ctx context.Context, req *documentv1.NearRequest) (*documentv1.NearResponse, error) {
@@ -42,11 +43,17 @@ func (s *Server) Near(ctx context.Context, req *documentv1.NearRequest) (*docume
 		}
 	}
 
-	pages, err := s.repo.LoadCorpus(ctx)
+	// Discover names other pages and quotes their titles, so it is scoped
+	// exactly like every other read (v3.3.0 — it was not before).
+	spaceIDs, err := graph.ScopeFor(ctx, s.spaces)
+	if err != nil {
+		return nil, err
+	}
+	pages, err := s.repo.LoadCorpus(ctx, spaceIDs)
 	if err != nil {
 		return nil, status.Error(codes.Internal, "discover: loading corpus failed")
 	}
-	links, err := s.graph.LoadGraph(ctx)
+	links, err := s.graph.LoadGraph(ctx, spaceIDs)
 	if err != nil {
 		return nil, status.Error(codes.Internal, "discover: loading link graph failed")
 	}

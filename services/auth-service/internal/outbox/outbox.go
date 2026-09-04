@@ -36,7 +36,49 @@ const EventUserRegistered = "auth.user_registered"
 const (
 	EventRoleGranted = "auth.role_granted"
 	EventRoleRevoked = "auth.role_revoked"
+	// EventMemberInvited is v3.3.0's invitation (§ 20's ACCEPT/DECLINE row).
+	// Distinct from EventRoleGranted because it grants NOTHING: a consumer
+	// treating the two alike would give access to somebody who has not
+	// answered yet.
+	EventMemberInvited = "auth.member_invited"
 )
+
+// InvitePayload is auth.member_invited's shape. Ids and the role, plus the
+// invitation's own id — which is what the recipient answers with, and the
+// only thing in here that is not already knowable from the others.
+type InvitePayload struct {
+	InvitationID uuid.UUID `json:"invitation_id"`
+	UserID       uuid.UUID `json:"user_id"`
+	SpaceID      uuid.UUID `json:"space_id"`
+	Role         string    `json:"role"`
+	InvitedBy    uuid.UUID `json:"invited_by"`
+	InvitedAt    time.Time `json:"invited_at"`
+}
+
+// WriteInviteEvent inserts auth.member_invited in the caller's transaction,
+// the same contract WriteRoleEvent has and for the same reason.
+func WriteInviteEvent(ctx context.Context, q *authrepo.Queries, p InvitePayload) error {
+	payload, err := json.Marshal(p)
+	if err != nil {
+		return fmt.Errorf("outbox: marshaling %s payload: %w", EventMemberInvited, err)
+	}
+	id, err := uuid.NewV7()
+	if err != nil {
+		return fmt.Errorf("outbox: generating event id: %w", err)
+	}
+	// Partitioned by the INVITED user, matching §10's user_id key: the
+	// events that must stay ordered relative to each other are the ones
+	// about one person's access.
+	if _, err := q.InsertOutboxEvent(ctx, authrepo.InsertOutboxEventParams{
+		ID:          pgtype.UUID{Bytes: id, Valid: true},
+		AggregateID: pgtype.UUID{Bytes: p.UserID, Valid: true},
+		EventType:   EventMemberInvited,
+		Payload:     payload,
+	}); err != nil {
+		return fmt.Errorf("outbox: inserting %s event: %w", EventMemberInvited, err)
+	}
+	return nil
+}
 
 // RolePayload carries enough for a consumer to apply the change without
 // asking anything back.

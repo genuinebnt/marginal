@@ -26,6 +26,9 @@ func (h *Handler) Mount(r chi.Router) {
 	r.Get("/graph", h.getLinkGraph)
 	r.Get("/graph/analysis", h.analyze)
 	r.Get("/graph/neighborhood/{id}", h.neighborhood)
+	// § 20's CHECKS row. Under /graph because it is a question about the
+	// link graph, not about any one page.
+	r.Get("/graph/dangling", h.dangling)
 }
 
 func (h *Handler) getLinkGraph(w http.ResponseWriter, r *http.Request) {
@@ -57,4 +60,27 @@ func (h *Handler) neighborhood(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	apierror.WriteJSON(w, http.StatusOK, toNeighborhoodJSON(resp))
+}
+
+type danglingJSON struct {
+	TargetTitle   string `json:"target_title"`
+	FromPage      string `json:"from_page"`
+	FromPageTitle string `json:"from_page_title"`
+	FromBlock     string `json:"from_block"`
+}
+
+func (h *Handler) dangling(w http.ResponseWriter, r *http.Request) {
+	resp, err := h.client.ListDanglingLinks(actorctx.FromRequest(r), &documentv1.ListDanglingLinksRequest{})
+	if err != nil {
+		apierror.WriteGRPCStatus(w, err)
+		return
+	}
+	out := make([]danglingJSON, 0, len(resp.GetLinks()))
+	for _, l := range resp.GetLinks() {
+		out = append(out, danglingJSON{
+			TargetTitle: l.GetTargetTitle(), FromPage: l.GetFromPage(),
+			FromPageTitle: l.GetFromPageTitle(), FromBlock: l.GetFromBlock(),
+		})
+	}
+	apierror.WriteJSON(w, http.StatusOK, map[string]any{"links": out})
 }

@@ -68,3 +68,42 @@ export const CAPABILITIES: { label: string; admin: boolean; editor: boolean; vie
   { label: "Change membership", admin: true, editor: false, viewer: false },
   { label: "Delete the space", admin: true, editor: false, viewer: false },
 ];
+
+/** docs/api/spaces.md § 5. An invitation is NOT a membership — it grants
+ *  nothing until it is accepted, which is why it has its own type here as
+ *  well as its own table there. */
+export interface Invitation {
+  id: string;
+  space_id: string;
+  space_name: string;
+  user_id: string;
+  role: "viewer" | "editor" | "admin";
+  invited_by: string;
+  invited_by_name: string;
+  created_at: string;
+  responded_at?: string;
+  accepted: boolean;
+}
+
+export function inviteMember(
+  actorId: string, spaceId: string, userId: string, role: string,
+): Promise<Invitation> {
+  return apiFetch(`${GATEWAY_URL}/spaces/${spaceId}/invitations`, {
+    method: "POST", actorId, body: { user_id: userId, role },
+  });
+}
+
+/** The caller's own pending invitations. No user id parameter — the token
+ *  says who is asking, and a parameter would be a way to ask about
+ *  somebody else. */
+export function listInvitations(actorId: string): Promise<{ invitations: Invitation[] }> {
+  return apiFetch(`${GATEWAY_URL}/invitations`, { actorId });
+}
+
+export function respondToInvitation(
+  actorId: string, id: string, accept: boolean,
+): Promise<Invitation> {
+  return apiFetch(`${GATEWAY_URL}/invitations/${id}/respond`, {
+    method: "POST", actorId, body: { accept },
+  });
+}

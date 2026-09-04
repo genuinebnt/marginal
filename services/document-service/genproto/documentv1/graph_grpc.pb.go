@@ -32,6 +32,7 @@ const (
 	GraphService_GetLinkGraph_FullMethodName      = "/marginal.document.v1.GraphService/GetLinkGraph"
 	GraphService_AnalyzeGraph_FullMethodName      = "/marginal.document.v1.GraphService/AnalyzeGraph"
 	GraphService_GraphNeighborhood_FullMethodName = "/marginal.document.v1.GraphService/GraphNeighborhood"
+	GraphService_ListDanglingLinks_FullMethodName = "/marginal.document.v1.GraphService/ListDanglingLinks"
 )
 
 // GraphServiceClient is the client API for GraphService service.
@@ -52,6 +53,13 @@ type GraphServiceClient interface {
 	// outbound links only), and the ranked nearest ring, from one chosen
 	// source page.
 	GraphNeighborhood(ctx context.Context, in *GraphNeighborhoodRequest, opts ...grpc.CallOption) (*GraphNeighborhoodResponse, error)
+	// ListDanglingLinks is every [[link]] whose target does not exist —
+	// § 20's CHECKS row, and RFC-003's DanglingPageLink over the same
+	// projection. Derived on every read rather than stored as a
+	// notification: a stored check goes stale the moment somebody creates
+	// the page, and an inbox row that has quietly become false is worse
+	// than no row at all.
+	ListDanglingLinks(ctx context.Context, in *ListDanglingLinksRequest, opts ...grpc.CallOption) (*ListDanglingLinksResponse, error)
 }
 
 type graphServiceClient struct {
@@ -92,6 +100,16 @@ func (c *graphServiceClient) GraphNeighborhood(ctx context.Context, in *GraphNei
 	return out, nil
 }
 
+func (c *graphServiceClient) ListDanglingLinks(ctx context.Context, in *ListDanglingLinksRequest, opts ...grpc.CallOption) (*ListDanglingLinksResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListDanglingLinksResponse)
+	err := c.cc.Invoke(ctx, GraphService_ListDanglingLinks_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // GraphServiceServer is the server API for GraphService service.
 // All implementations must embed UnimplementedGraphServiceServer
 // for forward compatibility.
@@ -110,6 +128,13 @@ type GraphServiceServer interface {
 	// outbound links only), and the ranked nearest ring, from one chosen
 	// source page.
 	GraphNeighborhood(context.Context, *GraphNeighborhoodRequest) (*GraphNeighborhoodResponse, error)
+	// ListDanglingLinks is every [[link]] whose target does not exist —
+	// § 20's CHECKS row, and RFC-003's DanglingPageLink over the same
+	// projection. Derived on every read rather than stored as a
+	// notification: a stored check goes stale the moment somebody creates
+	// the page, and an inbox row that has quietly become false is worse
+	// than no row at all.
+	ListDanglingLinks(context.Context, *ListDanglingLinksRequest) (*ListDanglingLinksResponse, error)
 	mustEmbedUnimplementedGraphServiceServer()
 }
 
@@ -128,6 +153,9 @@ func (UnimplementedGraphServiceServer) AnalyzeGraph(context.Context, *AnalyzeGra
 }
 func (UnimplementedGraphServiceServer) GraphNeighborhood(context.Context, *GraphNeighborhoodRequest) (*GraphNeighborhoodResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GraphNeighborhood not implemented")
+}
+func (UnimplementedGraphServiceServer) ListDanglingLinks(context.Context, *ListDanglingLinksRequest) (*ListDanglingLinksResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListDanglingLinks not implemented")
 }
 func (UnimplementedGraphServiceServer) mustEmbedUnimplementedGraphServiceServer() {}
 func (UnimplementedGraphServiceServer) testEmbeddedByValue()                      {}
@@ -204,6 +232,24 @@ func _GraphService_GraphNeighborhood_Handler(srv interface{}, ctx context.Contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _GraphService_ListDanglingLinks_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListDanglingLinksRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GraphServiceServer).ListDanglingLinks(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GraphService_ListDanglingLinks_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GraphServiceServer).ListDanglingLinks(ctx, req.(*ListDanglingLinksRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // GraphService_ServiceDesc is the grpc.ServiceDesc for GraphService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -222,6 +268,10 @@ var GraphService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GraphNeighborhood",
 			Handler:    _GraphService_GraphNeighborhood_Handler,
+		},
+		{
+			MethodName: "ListDanglingLinks",
+			Handler:    _GraphService_ListDanglingLinks_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

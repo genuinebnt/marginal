@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"marginal/document-service/internal/searchrepo/gen"
@@ -36,12 +37,20 @@ func NewPostgresRepo(pool *pgxpool.Pool) *PostgresRepo {
 // UNION so each side keeps its own simple, sqlc-inferred shape (a title
 // hit has no snippet to compute; a block hit always does) instead of
 // forcing one shared row shape with columns the other side leaves null.
-func (r *PostgresRepo) SearchFullText(ctx context.Context, query string) ([]Hit, error) {
-	titleRows, err := r.q.SearchPageTitles(ctx, query)
+func (r *PostgresRepo) SearchFullText(ctx context.Context, query string, spaceIDs []uuid.UUID) ([]Hit, error) {
+	scope := make([]pgtype.UUID, len(spaceIDs))
+	for i, id := range spaceIDs {
+		scope[i] = pgtype.UUID{Bytes: id, Valid: true}
+	}
+	titleRows, err := r.q.SearchPageTitles(ctx, searchrepo.SearchPageTitlesParams{
+		Query: query, SpaceIds: scope,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("search: searching page titles: %w", err)
 	}
-	blockRows, err := r.q.SearchBlockText(ctx, query)
+	blockRows, err := r.q.SearchBlockText(ctx, searchrepo.SearchBlockTextParams{
+		Query: query, SpaceIds: scope,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("search: searching block text: %w", err)
 	}
@@ -78,7 +87,7 @@ func (r *PostgresRepo) ListPageTitles(ctx context.Context) ([]PageTitle, error) 
 	}
 	titles := make([]PageTitle, len(rows))
 	for i, row := range rows {
-		titles[i] = PageTitle{ID: uuid.UUID(row.ID.Bytes), Title: row.Title}
+		titles[i] = PageTitle{ID: uuid.UUID(row.ID.Bytes), Title: row.Title, SpaceID: uuid.UUID(row.SpaceID.Bytes)}
 	}
 	return titles, nil
 }

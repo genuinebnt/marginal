@@ -24,6 +24,7 @@ const path = require('node:path');
 const REPO = path.resolve(__dirname, '..', '..');
 const { chromium } = require(path.join(REPO, 'tools', 'node_modules', 'playwright-core'));
 const COLLAB='http://localhost:8002';
+const NOTIF='http://localhost:8007';
 const GW='http://localhost:8000', APP='http://localhost:5173';
 let fails = 0;
 const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${name}${detail?'  '+detail:''}`); if(!ok) fails++; };
@@ -36,9 +37,60 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
   const page = g.nodes.find(n=>n.title==='The document block model');
   const hub  = g.nodes.find(n=>n.title==='The Rust Porting Handbook');
 
-  const b = await chromium.launch({channel:'chrome'});
+  const b = await chromium.launch({
+    channel: 'chrome',
+    // The lab screens run nine wasm modules and re-run some of them on
+    // every control change. Chrome's renderer was dying partway through
+    // § 14 without these.
+    args: ['--disable-dev-shm-usage', '--disable-gpu', '--js-flags=--max-old-space-size=2048'],
+  });
+
+  // A CRASHED BROWSER MUST NOT LOOK LIKE A PASS.
+  //
+  // When the browser dies, every pending Playwright promise stalls, nothing
+  // is left on the event loop, and node exits **0 with no output at all**.
+  // Three sweeps ended that way and were reported as successes by their
+  // wrappers; only counting the lines showed they had stopped at 73 of 140.
+  // A gate whose failure mode is a silent pass is worse than no gate.
+  b.on('disconnected', () => {
+    // An EXPECTED disconnect is the normal end of a run: the summary has
+    // been printed and we are closing the browser on purpose. Without this
+    // guard the handler fires during that close and reports a green sweep
+    // as a failure — the exact inverse of the bug it was added for, and a
+    // reminder that a guard is code too.
+    if (global.__finished) return;
+    console.log('\nBROWSER DISCONNECTED — the sweep did not finish. FAILURE, not a pass.');
+    process.exit(1);
+  });
+
+  // The catch-all, and the one that actually works.
+  //
+  // `disconnected` fires only if the BROWSER process dies. A renderer
+  // crash, or any other path that empties the event loop with promises
+  // still pending, exits 0 silently — which is what happened three times
+  // before this existed. So: record that the summary was reached, and on
+  // exit, say so if it was not. This catches every silent-exit cause
+  // regardless of which one it was.
+  global.__finished = false;
+  process.on('exit', (code) => {
+    if (!global.__finished) {
+      console.log(`\nSWEEP DID NOT FINISH — exited early (code ${code}) without a summary.`);
+      console.log('This is a FAILURE. Re-run; if it repeats at the same check, that check is the cause.');
+      process.exitCode = 1;
+    }
+  });
+  process.on('unhandledRejection', (e) => {
+    console.log(`\nUNHANDLED REJECTION: ${e && e.message ? e.message.split('\n')[0] : e}`);
+    process.exit(1);
+  });
   const p = await b.newPage({viewport:{width:1440,height:900}});
   const errs=[]; p.on('pageerror',e=>errs.push(e.message));
+  // A renderer crash. Distinct from browser disconnect, and the more likely
+  // of the two on the lab screens.
+  p.on('crash', () => {
+    console.log('\nPAGE CRASHED — the sweep did not finish. FAILURE, not a pass.');
+    process.exit(1);
+  });
   // addInitScript, not goto-then-evaluate: the session has to be in storage
   // BEFORE the app's own scripts read it. Setting it afterwards raced a
   // redirect to /login — the evaluate landed mid-navigation and died with
@@ -49,7 +101,25 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
   }, {actorId:sub,accessToken:pair.access_token,refreshToken:pair.refresh_token});
   await p.goto(APP+'/',{waitUntil:'domcontentloaded'});
 
-  const go = async (route, wait=6000) => { await p.goto(APP+route,{waitUntil:'networkidle'}); await p.waitForTimeout(wait); };
+  // domcontentloaded, NOT networkidle, and a navigation failure is a
+  // reported check rather than the end of the run.
+  //
+  // The inbox polls every 30s, so an authenticated page never reliably has
+  // a quiet network — `networkidle` waits for a condition this app does not
+  // guarantee. It killed three sweeps at /trash after 120 passing checks,
+  // and because the throw escaped the loop the whole run ended with no
+  // summary: I read "4 FAILED" from a truncated tail and went looking for
+  // four defects that were one crash. The explicit settle below is what the
+  // checks actually depend on.
+  const go = async (route, wait=6000) => {
+    try {
+      await p.goto(APP+route,{waitUntil:'domcontentloaded'});
+    } catch (e) {
+      check(`navigation to ${route} succeeds`, false, e.message.split('\n')[0]);
+      return;
+    }
+    await p.waitForTimeout(wait);
+  };
   const txt = () => p.evaluate(()=>document.body.innerText);
   const count = (sel) => p.evaluate(s=>document.querySelectorAll(s).length, sel);
 
@@ -204,6 +274,13 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
   check('§05 series banner with prev/next', /Part\s+\d+\s+of/.test(await txt()));
   check('§05 IN THIS PAGE, no "(empty)" rows', (await count('.oi')) > 0 && !/\(empty\)/.test(await txt()));
   check('§05 marks and page links render', (await count('.pl')) > 0);
+  // Highlighting is Go compiled to wasm, so it lands after the module
+  // loads rather than with the markup. Waited FOR, not slept past — the
+  // fixed delay that replaced `networkidle` was long enough most runs and
+  // not all of them, which is the definition of a flake.
+  await p.waitForFunction(
+    () => document.querySelectorAll('.blk-code pre span').length > 10,
+    null, { timeout: 15000 }).catch(() => {});
   check('§05 code blocks are highlighted', (await p.evaluate(()=>document.querySelectorAll('.blk-code pre span').length)) > 10);
   await p.locator('.it', { hasText: 'BACKLINKS' }).first().click(); await p.waitForTimeout(400);
   check('§05 inspector tabs switch', /BACKLINKS ·/.test(await txt()));
@@ -213,6 +290,12 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
 
   // ── § 04 EDITOR: rail, banner, read switch ────────────────────────────
   await go(`/pages/${page.id}`, 8000);
+  // The rail loads its children lazily and then reveals the open page, so
+  // the row can appear well after the document does. Same reasoning as
+  // § 05's highlighting above.
+  await p.waitForFunction(
+    () => document.querySelectorAll('.tr-on').length === 1,
+    null, { timeout: 15000 }).catch(() => {});
   check('§04 rail reveals the open page', (await count('.tr-on')) === 1);
   check('§04 rail draws depth guides', (await count('.tr-guide')) > 0);
   check('§04 rail shows a part count', (await count('.tr-parts')) > 0);
@@ -252,6 +335,141 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
   check('§24c the bell opens the panel', /INBOX/.test(await txt()));
   await p.getByText('open inbox →',{exact:true}).click(); await p.waitForTimeout(1500);
   check('§20 the panel links to the inbox', (await p.evaluate(()=>location.pathname)) === '/notifications');
+
+  // ── § 20 mentions ─────────────────────────────────────────────────────
+  //
+  // Written as a MENTION, not inserted as a row: what is being tested is
+  // the path from somebody typing a name to somebody else being told, and
+  // a hand-made notification row would pass while proving none of it.
+  {
+    const jf = (u, o) => fetch(u, o).then(r => r.json()).catch(() => null);
+    const token = async (email, password) => (await jf(`${GW}/auth/login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    }))?.access_token;
+    const peer = await token('uidiff-peer@example.com', 'uidiff-peer-123456');
+    const demo = await token('ui-demo@example.com', 'ui-demo-password-123');
+    const DH = { Authorization: `Bearer ${demo}` };
+    const PH = { 'Content-Type': 'application/json', Authorization: `Bearer ${peer}` };
+    const spaces = await jf(`${GW}/spaces`, { headers: DH });
+    const members = await jf(`${GW}/spaces/${spaces?.spaces?.[0]?.id}/members`, { headers: DH });
+    const me = (members?.members ?? []).find(m => m.email === 'ui-demo@example.com');
+    const pages = await jf(`${GW}/pages`, { headers: DH });
+    let thread = null;
+    for (const pg of pages?.pages ?? []) {
+      const t = await jf(`${COLLAB}/collab/pages/${pg.id}/comments`, { headers: PH });
+      if (t?.threads?.length) { thread = t.threads[0]; break; }
+    }
+    check('§20 a thread exists to mention somebody in', Boolean(thread && me));
+    if (thread && me) {
+      const handle = '@' + me.display_name.replace(/ /g, '');
+      // The NEWEST mention's id, not a count. GET /notifications is capped
+      // at 50 rows, so once an instance has more than that, a new mention
+      // pushes an old one out and the count is unchanged — the check then
+      // fails against working code. Asserting on the row itself is both
+      // stricter and immune to the limit.
+      const newestMention = async () => ((await jf(`${NOTIF}/notifications`, { headers: DH }))
+        ?.notifications ?? []).find(n => n.kind === 'mention')?.id ?? null;
+      const before = await newestMention();
+      // The peer is a VIEWER. That is the case that was broken: resolving
+      // candidates through the admin-only member list meant only admins
+      // could mention anyone, silently.
+      const posted = await fetch(`${COLLAB}/collab/threads/${thread.id}/comments`, {
+        method: 'POST', headers: PH,
+        body: JSON.stringify({ body: `${handle} does the tiebreak still hold?` }),
+      });
+      // And a control in the same breath: an email address is not a mention.
+      await fetch(`${COLLAB}/collab/threads/${thread.id}/comments`, {
+        method: 'POST', headers: PH,
+        body: JSON.stringify({ body: 'write to someone@example.com about it' }),
+      });
+      await p.waitForTimeout(2200);
+      const all = ((await jf(`${NOTIF}/notifications`, { headers: DH }))?.notifications ?? [])
+        .filter(n => n.kind === 'mention');
+      const after = await newestMention();
+      check('§20 a viewer can mention somebody', posted.status === 200);
+      check('§20 the mention arrives', after !== null && after !== before,
+            `${String(before).slice(0, 8)} -> ${String(after).slice(0, 8)}`);
+      // The email-address control, asserted separately: the second comment
+      // must not have produced a THIRD row. Checked by counting the two
+      // newest rather than by a total, for the same limit reason.
+      const twoNewest = all.slice(0, 2).map(n => n.id);
+      check('§20 and an email address does not',
+            twoNewest[0] === after && twoNewest[1] === before,
+            `${twoNewest.map(x => String(x).slice(0, 8)).join(',')}`);
+      const newest = all[0];
+      check('§20 what is stored is a pointer, not a copy of the text',
+            Boolean(newest?.pointer?.thread_id) && !newest?.message,
+            newest ? `message=${JSON.stringify(newest.message)}` : 'no mention');
+
+      await go('/notifications', 5000);
+      const inbox = await txt();
+      check('§20 the inbox renders the mention as a sentence, resolved now',
+            /mentioned you in/.test(inbox), inbox.slice(0, 0));
+      check('§20 and shows the words, read back through the anchor',
+            /tiebreak still hold/.test(inbox));
+      // The facet must actually filter, not just be lit.
+      // .sb — the sub-bar facet, which is what § 20 draws these as.
+      // Clicking the wrong class made this fail as "the facet does not
+      // filter" when nothing had been clicked at all.
+      await p.locator('.sb', { hasText: 'MENTIONS' }).first().click().catch(() => {});
+      await p.waitForTimeout(700);
+      const filtered = await txt();
+      check('§20 the MENTIONS facet selects mentions and drops the welcome',
+            /mentioned you in/.test(filtered) && !/Welcome to Marginal/.test(filtered));
+    }
+
+    // ── § 20 invitations: the decision row ──────────────────────────────
+    //
+    // One reused space, and the membership is handed back at the end, so
+    // this is repeatable: an invitation to somebody already inside is
+    // correctly refused, and a run that left the demo account a member
+    // would make the next run test nothing.
+    const mySpaces = await jf(`${GW}/spaces`, { headers: { Authorization: `Bearer ${peer}` } });
+    let space = (mySpaces?.spaces ?? []).find(x => x.name === 'Verify invites' && x.your_role === 'admin');
+    if (!space) {
+      space = await jf(`${GW}/spaces`, {
+        method: 'POST', headers: PH, body: JSON.stringify({ name: 'Verify invites' }),
+      });
+    }
+    const demoId = JSON.parse(Buffer.from(demo.split('.')[1], 'base64url').toString()).sub;
+    const invRes = await fetch(`${GW}/spaces/${space.id}/invitations`, {
+      method: 'POST', headers: PH, body: JSON.stringify({ user_id: demoId, role: 'editor' }),
+    });
+    check('§20 an admin can invite somebody outside the space', invRes.status === 201,
+          `HTTP ${invRes.status}`);
+
+    // The property the whole feature rests on, asserted over the wire.
+    const seen = await jf(`${GW}/spaces`, { headers: { Authorization: `Bearer ${demo}` } });
+    check('§20 an invitation grants nothing until it is accepted',
+          !(seen?.spaces ?? []).some(x => x.id === space.id));
+
+    const dup = await fetch(`${GW}/spaces/${space.id}/invitations`, {
+      method: 'POST', headers: PH, body: JSON.stringify({ user_id: demoId, role: 'editor' }),
+    });
+    check('§20 a second invitation conflicts rather than stacking', dup.status === 409,
+          `HTTP ${dup.status}`);
+
+    await p.waitForTimeout(2000);
+    await go('/notifications', 5000);
+    await p.locator('.sb', { hasText: 'INVITES' }).first().click().catch(() => {});
+    await p.waitForTimeout(800);
+    const inviteText = await txt();
+    check('§20 the invite row says who, which space, and what role',
+          /invited you to/.test(inviteText) && /Verify invites/.test(inviteText)
+          && /editor role/i.test(inviteText));
+
+    // The click is the test: ACCEPT must actually grant, not just clear.
+    await p.locator('.chip', { hasText: 'ACCEPT' }).first().click().catch(() => {});
+    await p.waitForTimeout(2500);
+    const now = await jf(`${GW}/spaces`, { headers: { Authorization: `Bearer ${demo}` } });
+    const joined = (now?.spaces ?? []).find(x => x.id === space.id);
+    check('§20 ACCEPT grants the role the invitation named',
+          joined?.your_role === 'editor', joined ? `role=${joined.your_role}` : 'not a member');
+
+    // Hand the membership back, so the next run starts where this one did.
+    await fetch(`${GW}/spaces/${space.id}/members/${demoId}`, { method: 'DELETE', headers: PH });
+  }
 
   // ── § 23c TRASH ───────────────────────────────────────────────────────
   await go('/trash', 6000);
@@ -713,10 +931,18 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
     const after = await inspector();
     if (after === before) deadTabs.push(`${route}:${tab}`);
     // And it must be able to come back — a one-way tab is half a control.
+    //
+    // Compared against the SECOND tab's content, not against the snapshot
+    // taken before any of this: several of these panels update themselves
+    // (Discover re-reports its index, the graph screens recompute), so
+    // "the text is not byte-identical to what it was ten seconds ago" was
+    // sometimes true of a tab that works perfectly. It failed on
+    // /graph/algorithms one run and /discover the next — the tell that it
+    // was measuring the clock rather than the control.
     const first = p.locator('.it').first();
     await first.click();
     await p.waitForTimeout(500);
-    if ((await inspector()) !== before) deadTabs.push(`${route}:${tab} NO RETURN`);
+    if ((await inspector()) === after) deadTabs.push(`${route}:${tab} NO RETURN`);
   }
   check('every inspector second tab changes the panel',
         deadTabs.length === 0, deadTabs.join(' · ') || `${tabbed.length} checked`);
@@ -869,7 +1095,7 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
     await vp.addInitScript((s) => {
       try { localStorage.setItem('marginal.session', JSON.stringify(s)); } catch { /* private mode */ }
     }, {actorId:viewerSub, accessToken:viewerTok, refreshToken:viewerTok});
-    await vp.goto(`${APP}/pages/${page.id}`, {waitUntil:'networkidle'});
+    await vp.goto(`${APP}/pages/${page.id}`, {waitUntil:'domcontentloaded'});
     const told = await vp.waitForFunction(
       () => /will not be saved/.test(document.body.innerText),
       null, { timeout: 20000 }).then(() => true).catch(() => false);
@@ -993,6 +1219,7 @@ const check = (name, ok, detail='') => { console.log(`${ok?' ok ':'FAIL'}  ${nam
 
   console.log(errs.length ? `\nPAGE ERRORS: ${errs.slice(0,5).join(' | ')}` : '\nno page errors');
   if (errs.length) fails++;
+  global.__finished = true;
   console.log(fails ? `\n${fails} FAILED` : '\nall checks passed');
   await b.close();
   process.exit(fails ? 1 : 0);

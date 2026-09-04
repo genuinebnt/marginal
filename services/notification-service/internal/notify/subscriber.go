@@ -31,6 +31,13 @@ const SubjectUserRegistered = "auth.user_registered"
 type wireEvent struct {
 	ID      uuid.UUID       `json:"id"`
 	Payload json.RawMessage `json:"payload"`
+	// collaboration-service's envelope carries the page id alongside the
+	// payload (its outbox rows are scoped to a page by the row, not by
+	// their own JSON). Decoded but unused here: a mention's payload names
+	// its own page, so this service does not need the envelope's copy —
+	// and a field that is present on the wire is better declared and
+	// ignored than silently dropped by a struct that cannot see it.
+	AggregateID uuid.UUID `json:"aggregate_id"`
 }
 
 // handleEventTimeout bounds one HandleUserRegistered call — see
@@ -64,6 +71,56 @@ func Subscribe(nc *nats.Conn, repo Repo) (*nats.Subscription, error) {
 		defer cancel()
 		if err := HandleUserRegistered(ctx, repo, evt.ID, evt.Payload); err != nil {
 			slog.Error("notify: handling auth.user_registered", "event_id", evt.ID, "err", err)
+		}
+	})
+}
+
+// SubscribeMentions registers the collab.comment_mentioned subscription
+// (v3.3.0). Separate from Subscribe rather than a subject parameter: the
+// two topics decode to different payloads and are handled by different
+// functions, so the only thing a merged version would share is the word
+// "subscribe".
+//
+// The core-NATS caveat on Subscribe applies here and bites harder. A
+// welcome notification lost while this service was down is a greeting
+// nobody misses; a MENTION lost that way is somebody being told nothing
+// while believing they were asked a question. That is the notification
+// kind whose loss "actually matters" in Subscribe's own words, and it is
+// the concrete argument for JetStream this repo did not previously have —
+// recorded in docs/api/notifications.md rather than silently accepted.
+func SubscribeMentions(nc *nats.Conn, repo Repo) (*nats.Subscription, error) {
+	return nc.Subscribe(MentionEvent, func(msg *nats.Msg) {
+		var evt wireEvent
+		if err := json.Unmarshal(msg.Data, &evt); err != nil {
+			slog.Error("notify: decoding "+MentionEvent+" envelope", "err", err)
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), handleEventTimeout)
+		defer cancel()
+		if err := HandleMention(ctx, repo, evt.ID, evt.Payload); err != nil {
+			slog.Error("notify: handling "+MentionEvent, "event_id", evt.ID, "err", err)
+		}
+	})
+}
+
+// SubscribeInvites registers the auth.member_invited subscription (v3.3.0).
+//
+// A third subscription rather than a shared one with a switch: each has its
+// own payload and its own handler, and the only thing a merged version
+// would share is the word "subscribe". The core-NATS caveat applies here
+// too, and an invitation lost is somebody never learning they were given
+// access — the outbox row survives even when the delivery does not.
+func SubscribeInvites(nc *nats.Conn, repo Repo) (*nats.Subscription, error) {
+	return nc.Subscribe(InviteEvent, func(msg *nats.Msg) {
+		var evt wireEvent
+		if err := json.Unmarshal(msg.Data, &evt); err != nil {
+			slog.Error("notify: decoding "+InviteEvent+" envelope", "err", err)
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), handleEventTimeout)
+		defer cancel()
+		if err := HandleInvite(ctx, repo, evt.ID, evt.Payload); err != nil {
+			slog.Error("notify: handling "+InviteEvent, "event_id", evt.ID, "err", err)
 		}
 	})
 }

@@ -11,6 +11,7 @@ package spacesrest
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -31,6 +32,12 @@ func (h *Handler) Mount(r chi.Router) {
 	r.Get("/spaces/{id}/members", h.members)
 	r.Put("/spaces/{id}/members/{userId}", h.grant)
 	r.Delete("/spaces/{id}/members/{userId}", h.revoke)
+	// Invitations (docs/api/spaces.md § 5). POST to a space's invitations
+	// rather than PUT to a membership, because it does not create one —
+	// that is the whole distinction the feature rests on.
+	r.Post("/spaces/{id}/invitations", h.invite)
+	r.Get("/invitations", h.invitations)
+	r.Post("/invitations/{id}/respond", h.respond)
 }
 
 type spaceJSON struct {
@@ -133,4 +140,82 @@ func (h *Handler) revoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+type invitationJSON struct {
+	ID            string `json:"id"`
+	SpaceID       string `json:"space_id"`
+	SpaceName     string `json:"space_name"`
+	UserID        string `json:"user_id"`
+	Role          string `json:"role"`
+	InvitedBy     string `json:"invited_by"`
+	InvitedByName string `json:"invited_by_name"`
+	CreatedAt     string `json:"created_at"`
+	RespondedAt   string `json:"responded_at,omitempty"`
+	Accepted      bool   `json:"accepted"`
+}
+
+func invitationOf(i *authv1.Invitation) invitationJSON {
+	out := invitationJSON{
+		ID: i.GetId(), SpaceID: i.GetSpaceId(), SpaceName: i.GetSpaceName(),
+		UserID: i.GetUserId(), Role: i.GetRole(), InvitedBy: i.GetInvitedBy(),
+		InvitedByName: i.GetInvitedByName(), Accepted: i.GetAccepted(),
+	}
+	if t := i.GetCreatedAt(); t != nil {
+		out.CreatedAt = t.AsTime().UTC().Format(time.RFC3339)
+	}
+	if t := i.GetRespondedAt(); t != nil {
+		out.RespondedAt = t.AsTime().UTC().Format(time.RFC3339)
+	}
+	return out
+}
+
+func (h *Handler) invite(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		UserID string `json:"user_id"`
+		Role   string `json:"role"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		apierror.WriteBadRequest(w, "invalid JSON body")
+		return
+	}
+	inv, err := h.client.InviteMember(actorctx.FromRequest(r), &authv1.InviteMemberRequest{
+		SpaceId: chi.URLParam(r, "id"), UserId: body.UserID, Role: body.Role,
+	})
+	if err != nil {
+		apierror.WriteGRPCStatus(w, err)
+		return
+	}
+	apierror.WriteJSON(w, http.StatusCreated, invitationOf(inv))
+}
+
+func (h *Handler) invitations(w http.ResponseWriter, r *http.Request) {
+	resp, err := h.client.ListInvitations(actorctx.FromRequest(r), &authv1.ListInvitationsRequest{})
+	if err != nil {
+		apierror.WriteGRPCStatus(w, err)
+		return
+	}
+	out := make([]invitationJSON, 0, len(resp.GetInvitations()))
+	for _, i := range resp.GetInvitations() {
+		out = append(out, invitationOf(i))
+	}
+	apierror.WriteJSON(w, http.StatusOK, map[string]any{"invitations": out})
+}
+
+func (h *Handler) respond(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Accept bool `json:"accept"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		apierror.WriteBadRequest(w, "invalid JSON body")
+		return
+	}
+	inv, err := h.client.RespondToInvitation(actorctx.FromRequest(r), &authv1.RespondToInvitationRequest{
+		InvitationId: chi.URLParam(r, "id"), Accept: body.Accept,
+	})
+	if err != nil {
+		apierror.WriteGRPCStatus(w, err)
+		return
+	}
+	apierror.WriteJSON(w, http.StatusOK, invitationOf(inv))
 }

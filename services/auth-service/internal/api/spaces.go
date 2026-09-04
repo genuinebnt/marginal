@@ -185,7 +185,81 @@ func toSpaceStatus(err error) error {
 		return status.Error(codes.InvalidArgument, "role must be viewer, editor or admin")
 	case errors.Is(err, spaces.ErrDefaultSpace):
 		return status.Error(codes.FailedPrecondition, "the default space cannot be removed")
+	case errors.Is(err, spaces.ErrAlreadyMember):
+		return status.Error(codes.AlreadyExists, "they are already in this space")
+	case errors.Is(err, spaces.ErrAlreadyInvited):
+		return status.Error(codes.AlreadyExists, "they already have a pending invitation")
+	case errors.Is(err, spaces.ErrAlreadyAnswered):
+		// One code for "already answered", "not yours" and "no such
+		// invitation" — telling them apart would confirm that somebody
+		// else's invitation exists.
+		return status.Error(codes.FailedPrecondition, "that invitation is not open to you")
 	default:
 		return status.Error(codes.Internal, "internal error")
 	}
+}
+
+// ── Invitations (v3.3.0) ─────────────────────────────────────────────────
+
+func invitationPB(inv spaces.Invitation) *authv1.Invitation {
+	out := &authv1.Invitation{
+		Id: inv.ID.String(), SpaceId: inv.SpaceID.String(), SpaceName: inv.SpaceName,
+		UserId: inv.UserID.String(), Role: string(inv.Role),
+		InvitedBy: inv.InvitedBy.String(), InvitedByName: inv.InvitedByName,
+		CreatedAt: timestamppb.New(inv.CreatedAt), Accepted: inv.Accepted,
+	}
+	if inv.RespondedAt != nil {
+		out.RespondedAt = timestamppb.New(*inv.RespondedAt)
+	}
+	return out
+}
+
+func (s *SpaceServer) InviteMember(ctx context.Context, req *authv1.InviteMemberRequest) (*authv1.Invitation, error) {
+	caller, spaceID, err := s.callerAndSpace(ctx, req.GetSpaceId())
+	if err != nil {
+		return nil, err
+	}
+	target, err := uuid.Parse(req.GetUserId())
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "spaces: invalid user_id")
+	}
+	inv, err := s.svc.Invite(ctx, caller, spaceID, target, spaces.Role(req.GetRole()))
+	if err != nil {
+		return nil, toSpaceStatus(err)
+	}
+	return invitationPB(inv), nil
+}
+
+func (s *SpaceServer) RespondToInvitation(ctx context.Context, req *authv1.RespondToInvitationRequest) (*authv1.Invitation, error) {
+	caller, err := actorID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	id, err := uuid.Parse(req.GetInvitationId())
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "spaces: invalid invitation_id")
+	}
+	inv, err := s.svc.Respond(ctx, uuid.UUID(caller), id, req.GetAccept())
+	if err != nil {
+		return nil, toSpaceStatus(err)
+	}
+	return invitationPB(inv), nil
+}
+
+func (s *SpaceServer) ListInvitations(ctx context.Context, _ *authv1.ListInvitationsRequest) (*authv1.ListInvitationsResponse, error) {
+	caller, err := actorID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// Scoped by the token, never by a parameter: a user_id argument here
+	// would be a way to read somebody else's invitations.
+	list, err := s.svc.PendingInvitations(ctx, uuid.UUID(caller))
+	if err != nil {
+		return nil, status.Error(codes.Internal, "spaces: listing invitations failed")
+	}
+	out := &authv1.ListInvitationsResponse{Invitations: make([]*authv1.Invitation, 0, len(list))}
+	for _, inv := range list {
+		out.Invitations = append(out.Invitations, invitationPB(inv))
+	}
+	return out, nil
 }

@@ -32,4 +32,7 @@ SELECT p.id,
        )::text AS body
 FROM docs.pages p
 LEFT JOIN docs.topics t ON t.id = p.topic_id
-WHERE p.deleted_at IS NULL;
+WHERE p.deleted_at IS NULL
+  -- Scoped to the caller's spaces (v3.3.0); Discover ranked and named
+  -- pages from every space before it.
+  AND p.space_id = ANY(@space_ids::uuid[]);

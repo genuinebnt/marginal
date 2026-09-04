@@ -30,6 +30,7 @@ const { chromium } = require(path.join(REPO, 'tools', 'node_modules', 'playwrigh
 const MOCKUP = 'file://' + path.join(REPO, 'docs', 'ui-mockups', 'v2', 'index.html');
 const APP = 'http://localhost:5173';
 const GW = 'http://localhost:8000';
+const COLLAB = 'http://localhost:8002';
 
 /** The properties the design system actually fixes. Anything not here is
  *  either derived or deliberately free. */
@@ -318,12 +319,144 @@ const SEED = {
     await p.keyboard.type('rope');
     await p.waitForTimeout(1400);
   },
-  '24c': async (p) => {                      // NOTIFICATIONS PANEL — the bell, opened
+  // NOTIFICATIONS — § 20's first row is a MENTION, and a fresh inbox has
+  // only the welcome notification. So the peer mentions the signed-in user,
+  // exactly the way a person would: by typing their name into a comment.
+  // Without this the diff compares a welcome row against a mention row and
+  // reports the accent colour and the row's action button as defects.
+  '20': async (p, ctx) => {
+    await seedMention(ctx);
+    await seedInvite(ctx);
+    await p.reload({ waitUntil: 'networkidle' });
+    // Long enough for the row fade-in to FINISH. The rows carry a
+    // staggered animation-delay, so a diff taken too early reports every
+    // one of them at opacity 0 — a measurement of the clock, not the
+    // design. It only surfaced once there were three rows to stagger.
+    await p.waitForTimeout(3000);
+  },
+  '24c': async (p, ctx) => {                 // NOTIFICATIONS PANEL — the bell, opened
+    await seedMention(ctx);
+    await seedInvite(ctx);
+    await p.reload({ waitUntil: 'networkidle' });
+    await p.waitForTimeout(600);
     const bell = p.locator('.icb').first();
     if (await bell.count()) await bell.click();
-    await p.waitForTimeout(500);
+    await p.waitForTimeout(900);
   },
 };
+
+/**
+ * Which seeds need a second account signed in.
+ *
+ * This was a regex over the seed function's own SOURCE, looking for the
+ * word `peerActor`. It worked until a seed delegated to a helper — § 20's
+ * does — and then it silently supplied no peer at all, so the seed did
+ * nothing and the diff reported the un-seeded screen as a set of defects.
+ * A list is duller and cannot be fooled by where the code lives.
+ */
+const NEEDS_PEER = new Set(['04', '20', '24c']);
+
+/**
+ * Give the signed-in user a PENDING invitation, § 20's decision row.
+ *
+ * To a space of its own, never the default one: the demo account is
+ * already in that, and an invitation to somebody already inside is refused
+ * (correctly). The space is reused across runs rather than created each
+ * time, and a second invitation while one is open is a 409 that this seed
+ * ignores — the row it needs is already there.
+ *
+ * Nothing here accepts it. A diff is a picture of a screen at rest, and the
+ * state § 20 depicts is an invitation still waiting to be answered.
+ */
+async function seedInvite(ctx) {
+  if (!ctx.peerToken) return;
+  const H = { 'Content-Type': 'application/json', Authorization: `Bearer ${ctx.peerToken}` };
+  const jf = async (u, o) => fetch(u, o).then(r => r.json()).catch(() => null);
+  try {
+    const demo = await jf(`${GW}/auth/login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'ui-demo@example.com', password: 'ui-demo-password-123' }),
+    });
+    if (!demo?.access_token) return;
+    const demoId = JSON.parse(Buffer.from(demo.access_token.split('.')[1], 'base64url')).sub;
+
+    // The peer owns this space — whoever creates one is its first admin,
+    // which is the authority an invitation needs.
+    const mine = await jf(`${GW}/spaces`, { headers: H });
+    let space = (mine?.spaces ?? []).find(s => s.name === 'Research' && s.your_role === 'admin');
+    if (!space) {
+      space = await jf(`${GW}/spaces`, {
+        method: 'POST', headers: H, body: JSON.stringify({ name: 'Research' }),
+      });
+    }
+    if (!space?.id) return;
+    await fetch(`${GW}/spaces/${space.id}/invitations`, {
+      method: 'POST', headers: H,
+      body: JSON.stringify({ user_id: demoId, role: 'editor' }),
+    });
+    await new Promise(r => setTimeout(r, 1600));
+  } catch (e) {
+    console.error('seedInvite:', e.message);
+  }
+}
+
+/**
+ * Make the signed-in user have a real mention, by having somebody else
+ * write one. Not by inserting a row: the point of the notification is that
+ * it came from a comment, and a hand-made row would pass the diff while
+ * proving nothing about the path that produces one.
+ *
+ * Idempotent enough for repeated runs — a duplicate mention is another row,
+ * and the diff only ever looks at the first.
+ */
+async function seedMention(ctx) {
+  if (!ctx.peerToken) return;
+  const H = { 'Content-Type': 'application/json', Authorization: `Bearer ${ctx.peerToken}` };
+  const jf = async (u, o) => fetch(u, o).then(r => r.json()).catch(() => null);
+  try {
+    // The handle to type is the signed-in user's display name with the
+    // spaces taken out — matched by EMAIL, the one thing the harness knows
+    // about them for certain.
+    //
+    // Read with the DEMO user's own token, not the peer's: listing a
+    // space's members is admin-only, and the peer is a viewer. (The peer
+    // can still MENTION them — resolution goes through the internal
+    // membership listing, which is exactly the bug this seed surfaced.)
+    const demo = await jf(`${GW}/auth/login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'ui-demo@example.com', password: 'ui-demo-password-123' }),
+    });
+    if (!demo?.access_token) return;
+    const DH = { Authorization: `Bearer ${demo.access_token}` };
+    const spaces = await jf(`${GW}/spaces`, { headers: DH });
+    const sid = spaces?.spaces?.[0]?.id;
+    if (!sid) return;
+    const members = await jf(`${GW}/spaces/${sid}/members`, { headers: DH });
+    const me = (members?.members ?? []).find(m => m.email === 'ui-demo@example.com');
+    if (!me) { console.error('seedMention: could not read the demo display name'); return; }
+
+    // Any existing thread will do — a reply carries a mention as well as an
+    // opening comment does, and needs no anchors of its own.
+    const pages = await jf(`${GW}/pages`, { headers: { ...H, 'X-Actor-Id': ctx.peerActor } });
+    for (const pg of pages?.pages ?? []) {
+      const t = await jf(`${COLLAB}/collab/pages/${pg.id}/comments`, { headers: H });
+      const thread = t?.threads?.[0];
+      if (!thread) continue;
+      await fetch(`${COLLAB}/collab/threads/${thread.id}/comments`, {
+        method: 'POST', headers: H,
+        body: JSON.stringify({
+          body: `@${me.display_name.replace(/ /g, '')} does the tiebreak still hold `
+              + `if two actors share a Lamport stamp?`,
+        }),
+      });
+      // NATS, then the projection. Not instant, and not slow either.
+      await new Promise(r => setTimeout(r, 1600));
+      return;
+    }
+  } catch (e) {
+    console.error('seedMention:', e.message);
+  }
+}
 
 const EXTRACT = (props, chromeSel) => `(root) => {
   const out = [];
@@ -426,7 +559,7 @@ async function main() {
   // here" requires somebody else to be here.
   const ctx = { pageId: route.match(/[0-9a-f-]{36}/)?.[0] ?? null, peerActor: null, peerToken: null, sockets: [] };
   if (SEED[screen]) {
-    if (/\bpeerActor\b/.test(String(SEED[screen]))) {
+    if (NEEDS_PEER.has(screen)) {
       const peer = await fetch(`${GW}/auth/register`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: 'uidiff-peer@example.com', password: 'uidiff-peer-123456', display_name: 'Ada Devereux' }),
@@ -591,6 +724,7 @@ async function main() {
     // sides go. A count difference is content, not design.
     const cls = sig.split('.').slice(1);
     if (cls.length === 1 && UTILITY.has(cls[0])) continue;   // presence only
+    const sameCount = els.length === hit.length;
     for (const [i, me, ae] of pairUp(els, hit)) {
       // Also matched on the tag + FIRST class, so a rule written for
       // `div.tr` covers `div.tr.tr-on` — a row does not stop being content
@@ -616,7 +750,21 @@ async function main() {
       // that the two corpora differ, which is the premise of the whole
       // tool rather than a defect in the screen.
       const label = (t) => (t || '').replace(/\s+\d+$/, '').trim();
-      if (me.text && ae.text && label(me.text) !== label(ae.text) && /^[A-Z0-9 ·⌘/&—+]+$/.test(me.text)) {
+      // And only when both sides have the SAME NUMBER of this thing.
+      //
+      // The rule the property comparison already states — "a count
+      // difference is content, not design" — applies at least as hard to
+      // text. § 20's mockup draws four rows (mention, proposal, check,
+      // invite); the app draws the two whose kinds have producers, so the
+      // third `.chip` on one side is a different row's button from the
+      // third on the other, and comparing them reported "DISMISS ->
+      // DECLINE" as though a label had been changed. Nothing was: two
+      // lists of different lengths have no third element in common.
+      //
+      // Fixed-length chrome — nav tabs, readout keys, inspector tabs — is
+      // unaffected, which is the text this check exists for.
+      if (sameCount && me.text && ae.text && label(me.text) !== label(ae.text)
+          && /^[A-Z0-9 ·⌘/&—+]+$/.test(me.text)) {
         textDiffs.push(`${sig}[${i}]  "${me.text}"  ->  "${ae.text}"`);
       }
     }

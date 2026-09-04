@@ -5731,3 +5731,120 @@ NOTIFICATIONS surface (§ 20, § 24c), not inside a thread; § 20's own
 caption argues for storing the anchor so *"opening a mention a week later
 lands on the right words"*, which is exactly the machinery this minor
 built. They move to `v3.3.0`, where the inbox that shows them lives.
+
+### 2026-09-02 — `v3.3.0`: mentions, invitations, checks — and a leak the mockups walked me into
+
+Three of § 20's four rows became real. The fourth (assistant proposals) is
+`v4.4.0`'s and stays absent rather than invented.
+
+**Mentions.** An `@handle` in a comment becomes a notification that stores
+**ids only** — § 20's own rule, made structural: *"a notification is a
+pointer to an anchor, never a copy of the text."* Every word the inbox
+shows is resolved at read time, which is what lets a row say "the text this
+was written about has since been deleted" instead of quoting a ghost.
+
+**Invitations.** `ADR-013` had deferred the flow as "a product decision
+that does not change the model" — true, and also a way of not choosing.
+§ 20 chooses. The model does change in one way, and it is the whole design:
+**an invitation is not a membership.** Own table; `auth.memberships`
+untouched, so a role check that does not know invitations exist behaves
+exactly as it did before they did.
+
+**Checks.** § 20's CHECKS row is the one row that is not a notification at
+all — it is derived on every read from a single indexed query. A stored
+check goes stale the moment somebody creates the page. Derived, CREATE PAGE
+makes it disappear *because the check now passes*.
+
+**The leak.** Adding the dangling-link query meant asking how the
+neighbouring queries were scoped. They were not.
+
+`GetLinkGraph`, `AnalyzeGraph` and `GraphNeighborhood` returned **every
+page title on the instance** to anybody who asked. Search returned
+full-text hits with `ts_headline` snippets — page CONTENT — across every
+space. Discover ranked and named pages across every space. `SuggestTitles`
+suggested titles from every space.
+
+This is the same class of hole `v3.1.0`'s manual audit found twice, in a
+service that had already been given the tool to avoid it: `pages.Server`
+had `visible()` and `mayWrite()` from the start, and `graph`, `search` and
+`discover` simply never got one. **`v3.1.0`'s "shipped" claim was
+therefore partly wrong** — `PageService` was scoped and the three
+cross-page readers were not. All four now go through one `ScopeFor`, and
+an empty space set yields an empty result rather than everything.
+
+Proven over the wire rather than by reading the diff: a page created in a
+space by an isolated account is visible to its owner (41 nodes) and absent
+from another account's graph (40), search, and fuzzy suggestions.
+
+**And a gap that fix exposed.** `CreatePageRequest` had no `space_id`, so
+every page landed in the default space — spaces were *enforced* but no page
+could ever be created in one, which made a second space a container nothing
+could be put in. That is why the first leak test could not even build its
+own fixture. Fixed; a child still inherits its parent's space, since a tree
+whose permissions change partway down turns "who can read this" into a
+walk (`ADR-013` § 2).
+
+**Gate:** § 20 `missing 1 · property 0 · chrome text 0` — the one is
+`REVIEW 2 OPS`, the assistant. Two more uidiff/verify fixes on the way
+there, both the same lesson: chrome text was compared across lists of
+different lengths, and the § 20 diff was taken before the rows' staggered
+fade-in had finished (three rows at `opacity: 0`, a measurement of the
+clock rather than the design).
+
+### 2026-09-04 — the handbook becomes the port's single source of truth
+
+`RUST_PORTING_HANDBOOK.md` went from 19 parts to 32, roughly doubling in
+size. The gap it closed was not depth on the algorithms — that was already
+there — but **everything that is not the algorithm**: how a service starts
+and stops, how gRPC status codes map, how authorization is structured, what
+to test for security, how to deploy, and the order to do it all in.
+
+New parts: 19 microservices · 20 gRPC in Rust · 21 persistence · 22
+identity and authorization · 23 security testing · 24 the bug catalogue ·
+25 sketches · 26 the compiler and lexer · 27 the network simulator · 28
+benchmarking · 29 deployment and observability · 30 the order of work with
+checkpoints · 31 the frontend contract · 32 the file-by-file map.
+
+Deepened: Part 0 (what should be reconsidered rather than ported as-is),
+Part 1 (workspace manifest, lints, the crates deliberately NOT used), Part 2
+(the full table inventory, and notification bodies as a tagged enum), Part 8
+(the server-actor stability rule; what else the session owns), Part 10 (the
+graph algorithms explained rather than named), Part 11 (the two scoping
+invariants), Part 12 (how HNSW actually works, including the neighbour-
+selection heuristic that separates 95% recall from 60%), Part 15
+(cancellation safety, the three options for shared state, backpressure),
+Part 17 (all nine wasm modules, `panic = "abort"`, what wasm cannot do),
+Part 18 (the three kinds of test and what each cannot catch).
+
+Two parts are worth singling out because they exist only because of what
+this codebase got wrong:
+
+**Part 24** is a catalogue of 29 defects that actually shipped here, each
+with the test that catches it — sorted, at the end, into the three buckets
+they fall into. Almost all of them are (1) a check that waits on or asserts
+on something other than the thing it is checking, (2) a rule that exists but
+is not applied at one of its call sites, or (3) a value that must be stable
+and was not.
+
+**Part 22.4** turns bucket 2 into a type. `Scope` is a newtype holding the
+caller's visible space set, constructible only by resolving it, and required
+by every cross-page query — so a reader that forgets to scope does not
+compile. That is the answer to the leak found two days ago, and the
+strongest single argument for doing the port in Rust at all.
+
+`PORTING_GUIDE.md` was rewritten to be the orientation layer it claims to
+be: it now says six services rather than five, records the gaps added since
+(no NATS redelivery, no audit `prev_hash`, no notification retention), and
+ends with a table pointing at the right handbook part for whatever you are
+about to do.
+
+**Also:** the seeder now produces one of every notification kind through the
+real endpoints — a comment carrying an `@handle`, a genuine pending
+invitation, a trashed page — and marks the existing inbox read first, so a
+re-seeded demo shows a believable inbox. Two bugs found writing it: the
+first page it chose to delete was the parent of a 19-part series, and the
+second was the last part *of* that series. `GET /notifications` is also
+capped at 50 rows with nothing ever deleting one, which means a **count**
+stopped being able to detect a new notification — recorded in
+`docs/api/notifications.md` § 7 as the missing retention policy, and the
+affected check now asserts on the newest row's id instead.

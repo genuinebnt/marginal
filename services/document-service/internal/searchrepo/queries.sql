@@ -8,7 +8,11 @@
 -- stale the way the BK-tree title index deliberately can be.
 SELECT id, title, ts_rank(search_vector, websearch_to_tsquery('english', sqlc.arg(query)::text)) AS rank
 FROM docs.pages
+-- Scoped to the caller's spaces (v3.3.0). It was not: a full-text search
+-- returned hits from every space on the instance, which is a worse leak
+-- than the graph's titles because a snippet is the CONTENT.
 WHERE deleted_at IS NULL
+  AND space_id = ANY(@space_ids::uuid[])
   AND search_vector @@ websearch_to_tsquery('english', sqlc.arg(query)::text)
 ORDER BY rank DESC
 LIMIT 20;
@@ -27,6 +31,7 @@ SELECT
 FROM docs.blocks b
 JOIN docs.pages p ON p.id = b.page_id
 WHERE p.deleted_at IS NULL
+  AND p.space_id = ANY(@space_ids::uuid[])
   AND b.search_vector @@ websearch_to_tsquery('english', sqlc.arg(query)::text)
 ORDER BY rank DESC
 LIMIT 20;
@@ -36,6 +41,11 @@ LIMIT 20;
 -- reads this on its refresh cadence (NOT on every request: the whole
 -- point of a rebuilt-periodically index, search.html's own admitted
 -- "may lag the write path").
-SELECT id, title
+-- NOT space-scoped, and that is correct: this feeds the BK-tree index,
+-- which is rebuilt once per cadence rather than per caller. The scoping
+-- happens where the index is QUERIED, against the asker's own spaces —
+-- see internal/search. An index built per space would be one index per
+-- member of the instance.
+SELECT id, title, space_id
 FROM docs.pages
 WHERE deleted_at IS NULL;

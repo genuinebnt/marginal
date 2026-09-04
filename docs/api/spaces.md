@@ -111,10 +111,56 @@ to you.**
 
 ## 4. What this does not cover
 
-- **Invitations.** Membership rows are the same whether they arrive by an
-  admin adding an address, an emailed link, or a join request. The flow is a
-  product decision; the model above does not change with it (`ADR-013`).
+- ~~**Invitations.**~~ Decided and built (`v3.3.0`) — see § 5 below.
 - **Per-page overrides.** Deliberately out — a page that can disagree with
   its space turns "who can read this" into a tree walk with inheritance.
 - **API keys** (`§ 18c`). A second credential kind, with its own lifetime
   and its own scoping question.
+
+---
+
+## 5. Invitations (`v3.3.0`)
+
+`§ 20` decides the flow this contract previously deferred: an admin invites
+somebody who is already an account on this instance, and the invitation sits
+**pending** until they accept or decline it. It arrives as a notification
+(`docs/api/notifications.md`), which is the only place it is surfaced.
+
+**An invitation is not a membership.** It is its own table, and
+`auth.memberships` is unchanged — so a role check that does not know
+invitations exist behaves exactly as it did before they did. That is the
+whole reason for the split: a `accepted_at` column on the membership would
+be a nullable field on the hot path of every authorization decision, and
+forgetting it once grants access to somebody who never accepted.
+
+### `InviteMember(space_id, user_id, role)` → `Invitation`
+
+Admin of that space only — the same check `GrantRole` makes, in the same
+place. `ALREADY_EXISTS` if they are already a member (an invitation is not a
+way to change somebody's role) or already have a pending invitation to that
+space.
+
+Publishes `auth.member_invited`.
+
+The response carries ids and the role; `space_name` and `invited_by_name`
+are empty on it. They are joined columns, and the surface that renders an
+invitation as a sentence (`§ 20`) reads `ListInvitations`, which has them.
+Stated rather than silently half-filled.
+
+### `RespondToInvitation(invitation_id, accept)` → `Invitation`
+
+Only the person invited may answer, and only once; a second answer is
+`FAILED_PRECONDITION` rather than a silent no-op, because the two outcomes
+differ and the caller should be able to tell which happened.
+
+**Accepting grants**, in one transaction with marking the invitation
+answered, through the same `GrantRole` path an admin would take — so
+`auth.role_granted` is published exactly as it already is, and
+`document-service`'s projection needs no new consumer.
+
+**Declining records the refusal** rather than deleting the row. A deleted
+invitation cannot be told apart from one that was never sent.
+
+### `ListInvitations()` → pending invitations for the caller
+
+Scoped to the caller by their token, never by a parameter.

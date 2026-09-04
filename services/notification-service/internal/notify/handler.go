@@ -55,11 +55,20 @@ func (h *Handler) Mount(mux *http.ServeMux) {
 }
 
 type notificationJSON struct {
-	ID        string  `json:"id"`
-	Kind      string  `json:"kind"`
-	Message   string  `json:"message"`
-	ReadAt    *string `json:"read_at,omitempty"`
-	CreatedAt string  `json:"created_at"`
+	ID   string `json:"id"`
+	Kind string `json:"kind"`
+	// Empty for a pointer-shaped kind. The client renders the sentence
+	// from the pointer, resolving each id against the service that owns
+	// it — which is the only way a page's title in the inbox can be its
+	// title today rather than its title when the mention was written.
+	Message string  `json:"message"`
+	ActorID *string `json:"actor_id,omitempty"`
+	// Passed through verbatim, shaped by kind. json.RawMessage so it
+	// re-serialises as the nested object it is rather than as a string
+	// holding JSON.
+	Pointer   json.RawMessage `json:"pointer,omitempty"`
+	ReadAt    *string         `json:"read_at,omitempty"`
+	CreatedAt string          `json:"created_at"`
 }
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
@@ -168,6 +177,11 @@ func toNotificationJSON(n Notification) notificationJSON {
 		s := n.ReadAt.UTC().Format(time.RFC3339Nano)
 		out.ReadAt = &s
 	}
+	if n.ActorID != nil {
+		s := n.ActorID.String()
+		out.ActorID = &s
+	}
+	out.Pointer = n.Pointer
 	return out
 }
 

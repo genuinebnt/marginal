@@ -204,3 +204,33 @@ Auth is a **verified bearer token** (`ADR-013` §1): `Authorization: Bearer
 <access token>`, checked by `api-gateway` against `auth-service`'s JWKS, with
 the actor id taken from the token's `sub` claim. `X-Actor-Id` is no longer
 read anywhere — it was a value the caller wrote and nobody checked.
+
+---
+
+## Space scoping (`v3.3.0`) — and what it fixes
+
+Every read in this contract is filtered to the spaces the CALLER is in.
+
+It was not, until `v3.3.0`, and that was a real hole rather than an
+oversight in a corner: `GetLinkGraph`, `AnalyzeGraph` and
+`GraphNeighborhood` each returned **every page title on the instance** to
+anybody who asked, including titles in spaces the caller is not a member
+of. `spaces.md` § 3 already argues that a space's *name* leaks what a team
+is doing; a page title does the same, more precisely.
+
+The same audit found it in two more places, both worse than the graph:
+
+- **Search** returned full-text hits — with `ts_headline` snippets, which
+  are page CONTENT, not just titles — across every space.
+- **Discover** ranked and named related pages across every space.
+- **`SuggestTitles`** (the BK-tree) suggested titles from every space. That
+  index is instance-wide by design (one per member would be one index per
+  person), so the filter is applied when it is **queried**, not when it is
+  built.
+
+All four now resolve the caller's spaces through the same `ScopeFor`, and
+a caller with **no** spaces gets an empty result rather than everything —
+the safe direction for a mistake to fail in.
+
+`ListDanglingLinks` was written scoped from the start, and would have been
+the odd one out otherwise.

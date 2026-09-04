@@ -11,6 +11,59 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const listDanglingLinks = `-- name: ListDanglingLinks :many
+SELECT l.target_title,
+       l.from_page,
+       p.title AS from_page_title,
+       l.from_block
+FROM docs.page_links l
+JOIN docs.pages p ON p.id = l.from_page
+WHERE l.target_page IS NULL
+  AND p.deleted_at IS NULL
+  AND p.space_id = ANY($1::uuid[])
+ORDER BY l.target_title
+`
+
+type ListDanglingLinksRow struct {
+	TargetTitle   string
+	FromPage      pgtype.UUID
+	FromPageTitle string
+	FromBlock     pgtype.UUID
+}
+
+// § 20's CHECKS row: a [[link]] to a page that does not exist yet.
+// target_page IS NULL is exactly that, and the column is indexed for it.
+//
+// Derived on every read rather than stored as a notification, deliberately:
+// a stored check goes stale the moment somebody creates the page, and an
+// inbox row that has silently become false is worse than no row. Creating
+// the page makes this disappear, which is § 20's "acting on an item clears
+// it" without any clearing machinery.
+func (q *Queries) ListDanglingLinks(ctx context.Context, spaceIds []pgtype.UUID) ([]ListDanglingLinksRow, error) {
+	rows, err := q.db.Query(ctx, listDanglingLinks, spaceIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListDanglingLinksRow
+	for rows.Next() {
+		var i ListDanglingLinksRow
+		if err := rows.Scan(
+			&i.TargetTitle,
+			&i.FromPage,
+			&i.FromPageTitle,
+			&i.FromBlock,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPagesForGraph = `-- name: ListPagesForGraph :many
 SELECT p.id, p.title, p.parent_id, p.topic_id,
        t.name      AS topic_name,
@@ -22,7 +75,7 @@ SELECT p.id, p.title, p.parent_id, p.topic_id,
        )::text[] AS tags
 FROM docs.pages p
 LEFT JOIN docs.topics t ON t.id = p.topic_id
-WHERE p.deleted_at IS NULL
+WHERE p.deleted_at IS NULL AND p.space_id = ANY($1::uuid[])
 `
 
 type ListPagesForGraphRow struct {
@@ -48,8 +101,13 @@ type ListPagesForGraphRow struct {
 // prints. A client joining the name in for itself is what caused the bug this
 // join fixes — ListPages returns one parent's children, so the join silently
 // covered only the root pages.
-func (q *Queries) ListPagesForGraph(ctx context.Context) ([]ListPagesForGraphRow, error) {
-	rows, err := q.db.Query(ctx, listPagesForGraph)
+// Scoped to the caller's spaces, like every other read in this service.
+// It was NOT, until v3.3.0: the whole graph — every page title on the
+// instance — was returned to anybody who asked, including titles in
+// spaces they are not a member of. A page title says what somebody is
+// working on, which is the same thing spaces.md says about space names.
+func (q *Queries) ListPagesForGraph(ctx context.Context, spaceIds []pgtype.UUID) ([]ListPagesForGraphRow, error) {
+	rows, err := q.db.Query(ctx, listPagesForGraph, spaceIds)
 	if err != nil {
 		return nil, err
 	}
@@ -77,9 +135,13 @@ func (q *Queries) ListPagesForGraph(ctx context.Context) ([]ListPagesForGraphRow
 }
 
 const listResolvedLinksForGraph = `-- name: ListResolvedLinksForGraph :many
-SELECT from_page, target_page
-FROM docs.page_links
-WHERE target_page IS NOT NULL
+SELECT l.from_page, l.target_page
+FROM docs.page_links l
+JOIN docs.pages fp ON fp.id = l.from_page
+JOIN docs.pages tp ON tp.id = l.target_page
+WHERE l.target_page IS NOT NULL
+  AND fp.space_id = ANY($1::uuid[])
+  AND tp.space_id = ANY($1::uuid[])
 `
 
 type ListResolvedLinksForGraphRow struct {
@@ -91,8 +153,11 @@ type ListResolvedLinksForGraphRow struct {
 // edge set. A dangling link (target_page IS NULL) has nothing on the
 // other end to draw a line to or walk toward, so it's excluded here the
 // same way graphalgo.Edge's own doc comment says it must be.
-func (q *Queries) ListResolvedLinksForGraph(ctx context.Context) ([]ListResolvedLinksForGraphRow, error) {
-	rows, err := q.db.Query(ctx, listResolvedLinksForGraph)
+// Both ends must be visible. A link out of a page you cannot see is not
+// an edge you are allowed to know about, and one INTO a page you cannot
+// see would draw a line to a node that is not in your node set.
+func (q *Queries) ListResolvedLinksForGraph(ctx context.Context, spaceIds []pgtype.UUID) ([]ListResolvedLinksForGraphRow, error) {
+	rows, err := q.db.Query(ctx, listResolvedLinksForGraph, spaceIds)
 	if err != nil {
 		return nil, err
 	}

@@ -135,7 +135,8 @@ func run() error {
 	defer func() { _ = authConn.Close() }()
 
 	directory := roles.New()
-	ws := roles.WS{Dir: directory, Resolver: roles.NewResolver(documentConn, authConn)}
+	resolver := roles.NewResolver(documentConn, authConn)
+	ws := roles.WS{Dir: directory, Resolver: resolver}
 
 	// can_apply reads the directory and nothing else — RFC-002 §5's single
 	// auditable chokepoint, still synchronous and still pure. Every writer
@@ -190,7 +191,10 @@ func run() error {
 	// Manager, not just the pool: a thread's extent is an AnchorRange, and
 	// resolving one means asking the live session where those anchors point
 	// in the block's text right now.
-	wsapi.NewCommentsHandler(pool, manager).Mount(mux, verifier)
+	// The resolver is passed a second time, for @mentions: turning a
+	// handle into a person means asking which space the page is in and who
+	// is in it, which is exactly what it already knows how to do.
+	wsapi.NewCommentsHandler(pool, manager, resolver).Mount(mux, verifier)
 
 	httpServer := &http.Server{Addr: httpAddr, Handler: allowCORS(mux)}
 

@@ -4,10 +4,42 @@
 import { NOTIFICATIONS_URL } from "./config";
 import { apiFetch } from "./http";
 
+/** A mention's whole content — ids, and nothing that can go stale.
+ *  docs/api/notifications.md § 1: a notification is a pointer to an anchor,
+ *  never a copy of the text. The words are read back through the comments
+ *  API at render time, which is also what makes "these words were deleted"
+ *  something the inbox can say rather than something it silently gets
+ *  wrong. */
+export interface MentionPointer {
+  page_id: string;
+  block_id: string;
+  thread_id: string;
+  comment_id: string;
+  actor_id: string;
+  user_id: string;
+}
+
+/** An invitation notification's pointer. The invitation's own id is the
+ *  load-bearing field: it is what ACCEPT and DECLINE answer with, and the
+ *  only thing here not derivable from the rest. */
+export interface InvitePointer {
+  invitation_id: string;
+  user_id: string;
+  space_id: string;
+  role: string;
+  invited_by: string;
+}
+
 export interface Notification {
   id: string;
   kind: string;
+  /** Empty for every pointer-shaped kind — see `pointer`. */
   message: string;
+  actor_id?: string;
+  /** Shaped by `kind`: MentionPointer for "mention", InvitePointer for
+   *  "invite". Narrow it on `kind`, never on which fields happen to be
+   *  present. */
+  pointer?: MentionPointer | InvitePointer;
   read_at?: string;
   created_at: string;
 }

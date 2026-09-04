@@ -950,6 +950,154 @@ func (x *PathStep) GetDestination() bool {
 	return false
 }
 
+type ListDanglingLinksRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListDanglingLinksRequest) Reset() {
+	*x = ListDanglingLinksRequest{}
+	mi := &file_graph_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListDanglingLinksRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListDanglingLinksRequest) ProtoMessage() {}
+
+func (x *ListDanglingLinksRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_graph_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListDanglingLinksRequest.ProtoReflect.Descriptor instead.
+func (*ListDanglingLinksRequest) Descriptor() ([]byte, []int) {
+	return file_graph_proto_rawDescGZIP(), []int{12}
+}
+
+type DanglingLink struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TargetTitle   string                 `protobuf:"bytes,1,opt,name=target_title,json=targetTitle,proto3" json:"target_title,omitempty"` // the [[title]] nobody has written yet
+	FromPage      string                 `protobuf:"bytes,2,opt,name=from_page,json=fromPage,proto3" json:"from_page,omitempty"`
+	FromPageTitle string                 `protobuf:"bytes,3,opt,name=from_page_title,json=fromPageTitle,proto3" json:"from_page_title,omitempty"`
+	FromBlock     string                 `protobuf:"bytes,4,opt,name=from_block,json=fromBlock,proto3" json:"from_block,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DanglingLink) Reset() {
+	*x = DanglingLink{}
+	mi := &file_graph_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DanglingLink) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DanglingLink) ProtoMessage() {}
+
+func (x *DanglingLink) ProtoReflect() protoreflect.Message {
+	mi := &file_graph_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DanglingLink.ProtoReflect.Descriptor instead.
+func (*DanglingLink) Descriptor() ([]byte, []int) {
+	return file_graph_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *DanglingLink) GetTargetTitle() string {
+	if x != nil {
+		return x.TargetTitle
+	}
+	return ""
+}
+
+func (x *DanglingLink) GetFromPage() string {
+	if x != nil {
+		return x.FromPage
+	}
+	return ""
+}
+
+func (x *DanglingLink) GetFromPageTitle() string {
+	if x != nil {
+		return x.FromPageTitle
+	}
+	return ""
+}
+
+func (x *DanglingLink) GetFromBlock() string {
+	if x != nil {
+		return x.FromBlock
+	}
+	return ""
+}
+
+type ListDanglingLinksResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Links         []*DanglingLink        `protobuf:"bytes,1,rep,name=links,proto3" json:"links,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListDanglingLinksResponse) Reset() {
+	*x = ListDanglingLinksResponse{}
+	mi := &file_graph_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListDanglingLinksResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListDanglingLinksResponse) ProtoMessage() {}
+
+func (x *ListDanglingLinksResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_graph_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListDanglingLinksResponse.ProtoReflect.Descriptor instead.
+func (*ListDanglingLinksResponse) Descriptor() ([]byte, []int) {
+	return file_graph_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *ListDanglingLinksResponse) GetLinks() []*DanglingLink {
+	if x != nil {
+		return x.Links
+	}
+	return nil
+}
+
 var File_graph_proto protoreflect.FileDescriptor
 
 const file_graph_proto_rawDesc = "" +
@@ -1034,11 +1182,21 @@ const file_graph_proto_rawDesc = "" +
 	"\apage_id\x18\x01 \x01(\tR\x06pageId\x12\x14\n" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x12\x14\n" +
 	"\x05depth\x18\x03 \x01(\x05R\x05depth\x12 \n" +
-	"\vdestination\x18\x04 \x01(\bR\vdestination2\xc0\x02\n" +
+	"\vdestination\x18\x04 \x01(\bR\vdestination\"\x1a\n" +
+	"\x18ListDanglingLinksRequest\"\x95\x01\n" +
+	"\fDanglingLink\x12!\n" +
+	"\ftarget_title\x18\x01 \x01(\tR\vtargetTitle\x12\x1b\n" +
+	"\tfrom_page\x18\x02 \x01(\tR\bfromPage\x12&\n" +
+	"\x0ffrom_page_title\x18\x03 \x01(\tR\rfromPageTitle\x12\x1d\n" +
+	"\n" +
+	"from_block\x18\x04 \x01(\tR\tfromBlock\"U\n" +
+	"\x19ListDanglingLinksResponse\x128\n" +
+	"\x05links\x18\x01 \x03(\v2\".marginal.document.v1.DanglingLinkR\x05links2\xb6\x03\n" +
 	"\fGraphService\x12Z\n" +
 	"\fGetLinkGraph\x12).marginal.document.v1.GetLinkGraphRequest\x1a\x1f.marginal.document.v1.LinkGraph\x12^\n" +
 	"\fAnalyzeGraph\x12).marginal.document.v1.AnalyzeGraphRequest\x1a#.marginal.document.v1.GraphAnalysis\x12t\n" +
-	"\x11GraphNeighborhood\x12..marginal.document.v1.GraphNeighborhoodRequest\x1a/.marginal.document.v1.GraphNeighborhoodResponseB/Z-marginal/document-service/genproto/documentv1b\x06proto3"
+	"\x11GraphNeighborhood\x12..marginal.document.v1.GraphNeighborhoodRequest\x1a/.marginal.document.v1.GraphNeighborhoodResponse\x12t\n" +
+	"\x11ListDanglingLinks\x12..marginal.document.v1.ListDanglingLinksRequest\x1a/.marginal.document.v1.ListDanglingLinksResponseB/Z-marginal/document-service/genproto/documentv1b\x06proto3"
 
 var (
 	file_graph_proto_rawDescOnce sync.Once
@@ -1052,7 +1210,7 @@ func file_graph_proto_rawDescGZIP() []byte {
 	return file_graph_proto_rawDescData
 }
 
-var file_graph_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
+var file_graph_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
 var file_graph_proto_goTypes = []any{
 	(*GetLinkGraphRequest)(nil),       // 0: marginal.document.v1.GetLinkGraphRequest
 	(*LinkGraph)(nil),                 // 1: marginal.document.v1.LinkGraph
@@ -1066,36 +1224,42 @@ var file_graph_proto_goTypes = []any{
 	(*GraphNeighborhoodResponse)(nil), // 9: marginal.document.v1.GraphNeighborhoodResponse
 	(*GraphNeighbour)(nil),            // 10: marginal.document.v1.GraphNeighbour
 	(*PathStep)(nil),                  // 11: marginal.document.v1.PathStep
-	nil,                               // 12: marginal.document.v1.GraphAnalysis.ComponentOfEntry
-	nil,                               // 13: marginal.document.v1.GraphAnalysis.BetweennessEntry
-	nil,                               // 14: marginal.document.v1.GraphAnalysis.StronglyConnectedEntry
-	nil,                               // 15: marginal.document.v1.GraphNeighborhoodResponse.UndirectedDistanceEntry
-	nil,                               // 16: marginal.document.v1.GraphNeighborhoodResponse.ForwardReachableEntry
+	(*ListDanglingLinksRequest)(nil),  // 12: marginal.document.v1.ListDanglingLinksRequest
+	(*DanglingLink)(nil),              // 13: marginal.document.v1.DanglingLink
+	(*ListDanglingLinksResponse)(nil), // 14: marginal.document.v1.ListDanglingLinksResponse
+	nil,                               // 15: marginal.document.v1.GraphAnalysis.ComponentOfEntry
+	nil,                               // 16: marginal.document.v1.GraphAnalysis.BetweennessEntry
+	nil,                               // 17: marginal.document.v1.GraphAnalysis.StronglyConnectedEntry
+	nil,                               // 18: marginal.document.v1.GraphNeighborhoodResponse.UndirectedDistanceEntry
+	nil,                               // 19: marginal.document.v1.GraphNeighborhoodResponse.ForwardReachableEntry
 }
 var file_graph_proto_depIdxs = []int32{
 	2,  // 0: marginal.document.v1.LinkGraph.nodes:type_name -> marginal.document.v1.GraphNode
 	3,  // 1: marginal.document.v1.LinkGraph.edges:type_name -> marginal.document.v1.GraphEdge
-	12, // 2: marginal.document.v1.GraphAnalysis.component_of:type_name -> marginal.document.v1.GraphAnalysis.ComponentOfEntry
+	15, // 2: marginal.document.v1.GraphAnalysis.component_of:type_name -> marginal.document.v1.GraphAnalysis.ComponentOfEntry
 	7,  // 3: marginal.document.v1.GraphAnalysis.betti:type_name -> marginal.document.v1.BettiNumbers
-	13, // 4: marginal.document.v1.GraphAnalysis.betweenness:type_name -> marginal.document.v1.GraphAnalysis.BetweennessEntry
-	14, // 5: marginal.document.v1.GraphAnalysis.strongly_connected:type_name -> marginal.document.v1.GraphAnalysis.StronglyConnectedEntry
+	16, // 4: marginal.document.v1.GraphAnalysis.betweenness:type_name -> marginal.document.v1.GraphAnalysis.BetweennessEntry
+	17, // 5: marginal.document.v1.GraphAnalysis.strongly_connected:type_name -> marginal.document.v1.GraphAnalysis.StronglyConnectedEntry
 	6,  // 6: marginal.document.v1.GraphAnalysis.layers:type_name -> marginal.document.v1.GraphLayer
-	15, // 7: marginal.document.v1.GraphNeighborhoodResponse.undirected_distance:type_name -> marginal.document.v1.GraphNeighborhoodResponse.UndirectedDistanceEntry
-	16, // 8: marginal.document.v1.GraphNeighborhoodResponse.forward_reachable:type_name -> marginal.document.v1.GraphNeighborhoodResponse.ForwardReachableEntry
+	18, // 7: marginal.document.v1.GraphNeighborhoodResponse.undirected_distance:type_name -> marginal.document.v1.GraphNeighborhoodResponse.UndirectedDistanceEntry
+	19, // 8: marginal.document.v1.GraphNeighborhoodResponse.forward_reachable:type_name -> marginal.document.v1.GraphNeighborhoodResponse.ForwardReachableEntry
 	10, // 9: marginal.document.v1.GraphNeighborhoodResponse.nearest:type_name -> marginal.document.v1.GraphNeighbour
 	11, // 10: marginal.document.v1.GraphNeighborhoodResponse.reading_path:type_name -> marginal.document.v1.PathStep
 	11, // 11: marginal.document.v1.GraphNeighborhoodResponse.shortest_path:type_name -> marginal.document.v1.PathStep
-	0,  // 12: marginal.document.v1.GraphService.GetLinkGraph:input_type -> marginal.document.v1.GetLinkGraphRequest
-	4,  // 13: marginal.document.v1.GraphService.AnalyzeGraph:input_type -> marginal.document.v1.AnalyzeGraphRequest
-	8,  // 14: marginal.document.v1.GraphService.GraphNeighborhood:input_type -> marginal.document.v1.GraphNeighborhoodRequest
-	1,  // 15: marginal.document.v1.GraphService.GetLinkGraph:output_type -> marginal.document.v1.LinkGraph
-	5,  // 16: marginal.document.v1.GraphService.AnalyzeGraph:output_type -> marginal.document.v1.GraphAnalysis
-	9,  // 17: marginal.document.v1.GraphService.GraphNeighborhood:output_type -> marginal.document.v1.GraphNeighborhoodResponse
-	15, // [15:18] is the sub-list for method output_type
-	12, // [12:15] is the sub-list for method input_type
-	12, // [12:12] is the sub-list for extension type_name
-	12, // [12:12] is the sub-list for extension extendee
-	0,  // [0:12] is the sub-list for field type_name
+	13, // 12: marginal.document.v1.ListDanglingLinksResponse.links:type_name -> marginal.document.v1.DanglingLink
+	0,  // 13: marginal.document.v1.GraphService.GetLinkGraph:input_type -> marginal.document.v1.GetLinkGraphRequest
+	4,  // 14: marginal.document.v1.GraphService.AnalyzeGraph:input_type -> marginal.document.v1.AnalyzeGraphRequest
+	8,  // 15: marginal.document.v1.GraphService.GraphNeighborhood:input_type -> marginal.document.v1.GraphNeighborhoodRequest
+	12, // 16: marginal.document.v1.GraphService.ListDanglingLinks:input_type -> marginal.document.v1.ListDanglingLinksRequest
+	1,  // 17: marginal.document.v1.GraphService.GetLinkGraph:output_type -> marginal.document.v1.LinkGraph
+	5,  // 18: marginal.document.v1.GraphService.AnalyzeGraph:output_type -> marginal.document.v1.GraphAnalysis
+	9,  // 19: marginal.document.v1.GraphService.GraphNeighborhood:output_type -> marginal.document.v1.GraphNeighborhoodResponse
+	14, // 20: marginal.document.v1.GraphService.ListDanglingLinks:output_type -> marginal.document.v1.ListDanglingLinksResponse
+	17, // [17:21] is the sub-list for method output_type
+	13, // [13:17] is the sub-list for method input_type
+	13, // [13:13] is the sub-list for extension type_name
+	13, // [13:13] is the sub-list for extension extendee
+	0,  // [0:13] is the sub-list for field type_name
 }
 
 func init() { file_graph_proto_init() }
@@ -1109,7 +1273,7 @@ func file_graph_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_graph_proto_rawDesc), len(file_graph_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   17,
+			NumMessages:   20,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
